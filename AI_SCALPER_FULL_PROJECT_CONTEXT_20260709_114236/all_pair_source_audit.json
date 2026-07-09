@@ -1,0 +1,418 @@
+{
+  "generated_at": "2026-07-09T11:26:33.604343",
+  "mode": "DIAGNOSE_ALL_PAIR_PIPELINE_COVERAGE",
+  "enabled": true,
+  "live_allowed": false,
+  "max_lot": 0.01,
+  "total_csv_symbols": 17,
+  "total_symbols_seen": 17,
+  "csv_symbols": [
+    "AUDJPY",
+    "AUDUSD",
+    "BTCUSD",
+    "CADJPY",
+    "CHFJPY",
+    "EURGBP",
+    "EURJPY",
+    "EURUSD",
+    "GBPJPY",
+    "GBPUSD",
+    "NZDUSD",
+    "USDCAD",
+    "USDCHF",
+    "USDJPY",
+    "USOIL",
+    "XAGUSD",
+    "XAUUSD"
+  ],
+  "active_pairs": [
+    "EURUSD"
+  ],
+  "replay_approved_symbols": [
+    "EURUSD"
+  ],
+  "replay_watch_symbols": [
+    "AUDJPY",
+    "CADJPY",
+    "CHFJPY",
+    "EURGBP",
+    "GBPJPY",
+    "XAGUSD",
+    "XAUUSD"
+  ],
+  "replay_blocked_symbols": [
+    "GBPUSD"
+  ],
+  "quality_rule_symbols": [
+    "EURUSD",
+    "GBPUSD"
+  ],
+  "bridge_approved_symbols": [
+    "BTCUSD",
+    "EURUSD"
+  ],
+  "bridge_blocked_symbols": [
+    "GBPUSD"
+  ],
+  "status_counts": {
+    "DATA_ONLY_NEEDS_VALIDATION": 14,
+    "BRIDGE_APPROVED_REPLAY_MISSING": 1,
+    "FULLY_COVERED_ACTIVE": 1,
+    "REPLAY_BLOCKED": 1
+  },
+  "symbols": [
+    {
+      "symbol": "AUDJPY",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": true,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "AUDUSD",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": false,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "BTCUSD",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": false,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": true,
+      "bridge_blocked": false,
+      "pipeline_status": "BRIDGE_APPROVED_REPLAY_MISSING",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "CADJPY",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": true,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "CHFJPY",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": true,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "EURGBP",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": true,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "EURJPY",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": false,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "EURUSD",
+      "data_exists": true,
+      "active_pair": true,
+      "replay_approved": true,
+      "replay_watch": false,
+      "replay_blocked": false,
+      "quality_rule_exists": true,
+      "quality_guard_status": "PRIORITY",
+      "quality_min_score_required": 4,
+      "bridge_approved": true,
+      "bridge_blocked": false,
+      "pipeline_status": "FULLY_COVERED_ACTIVE",
+      "missing_sources": [],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "GBPJPY",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": true,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "GBPUSD",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": false,
+      "replay_blocked": true,
+      "quality_rule_exists": true,
+      "quality_guard_status": "RESTRICT",
+      "quality_min_score_required": 6,
+      "bridge_approved": false,
+      "bridge_blocked": true,
+      "pipeline_status": "REPLAY_BLOCKED",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "NZDUSD",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": false,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "USDCAD",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": false,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "USDCHF",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": false,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "USDJPY",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": false,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "USOIL",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": false,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "XAGUSD",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": true,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "XAUUSD",
+      "data_exists": true,
+      "active_pair": false,
+      "replay_approved": false,
+      "replay_watch": true,
+      "replay_blocked": false,
+      "quality_rule_exists": false,
+      "quality_guard_status": null,
+      "quality_min_score_required": null,
+      "bridge_approved": false,
+      "bridge_blocked": false,
+      "pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "missing_sources": [
+        "active_pair",
+        "replay_candidate",
+        "quality_rule"
+      ],
+      "live_allowed": false,
+      "max_lot": 0.01
+    }
+  ],
+  "next_recommended_action": "Use this report to expand paper validation gradually. Do not open all-pair execution before replay candidates and quality rules exist."
+}

@@ -1,0 +1,92 @@
+{
+  "generated_at": "2026-07-09T11:26:34.176182",
+  "mode": "REPORT_BTCUSD_REPLAY_VALIDATION",
+  "enabled": true,
+  "status": "FAILED_BTCUSD_REPLAY_PROXY",
+  "symbol": "BTCUSD",
+  "source_csv": "data/btcusd.csv",
+  "rows": 2794,
+  "clean_rows": 2794,
+  "review_only": true,
+  "paper_only": true,
+  "live_allowed": false,
+  "max_lot": 0.01,
+  "strategy_reports": [
+    {
+      "strategy": "BREAKOUT",
+      "trades": 267,
+      "wins": 110,
+      "losses": 157,
+      "winrate_percent": 41.1985,
+      "profit_factor": 0.9636,
+      "net_return_percent_proxy": -1.0979,
+      "max_drawdown_percent_proxy": 7.3259,
+      "passed": false,
+      "requirements": {
+        "min_trades": 30,
+        "min_winrate": 45.0,
+        "min_profit_factor": 1.05,
+        "max_drawdown": 30.0
+      }
+    },
+    {
+      "strategy": "MEAN_REVERSION",
+      "trades": 643,
+      "wins": 337,
+      "losses": 306,
+      "winrate_percent": 52.4106,
+      "profit_factor": 0.9885,
+      "net_return_percent_proxy": -0.6486,
+      "max_drawdown_percent_proxy": 8.8688,
+      "passed": false,
+      "requirements": {
+        "min_trades": 30,
+        "min_winrate": 45.0,
+        "min_profit_factor": 1.05,
+        "max_drawdown": 30.0
+      }
+    },
+    {
+      "strategy": "MOMENTUM_PULLBACK",
+      "trades": 1835,
+      "wins": 859,
+      "losses": 976,
+      "winrate_percent": 46.812,
+      "profit_factor": 0.9024,
+      "net_return_percent_proxy": -14.6192,
+      "max_drawdown_percent_proxy": 16.3147,
+      "passed": false,
+      "requirements": {
+        "min_trades": 30,
+        "min_winrate": 45.0,
+        "min_profit_factor": 1.05,
+        "max_drawdown": 30.0
+      }
+    }
+  ],
+  "passed_strategies": [],
+  "best_strategy": "MEAN_REVERSION",
+  "best_report": {
+    "strategy": "MEAN_REVERSION",
+    "trades": 643,
+    "wins": 337,
+    "losses": 306,
+    "winrate_percent": 52.4106,
+    "profit_factor": 0.9885,
+    "net_return_percent_proxy": -0.6486,
+    "max_drawdown_percent_proxy": 8.8688,
+    "passed": false,
+    "requirements": {
+      "min_trades": 30,
+      "min_winrate": 45.0,
+      "min_profit_factor": 1.05,
+      "max_drawdown": 30.0
+    }
+  },
+  "target_files_not_modified": {
+    "active_pairs": "active_pairs.json",
+    "paper_quality_rules": "paper_quality_rules.json",
+    "paper_replay_candidates": "paper_replay_candidates.json"
+  },
+  "next_recommended_action": "If BTCUSD passes, create a WATCH-only replay draft first. Do not add BTCUSD to approved replay candidates or active execution automatically."
+}

@@ -1,0 +1,707 @@
+{
+  "generated_at": "2026-07-09T11:26:33.600351",
+  "enabled": true,
+  "mode": "EXPORT_PHASE4_STOP_AND_REVIEW_SUMMARY",
+  "status": "PHASE4_STOP_AND_REVIEW_REPORT_EXPORTED",
+  "review_required": true,
+  "phase4_action": "STOP_AND_REVIEW_PHASE_4",
+  "quality_status": "NOT_READY",
+  "current_stage": "Phase 4 validation target reached",
+  "closed_orders": 52,
+  "winrate_percent": 36.54,
+  "profit_factor": 1.3758,
+  "safety": {
+    "live_allowed": false,
+    "max_lot": 0.01,
+    "ready_trade_count": 0,
+    "mt5_order_count": 0,
+    "demo_outbox_order_count": 0,
+    "demo_outbox_live_allowed": false,
+    "bridge_live_allowed": false,
+    "bridge_valid_order_count": 0
+  },
+  "problem_summary": [
+    "Phase 4 quality status is NOT_READY.",
+    "Phase 4 target sample has been reached and the system requests STOP_AND_REVIEW_PHASE_4.",
+    "GBPUSD remains weak/restricted: guard_status=RESTRICT, min_score_required=6, winrate=30.77, profit_factor=0.8889",
+    "MOMENTUM_PULLBACK remains restricted/weak: guard_status=RESTRICT, min_score_required=5, winrate=30.0, profit_factor=1.1812",
+    "TREND_FOLLOWING remains blocked: guard_status=BLOCK, min_score_required=99"
+  ],
+  "guard_summary": {
+    "blocked_symbols": [
+      "GBPUSD"
+    ],
+    "restricted_strategies": [
+      "MOMENTUM_PULLBACK"
+    ],
+    "force_block_strategies": [
+      "TREND_FOLLOWING"
+    ],
+    "priority_symbols": [
+      "EURUSD"
+    ],
+    "phase4b_allowed_symbols": [
+      "BTCUSD",
+      "EURUSD"
+    ],
+    "phase5e_primary_symbols": [
+      "BTCUSD",
+      "EURUSD"
+    ],
+    "phase5e_blocked_symbols": [
+      "GBPUSD"
+    ],
+    "phase5f_allowed_strategies": [
+      "BREAKOUT",
+      "MEAN_REVERSION",
+      "MOMENTUM_PULLBACK"
+    ],
+    "phase5f_force_block_strategies": [
+      "TREND_FOLLOWING"
+    ]
+  },
+  "quality_rules_snapshot": {
+    "symbol_rules": {
+      "EURUSD": {
+        "type": "symbol",
+        "name": "EURUSD",
+        "closed_orders": 17,
+        "wins": 7,
+        "losses": 8,
+        "timeouts": 2,
+        "net_profit_usd": 2.0437,
+        "winrate_percent": 41.18,
+        "profit_factor": 2.0219,
+        "expectancy_usd": 0.1202,
+        "guard_status": "PRIORITY",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+        ]
+      },
+      "GBPUSD": {
+        "type": "symbol",
+        "name": "GBPUSD",
+        "closed_orders": 13,
+        "wins": 4,
+        "losses": 9,
+        "timeouts": 0,
+        "net_profit_usd": -0.25,
+        "winrate_percent": 30.77,
+        "profit_factor": 0.8889,
+        "expectancy_usd": -0.0192,
+        "guard_status": "RESTRICT",
+        "min_score_required": 6,
+        "allow_new_entries": true,
+        "reason": "RESTRICT: closed=13, winrate=30.77%, net=$-0.2500. Require score >= 5. | PHASE4B_SYMBOL_RESTRICT: GBPUSD requires score >= 6 after Phase 4 review.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_SYMBOL_RESTRICT: GBPUSD requires score >= 6 after Phase 4 review."
+        ]
+      }
+    },
+    "strategy_rules": {
+      "BREAKOUT": {
+        "type": "strategy",
+        "name": "BREAKOUT",
+        "closed_orders": 5,
+        "wins": 2,
+        "losses": 3,
+        "timeouts": 0,
+        "net_profit_usd": 0.25,
+        "winrate_percent": 40.0,
+        "profit_factor": 1.3333,
+        "expectancy_usd": 0.05,
+        "guard_status": "WATCH",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "WATCH: closed=5, winrate=40.00%, net=$0.2500. Require score >= 4."
+      },
+      "MEAN_REVERSION": {
+        "type": "strategy",
+        "name": "MEAN_REVERSION",
+        "closed_orders": 2,
+        "wins": 2,
+        "losses": 0,
+        "timeouts": 0,
+        "net_profit_usd": 1.0,
+        "winrate_percent": 100.0,
+        "profit_factor": 999.0,
+        "expectancy_usd": 0.5,
+        "guard_status": "INSUFFICIENT_SAMPLE",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "Sample kecil: 2 closed orders. Belum cukup untuk strict guard."
+      },
+      "MOMENTUM_PULLBACK": {
+        "type": "strategy",
+        "name": "MOMENTUM_PULLBACK",
+        "closed_orders": 20,
+        "wins": 6,
+        "losses": 12,
+        "timeouts": 2,
+        "net_profit_usd": 0.5437,
+        "winrate_percent": 30.0,
+        "profit_factor": 1.1812,
+        "expectancy_usd": 0.0272,
+        "guard_status": "RESTRICT",
+        "min_score_required": 5,
+        "allow_new_entries": true,
+        "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+      },
+      "TREND_FOLLOWING": {
+        "type": "strategy",
+        "name": "TREND_FOLLOWING",
+        "closed_orders": 3,
+        "wins": 1,
+        "losses": 2,
+        "timeouts": 0,
+        "net_profit_usd": 0.0,
+        "winrate_percent": 33.33,
+        "profit_factor": 1.0,
+        "expectancy_usd": 0.0,
+        "guard_status": "BLOCK",
+        "min_score_required": 99,
+        "allow_new_entries": false,
+        "reason": "Sample kecil: 3 closed orders. Belum cukup untuk strict guard. | PHASE4B_FORCE_BLOCK: Strategy is temporarily blocked after Phase 4 review because winrate/quality is not READY.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_FORCE_BLOCK: Strategy is temporarily blocked after Phase 4 review because winrate/quality is not READY."
+        ]
+      }
+    }
+  },
+  "replay_candidate_snapshot": {
+    "approved_symbols": [
+      {
+        "symbol": "EURUSD",
+        "closed_orders": 7,
+        "winrate_percent": 71.43,
+        "net_profit_usd": 1.5835,
+        "status": "APPROVED_REPLAY_CANDIDATE",
+        "reason": "Symbol passed replay winrate and net profit requirements."
+      }
+    ],
+    "watch_symbols": [
+      {
+        "symbol": "AUDJPY",
+        "strategy": "ANY",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "allowed_strategies": [
+          "MEAN_REVERSION",
+          "MOMENTUM_PULLBACK"
+        ],
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713315",
+        "merge_note": "WATCH-only replay candidate. Not APPROVED_REPLAY_CANDIDATE. Does not unlock active execution or live trading."
+      },
+      {
+        "symbol": "CADJPY",
+        "strategy": "ANY",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "allowed_strategies": [
+          "MEAN_REVERSION"
+        ],
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713319",
+        "merge_note": "WATCH-only replay candidate. Not APPROVED_REPLAY_CANDIDATE. Does not unlock active execution or live trading."
+      },
+      {
+        "symbol": "CHFJPY",
+        "strategy": "ANY",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "allowed_strategies": [
+          "MEAN_REVERSION",
+          "MOMENTUM_PULLBACK"
+        ],
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713322",
+        "merge_note": "WATCH-only replay candidate. Not APPROVED_REPLAY_CANDIDATE. Does not unlock active execution or live trading."
+      },
+      {
+        "symbol": "EURGBP",
+        "strategy": "ANY",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "allowed_strategies": [
+          "MEAN_REVERSION"
+        ],
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713323",
+        "merge_note": "WATCH-only replay candidate. Not APPROVED_REPLAY_CANDIDATE. Does not unlock active execution or live trading."
+      },
+      {
+        "symbol": "GBPJPY",
+        "strategy": "ANY",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "allowed_strategies": [
+          "MEAN_REVERSION"
+        ],
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713324",
+        "merge_note": "WATCH-only replay candidate. Not APPROVED_REPLAY_CANDIDATE. Does not unlock active execution or live trading."
+      },
+      {
+        "symbol": "XAUUSD",
+        "strategy": "ANY",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "xauusd_commodity_replay_validation_report.json",
+        "preferred_strategy": "MEAN_REVERSION",
+        "allowed_strategies": [
+          "MEAN_REVERSION"
+        ],
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "XAUUSD passed commodity replay proxy; WATCH-only candidate for manual review.",
+        "merged_from": "xauusd_commodity_watch_draft.json",
+        "merged_at": "2026-07-07T20:47:26.477115",
+        "merge_note": "XAUUSD commodity WATCH-only replay candidate. Not APPROVED_REPLAY_CANDIDATE. Does not unlock active execution or live trading."
+      },
+      {
+        "symbol": "XAGUSD",
+        "strategy": "ANY",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "xagusd_commodity_watch_draft.json",
+        "preferred_strategy": "MEAN_REVERSION",
+        "allowed_strategies": [
+          "MEAN_REVERSION"
+        ],
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "XAGUSD passed commodity replay proxy; WATCH-only candidate for manual review."
+      }
+    ],
+    "candidate_setups": [
+      {
+        "symbol": "AUDJPY",
+        "strategy": "MEAN_REVERSION",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft strategy-level replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713326",
+        "merge_note": "WATCH-only strategy-level replay setup. Not approved for execution. Does not unlock active pairs or live trading."
+      },
+      {
+        "symbol": "AUDJPY",
+        "strategy": "MOMENTUM_PULLBACK",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft strategy-level replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713328",
+        "merge_note": "WATCH-only strategy-level replay setup. Not approved for execution. Does not unlock active pairs or live trading."
+      },
+      {
+        "symbol": "CADJPY",
+        "strategy": "MEAN_REVERSION",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft strategy-level replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713330",
+        "merge_note": "WATCH-only strategy-level replay setup. Not approved for execution. Does not unlock active pairs or live trading."
+      },
+      {
+        "symbol": "CHFJPY",
+        "strategy": "MEAN_REVERSION",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft strategy-level replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713332",
+        "merge_note": "WATCH-only strategy-level replay setup. Not approved for execution. Does not unlock active pairs or live trading."
+      },
+      {
+        "symbol": "CHFJPY",
+        "strategy": "MOMENTUM_PULLBACK",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft strategy-level replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713333",
+        "merge_note": "WATCH-only strategy-level replay setup. Not approved for execution. Does not unlock active pairs or live trading."
+      },
+      {
+        "symbol": "EURGBP",
+        "strategy": "MEAN_REVERSION",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft strategy-level replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713334",
+        "merge_note": "WATCH-only strategy-level replay setup. Not approved for execution. Does not unlock active pairs or live trading."
+      },
+      {
+        "symbol": "GBPJPY",
+        "strategy": "MEAN_REVERSION",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "all_pair_active_expansion_plan.json",
+        "source_lane": "WATCH",
+        "source_status": "WATCH_READY_FOR_CONTROLLED_REVIEW",
+        "preferred_strategy": "MEAN_REVERSION",
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "Draft strategy-level replay candidate only. Manual review required before copying into paper_replay_candidates.json.",
+        "merged_from": "paper_replay_candidates_draft.json",
+        "merged_at": "2026-07-07T20:17:13.713335",
+        "merge_note": "WATCH-only strategy-level replay setup. Not approved for execution. Does not unlock active pairs or live trading."
+      },
+      {
+        "symbol": "XAUUSD",
+        "strategy": "MEAN_REVERSION",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "xauusd_commodity_replay_validation_report.json",
+        "preferred_strategy": "MEAN_REVERSION",
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "XAUUSD WATCH-only commodity strategy setup for manual replay review.",
+        "merged_from": "xauusd_commodity_watch_draft.json",
+        "merged_at": "2026-07-07T20:47:26.477117",
+        "merge_note": "XAUUSD commodity WATCH-only strategy setup. Not approved for execution. Does not unlock active pairs or live trading."
+      },
+      {
+        "symbol": "XAGUSD",
+        "strategy": "MEAN_REVERSION",
+        "status": "WATCH_REPLAY_CANDIDATE",
+        "source": "xagusd_commodity_watch_draft.json",
+        "preferred_strategy": "MEAN_REVERSION",
+        "min_score_required": 5,
+        "review_only": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "XAGUSD WATCH-only commodity strategy setup for manual replay review."
+      }
+    ]
+  },
+  "latest_decision_summary": [
+    {
+      "symbol": "EURUSD",
+      "status": "WAIT",
+      "action": "-",
+      "signal": "BUY",
+      "selected_strategy": "MOMENTUM_PULLBACK",
+      "original_selected_strategy": "MOMENTUM_PULLBACK",
+      "strategy_score": 4,
+      "volatility_percent": 0.02963257267670726,
+      "phase4_review_improvement_guard": {
+        "enabled": true,
+        "status": "BLOCKED_BY_PHASE4_REVIEW",
+        "review_required": true,
+        "previous_status": "WAIT",
+        "previous_action": null,
+        "final_status": "WAIT",
+        "final_action": "-",
+        "creates_order": false,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reasons": [
+          "MOMENTUM_PULLBACK score 4 below Phase 4 review minimum 5."
+        ]
+      },
+      "phase4r_review_lock": null,
+      "phase4_quality_guard": {
+        "enabled": true,
+        "status": "BLOCKED_BY_PHASE4_SCORE",
+        "required_score": 5,
+        "reason": "Blocked by authoritative Phase 4 quality rules: score 4 below required 5. base Phase 4 min score requires score >= 4 | symbol EURUSD PRIORITY requires score >= 4 | strategy MOMENTUM_PULLBACK RESTRICT requires score >= 5",
+        "symbol_rule": {
+          "type": "symbol",
+          "name": "EURUSD",
+          "closed_orders": 17,
+          "wins": 7,
+          "losses": 8,
+          "timeouts": 2,
+          "net_profit_usd": 2.0437,
+          "winrate_percent": 41.18,
+          "profit_factor": 2.0219,
+          "expectancy_usd": 0.1202,
+          "guard_status": "PRIORITY",
+          "min_score_required": 4,
+          "allow_new_entries": true,
+          "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+          "phase4b_refinement": true,
+          "phase4b_refinement_reasons": [
+            "PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+          ]
+        },
+        "strategy_rule": {
+          "type": "strategy",
+          "name": "MOMENTUM_PULLBACK",
+          "closed_orders": 20,
+          "wins": 6,
+          "losses": 12,
+          "timeouts": 2,
+          "net_profit_usd": 0.5437,
+          "winrate_percent": 30.0,
+          "profit_factor": 1.1812,
+          "expectancy_usd": 0.0272,
+          "guard_status": "RESTRICT",
+          "min_score_required": 5,
+          "allow_new_entries": true,
+          "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+        },
+        "normalized_symbol_rule": {
+          "rule_type": "symbol",
+          "name": "EURUSD",
+          "guard_status": "PRIORITY",
+          "allow_new_entries": true,
+          "min_score_required": 4,
+          "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+          "raw_rule": {
+            "type": "symbol",
+            "name": "EURUSD",
+            "closed_orders": 17,
+            "wins": 7,
+            "losses": 8,
+            "timeouts": 2,
+            "net_profit_usd": 2.0437,
+            "winrate_percent": 41.18,
+            "profit_factor": 2.0219,
+            "expectancy_usd": 0.1202,
+            "guard_status": "PRIORITY",
+            "min_score_required": 4,
+            "allow_new_entries": true,
+            "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+            "phase4b_refinement": true,
+            "phase4b_refinement_reasons": [
+              "PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+            ]
+          }
+        },
+        "normalized_strategy_rule": {
+          "rule_type": "strategy",
+          "name": "MOMENTUM_PULLBACK",
+          "guard_status": "RESTRICT",
+          "allow_new_entries": true,
+          "min_score_required": 5,
+          "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5.",
+          "raw_rule": {
+            "type": "strategy",
+            "name": "MOMENTUM_PULLBACK",
+            "closed_orders": 20,
+            "wins": 6,
+            "losses": 12,
+            "timeouts": 2,
+            "net_profit_usd": 0.5437,
+            "winrate_percent": 30.0,
+            "profit_factor": 1.1812,
+            "expectancy_usd": 0.0272,
+            "guard_status": "RESTRICT",
+            "min_score_required": 5,
+            "allow_new_entries": true,
+            "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+          }
+        },
+        "authoritative": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01
+      },
+      "phase5z_replay_validation_recovery": null,
+      "reason": "Latest candle is flat Open=High=Low=Close. Recent close movement was not enough to classify this as a usable price-only feed. New paper signals are blocked until live movement returns. Recent close shift 0.000000% is below minimum 0.000500%. Phase 4 review guard active: MOMENTUM_PULLBACK score 4 below Phase 4 review minimum 5."
+    },
+    {
+      "symbol": "BTCUSD",
+      "status": "WAIT",
+      "action": "-",
+      "signal": "SELL",
+      "selected_strategy": "MOMENTUM_PULLBACK",
+      "original_selected_strategy": "MOMENTUM_PULLBACK",
+      "strategy_score": 2,
+      "volatility_percent": 0.3053520570572612,
+      "phase4_review_improvement_guard": {
+        "enabled": true,
+        "status": "BLOCKED_BY_PHASE4_REVIEW",
+        "review_required": true,
+        "previous_status": "WAIT",
+        "previous_action": null,
+        "final_status": "WAIT",
+        "final_action": "-",
+        "creates_order": false,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reasons": [
+          "MOMENTUM_PULLBACK score 2 below Phase 4 review minimum 5."
+        ]
+      },
+      "phase4r_review_lock": null,
+      "phase4_quality_guard": {
+        "enabled": true,
+        "status": "BLOCKED_BY_PHASE4_SCORE",
+        "required_score": 5,
+        "reason": "Blocked by authoritative Phase 4 quality rules: score 2 below required 5. base Phase 4 min score requires score >= 4 | strategy MOMENTUM_PULLBACK RESTRICT requires score >= 5",
+        "symbol_rule": null,
+        "strategy_rule": {
+          "type": "strategy",
+          "name": "MOMENTUM_PULLBACK",
+          "closed_orders": 20,
+          "wins": 6,
+          "losses": 12,
+          "timeouts": 2,
+          "net_profit_usd": 0.5437,
+          "winrate_percent": 30.0,
+          "profit_factor": 1.1812,
+          "expectancy_usd": 0.0272,
+          "guard_status": "RESTRICT",
+          "min_score_required": 5,
+          "allow_new_entries": true,
+          "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+        },
+        "normalized_symbol_rule": null,
+        "normalized_strategy_rule": {
+          "rule_type": "strategy",
+          "name": "MOMENTUM_PULLBACK",
+          "guard_status": "RESTRICT",
+          "allow_new_entries": true,
+          "min_score_required": 5,
+          "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5.",
+          "raw_rule": {
+            "type": "strategy",
+            "name": "MOMENTUM_PULLBACK",
+            "closed_orders": 20,
+            "wins": 6,
+            "losses": 12,
+            "timeouts": 2,
+            "net_profit_usd": 0.5437,
+            "winrate_percent": 30.0,
+            "profit_factor": 1.1812,
+            "expectancy_usd": 0.0272,
+            "guard_status": "RESTRICT",
+            "min_score_required": 5,
+            "allow_new_entries": true,
+            "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+          }
+        },
+        "authoritative": true,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01
+      },
+      "phase5z_replay_validation_recovery": null,
+      "reason": "Latest candle is flat Open=High=Low=Close. Recent close movement was not enough to classify this as a usable price-only feed. New paper signals are blocked until live movement returns. Recent close prices moved 0.263757% across the last 10 candles with 9 close-change candle(s). This looks like a price-only feed, not fully stale data. Phase 4 review guard active: MOMENTUM_PULLBACK score 2 below Phase 4 review minimum 5."
+    }
+  ],
+  "recommended_next_steps": [
+    "Keep normal loop stopped while quality remains NOT_READY and action remains STOP_AND_REVIEW_PHASE_4.",
+    "Keep live trading locked and keep max lot at 0.01.",
+    "Keep GBPUSD blocked/restricted from execution.",
+    "Keep TREND_FOLLOWING force-blocked.",
+    "Require MOMENTUM_PULLBACK score >= 5 and at least 3 positive confirmations before considering paper recovery.",
+    "Do not promote XAUUSD, XAGUSD, USOIL, or BTCUSD to active execution from this report.",
+    "Use this report as review input before any manual quality-rule adjustment."
+  ]
+}

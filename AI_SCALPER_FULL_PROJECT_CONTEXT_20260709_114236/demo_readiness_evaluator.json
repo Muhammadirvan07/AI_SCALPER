@@ -1,0 +1,102 @@
+{
+  "generated_at": "2026-07-09T11:26:37.501212",
+  "enabled": true,
+  "mode": "EVALUATE_DEMO_READINESS_REVIEW_ONLY",
+  "status": "DEMO_OBSERVATION_ONLY_READY",
+  "review_only": true,
+  "do_not_unlock_phase4r": true,
+  "readiness_score": 75,
+  "safe_to_demo_auto_order": false,
+  "safe_to_demo_observe": true,
+  "passed_checks": [
+    "quality_not_ready_lock_active",
+    "phase4_stop_and_review_active",
+    "profit_factor_ready",
+    "loss_streak_safe_or_unknown",
+    "bridge_demo_safe",
+    "no_orders_pending",
+    "eurusd_only_execution_approved",
+    "gbpusd_blocked",
+    "btcusd_shadow_only"
+  ],
+  "failed_checks": [
+    "winrate_ready",
+    "winrate_near_ready",
+    "clean_sample_target_met"
+  ],
+  "metrics": {
+    "quality_status": "NOT_READY",
+    "phase4_action": "STOP_AND_REVIEW_PHASE_4",
+    "closed_orders": 52,
+    "winrate_percent": 36.54,
+    "profit_factor": 1.3758,
+    "expectancy": null,
+    "current_loss_streak": null,
+    "clean_sample_count": 0,
+    "blocked_sample_count": 2
+  },
+  "source_state": {
+    "clean_sample_status": "NO_CLEAN_SAMPLE_READY",
+    "clean_sample_source": "decision_health_snapshot.json",
+    "decision_count": 2,
+    "decision_symbols_seen": [
+      "BTCUSD",
+      "EURUSD"
+    ],
+    "recovery_monitor_status": "RECOVERY_BLOCKED",
+    "winrate_repair_status": "PHASE4_WINRATE_REPAIR_ADVISOR_EXPORTED",
+    "recovery_plan_status": "PHASE4_RECOVERY_PLAN_EXPORTED",
+    "final_cleanup_status": "PHASE4_FINAL_CLEANUP_SUMMARY_EXPORTED",
+    "bridge_execution_approved_symbols": [
+      "EURUSD"
+    ],
+    "bridge_execution_blocked_symbols": [
+      "GBPUSD"
+    ],
+    "bridge_shadow_symbols": [
+      "BTCUSD"
+    ]
+  },
+  "safety": {
+    "live_allowed": false,
+    "max_lot": 0.01,
+    "creates_order": false,
+    "ready_trade_count": 0,
+    "mt5_order_count": 0,
+    "demo_outbox_order_count": 0,
+    "bridge_valid_order_count": 0,
+    "modifies_active_pairs": false,
+    "modifies_replay_candidates": false,
+    "modifies_quality_rules": false
+  },
+  "missing_logic_to_improve": [
+    {
+      "area": "WINRATE_RECOVERY",
+      "current": 36.54,
+      "target_near_ready": 42.0,
+      "target_ready": 45.0,
+      "action": "Collect clean EURUSD M15 samples only; do not loosen guards."
+    },
+    {
+      "area": "CLEAN_SAMPLE_ACCUMULATION",
+      "current": 0,
+      "target": 20,
+      "action": "Count only EURUSD setups with valid strategy, score >= 5, confirmations >= 3, replay restored, and market usable."
+    },
+    {
+      "area": "MARKET_AND_STRATEGY_READINESS",
+      "blocked_samples": 2,
+      "action": "Improve market freshness detection, avoid force-blocked TREND_FOLLOWING, and require allowed strategy before sample counting."
+    }
+  ],
+  "recommended_next_improvements": [
+    "Keep M15 recovery observation as the main test mode.",
+    "Improve/monitor market freshness before counting any clean sample.",
+    "Reject force-blocked TREND_FOLLOWING; only allow BREAKOUT, MEAN_REVERSION, or MOMENTUM_PULLBACK when confirmations pass.",
+    "Require positive confirmations >= 3 before recovery sample counting.",
+    "Accumulate at least 20 clean EURUSD samples before demo auto-order discussion.",
+    "Keep GBPUSD blocked and BTCUSD shadow-only.",
+    "Add spread/session/news checks before any future demo micro-order unlock.",
+    "Keep live_allowed=False and max_lot=0.01 until a separate manual demo unlock plan is created."
+  ]
+}

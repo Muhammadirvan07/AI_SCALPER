@@ -1,0 +1,141 @@
+{
+  "generated_at": "2026-07-09T11:26:33.660689",
+  "mode": "PLAN_COMMODITY_PAPER_VALIDATION",
+  "enabled": true,
+  "review_only": true,
+  "paper_only": true,
+  "live_allowed": false,
+  "max_lot": 0.01,
+  "target_symbols": [
+    "USOIL",
+    "XAGUSD",
+    "XAUUSD"
+  ],
+  "csv_symbols_seen": [
+    "AUDJPY",
+    "AUDUSD",
+    "BTCUSD",
+    "CADJPY",
+    "CHFJPY",
+    "EURGBP",
+    "EURJPY",
+    "EURUSD",
+    "GBPJPY",
+    "GBPUSD",
+    "NZDUSD",
+    "USDCAD",
+    "USDCHF",
+    "USDJPY",
+    "USOIL",
+    "XAGUSD",
+    "XAUUSD"
+  ],
+  "status_counts": {
+    "READY_FOR_REPLAY_VALIDATION": 3
+  },
+  "ready_for_replay_validation": [
+    "USOIL",
+    "XAGUSD",
+    "XAUUSD"
+  ],
+  "data_repair_or_warmup_required": [],
+  "missing_data_symbols": [],
+  "blocked_symbols": [],
+  "commodity_rows": [
+    {
+      "symbol": "USOIL",
+      "aliases": [
+        "USOIL",
+        "WTI",
+        "CL=F",
+        "USOILCash",
+        "OIL"
+      ],
+      "data_exists": true,
+      "selected_csv": "data/usoil.csv",
+      "csv_files_found": [
+        "data/usoil.csv",
+        "data/usoil.csv"
+      ],
+      "row_count": 2343,
+      "latest_close_shift_percent": 0.013481784474084945,
+      "atr_percent_estimate": 0.3158332180803926,
+      "data_status": "READY_FOR_REPLAY_VALIDATION",
+      "audit_pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "audit_data_exists": true,
+      "audit_replay_approved": false,
+      "audit_quality_rule_exists": false,
+      "requirements": [],
+      "warnings": [],
+      "review_only": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "XAGUSD",
+      "aliases": [
+        "XAGUSD",
+        "SILVER",
+        "SI=F",
+        "XAGUSD=X"
+      ],
+      "data_exists": true,
+      "selected_csv": "data/xagusd.csv",
+      "csv_files_found": [
+        "data/xagusd.csv",
+        "data/xagusd.csv"
+      ],
+      "row_count": 2342,
+      "latest_close_shift_percent": 0.017035818311730254,
+      "atr_percent_estimate": 0.3396130899948523,
+      "data_status": "READY_FOR_REPLAY_VALIDATION",
+      "audit_pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "audit_data_exists": true,
+      "audit_replay_approved": false,
+      "audit_quality_rule_exists": false,
+      "requirements": [],
+      "warnings": [],
+      "review_only": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "XAUUSD",
+      "aliases": [
+        "XAUUSD",
+        "GOLD",
+        "GC=F",
+        "XAUUSD=X"
+      ],
+      "data_exists": true,
+      "selected_csv": "data/xauusd.csv",
+      "csv_files_found": [
+        "data/xauusd.csv",
+        "data/xauusd.csv"
+      ],
+      "row_count": 2342,
+      "latest_close_shift_percent": 0.009782346960616438,
+      "atr_percent_estimate": 0.19623818053412612,
+      "data_status": "READY_FOR_REPLAY_VALIDATION",
+      "audit_pipeline_status": "DATA_ONLY_NEEDS_VALIDATION",
+      "audit_data_exists": true,
+      "audit_replay_approved": false,
+      "audit_quality_rule_exists": false,
+      "requirements": [],
+      "warnings": [],
+      "review_only": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01
+    }
+  ],
+  "target_files_not_modified": {
+    "data_collector": "data_collector.py",
+    "active_pairs": "active_pairs.json",
+    "paper_quality_rules": "paper_quality_rules.json",
+    "paper_replay_candidates": "paper_replay_candidates.json"
+  },
+  "next_recommended_action": "Fix missing commodity data mappings first, then run commodity-specific replay validation. Do not add commodities to active execution until replay and quality rules pass."
+}

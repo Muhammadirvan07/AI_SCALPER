@@ -1,0 +1,68 @@
+{
+  "generated_at": "2026-07-09T11:26:34.029196",
+  "mode": "DRAFT_XAUUSD_COMMODITY_WATCH_FROM_REPLAY_REPORT",
+  "enabled": true,
+  "status": "READY_FOR_MANUAL_WATCH_REVIEW",
+  "symbol": "XAUUSD",
+  "review_only": true,
+  "paper_only": true,
+  "live_allowed": false,
+  "max_lot": 0.01,
+  "source_replay_validation_report": "xauusd_commodity_replay_validation_report.json",
+  "quality_rule_draft": {
+    "guard_status": "WATCH",
+    "min_score_required": 5,
+    "allowed_strategies": [
+      "MOMENTUM_PULLBACK"
+    ],
+    "preferred_strategy": "MOMENTUM_PULLBACK",
+    "source": "xauusd_commodity_replay_validation_report.json",
+    "source_status": "PASSED_COMMODITY_REPLAY_PROXY",
+    "best_profit_factor_proxy": 1.0834,
+    "best_winrate_proxy": 50.4196,
+    "best_net_return_percent_proxy": 7.8644,
+    "best_max_drawdown_percent_proxy": 3.7358,
+    "review_only": true,
+    "paper_only": true,
+    "live_allowed": false,
+    "max_lot": 0.01,
+    "notes": "XAUUSD commodity WATCH-only draft from commodity replay proxy. Manual review required before copying into paper_quality_rules.json."
+  },
+  "replay_symbol_draft": {
+    "symbol": "XAUUSD",
+    "strategy": "ANY",
+    "status": "WATCH_REPLAY_CANDIDATE",
+    "source": "xauusd_commodity_replay_validation_report.json",
+    "preferred_strategy": "MOMENTUM_PULLBACK",
+    "allowed_strategies": [
+      "MOMENTUM_PULLBACK"
+    ],
+    "min_score_required": 5,
+    "review_only": true,
+    "paper_only": true,
+    "live_allowed": false,
+    "max_lot": 0.01,
+    "reason": "XAUUSD passed commodity replay proxy; WATCH-only candidate for manual review."
+  },
+  "replay_setup_drafts": [
+    {
+      "symbol": "XAUUSD",
+      "strategy": "MOMENTUM_PULLBACK",
+      "status": "WATCH_REPLAY_CANDIDATE",
+      "source": "xauusd_commodity_replay_validation_report.json",
+      "preferred_strategy": "MOMENTUM_PULLBACK",
+      "min_score_required": 5,
+      "review_only": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "reason": "XAUUSD WATCH-only commodity strategy setup for manual replay review."
+    }
+  ],
+  "target_files_not_modified": {
+    "active_pairs": "active_pairs.json",
+    "paper_quality_rules": "paper_quality_rules.json",
+    "paper_replay_candidates": "paper_replay_candidates.json"
+  },
+  "next_recommended_action": "Review this XAUUSD WATCH draft manually. Do not add XAUUSD to active execution. If accepted later, merge only as WATCH_REPLAY_CANDIDATE and WATCH quality rule."
+}

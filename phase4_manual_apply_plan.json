@@ -1,0 +1,194 @@
+{
+  "generated_at": "2026-07-09T11:26:33.600992",
+  "enabled": true,
+  "mode": "PLAN_MANUAL_PHASE4_RULE_APPLICATION",
+  "status": "PHASE4_MANUAL_APPLY_PLAN_EXPORTED",
+  "source": "phase4_rule_adjustment_draft.json",
+  "review_required": true,
+  "phase4_action": "STOP_AND_REVIEW_PHASE_4",
+  "quality_status": "NOT_READY",
+  "closed_orders": 52,
+  "winrate_percent": 36.54,
+  "profit_factor": 1.3758,
+  "safety": {
+    "live_allowed": false,
+    "max_lot": 0.01,
+    "review_only": true,
+    "do_not_apply": true,
+    "ready_trade_count": 0,
+    "mt5_order_count": 0,
+    "demo_outbox_order_count": 0
+  },
+  "manual_steps": [
+    {
+      "step": 1,
+      "target_file": "paper_quality_rules.json",
+      "target_section": "symbol_rules.GBPUSD",
+      "recommended_action": "KEEP_OR_SET_RESTRICT",
+      "apply_now": false,
+      "review_only": true,
+      "manual_confirmation_required": true,
+      "recommended_rule": {
+        "guard_status": "RESTRICT",
+        "min_score_required": 6,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "GBPUSD remains weak in Phase 4 review and should not be used for execution expansion."
+      },
+      "safety_checks": {
+        "live_allowed_must_remain_false": true,
+        "max_lot_must_not_exceed_0_01": true,
+        "must_not_enable_execution": true,
+        "must_not_promote_symbol": true
+      }
+    },
+    {
+      "step": 2,
+      "target_file": "paper_quality_rules.json",
+      "target_section": "symbol_rules.EURUSD",
+      "recommended_action": "KEEP_PRIORITY_WITH_REVIEW_LOCK",
+      "apply_now": false,
+      "review_only": true,
+      "manual_confirmation_required": true,
+      "recommended_rule": {
+        "guard_status": "PRIORITY",
+        "min_score_required": 4,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "EURUSD is the strongest current symbol, but Phase 4 global quality remains NOT_READY so it must not be unlocked."
+      },
+      "safety_checks": {
+        "live_allowed_must_remain_false": true,
+        "max_lot_must_not_exceed_0_01": true,
+        "must_not_enable_execution": true,
+        "must_not_promote_symbol": true
+      }
+    },
+    {
+      "step": 3,
+      "target_file": "paper_quality_rules.json",
+      "target_section": "strategy_rules.MOMENTUM_PULLBACK",
+      "recommended_action": "KEEP_OR_SET_RESTRICT_WITH_CONFIRMATION_REQUIREMENT",
+      "apply_now": false,
+      "review_only": true,
+      "manual_confirmation_required": true,
+      "recommended_rule": {
+        "guard_status": "RESTRICT",
+        "min_score_required": 5,
+        "min_positive_confirmations_required": 3,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "MOMENTUM_PULLBACK has weak Phase 4 winrate and should require score >= 5 plus 3 positive confirmations."
+      },
+      "safety_checks": {
+        "live_allowed_must_remain_false": true,
+        "max_lot_must_not_exceed_0_01": true,
+        "must_not_enable_execution": true,
+        "must_not_promote_symbol": true
+      }
+    },
+    {
+      "step": 4,
+      "target_file": "paper_quality_rules.json",
+      "target_section": "strategy_rules.BREAKOUT",
+      "recommended_action": "KEEP_WATCH_NO_EXPANSION",
+      "apply_now": false,
+      "review_only": true,
+      "manual_confirmation_required": true,
+      "recommended_rule": {
+        "guard_status": "WATCH",
+        "min_score_required": 4,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "BREAKOUT has limited sample and should stay watch/review only."
+      },
+      "safety_checks": {
+        "live_allowed_must_remain_false": true,
+        "max_lot_must_not_exceed_0_01": true,
+        "must_not_enable_execution": true,
+        "must_not_promote_symbol": true
+      }
+    },
+    {
+      "step": 5,
+      "target_file": "paper_quality_rules.json",
+      "target_section": "strategy_rules.MEAN_REVERSION",
+      "recommended_action": "KEEP_INSUFFICIENT_SAMPLE_OR_WATCH",
+      "apply_now": false,
+      "review_only": true,
+      "manual_confirmation_required": true,
+      "recommended_rule": {
+        "guard_status": "INSUFFICIENT_SAMPLE",
+        "min_score_required": 4,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "MEAN_REVERSION is promising but sample is too small; keep review-only."
+      },
+      "safety_checks": {
+        "live_allowed_must_remain_false": true,
+        "max_lot_must_not_exceed_0_01": true,
+        "must_not_enable_execution": true,
+        "must_not_promote_symbol": true
+      }
+    },
+    {
+      "step": 6,
+      "target_file": "paper_quality_rules.json",
+      "target_section": "strategy_rules.TREND_FOLLOWING",
+      "recommended_action": "KEEP_BLOCKED",
+      "apply_now": false,
+      "review_only": true,
+      "manual_confirmation_required": true,
+      "recommended_rule": {
+        "guard_status": "BLOCK",
+        "min_score_required": 99,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "TREND_FOLLOWING remains blocked due weak Phase 4 performance."
+      },
+      "safety_checks": {
+        "live_allowed_must_remain_false": true,
+        "max_lot_must_not_exceed_0_01": true,
+        "must_not_enable_execution": true,
+        "must_not_promote_symbol": true
+      }
+    }
+  ],
+  "manual_apply_gate": {
+    "can_apply_automatically": false,
+    "requires_user_confirmation": true,
+    "requires_backup_before_apply": true,
+    "allowed_target_file_for_future_manual_apply": "paper_quality_rules.json",
+    "blocked_target_files": [
+      "active_pairs.json",
+      "paper_replay_candidates.json",
+      "trade_signals.json",
+      "mt5_trade_signals.json",
+      "mt5_demo_bridge_outbox.json",
+      "bridge_status.json"
+    ],
+    "must_keep_live_allowed_false": true,
+    "must_keep_max_lot_at_or_below_0_01": true,
+    "must_not_unlock_phase4r": true,
+    "must_not_promote_symbols": [
+      "GBPUSD",
+      "BTCUSD",
+      "XAUUSD",
+      "XAGUSD",
+      "USOIL"
+    ]
+  },
+  "recommended_command_policy": [
+    "Create a timestamped backup of paper_quality_rules.json before any manual apply.",
+    "Apply only rule fields from manual_steps after explicit confirmation.",
+    "Run python -m py_compile decision_engine.py after any code change.",
+    "Run python decision_engine.py and confirm ready/order counts remain 0 while Phase4R is locked.",
+    "Run python mt5_bridge_reader.py and confirm live_allowed=False, max_lot=0.01, orders=0."
+  ]
+}

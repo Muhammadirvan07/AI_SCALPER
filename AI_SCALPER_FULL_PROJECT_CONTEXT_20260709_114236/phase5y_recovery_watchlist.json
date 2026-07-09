@@ -1,0 +1,216 @@
+{
+  "enabled": true,
+  "status": "EXPORTED",
+  "mode": "EXPORT_ALL_PAIR_RECOVERY_WATCHLIST",
+  "tag": "PHASE5Y_RECOVERY_WATCHLIST",
+  "generated_at": "2026-07-09T11:26:35",
+  "output_file": "phase5y_recovery_watchlist.json",
+  "total_pairs": 2,
+  "candidate_count": 0,
+  "blocked_count": 2,
+  "candidates": [],
+  "blocked_or_waiting": [
+    {
+      "symbol": "EURUSD",
+      "strategy": "MOMENTUM_PULLBACK",
+      "decision_status": "WAIT",
+      "is_recovery_candidate": false,
+      "candidate_status": "WAIT_REPAIR_REQUIRED",
+      "strategy_score": 4,
+      "volatility_percent": 0.029635956845094822,
+      "phase4r_status": "LOCKED",
+      "phase4r_locked": true,
+      "quality_status": "NOT_READY",
+      "loss_streak": 3,
+      "phase5u_status": "LOCKED_AND_NOT_RECOVERY_READY",
+      "phase5u_lock_sources": [
+        "quality status=NOT_READY",
+        "loss streak=3/3"
+      ],
+      "phase5u_unlock_requirements": [
+        "quality status must improve from NOT_READY",
+        "loss streak must reset below lock threshold through closed paper results",
+        "restore missing components: volatility_quality, replay_validation"
+      ],
+      "phase5v_priority": "LOW",
+      "phase5w_status": "SCORE_REPAIR_REQUIRED",
+      "phase5w_score_gap": 1,
+      "phase5w_positive_gap": 1,
+      "phase5w_repair_actions": [
+        "raise score by +1 to reach 5",
+        "add +1 positive confirmation(s) to reach 3",
+        "need volatility quality confirmation: ATR/breakout/volatility reason must appear",
+        "need replay validation: pair/setup should be approved by replay candidate filter",
+        "wait for fresh usable candles or improve data feed freshness",
+        "need +1 score point(s): require stronger trend, momentum, volatility, or replay confirmation",
+        "require more positive strategy reasons before boosting confidence",
+        "missing components: volatility_quality, replay_validation"
+      ],
+      "phase5x_status": "CURRENT_STRATEGY_ALLOWED",
+      "phase5x_redirect_candidates": [],
+      "phase5z_status": "REPLAY_VALIDATION_RECOVERY_AVAILABLE",
+      "phase5z_replay_validation_restored": true,
+      "phase5z_requirements": [],
+      "creates_order": false,
+      "does_not_unlock_phase4r": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "BTCUSD",
+      "strategy": "MOMENTUM_PULLBACK",
+      "decision_status": "WAIT",
+      "is_recovery_candidate": false,
+      "candidate_status": "WAIT_REPAIR_REQUIRED",
+      "strategy_score": 2,
+      "volatility_percent": 0.3069700916047253,
+      "phase4r_status": "LOCKED",
+      "phase4r_locked": true,
+      "quality_status": "NOT_READY",
+      "loss_streak": 3,
+      "phase5u_status": "LOCKED_AND_NOT_RECOVERY_READY",
+      "phase5u_lock_sources": [
+        "quality status=NOT_READY",
+        "loss streak=3/3"
+      ],
+      "phase5u_unlock_requirements": [
+        "quality status must improve from NOT_READY",
+        "loss streak must reset below lock threshold through closed paper results",
+        "restore missing components: volatility_quality, replay_validation"
+      ],
+      "phase5v_priority": "LOW",
+      "phase5w_status": "SCORE_REPAIR_REQUIRED",
+      "phase5w_score_gap": 3,
+      "phase5w_positive_gap": 1,
+      "phase5w_repair_actions": [
+        "raise score by +3 to reach 5",
+        "add +1 positive confirmation(s) to reach 3",
+        "need volatility quality confirmation: ATR/breakout/volatility reason must appear",
+        "need replay validation: pair/setup should be approved by replay candidate filter",
+        "wait for fresh usable candles or improve data feed freshness",
+        "need +3 score point(s): require stronger trend, momentum, volatility, or replay confirmation",
+        "require more positive strategy reasons before boosting confidence",
+        "missing components: volatility_quality, replay_validation"
+      ],
+      "phase5x_status": "CURRENT_STRATEGY_ALLOWED",
+      "phase5x_redirect_candidates": [],
+      "phase5z_status": "REPLAY_VALIDATION_STILL_MISSING",
+      "phase5z_replay_validation_restored": false,
+      "phase5z_requirements": [
+        "pair/setup needs a valid replay candidate before replay_validation can be considered restored",
+        "no replay candidate matched BTCUSD MOMENTUM_PULLBACK"
+      ],
+      "creates_order": false,
+      "does_not_unlock_phase4r": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01
+    }
+  ],
+  "watchlist": [
+    {
+      "symbol": "EURUSD",
+      "strategy": "MOMENTUM_PULLBACK",
+      "decision_status": "WAIT",
+      "is_recovery_candidate": false,
+      "candidate_status": "WAIT_REPAIR_REQUIRED",
+      "strategy_score": 4,
+      "volatility_percent": 0.029635956845094822,
+      "phase4r_status": "LOCKED",
+      "phase4r_locked": true,
+      "quality_status": "NOT_READY",
+      "loss_streak": 3,
+      "phase5u_status": "LOCKED_AND_NOT_RECOVERY_READY",
+      "phase5u_lock_sources": [
+        "quality status=NOT_READY",
+        "loss streak=3/3"
+      ],
+      "phase5u_unlock_requirements": [
+        "quality status must improve from NOT_READY",
+        "loss streak must reset below lock threshold through closed paper results",
+        "restore missing components: volatility_quality, replay_validation"
+      ],
+      "phase5v_priority": "LOW",
+      "phase5w_status": "SCORE_REPAIR_REQUIRED",
+      "phase5w_score_gap": 1,
+      "phase5w_positive_gap": 1,
+      "phase5w_repair_actions": [
+        "raise score by +1 to reach 5",
+        "add +1 positive confirmation(s) to reach 3",
+        "need volatility quality confirmation: ATR/breakout/volatility reason must appear",
+        "need replay validation: pair/setup should be approved by replay candidate filter",
+        "wait for fresh usable candles or improve data feed freshness",
+        "need +1 score point(s): require stronger trend, momentum, volatility, or replay confirmation",
+        "require more positive strategy reasons before boosting confidence",
+        "missing components: volatility_quality, replay_validation"
+      ],
+      "phase5x_status": "CURRENT_STRATEGY_ALLOWED",
+      "phase5x_redirect_candidates": [],
+      "phase5z_status": "REPLAY_VALIDATION_RECOVERY_AVAILABLE",
+      "phase5z_replay_validation_restored": true,
+      "phase5z_requirements": [],
+      "creates_order": false,
+      "does_not_unlock_phase4r": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "BTCUSD",
+      "strategy": "MOMENTUM_PULLBACK",
+      "decision_status": "WAIT",
+      "is_recovery_candidate": false,
+      "candidate_status": "WAIT_REPAIR_REQUIRED",
+      "strategy_score": 2,
+      "volatility_percent": 0.3069700916047253,
+      "phase4r_status": "LOCKED",
+      "phase4r_locked": true,
+      "quality_status": "NOT_READY",
+      "loss_streak": 3,
+      "phase5u_status": "LOCKED_AND_NOT_RECOVERY_READY",
+      "phase5u_lock_sources": [
+        "quality status=NOT_READY",
+        "loss streak=3/3"
+      ],
+      "phase5u_unlock_requirements": [
+        "quality status must improve from NOT_READY",
+        "loss streak must reset below lock threshold through closed paper results",
+        "restore missing components: volatility_quality, replay_validation"
+      ],
+      "phase5v_priority": "LOW",
+      "phase5w_status": "SCORE_REPAIR_REQUIRED",
+      "phase5w_score_gap": 3,
+      "phase5w_positive_gap": 1,
+      "phase5w_repair_actions": [
+        "raise score by +3 to reach 5",
+        "add +1 positive confirmation(s) to reach 3",
+        "need volatility quality confirmation: ATR/breakout/volatility reason must appear",
+        "need replay validation: pair/setup should be approved by replay candidate filter",
+        "wait for fresh usable candles or improve data feed freshness",
+        "need +3 score point(s): require stronger trend, momentum, volatility, or replay confirmation",
+        "require more positive strategy reasons before boosting confidence",
+        "missing components: volatility_quality, replay_validation"
+      ],
+      "phase5x_status": "CURRENT_STRATEGY_ALLOWED",
+      "phase5x_redirect_candidates": [],
+      "phase5z_status": "REPLAY_VALIDATION_STILL_MISSING",
+      "phase5z_replay_validation_restored": false,
+      "phase5z_requirements": [
+        "pair/setup needs a valid replay candidate before replay_validation can be considered restored",
+        "no replay candidate matched BTCUSD MOMENTUM_PULLBACK"
+      ],
+      "creates_order": false,
+      "does_not_unlock_phase4r": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01
+    }
+  ],
+  "creates_order": false,
+  "does_not_unlock_phase4r": true,
+  "paper_only": true,
+  "live_allowed": false,
+  "max_lot": 0.01,
+  "reason": "Phase 5Y exported 0 recovery candidate(s) from 2 pair decision(s). Diagnostic only."
+}

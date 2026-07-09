@@ -1,0 +1,147 @@
+{
+  "generated_at": "2026-07-09T11:26:33.602041",
+  "enabled": true,
+  "mode": "PLAN_SAFE_RECOVERY_FROM_PHASE4_NOT_READY",
+  "status": "PHASE4_RECOVERY_PLAN_EXPORTED",
+  "review_only": true,
+  "do_not_unlock_phase4r": true,
+  "quality_status": "NOT_READY",
+  "phase4_action": "STOP_AND_REVIEW_PHASE_4",
+  "closed_orders": 52,
+  "winrate_percent": 36.54,
+  "profit_factor": 1.3758,
+  "expectancy": null,
+  "current_loss_streak": null,
+  "ready_targets": {
+    "min_winrate_percent": 45.0,
+    "min_profit_factor": 1.2,
+    "min_expectancy": 0.03,
+    "max_loss_streak": 2,
+    "min_additional_clean_sample": 20
+  },
+  "recovery_blockers": [
+    "quality_status remains NOT_READY",
+    "phase4 action remains STOP_AND_REVIEW_PHASE_4",
+    "winrate 36.54% is below READY target 45.0%"
+  ],
+  "recovery_lanes": [
+    {
+      "lane": "EURUSD_PRIORITY_REPAIR",
+      "status": "WATCH_ONLY_UNTIL_PHASE4R_UNLOCKED",
+      "symbol": "EURUSD",
+      "allowed_strategies": [
+        "BREAKOUT",
+        "MEAN_REVERSION",
+        "MOMENTUM_PULLBACK"
+      ],
+      "blocked_strategies": [
+        "TREND_FOLLOWING"
+      ],
+      "minimum_score": 5,
+      "minimum_positive_confirmations": 3,
+      "minimum_volatility_percent": 0.006,
+      "creates_order": false,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "reason": "EURUSD is strongest current symbol, but recovery remains watch-only while Phase4R is locked."
+    },
+    {
+      "lane": "GBPUSD_BLOCKED_REVIEW",
+      "status": "BLOCKED_RESTRICTED",
+      "symbol": "GBPUSD",
+      "creates_order": false,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "reason": "GBPUSD remains blocked/restricted after Phase 4 review cleanup."
+    },
+    {
+      "lane": "BTCUSD_SHADOW_ONLY",
+      "status": "SHADOW_DIAGNOSTIC_ONLY",
+      "symbol": "BTCUSD",
+      "creates_order": false,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "reason": "BTCUSD remains shadow/diagnostic until replay validation passes and Phase4R review improves."
+    },
+    {
+      "lane": "COMMODITY_WATCH_ONLY",
+      "status": "WATCH_ONLY_NO_EXECUTION",
+      "symbols": [
+        "XAUUSD",
+        "XAGUSD"
+      ],
+      "preferred_strategy": "MEAN_REVERSION",
+      "creates_order": false,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "reason": "Commodity symbols remain watch-only and are not promoted by recovery plan."
+    }
+  ],
+  "source_state": {
+    "quality_symbol_rules": [
+      "EURUSD",
+      "GBPUSD"
+    ],
+    "quality_strategy_rules": [
+      "BREAKOUT",
+      "MEAN_REVERSION",
+      "MOMENTUM_PULLBACK",
+      "TREND_FOLLOWING"
+    ],
+    "replay_approved_symbols": [
+      "EURUSD"
+    ],
+    "replay_blocked_symbols": [
+      "GBPUSD"
+    ],
+    "bridge_execution_approved_symbols": [
+      "EURUSD"
+    ],
+    "bridge_execution_blocked_symbols": [
+      "GBPUSD"
+    ],
+    "bridge_shadow_symbols": [
+      "BTCUSD"
+    ],
+    "final_cleanup_checks": {
+      "phase4_review_plan_exported": true,
+      "phase4_review_report_exported": true,
+      "phase4_rule_adjustment_draft_exported": true,
+      "phase4_manual_apply_plan_exported": true,
+      "paper_quality_rules_manual_adjusted": false,
+      "xauusd_watch_quality_rule_present": false,
+      "xagusd_watch_quality_rule_present": false,
+      "gbpusd_removed_from_replay_approved": true,
+      "gbpusd_blocked_in_replay_candidates": true,
+      "gbpusd_deprecated_from_old_approval": true,
+      "bridge_label_cleanup_enabled": true,
+      "bridge_execution_approved_only_eurusd": true,
+      "bridge_execution_blocked_gbpusd": true,
+      "bridge_shadow_btcusd": true,
+      "no_ready_trade": true,
+      "no_mt5_order": true,
+      "demo_outbox_empty": true,
+      "live_allowed_false": true,
+      "max_lot_safe": true
+    }
+  },
+  "safety": {
+    "live_allowed": false,
+    "max_lot": 0.01,
+    "creates_order": false,
+    "modifies_active_pairs": false,
+    "modifies_replay_candidates": false,
+    "modifies_quality_rules": false,
+    "demo_outbox_order_count": 0,
+    "bridge_valid_order_count": 0
+  },
+  "next_steps": [
+    "Keep Phase4R locked while quality_status remains NOT_READY.",
+    "Do not run aggressive normal loop until recovery blockers are cleared.",
+    "Collect a clean additional paper sample only after signals satisfy score, volatility, replay, and confirmation requirements.",
+    "Prioritize EURUSD review-only recovery diagnostics.",
+    "Keep GBPUSD blocked and BTCUSD shadow-only.",
+    "Do not promote XAUUSD, XAGUSD, or USOIL from this recovery plan.",
+    "Continue paper/demo only with live_allowed=False and max_lot=0.01."
+  ]
+}

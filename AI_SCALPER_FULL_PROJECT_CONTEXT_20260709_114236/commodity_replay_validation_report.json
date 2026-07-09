@@ -1,0 +1,195 @@
+{
+  "generated_at": "2026-07-09T11:26:33.907983",
+  "mode": "REPORT_XAGUSD_USOIL_COMMODITY_REPLAY_VALIDATION",
+  "enabled": true,
+  "status": "COMMODITY_REPLAY_REPORT_EXPORTED",
+  "symbols": [
+    "XAGUSD",
+    "USOIL"
+  ],
+  "status_counts": {
+    "PASSED_REPLAY_PROXY": 2
+  },
+  "passed_symbols": [
+    "XAGUSD",
+    "USOIL"
+  ],
+  "failed_symbols": [],
+  "review_only": true,
+  "paper_only": true,
+  "live_allowed": false,
+  "max_lot": 0.01,
+  "symbol_reports": [
+    {
+      "symbol": "XAGUSD",
+      "mode": "REPORT_XAGUSD_USOIL_COMMODITY_REPLAY_VALIDATION",
+      "status": "PASSED_REPLAY_PROXY",
+      "source_csv": "data/xagusd.csv",
+      "rows": 2342,
+      "clean_rows": 2342,
+      "strategy_reports": [
+        {
+          "strategy": "BREAKOUT",
+          "trades": 250,
+          "wins": 114,
+          "losses": 136,
+          "winrate_percent": 45.6,
+          "profit_factor": 0.9312,
+          "net_return_percent_proxy": -3.209,
+          "max_drawdown_percent_proxy": 8.4186,
+          "passed": false,
+          "requirements": {
+            "min_trades": 30,
+            "min_winrate": 45.0,
+            "min_profit_factor": 1.05,
+            "max_drawdown": 30.0
+          }
+        },
+        {
+          "strategy": "MEAN_REVERSION",
+          "trades": 554,
+          "wins": 284,
+          "losses": 270,
+          "winrate_percent": 51.2635,
+          "profit_factor": 1.0769,
+          "net_return_percent_proxy": 6.1012,
+          "max_drawdown_percent_proxy": 5.4585,
+          "passed": true,
+          "requirements": {
+            "min_trades": 30,
+            "min_winrate": 45.0,
+            "min_profit_factor": 1.05,
+            "max_drawdown": 30.0
+          }
+        },
+        {
+          "strategy": "MOMENTUM_PULLBACK",
+          "trades": 1592,
+          "wins": 780,
+          "losses": 812,
+          "winrate_percent": 48.995,
+          "profit_factor": 0.9929,
+          "net_return_percent_proxy": -1.4648,
+          "max_drawdown_percent_proxy": 14.5805,
+          "passed": false,
+          "requirements": {
+            "min_trades": 30,
+            "min_winrate": 45.0,
+            "min_profit_factor": 1.05,
+            "max_drawdown": 30.0
+          }
+        }
+      ],
+      "passed_strategies": [
+        "MEAN_REVERSION"
+      ],
+      "best_strategy": "MEAN_REVERSION",
+      "best_report": {
+        "strategy": "MEAN_REVERSION",
+        "trades": 554,
+        "wins": 284,
+        "losses": 270,
+        "winrate_percent": 51.2635,
+        "profit_factor": 1.0769,
+        "net_return_percent_proxy": 6.1012,
+        "max_drawdown_percent_proxy": 5.4585,
+        "passed": true,
+        "requirements": {
+          "min_trades": 30,
+          "min_winrate": 45.0,
+          "min_profit_factor": 1.05,
+          "max_drawdown": 30.0
+        }
+      }
+    },
+    {
+      "symbol": "USOIL",
+      "mode": "REPORT_XAGUSD_USOIL_COMMODITY_REPLAY_VALIDATION",
+      "status": "PASSED_REPLAY_PROXY",
+      "source_csv": "data/usoil.csv",
+      "rows": 2343,
+      "clean_rows": 2343,
+      "strategy_reports": [
+        {
+          "strategy": "BREAKOUT",
+          "trades": 218,
+          "wins": 111,
+          "losses": 107,
+          "winrate_percent": 50.9174,
+          "profit_factor": 1.0675,
+          "net_return_percent_proxy": 2.1578,
+          "max_drawdown_percent_proxy": 6.3534,
+          "passed": true,
+          "requirements": {
+            "min_trades": 30,
+            "min_winrate": 45.0,
+            "min_profit_factor": 1.05,
+            "max_drawdown": 30.0
+          }
+        },
+        {
+          "strategy": "MEAN_REVERSION",
+          "trades": 654,
+          "wins": 311,
+          "losses": 343,
+          "winrate_percent": 47.5535,
+          "profit_factor": 1.086,
+          "net_return_percent_proxy": 6.1215,
+          "max_drawdown_percent_proxy": 6.3585,
+          "passed": true,
+          "requirements": {
+            "min_trades": 30,
+            "min_winrate": 45.0,
+            "min_profit_factor": 1.05,
+            "max_drawdown": 30.0
+          }
+        },
+        {
+          "strategy": "MOMENTUM_PULLBACK",
+          "trades": 1634,
+          "wins": 807,
+          "losses": 827,
+          "winrate_percent": 49.388,
+          "profit_factor": 1.0431,
+          "net_return_percent_proxy": 7.4119,
+          "max_drawdown_percent_proxy": 7.8066,
+          "passed": false,
+          "requirements": {
+            "min_trades": 30,
+            "min_winrate": 45.0,
+            "min_profit_factor": 1.05,
+            "max_drawdown": 30.0
+          }
+        }
+      ],
+      "passed_strategies": [
+        "BREAKOUT",
+        "MEAN_REVERSION"
+      ],
+      "best_strategy": "MEAN_REVERSION",
+      "best_report": {
+        "strategy": "MEAN_REVERSION",
+        "trades": 654,
+        "wins": 311,
+        "losses": 343,
+        "winrate_percent": 47.5535,
+        "profit_factor": 1.086,
+        "net_return_percent_proxy": 6.1215,
+        "max_drawdown_percent_proxy": 6.3585,
+        "passed": true,
+        "requirements": {
+          "min_trades": 30,
+          "min_winrate": 45.0,
+          "min_profit_factor": 1.05,
+          "max_drawdown": 30.0
+        }
+      }
+    }
+  ],
+  "target_files_not_modified": {
+    "active_pairs": "active_pairs.json",
+    "paper_quality_rules": "paper_quality_rules.json",
+    "paper_replay_candidates": "paper_replay_candidates.json"
+  },
+  "next_recommended_action": "If any commodity passes, create a WATCH-only draft first. Do not add XAGUSD or USOIL to active execution automatically."
+}

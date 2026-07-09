@@ -1,0 +1,215 @@
+{
+  "enabled": true,
+  "mode": "LATEST_DECISION_HEALTH",
+  "generated_at": "2026-07-09T11:26:35",
+  "summary": {
+    "total_items": 2,
+    "ready_count": 0,
+    "wait_count": 2,
+    "primary_blockers": {
+      "Phase5J:FLAT_LATEST_CANDLE": 2
+    },
+    "has_ready_trade": false,
+    "safe_mode": "DRY_RUN_ONLY",
+    "live_allowed": false,
+    "max_lot": 0.01
+  },
+  "items": [
+    {
+      "symbol": "EURUSD",
+      "status": "WAIT",
+      "action": "-",
+      "strategy": "MOMENTUM_PULLBACK",
+      "strategy_score": 4,
+      "volatility_percent": 0.029635956845094822,
+      "reason": "Latest candle is flat Open=High=Low=Close. Recent close movement was not enough to classify this as a usable price-only feed. New paper signals are blocked until live movement returns. Recent close prices moved 0.011419% across the last 10 candles with 7 close-change candle(s). This looks like a price-only feed, not fully stale data. Phase 4 review guard active: MOMENTUM_PULLBACK score 4 below Phase 4 review minimum 5.",
+      "primary_blocker": {
+        "phase": "Phase5J",
+        "status": "FLAT_LATEST_CANDLE",
+        "reason": "Latest candle is flat Open=High=Low=Close. Recent close movement was not enough to classify this as a usable price-only feed. New paper signals are blocked until live movement returns. Recent close prices moved 0.011419% across the last 10 candles with 7 close-change candle(s). This looks like a price-only feed, not fully stale data."
+      },
+      "market_readiness": {
+        "status": "CLOSED",
+        "score": 25,
+        "max_score": 100,
+        "phase5j_status": "FLAT_LATEST_CANDLE",
+        "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING"
+      },
+      "strategy_diagnostics": {
+        "phase5f_status": "BLOCKED_SCORE",
+        "phase5g_status": "SCORE_TOO_LOW",
+        "phase5h_status": "INSUFFICIENT_POSITIVE_CONFIRMATION",
+        "phase5o_status": "NOT_APPLICABLE",
+        "phase5p_status": "NOT_APPLICABLE",
+        "phase5s_status": "IMPROVEMENT_NEEDED",
+        "phase5t_status": "REVIEW_LOCK_RECOVERY_PLAN",
+        "phase5t_recovery_steps": [
+          "keep Phase4R locked until quality report no longer requests STOP_AND_REVIEW",
+          "wait for usable market/session data before scoring recovery",
+          "wait for reopen/warmup guard to pass",
+          "raise strategy score to at least 5 using stronger confirmations",
+          "close score gap +1 for MOMENTUM_PULLBACK",
+          "require more positive confirmations before considering recovery sample",
+          "restore missing components: volatility_quality",
+          "wait for fresh usable candles or improve data feed freshness",
+          "need +1 score point(s): require stronger trend, momentum, volatility, or confirmed quality",
+          "require more positive strategy reasons before boosting confidence",
+          "missing components: volatility_quality"
+        ],
+        "phase5u_status": "LOCKED_AND_NOT_RECOVERY_READY",
+        "phase5u_lock_sources": [
+          "quality status=NOT_READY",
+          "loss streak=3/3"
+        ],
+        "phase5u_unlock_requirements": [
+          "quality status must improve from NOT_READY",
+          "loss streak must reset below lock threshold through closed paper results",
+          "restore missing components: volatility_quality"
+        ],
+        "phase5v_status": "WAIT_REPAIR_REQUIRED",
+        "phase5v_review_priority": "LOW",
+        "phase5w_status": "SCORE_REPAIR_REQUIRED",
+        "phase5w_score_gap": 1,
+        "phase5w_positive_gap": 1,
+        "phase5w_repair_actions": [
+          "raise score by +1 to reach 5",
+          "add +1 positive confirmation(s) to reach 3",
+          "need volatility quality confirmation: ATR/breakout/volatility reason must appear",
+          "need: pair/setup should be approved by replay candidate filter",
+          "wait for fresh usable candles or improve data feed freshness",
+          "need +1 score point(s): require stronger trend, momentum, volatility, or confirmed quality",
+          "require more positive strategy reasons before boosting confidence",
+          "missing components: volatility_quality"
+        ],
+        "phase5x_status": "CURRENT_STRATEGY_ALLOWED",
+        "phase5x_redirect_candidates": [],
+        "phase5z_status": "REPLAY_VALIDATION_RECOVERY_AVAILABLE",
+        "phase5z_replay_validation_restored": true,
+        "phase5z_requirements": [],
+        "near_ready": false,
+        "score_committed": false,
+        "no_strategy_preview": false,
+        "score_gap": 1,
+        "missing_components": [
+          "volatility_quality"
+        ]
+      },
+      "volatility_debug": {
+        "enabled": true,
+        "symbol": "EURUSD",
+        "strategy": "MOMENTUM_PULLBACK",
+        "volatility_percent": 0.029636,
+        "min_volatility_percent": 0.006,
+        "gap_to_threshold": -0.023636,
+        "passed": true,
+        "status": "PASSED",
+        "reason": "Volatility 0.029636% / minimum 0.006000% (PASSED)."
+      },
+      "phase4_quality_precheck_passed": false,
+      "bridge_ready": false,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": null
+    },
+    {
+      "symbol": "BTCUSD",
+      "status": "WAIT",
+      "action": "-",
+      "strategy": "MOMENTUM_PULLBACK",
+      "strategy_score": 2,
+      "volatility_percent": 0.3069700916047253,
+      "reason": "Latest candle is flat Open=High=Low=Close. Recent close movement was not enough to classify this as a usable price-only feed. New paper signals are blocked until live movement returns. Recent close prices moved 0.263769% across the last 10 candles with 9 close-change candle(s). This looks like a price-only feed, not fully stale data. Phase 4 review guard active: MOMENTUM_PULLBACK score 2 below Phase 4 review minimum 5.",
+      "primary_blocker": {
+        "phase": "Phase5J",
+        "status": "FLAT_LATEST_CANDLE",
+        "reason": "Latest candle is flat Open=High=Low=Close. Recent close movement was not enough to classify this as a usable price-only feed. New paper signals are blocked until live movement returns. Recent close prices moved 0.263769% across the last 10 candles with 9 close-change candle(s). This looks like a price-only feed, not fully stale data."
+      },
+      "market_readiness": {
+        "status": "CLOSED",
+        "score": 25,
+        "max_score": 100,
+        "phase5j_status": "FLAT_LATEST_CANDLE",
+        "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING"
+      },
+      "strategy_diagnostics": {
+        "phase5f_status": "BLOCKED_SCORE",
+        "phase5g_status": "SCORE_TOO_LOW",
+        "phase5h_status": "INSUFFICIENT_POSITIVE_CONFIRMATION",
+        "phase5o_status": "NOT_NEAR_READY",
+        "phase5p_status": "WAIT_NEAR_READY",
+        "phase5s_status": "IMPROVEMENT_NEEDED",
+        "phase5t_status": "REVIEW_LOCK_RECOVERY_PLAN",
+        "phase5t_recovery_steps": [
+          "keep Phase4R locked until quality report no longer requests STOP_AND_REVIEW",
+          "wait for usable market/session data before scoring recovery",
+          "wait for reopen/warmup guard to pass",
+          "raise strategy score to at least 5 using stronger confirmations",
+          "close score gap +3 for MOMENTUM_PULLBACK",
+          "require more positive confirmations before considering recovery sample",
+          "restore missing components: volatility_quality, replay_validation",
+          "wait for fresh usable candles or improve data feed freshness",
+          "need +3 score point(s): require stronger trend, momentum, volatility, or replay confirmation",
+          "require more positive strategy reasons before boosting confidence",
+          "missing components: volatility_quality, replay_validation"
+        ],
+        "phase5u_status": "LOCKED_AND_NOT_RECOVERY_READY",
+        "phase5u_lock_sources": [
+          "quality status=NOT_READY",
+          "loss streak=3/3"
+        ],
+        "phase5u_unlock_requirements": [
+          "quality status must improve from NOT_READY",
+          "loss streak must reset below lock threshold through closed paper results",
+          "restore missing components: volatility_quality, replay_validation"
+        ],
+        "phase5v_status": "WAIT_REPAIR_REQUIRED",
+        "phase5v_review_priority": "LOW",
+        "phase5w_status": "SCORE_REPAIR_REQUIRED",
+        "phase5w_score_gap": 3,
+        "phase5w_positive_gap": 1,
+        "phase5w_repair_actions": [
+          "raise score by +3 to reach 5",
+          "add +1 positive confirmation(s) to reach 3",
+          "need volatility quality confirmation: ATR/breakout/volatility reason must appear",
+          "need replay validation: pair/setup should be approved by replay candidate filter",
+          "wait for fresh usable candles or improve data feed freshness",
+          "need +3 score point(s): require stronger trend, momentum, volatility, or replay confirmation",
+          "require more positive strategy reasons before boosting confidence",
+          "missing components: volatility_quality, replay_validation"
+        ],
+        "phase5x_status": "CURRENT_STRATEGY_ALLOWED",
+        "phase5x_redirect_candidates": [],
+        "phase5z_status": "REPLAY_VALIDATION_STILL_MISSING",
+        "phase5z_replay_validation_restored": false,
+        "phase5z_requirements": [
+          "pair/setup needs a valid replay candidate before replay_validation can be considered restored",
+          "no replay candidate matched BTCUSD MOMENTUM_PULLBACK"
+        ],
+        "near_ready": false,
+        "score_committed": false,
+        "no_strategy_preview": false,
+        "score_gap": 3,
+        "missing_components": [
+          "volatility_quality",
+          "replay_validation"
+        ]
+      },
+      "volatility_debug": {
+        "enabled": true,
+        "symbol": "BTCUSD",
+        "strategy": "MOMENTUM_PULLBACK",
+        "volatility_percent": 0.30697,
+        "min_volatility_percent": 0.02,
+        "gap_to_threshold": -0.28697,
+        "passed": true,
+        "status": "PASSED",
+        "reason": "Volatility 0.306970% / minimum 0.020000% (PASSED)."
+      },
+      "phase4_quality_precheck_passed": false,
+      "bridge_ready": false,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": null
+    }
+  ]
+}

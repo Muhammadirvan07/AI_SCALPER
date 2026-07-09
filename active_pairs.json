@@ -1,0 +1,17 @@
+{
+    "generated_at": "2026-07-01T11:19:51.285796+00:00",
+    "mode": "PHASE_4_ACTIVE_PAIR_ROTATOR",
+    "active_pairs": [
+        "EURUSD"
+    ],
+    "main_active_pairs": [
+        "EURUSD"
+    ],
+    "secondary_active_pairs": [],
+    "exploration_active_pairs": [],
+    "exploration_tag": "PHASE4_SYMBOL_EXPLORATION",
+    "source": "active_pair_rotator_report.json",
+    "live_allowed": false,
+    "execution_mode": "PAPER_ONLY",
+    "note": "Main pairs are replay-approved. Exploration pairs are paper-only candidates for sample collection. Decision engine and executor guards remain responsible for final approval."
+}

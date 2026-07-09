@@ -1,0 +1,134 @@
+{
+    "generated_at": "2026-06-30T04:24:34.916203+00:00",
+    "execution_mode": "DRY_RUN",
+    "live_allowed": false,
+    "raw_signal_count": 1,
+    "accepted_count": 1,
+    "rejected_count": 0,
+    "cleanup_applied": true,
+    "cleanup_reason": "Accepted paper order(s); clearing remaining MT5-ready signals to prevent stale pending execution.",
+    "accepted_orders": [
+        {
+            "paper_order_id": "PAPER_EURUSD_SELL_20260630132434",
+            "signal_id": "EURUSD_SELL_20260630132434",
+            "created_at": "2026-06-30T04:24:34.914528+00:00",
+            "symbol": "EURUSD",
+            "type": "SELL",
+            "lot": 0.01,
+            "entry": 1.1398608684539795,
+            "sl": 1.1401608684539795,
+            "tp": 1.1392608684539796,
+            "strategy": "BREAKOUT",
+            "score": 4,
+            "strategy_original_score": 4,
+            "score_boost": {
+                "enabled": true,
+                "applied": false,
+                "original_score": 4,
+                "boosted_score": 4,
+                "reason": "Score 4 is not eligible for guarded boost.",
+                "positive_matches": 0,
+                "negative_matches": 0
+            },
+            "phase4_quality_guard": {
+                "enabled": true,
+                "status": "PASSED",
+                "required_score": 4,
+                "reason": "Phase 4 quality guard passed: score 4 >= 4. symbol EURUSD requires score >= 4 (PRIORITY). | strategy BREAKOUT requires score >= 4 (INSUFFICIENT_SAMPLE).",
+                "symbol_rule": {
+                    "type": "symbol",
+                    "name": "EURUSD",
+                    "closed_orders": 17,
+                    "wins": 8,
+                    "losses": 7,
+                    "timeouts": 2,
+                    "net_profit_usd": 2.7937,
+                    "winrate_percent": 47.06,
+                    "profit_factor": 2.5964,
+                    "expectancy_usd": 0.1643,
+                    "guard_status": "PRIORITY",
+                    "min_score_required": 4,
+                    "allow_new_entries": true,
+                    "reason": "PRIORITY: closed=17, winrate=47.06%, PF=2.5964, net=$2.7937. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+                    "phase4b_refinement": true,
+                    "phase4b_refinement_reasons": [
+                        "PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+                    ]
+                },
+                "strategy_rule": {
+                    "type": "strategy",
+                    "name": "BREAKOUT",
+                    "closed_orders": 4,
+                    "wins": 2,
+                    "losses": 2,
+                    "timeouts": 0,
+                    "net_profit_usd": 0.5,
+                    "winrate_percent": 50.0,
+                    "profit_factor": 2.0,
+                    "expectancy_usd": 0.125,
+                    "guard_status": "INSUFFICIENT_SAMPLE",
+                    "min_score_required": 4,
+                    "allow_new_entries": true,
+                    "reason": "Sample kecil: 4 closed orders. Belum cukup untuk strict guard."
+                }
+            },
+            "executor_phase4_quality_guard": {
+                "enabled": true,
+                "status": "PASSED",
+                "required_score": 4,
+                "reason": "Phase 4 executor guard passed with score 4 >= required 4. symbol EURUSD: status=PRIORITY, min_score=4, allow=True | strategy BREAKOUT: status=INSUFFICIENT_SAMPLE, min_score=4, allow=True",
+                "symbol_rule": {
+                    "type": "symbol",
+                    "name": "EURUSD",
+                    "closed_orders": 17,
+                    "wins": 8,
+                    "losses": 7,
+                    "timeouts": 2,
+                    "net_profit_usd": 2.7937,
+                    "winrate_percent": 47.06,
+                    "profit_factor": 2.5964,
+                    "expectancy_usd": 0.1643,
+                    "guard_status": "PRIORITY",
+                    "min_score_required": 4,
+                    "allow_new_entries": true,
+                    "reason": "PRIORITY: closed=17, winrate=47.06%, PF=2.5964, net=$2.7937. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+                    "phase4b_refinement": true,
+                    "phase4b_refinement_reasons": [
+                        "PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+                    ]
+                },
+                "strategy_rule": {
+                    "type": "strategy",
+                    "name": "BREAKOUT",
+                    "closed_orders": 4,
+                    "wins": 2,
+                    "losses": 2,
+                    "timeouts": 0,
+                    "net_profit_usd": 0.5,
+                    "winrate_percent": 50.0,
+                    "profit_factor": 2.0,
+                    "expectancy_usd": 0.125,
+                    "guard_status": "INSUFFICIENT_SAMPLE",
+                    "min_score_required": 4,
+                    "allow_new_entries": true,
+                    "reason": "Sample kecil: 4 closed orders. Belum cukup untuk strict guard."
+                }
+            },
+            "risk_usd": 0.25,
+            "symbol_risk_profile": {
+                "max_risk_usd": 0.25,
+                "max_lot": 0.01,
+                "min_score": 3
+            },
+            "status": "PAPER_OPEN",
+            "result": null,
+            "close_price": null,
+            "closed_at": null,
+            "profit_usd": 0.0,
+            "executor_created_at": "2026-06-30T04:24:34.914535+00:00",
+            "executor_mode": "DRY_RUN",
+            "source": "AI_SCALPER"
+        }
+    ],
+    "rejected_orders": []
+}

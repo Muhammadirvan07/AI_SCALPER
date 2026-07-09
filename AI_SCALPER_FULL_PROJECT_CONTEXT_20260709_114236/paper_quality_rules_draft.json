@@ -1,0 +1,216 @@
+{
+  "generated_at": "2026-07-09T11:26:33.654606",
+  "mode": "DRAFT_QUALITY_RULES_FROM_PROMOTION_PLAN",
+  "enabled": true,
+  "review_only": true,
+  "paper_only": true,
+  "live_allowed": false,
+  "max_lot": 0.01,
+  "source_promotion_plan_file": "all_pair_candidate_promotion_plan.json",
+  "target_file_not_modified": "paper_quality_rules.json",
+  "total_draft_rules": 5,
+  "draft_symbols": [
+    "AUDJPY",
+    "AUDUSD",
+    "CHFJPY",
+    "EURGBP",
+    "EURJPY"
+  ],
+  "symbol_rules": {
+    "EURGBP": {
+      "guard_status": "WATCH",
+      "min_score_required": 5,
+      "allowed_strategies": [
+        "MEAN_REVERSION",
+        "MOMENTUM_PULLBACK"
+      ],
+      "preferred_strategy": "MEAN_REVERSION",
+      "promotion_score": 112,
+      "best_profit_factor_proxy": 1.2639,
+      "best_winrate_proxy": 54.7794,
+      "best_net_return_percent_proxy": 1.0492,
+      "source": "all_pair_candidate_promotion_plan.json",
+      "source_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "review_only": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "notes": "Draft only. Manual review required before copying into paper_quality_rules.json. Start as WATCH, not PRIORITY."
+    },
+    "AUDUSD": {
+      "guard_status": "WATCH",
+      "min_score_required": 5,
+      "allowed_strategies": [
+        "MOMENTUM_PULLBACK",
+        "MEAN_REVERSION"
+      ],
+      "preferred_strategy": "MOMENTUM_PULLBACK",
+      "promotion_score": 96,
+      "best_profit_factor_proxy": 1.1793,
+      "best_winrate_proxy": 46.2039,
+      "best_net_return_percent_proxy": 1.1601,
+      "source": "all_pair_candidate_promotion_plan.json",
+      "source_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "review_only": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "notes": "Draft only. Manual review required before copying into paper_quality_rules.json. Start as WATCH, not PRIORITY."
+    },
+    "CHFJPY": {
+      "guard_status": "WATCH",
+      "min_score_required": 5,
+      "allowed_strategies": [
+        "MOMENTUM_PULLBACK"
+      ],
+      "preferred_strategy": "MOMENTUM_PULLBACK",
+      "promotion_score": 91,
+      "best_profit_factor_proxy": 1.1916,
+      "best_winrate_proxy": 53.6585,
+      "best_net_return_percent_proxy": 0.9496,
+      "source": "all_pair_candidate_promotion_plan.json",
+      "source_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "review_only": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "notes": "Draft only. Manual review required before copying into paper_quality_rules.json. Start as WATCH, not PRIORITY."
+    },
+    "EURJPY": {
+      "guard_status": "WATCH",
+      "min_score_required": 5,
+      "allowed_strategies": [
+        "MOMENTUM_PULLBACK"
+      ],
+      "preferred_strategy": "MOMENTUM_PULLBACK",
+      "promotion_score": 91,
+      "best_profit_factor_proxy": 1.1906,
+      "best_winrate_proxy": 52.8217,
+      "best_net_return_percent_proxy": 0.7636,
+      "source": "all_pair_candidate_promotion_plan.json",
+      "source_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "review_only": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "notes": "Draft only. Manual review required before copying into paper_quality_rules.json. Start as WATCH, not PRIORITY."
+    },
+    "AUDJPY": {
+      "guard_status": "WATCH",
+      "min_score_required": 5,
+      "allowed_strategies": [
+        "MOMENTUM_PULLBACK"
+      ],
+      "preferred_strategy": "MOMENTUM_PULLBACK",
+      "promotion_score": 91,
+      "best_profit_factor_proxy": 1.0637,
+      "best_winrate_proxy": 50.1144,
+      "best_net_return_percent_proxy": 0.4145,
+      "source": "all_pair_candidate_promotion_plan.json",
+      "source_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "review_only": true,
+      "paper_only": true,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "notes": "Draft only. Manual review required before copying into paper_quality_rules.json. Start as WATCH, not PRIORITY."
+    }
+  },
+  "review_rows": [
+    {
+      "symbol": "EURGBP",
+      "promotion_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "draft_included": true,
+      "guard_status": "WATCH",
+      "min_score_required": 5,
+      "allowed_strategies": [
+        "MEAN_REVERSION",
+        "MOMENTUM_PULLBACK"
+      ],
+      "preferred_strategy": "MEAN_REVERSION",
+      "promotion_score": 112,
+      "best_profit_factor_proxy": 1.2639,
+      "best_winrate_proxy": 54.7794,
+      "best_net_return_percent_proxy": 1.0492,
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "AUDUSD",
+      "promotion_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "draft_included": true,
+      "guard_status": "WATCH",
+      "min_score_required": 5,
+      "allowed_strategies": [
+        "MOMENTUM_PULLBACK",
+        "MEAN_REVERSION"
+      ],
+      "preferred_strategy": "MOMENTUM_PULLBACK",
+      "promotion_score": 96,
+      "best_profit_factor_proxy": 1.1793,
+      "best_winrate_proxy": 46.2039,
+      "best_net_return_percent_proxy": 1.1601,
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "CHFJPY",
+      "promotion_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "draft_included": true,
+      "guard_status": "WATCH",
+      "min_score_required": 5,
+      "allowed_strategies": [
+        "MOMENTUM_PULLBACK"
+      ],
+      "preferred_strategy": "MOMENTUM_PULLBACK",
+      "promotion_score": 91,
+      "best_profit_factor_proxy": 1.1916,
+      "best_winrate_proxy": 53.6585,
+      "best_net_return_percent_proxy": 0.9496,
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "EURJPY",
+      "promotion_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "draft_included": true,
+      "guard_status": "WATCH",
+      "min_score_required": 5,
+      "allowed_strategies": [
+        "MOMENTUM_PULLBACK"
+      ],
+      "preferred_strategy": "MOMENTUM_PULLBACK",
+      "promotion_score": 91,
+      "best_profit_factor_proxy": 1.1906,
+      "best_winrate_proxy": 52.8217,
+      "best_net_return_percent_proxy": 0.7636,
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "AUDJPY",
+      "promotion_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "draft_included": true,
+      "guard_status": "WATCH",
+      "min_score_required": 5,
+      "allowed_strategies": [
+        "MOMENTUM_PULLBACK"
+      ],
+      "preferred_strategy": "MOMENTUM_PULLBACK",
+      "promotion_score": 91,
+      "best_profit_factor_proxy": 1.0637,
+      "best_winrate_proxy": 50.1144,
+      "best_net_return_percent_proxy": 0.4145,
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "CADJPY",
+      "promotion_status": "KEEP_WATCHING_NEAR_PASS",
+      "draft_included": false,
+      "reason": "Symbol is not PROMOTE_TO_REPLAY_REVIEW.",
+      "live_allowed": false,
+      "max_lot": 0.01
+    }
+  ],
+  "next_recommended_action": "Review this draft manually. Do not copy into paper_quality_rules.json until replay candidates and active pair expansion plan are also prepared and reviewed."
+}

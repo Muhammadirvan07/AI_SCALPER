@@ -1,0 +1,1844 @@
+{
+    "generated_at": "2026-07-09T11:26:35",
+    "replay_candidate_filter_enabled": true,
+    "ready_trade_count": 0,
+    "signals": [],
+    "all_decisions": [
+        {
+            "symbol": "EURUSD",
+            "status": "WAIT",
+            "reason": "Latest candle is flat Open=High=Low=Close. Recent close movement was not enough to classify this as a usable price-only feed. New paper signals are blocked until live movement returns. Recent close prices moved 0.011419% across the last 10 candles with 7 close-change candle(s). This looks like a price-only feed, not fully stale data. Phase 4 review guard active: MOMENTUM_PULLBACK score 4 below Phase 4 review minimum 5.",
+            "signal": "BUY",
+            "market_status": "LOW",
+            "volatility_percent": 0.029635956845094822,
+            "selected_strategy": "MOMENTUM_PULLBACK",
+            "original_selected_strategy": "MOMENTUM_PULLBACK",
+            "final_strategy_sanitizer": {
+                "enabled": true,
+                "status": "NOT_NEEDED",
+                "original_strategy": "MOMENTUM_PULLBACK",
+                "sanitized_strategy": "MOMENTUM_PULLBACK",
+                "strategy_sanitized": false,
+                "allowed_fallbacks": [
+                    "BREAKOUT",
+                    "MEAN_REVERSION",
+                    "MOMENTUM_PULLBACK"
+                ],
+                "creates_order": false,
+                "unlock_phase4r": false,
+                "reason": "Selected strategy is not force-blocked; no final strategy sanitization needed."
+            },
+            "strategy_score": 4,
+            "strategy_original_score": 4,
+            "score_boost": {
+                "enabled": true,
+                "applied": false,
+                "original_score": 4,
+                "boosted_score": 4,
+                "reason": "Guarded score boost not checked yet.",
+                "positive_matches": 0,
+                "negative_matches": 0
+            },
+            "phase5a_adaptive_score": {
+                "enabled": true,
+                "applied": false,
+                "original_score": 4,
+                "adaptive_score": 4,
+                "reason": "Phase 5A adaptive score engine not checked yet."
+            },
+            "strategy_regime": "TRANSITION",
+            "strategy_reasons": [
+                "bullish pullback near EMA20",
+                "price is close to EMA20",
+                "market supports pullback continuation"
+            ],
+            "phase4b_symbol_guard": {
+                "enabled": true,
+                "status": "PASSED",
+                "allowed_symbols": [
+                    "BTCUSD",
+                    "EURUSD"
+                ],
+                "policy": "WAIT",
+                "reason": "EURUSD is allowed by Phase 4B symbol whitelist."
+            },
+            "phase5e_pair_rotation_guard": {
+                "enabled": true,
+                "status": "PASSED",
+                "symbol": "EURUSD",
+                "rotation_mode": "QUALITY_FIRST_PRIMARY_ONLY",
+                "primary_symbols": [
+                    "BTCUSD",
+                    "EURUSD"
+                ],
+                "blocked_symbols": [
+                    "GBPUSD"
+                ],
+                "unknown_symbol_policy": "WAIT",
+                "reason": "EURUSD passed Phase 5E quality-first pair rotation guard."
+            },
+            "phase5f_strategy_selection_guard": {
+                "enabled": true,
+                "status": "BLOCKED_SCORE",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 4,
+                "volatility_percent": 0.029636,
+                "strategy_mode": "QUALITY_FIRST_NO_TREND_FOLLOWING",
+                "allowed_strategies": [
+                    "BREAKOUT",
+                    "MEAN_REVERSION",
+                    "MOMENTUM_PULLBACK"
+                ],
+                "blocked_strategies": [
+                    "TREND_FOLLOWING"
+                ],
+                "reason": "MOMENTUM_PULLBACK requires score >= 5 by Phase 5F; current score=4.",
+                "required_score": 5,
+                "required_volatility_percent": 0.006,
+                "phase4_strategy_rule": {
+                    "type": "strategy",
+                    "name": "MOMENTUM_PULLBACK",
+                    "closed_orders": 20,
+                    "wins": 6,
+                    "losses": 12,
+                    "timeouts": 2,
+                    "net_profit_usd": 0.5437,
+                    "winrate_percent": 30.0,
+                    "profit_factor": 1.1812,
+                    "expectancy_usd": 0.0272,
+                    "guard_status": "RESTRICT",
+                    "min_score_required": 5,
+                    "allow_new_entries": true,
+                    "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+                }
+            },
+            "phase5g_pre_score_diagnostics": {
+                "enabled": true,
+                "status": "SCORE_TOO_LOW",
+                "mode": "EXPLAIN_EARLY_WAIT",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "original_score": 4,
+                "required_score": 5,
+                "score_gap": 1,
+                "volatility_percent": 0.029636,
+                "required_volatility_percent": 0.006,
+                "volatility_gap": 0.0,
+                "positive_matches": 2,
+                "negative_matches": 0,
+                "phase5a_preview_can_boost": true,
+                "preview_score_after_phase5a": 5,
+                "phase5f_status": "BLOCKED_SCORE",
+                "phase5f_reason": "MOMENTUM_PULLBACK requires score >= 5 by Phase 5F; current score=4.",
+                "reason": "Score needs +1 more point(s) to pass Phase 5F."
+            },
+            "phase5h_strategy_score_explainability": {
+                "enabled": true,
+                "status": "INSUFFICIENT_POSITIVE_CONFIRMATION",
+                "mode": "EXPLAIN_SCORE_GAP",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "original_score": 4,
+                "required_score": 5,
+                "score_gap": 0,
+                "volatility_percent": 0.029636,
+                "positive_matches": 2,
+                "negative_matches": 0,
+                "present_components": [
+                    "trend_alignment",
+                    "momentum_confirmation"
+                ],
+                "missing_components": [
+                    "volatility_quality"
+                ],
+                "component_status": {
+                    "trend_alignment": {
+                        "present": true,
+                        "matched_keywords": [
+                            "ema"
+                        ],
+                        "expected_keywords": [
+                            "trend",
+                            "ema",
+                            "structure"
+                        ]
+                    },
+                    "momentum_confirmation": {
+                        "present": true,
+                        "matched_keywords": [
+                            "pullback"
+                        ],
+                        "expected_keywords": [
+                            "momentum",
+                            "adx",
+                            "pullback"
+                        ]
+                    },
+                    "volatility_quality": {
+                        "present": false,
+                        "matched_keywords": [],
+                        "expected_keywords": [
+                            "volatility",
+                            "atr",
+                            "breakout"
+                        ]
+                    },
+                    "replay_validation": {
+                        "present": false,
+                        "matched_keywords": [],
+                        "expected_keywords": [
+                            "replay",
+                            "approved"
+                        ]
+                    }
+                },
+                "phase5g_status": "SCORE_TOO_LOW",
+                "phase5g_reason": "Score needs +1 more point(s) to pass Phase 5F.",
+                "reason": "Score is low because only 2 positive confirmation(s) were found; strong setup target is 3.",
+                "missing": [
+                    "volatility_quality"
+                ],
+                "positive": 1,
+                "positive_confirmations": 1,
+                "phase5z_replay_validation_reconciled": true,
+                "phase5z_replay_validation_reconcile_reason": "Phase5Z restored replay_validation, so Phase5H explainability removed replay_validation from missing components and added one positive confirmation.",
+                "phase5z_replay_validation_before_missing": [
+                    "volatility_quality",
+                    "replay_validation"
+                ],
+                "phase5z_replay_validation_after_missing": [
+                    "volatility_quality"
+                ],
+                "phase5z_replay_validation_missing_source_keys": [
+                    "missing_components"
+                ],
+                "phase5z_replay_validation_source_status": "REPLAY_VALIDATION_RECOVERY_AVAILABLE"
+            },
+            "phase5i_no_strategy_market_state": {
+                "enabled": true,
+                "status": "NOT_APPLICABLE",
+                "mode": "EXPLAIN_NO_STRATEGY",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "volatility_percent": 0.029636,
+                "min_volatility_percent": 0.006,
+                "reason": "Phase 5I only applies when scanner outputs NO_STRATEGY."
+            },
+            "phase5j_market_session_allowed": false,
+            "phase5j_market_session_guard": {
+                "enabled": true,
+                "status": "FLAT_LATEST_CANDLE",
+                "mode": "BLOCK_MARKET_CLOSED_OR_STALE",
+                "symbol": "EURUSD",
+                "server_now": "2026-07-09T11:26:35",
+                "weekday": 3,
+                "reason": "Latest candle is flat Open=High=Low=Close. Recent close movement was not enough to classify this as a usable price-only feed. New paper signals are blocked until live movement returns. Recent close prices moved 0.011419% across the last 10 candles with 7 close-change candle(s). This looks like a price-only feed, not fully stale data.",
+                "source_path": "data/EURUSD.csv",
+                "load_status": "LOADED",
+                "latest_open": 1.143118381500244,
+                "latest_high": 1.143118381500244,
+                "latest_low": 1.142987847328186,
+                "latest_close": 1.142987847328186,
+                "latest_volume": 0.0,
+                "flat_latest_candle": false,
+                "zero_volume": true,
+                "latest_time_raw": "2026-07-09 03:15:00+01:00",
+                "latest_age_minutes": 11.59,
+                "price_only_feed_allowed": false
+            },
+            "phase5k_market_reopen_allowed": true,
+            "phase5k_market_reopen_warmup_guard": {
+                "enabled": true,
+                "status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "mode": "BLOCK_REOPEN_UNSTABLE_CANDLES",
+                "symbol": "EURUSD",
+                "server_now": "2026-07-09T11:26:35",
+                "weekday": 3,
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "reason": "Phase 5K is not checked because Phase 5J is already blocking market/session conditions."
+            },
+            "phase5l_market_open_readiness": {
+                "enabled": true,
+                "status": "CLOSED",
+                "mode": "SCORE_MARKET_OPEN_READINESS",
+                "symbol": "EURUSD",
+                "score": 25,
+                "max_score": 100,
+                "min_ready_score": 80,
+                "min_watch_score": 55,
+                "components": {
+                    "session_score": 0,
+                    "reopen_score": 0,
+                    "volatility_score": 25,
+                    "activity_score": 0
+                },
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "volatility_percent": 0.029636,
+                "min_volatility_percent": 0.006,
+                "reason": "Phase5J status is FLAT_LATEST_CANDLE; market is not fully open/usable yet. | Phase5K is not applicable because Phase5J is already blocking. | Volatility passed: 0.029636% >= 0.006000%. | Activity ratio is unavailable from Phase5K."
+            },
+            "phase5o_crypto_weekend_near_ready": {
+                "enabled": true,
+                "status": "NOT_APPLICABLE",
+                "mode": "DIAGNOSE_CRYPTO_WEEKEND_NEAR_READY",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 4,
+                "volatility_percent": 0.029636,
+                "allowed_phase5j_statuses": [
+                    "CRYPTO_WEEKEND_TEST_ALLOWED",
+                    "PRICE_ONLY_FEED_ALLOWED"
+                ],
+                "reason": "Phase 5O only applies to BTCUSD crypto/price-only paper-test diagnostics."
+            },
+            "phase5p_controlled_score_commit": {
+                "enabled": true,
+                "status": "NOT_APPLICABLE",
+                "mode": "COMMIT_PHASE5A_ONLY_FOR_CRYPTO_WEEKEND_NEAR_READY",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "original_score": 4,
+                "committed_score": 4,
+                "score_boost": 0,
+                "tag": "PHASE5P_CRYPTO_WEEKEND_SCORE_COMMIT",
+                "reason": "Phase 5P only applies to BTCUSD crypto weekend near-ready diagnostics."
+            },
+            "phase5q_crypto_no_strategy_preview": {
+                "enabled": true,
+                "status": "NOT_APPLICABLE",
+                "mode": "CLASSIFY_CRYPTO_WEEKEND_NO_STRATEGY_PREVIEW",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "volatility_percent": 0.029636,
+                "reason": "Phase 5Q only applies to BTCUSD crypto weekend NO_STRATEGY diagnostics."
+            },
+            "phase5r_controlled_strategy_assignment": {
+                "enabled": true,
+                "status": "NOT_APPLICABLE",
+                "mode": "ASSIGN_STRATEGY_FROM_CRYPTO_NO_STRATEGY_PREVIEW",
+                "symbol": "EURUSD",
+                "original_strategy": "MOMENTUM_PULLBACK",
+                "assigned_strategy": "MOMENTUM_PULLBACK",
+                "original_score": 4,
+                "assigned_score": 4,
+                "original_signal": "BUY",
+                "assigned_signal": "BUY",
+                "original_decision": "BUY",
+                "assigned_decision": "BUY",
+                "tag": "PHASE5R_CRYPTO_WEEKEND_STRATEGY_ASSIGNMENT",
+                "reason": "Phase 5R only applies to BTCUSD crypto weekend NO_STRATEGY preview assignment."
+            },
+            "phase5s_multi_pair_strategy_improvement": {
+                "enabled": true,
+                "status": "IMPROVEMENT_NEEDED",
+                "mode": "DIAGNOSE_MULTI_PAIR_SCORE_IMPROVEMENT",
+                "tag": "PHASE5S_MULTI_PAIR_IMPROVEMENT",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 4,
+                "required_score": 5,
+                "score_gap": 1,
+                "volatility_percent": 0.029636,
+                "required_volatility_percent": 0.006,
+                "volatility_gap": 0.0,
+                "positive_matches": 2,
+                "negative_matches": 0,
+                "missing_components": [
+                    "volatility_quality"
+                ],
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "phase5l_status": "CLOSED",
+                "readiness_score": 25,
+                "blockers": [
+                    "Phase5J=FLAT_LATEST_CANDLE",
+                    "score gap 1; score=4, required=5",
+                    "positive confirmations 2 < target 3"
+                ],
+                "strengths": [
+                    "Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING",
+                    "volatility 0.029636% meets required 0.006000%"
+                ],
+                "improvement_actions": [
+                    "wait for fresh usable candles or improve data feed freshness",
+                    "need +1 score point(s): require stronger trend, momentum, volatility, or confirmed quality",
+                    "require more positive strategy reasons before boosting confidence",
+                    "missing components: volatility_quality"
+                ],
+                "reason": "Phase 5S multi-pair improvement diagnostic: Phase5J=FLAT_LATEST_CANDLE | score gap 1; score=4, required=5 | positive confirmations 2 < target 3",
+                "phase5z_replay_validation_reconciled": true,
+                "phase5z_replay_validation_reconcile_reason": "Phase5Z restored, so this diagnostic payload removed from downstream missing/action/step/component text."
+            },
+            "phase5t_all_pair_quality_recovery_planner": {
+                "enabled": true,
+                "status": "REVIEW_LOCK_RECOVERY_PLAN",
+                "mode": "PLAN_ALL_PAIR_QUALITY_RECOVERY",
+                "tag": "PHASE5T_ALL_PAIR_RECOVERY_PLAN",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 4,
+                "required_score": 5,
+                "score_gap": 1,
+                "volatility_percent": 0.029636,
+                "phase4r_status": "LOCKED",
+                "phase4r_locked": true,
+                "quality_status": "NOT_READY",
+                "loss_streak": 3,
+                "loss_streak_threshold": 3,
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "phase5f_status": "BLOCKED_SCORE",
+                "positive_matches": 2,
+                "missing_components": [
+                    "volatility_quality"
+                ],
+                "blockers": [
+                    "Phase4R=LOCKED, quality=NOT_READY, loss_streak=3/3",
+                    "Phase5J=FLAT_LATEST_CANDLE",
+                    "Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING",
+                    "score=4 < recovery target 5",
+                    "positive confirmations=2 < 3"
+                ],
+                "ready_checks": [],
+                "recovery_steps": [
+                    "keep Phase4R locked until quality report no longer requests STOP_AND_REVIEW",
+                    "wait for usable market/session data before scoring recovery",
+                    "wait for reopen/warmup guard to pass",
+                    "raise strategy score to at least 5 using stronger confirmations",
+                    "close score gap +1 for MOMENTUM_PULLBACK",
+                    "require more positive confirmations before considering recovery sample",
+                    "restore missing components: volatility_quality",
+                    "wait for fresh usable candles or improve data feed freshness",
+                    "need +1 score point(s): require stronger trend, momentum, volatility, or confirmed quality",
+                    "require more positive strategy reasons before boosting confidence",
+                    "missing components: volatility_quality"
+                ],
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "Phase 5T all-pair recovery planner: Phase4R=LOCKED, quality=NOT_READY, loss_streak=3/3 | Phase5J=FLAT_LATEST_CANDLE | Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING | score=4 < recovery target 5 | positive confirmations=2 < 3. Diagnostic only; Phase4R remains authoritative.",
+                "phase5z_replay_validation_reconciled": true,
+                "phase5z_replay_validation_reconcile_reason": "Phase5Z restored, so this diagnostic payload removed from downstream missing/action/step/component text."
+            },
+            "phase5u_all_pair_phase4r_lock_inspector": {
+                "enabled": true,
+                "status": "LOCKED_AND_NOT_RECOVERY_READY",
+                "mode": "INSPECT_ALL_PAIR_PHASE4R_LOCK_SOURCE",
+                "tag": "PHASE5U_PHASE4R_LOCK_INSPECTOR",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 4,
+                "phase4r_status": "LOCKED",
+                "phase4r_locked": true,
+                "quality_status": "NOT_READY",
+                "quality_action": "KEEP DRY_RUN/PAPER-ONLY. DO NOT LOOSEN GUARDS.",
+                "loss_streak": 3,
+                "loss_streak_threshold": 3,
+                "phase5f_status": "BLOCKED_SCORE",
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "phase5l_status": "CLOSED",
+                "readiness_score": 25,
+                "positive_matches": 2,
+                "missing_components": [
+                    "volatility_quality"
+                ],
+                "phase5t_recovery_status": "REVIEW_LOCK_RECOVERY_PLAN",
+                "lock_sources": [
+                    "quality status=NOT_READY",
+                    "loss streak=3/3"
+                ],
+                "unlock_requirements": [
+                    "quality status must improve from NOT_READY",
+                    "loss streak must reset below lock threshold through closed paper results",
+                    "restore missing components: volatility_quality"
+                ],
+                "recovery_readiness": [],
+                "still_blocked_by": [
+                    "market readiness not enough: Phase5J=FLAT_LATEST_CANDLE, Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING, Phase5L=CLOSED",
+                    "Phase5F=BLOCKED_SCORE",
+                    "score=4 < 5",
+                    "positive confirmations=2 < 3"
+                ],
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "Phase 5U Phase4R lock inspector: quality status=NOT_READY | loss streak=3/3. Diagnostic only; no automatic unlock is performed.",
+                "phase5z_replay_validation_reconciled": false,
+                "phase5z_replay_validation_reconcile_reason": "Phase5Z has not restored for this pair/setup."
+            },
+            "phase5v_all_pair_shadow_recovery_marker": {
+                "enabled": true,
+                "status": "WAIT_REPAIR_REQUIRED",
+                "mode": "MARK_ALL_PAIR_SHADOW_RECOVERY_CANDIDATES",
+                "tag": "PHASE5V_SHADOW_RECOVERY_CANDIDATE",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 4,
+                "phase5u_status": "LOCKED_AND_NOT_RECOVERY_READY",
+                "phase5t_status": "REVIEW_LOCK_RECOVERY_PLAN",
+                "review_priority": "LOW",
+                "still_blocked_by": [
+                    "market readiness not enough: Phase5J=FLAT_LATEST_CANDLE, Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING, Phase5L=CLOSED",
+                    "Phase5F=BLOCKED_SCORE",
+                    "score=4 < 5",
+                    "positive confirmations=2 < 3"
+                ],
+                "recovery_readiness": [],
+                "unlock_requirements": [
+                    "quality status must improve from NOT_READY",
+                    "loss streak must reset below lock threshold through closed paper results",
+                    "restore missing components: volatility_quality, replay_validation"
+                ],
+                "improvement_actions": [
+                    "wait for fresh usable candles or improve data feed freshness",
+                    "need +1 score point(s): require stronger trend, momentum, volatility, or replay confirmation",
+                    "require more positive strategy reasons before boosting confidence",
+                    "missing components: volatility_quality, replay_validation"
+                ],
+                "creates_order": false,
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "EURUSD is not recovery-ready yet: market readiness not enough: Phase5J=FLAT_LATEST_CANDLE, Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING, Phase5L=CLOSED | Phase5F=BLOCKED_SCORE | score=4 < 5 | positive confirmations=2 < 3"
+            },
+            "phase5w_all_pair_score_repair_advisor": {
+                "enabled": true,
+                "status": "SCORE_REPAIR_REQUIRED",
+                "mode": "ADVISE_ALL_PAIR_SCORE_REPAIR",
+                "tag": "PHASE5W_SCORE_REPAIR_ADVISOR",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 4,
+                "target_score": 5,
+                "score_gap": 1,
+                "positive_matches": 2,
+                "target_positive_confirmations": 3,
+                "positive_gap": 1,
+                "negative_matches": 0,
+                "phase5v_status": "WAIT_REPAIR_REQUIRED",
+                "component_targets": [
+                    "volatility_quality"
+                ],
+                "missing_components": [
+                    "volatility_quality"
+                ],
+                "repair_actions": [
+                    "raise score by +1 to reach 5",
+                    "add +1 positive confirmation(s) to reach 3",
+                    "need volatility quality confirmation: ATR/breakout/volatility reason must appear",
+                    "need: pair/setup should be approved by replay candidate filter",
+                    "wait for fresh usable candles or improve data feed freshness",
+                    "need +1 score point(s): require stronger trend, momentum, volatility, or confirmed quality",
+                    "require more positive strategy reasons before boosting confidence",
+                    "missing components: volatility_quality"
+                ],
+                "review_priority": "MEDIUM",
+                "creates_order": false,
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "Phase 5W score repair advisor for EURUSD: score_gap=1, positive_gap=1, components=['volatility_quality', '']. Diagnostic only; no order is created.",
+                "phase5z_replay_validation_reconciled": true,
+                "phase5z_replay_validation_reconcile_reason": "Phase5Z restored, so this diagnostic payload removed from downstream missing/action/step/component text."
+            },
+            "phase5x_all_pair_allowed_strategy_redirect_advisor": {
+                "enabled": true,
+                "status": "CURRENT_STRATEGY_ALLOWED",
+                "mode": "ADVISE_ALL_PAIR_ALLOWED_STRATEGY_REDIRECT",
+                "tag": "PHASE5X_ALLOWED_STRATEGY_REDIRECT",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 4,
+                "volatility_percent": 0.029636,
+                "phase5f_status": "BLOCKED_SCORE",
+                "phase5w_status": "SCORE_REPAIR_REQUIRED",
+                "positive_matches": 2,
+                "missing_components": [
+                    "volatility_quality"
+                ],
+                "allowed_fallback_strategies": [
+                    "BREAKOUT",
+                    "MEAN_REVERSION",
+                    "MOMENTUM_PULLBACK"
+                ],
+                "redirect_candidates": [],
+                "redirect_requirements": [],
+                "assigns_strategy": false,
+                "creates_order": false,
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "MOMENTUM_PULLBACK is already inside the allowed strategy set. No redirect advice needed."
+            },
+            "phase5z_all_pair_replay_validation_recovery_checker": {
+                "enabled": true,
+                "status": "REPLAY_VALIDATION_RECOVERY_AVAILABLE",
+                "mode": "CHECK_ALL_PAIR_REPLAY_VALIDATION_RECOVERY",
+                "tag": "PHASE5Z_REPLAY_VALIDATION_RECOVERY",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "phase5w_status": "SCORE_REPAIR_REQUIRED",
+                "source": "paper_replay_candidates.json",
+                "source_status": "LOADED",
+                "replay_validation_missing": true,
+                "replay_validation_restored": true,
+                "matched_candidate_count": 2,
+                "matched_candidates": [
+                    {
+                        "symbol": "EURUSD",
+                        "strategy": "ANY",
+                        "status": "APPROVED_REPLAY_CANDIDATE",
+                        "raw": {
+                            "symbol": "EURUSD",
+                            "strategy": "ANY",
+                            "status": "APPROVED_REPLAY_CANDIDATE",
+                            "source": "approved_symbols",
+                            "symbol_level_candidate": true,
+                            "raw": {
+                                "symbol": "EURUSD",
+                                "closed_orders": 7,
+                                "winrate_percent": 71.43,
+                                "net_profit_usd": 1.5835,
+                                "status": "APPROVED_REPLAY_CANDIDATE",
+                                "reason": "Symbol passed replay winrate and net profit requirements."
+                            }
+                        },
+                        "watch_only": false
+                    },
+                    {
+                        "symbol": "EURUSD",
+                        "strategy": "ANY",
+                        "status": "APPROVED",
+                        "raw": {
+                            "symbol": "EURUSD",
+                            "strategy": "ANY",
+                            "status": "APPROVED",
+                            "source": "approved_symbols_index",
+                            "symbol_level_candidate": true
+                        },
+                        "watch_only": false
+                    }
+                ],
+                "watch_candidate_count": 0,
+                "watch_candidates": [],
+                "valid_replay_statuses": [
+                    "APPROVED",
+                    "APPROVED_REPLAY_CANDIDATE",
+                    "APPROVED_SYMBOL_FALLBACK",
+                    "CANDIDATE",
+                    "PASSED",
+                    "READY"
+                ],
+                "watch_replay_statuses": [
+                    "DRAFT_REPLAY_CANDIDATE",
+                    "WATCH",
+                    "WATCH_REPLAY_CANDIDATE"
+                ],
+                "approved_symbols_debug": [
+                    "EURUSD"
+                ],
+                "approved_symbols": [
+                    "EURUSD"
+                ],
+                "watch_symbols_debug": [
+                    "AUDJPY",
+                    "AUDJPY:MEAN_REVERSION",
+                    "AUDJPY:MOMENTUM_PULLBACK",
+                    "CADJPY",
+                    "CADJPY:MEAN_REVERSION",
+                    "CHFJPY",
+                    "CHFJPY:MEAN_REVERSION",
+                    "CHFJPY:MOMENTUM_PULLBACK",
+                    "EURGBP",
+                    "EURGBP:MEAN_REVERSION",
+                    "GBPJPY",
+                    "GBPJPY:MEAN_REVERSION",
+                    "XAGUSD",
+                    "XAGUSD:MEAN_REVERSION",
+                    "XAUUSD",
+                    "XAUUSD:MEAN_REVERSION"
+                ],
+                "watch_symbols": [
+                    "AUDJPY",
+                    "AUDJPY:MEAN_REVERSION",
+                    "AUDJPY:MOMENTUM_PULLBACK",
+                    "CADJPY",
+                    "CADJPY:MEAN_REVERSION",
+                    "CHFJPY",
+                    "CHFJPY:MEAN_REVERSION",
+                    "CHFJPY:MOMENTUM_PULLBACK",
+                    "EURGBP",
+                    "EURGBP:MEAN_REVERSION",
+                    "GBPJPY",
+                    "GBPJPY:MEAN_REVERSION",
+                    "XAGUSD",
+                    "XAGUSD:MEAN_REVERSION",
+                    "XAUUSD",
+                    "XAUUSD:MEAN_REVERSION"
+                ],
+                "candidate_symbols_debug": [
+                    "AUDJPY",
+                    "AUDJPY:MEAN_REVERSION",
+                    "AUDJPY:MOMENTUM_PULLBACK",
+                    "CADJPY",
+                    "CADJPY:MEAN_REVERSION",
+                    "CHFJPY",
+                    "CHFJPY:MEAN_REVERSION",
+                    "CHFJPY:MOMENTUM_PULLBACK",
+                    "EURGBP",
+                    "EURGBP:MEAN_REVERSION",
+                    "EURUSD",
+                    "GBPJPY",
+                    "GBPJPY:MEAN_REVERSION",
+                    "XAGUSD",
+                    "XAGUSD:MEAN_REVERSION",
+                    "XAUUSD",
+                    "XAUUSD:MEAN_REVERSION"
+                ],
+                "excluded_symbols": [
+                    "GBPUSD"
+                ],
+                "excluded_symbol_details": [
+                    {
+                        "symbol": "GBPUSD",
+                        "source": "blocked_symbols",
+                        "raw": "GBPUSD"
+                    }
+                ],
+                "blocked_symbol_exclusion_tag": "PHASE5Z_BLOCKED_SYMBOL_EXCLUSION",
+                "requirements": [],
+                "creates_order": false,
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "EURUSD has a matching replay candidate; replay_validation can be reviewed as recovered."
+            },
+            "phase4f_recovery_guard": {},
+            "phase4d_strategy_guard": {},
+            "phase4d_momentum_guard": {},
+            "phase4_quality_guard": {
+                "enabled": true,
+                "status": "BLOCKED_BY_PHASE4_SCORE",
+                "required_score": 5,
+                "reason": "Blocked by authoritative Phase 4 quality rules: score 4 below required 5. base Phase 4 min score requires score >= 4 | symbol EURUSD PRIORITY requires score >= 4 | strategy MOMENTUM_PULLBACK RESTRICT requires score >= 5",
+                "symbol_rule": {
+                    "type": "symbol",
+                    "name": "EURUSD",
+                    "closed_orders": 17,
+                    "wins": 7,
+                    "losses": 8,
+                    "timeouts": 2,
+                    "net_profit_usd": 2.0437,
+                    "winrate_percent": 41.18,
+                    "profit_factor": 2.0219,
+                    "expectancy_usd": 0.1202,
+                    "guard_status": "PRIORITY",
+                    "min_score_required": 4,
+                    "allow_new_entries": true,
+                    "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+                    "phase4b_refinement": true,
+                    "phase4b_refinement_reasons": [
+                        "PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+                    ]
+                },
+                "strategy_rule": {
+                    "type": "strategy",
+                    "name": "MOMENTUM_PULLBACK",
+                    "closed_orders": 20,
+                    "wins": 6,
+                    "losses": 12,
+                    "timeouts": 2,
+                    "net_profit_usd": 0.5437,
+                    "winrate_percent": 30.0,
+                    "profit_factor": 1.1812,
+                    "expectancy_usd": 0.0272,
+                    "guard_status": "RESTRICT",
+                    "min_score_required": 5,
+                    "allow_new_entries": true,
+                    "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+                },
+                "normalized_symbol_rule": {
+                    "rule_type": "symbol",
+                    "name": "EURUSD",
+                    "guard_status": "PRIORITY",
+                    "allow_new_entries": true,
+                    "min_score_required": 4,
+                    "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+                    "raw_rule": {
+                        "type": "symbol",
+                        "name": "EURUSD",
+                        "closed_orders": 17,
+                        "wins": 7,
+                        "losses": 8,
+                        "timeouts": 2,
+                        "net_profit_usd": 2.0437,
+                        "winrate_percent": 41.18,
+                        "profit_factor": 2.0219,
+                        "expectancy_usd": 0.1202,
+                        "guard_status": "PRIORITY",
+                        "min_score_required": 4,
+                        "allow_new_entries": true,
+                        "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+                        "phase4b_refinement": true,
+                        "phase4b_refinement_reasons": [
+                            "PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+                        ]
+                    }
+                },
+                "normalized_strategy_rule": {
+                    "rule_type": "strategy",
+                    "name": "MOMENTUM_PULLBACK",
+                    "guard_status": "RESTRICT",
+                    "allow_new_entries": true,
+                    "min_score_required": 5,
+                    "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5.",
+                    "raw_rule": {
+                        "type": "strategy",
+                        "name": "MOMENTUM_PULLBACK",
+                        "closed_orders": 20,
+                        "wins": 6,
+                        "losses": 12,
+                        "timeouts": 2,
+                        "net_profit_usd": 0.5437,
+                        "winrate_percent": 30.0,
+                        "profit_factor": 1.1812,
+                        "expectancy_usd": 0.0272,
+                        "guard_status": "RESTRICT",
+                        "min_score_required": 5,
+                        "allow_new_entries": true,
+                        "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+                    }
+                },
+                "authoritative": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01
+            },
+            "phase4_quality_precheck_passed": false,
+            "market_regime_guard": {},
+            "phase4_exploration": {},
+            "phase4r_review_lock_allowed": false,
+            "phase4r_review_lock_guard": {
+                "enabled": true,
+                "status": "LOCKED",
+                "mode": "LOCK_NEW_ENTRIES_WHEN_PHASE4_REVIEW_REQUIRED",
+                "locked": true,
+                "tag": "PHASE4R_REVIEW_LOCK",
+                "quality_status": "NOT_READY",
+                "action": "KEEP DRY_RUN/PAPER-ONLY. DO NOT LOOSEN GUARDS.",
+                "loss_streak": 3,
+                "loss_streak_threshold": 3,
+                "reason": "Phase 4R review lock active: quality status is NOT_READY | loss streak 3 >= threshold 3. New paper entries are held until Phase 4 review improves.",
+                "streak_keys_checked": [
+                    "consecutive_losses",
+                    "current_consecutive_losses",
+                    "current_loss_streak",
+                    "latest_loss_streak",
+                    "loss_streak",
+                    "max_loss_streak",
+                    "recent_loss_streak",
+                    "recent_streak",
+                    "rolling_loss_streak"
+                ]
+            },
+            "phase4r_global_systemic_lock_needed": false,
+            "phase4r_pair_specific_loss_lock": {
+                "enabled": true,
+                "status": "PASSED_PAIR_NOT_LOCKED",
+                "mode": "PAIR_SPECIFIC_LOSS_LOCK_WITH_RECOVERY_EXCEPTION",
+                "tag": "PHASE4R_PAIR_SPECIFIC_LOSS_LOCK",
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "loss_streak": 2,
+                "threshold": 3,
+                "closed_orders": 3,
+                "locked_symbols": [
+                    "GBPUSD"
+                ],
+                "pair_locked": false,
+                "recovery_exception_allowed": false,
+                "creates_order": false,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "unlock_global_phase4r": false,
+                "requirements": [],
+                "reason": "EURUSD loss streak 2 < 3; pair is not locked."
+            },
+            "post_loss_guard": {
+                "enabled": true,
+                "symbol": "EURUSD",
+                "loss_streak": 2,
+                "global_loss_streak": 3,
+                "pair_loss_streak": 2,
+                "closed_orders": 52,
+                "pair_closed_orders": 3,
+                "locked_symbols": [
+                    "GBPUSD"
+                ],
+                "pair_specific_mode": true,
+                "systemic_pause_needed": false,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "status": "PAIR_STRICT_SCORE_BLOCK",
+                "min_score_required": 5,
+                "reason": "Pair-specific post-loss strict mode for EURUSD requires score >= 5; current score=4."
+            },
+            "post_loss_cooldown_guard": {
+                "enabled": true,
+                "symbol": "EURUSD",
+                "loss_streak": 2,
+                "global_loss_streak": 3,
+                "pair_loss_streak": 2,
+                "closed_orders": 52,
+                "pair_closed_orders": 3,
+                "locked_symbols": [
+                    "GBPUSD"
+                ],
+                "pair_specific_mode": true,
+                "systemic_pause_needed": false,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "status": "PAIR_STRICT_SCORE_BLOCK",
+                "min_score_required": 5,
+                "reason": "Pair-specific post-loss strict mode for EURUSD requires score >= 5; current score=4."
+            },
+            "execution_lane": "MAIN_VALIDATION",
+            "sample_tag": "MAIN_VALIDATION_SAMPLE",
+            "volatility_debug": {
+                "enabled": true,
+                "symbol": "EURUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "volatility_percent": 0.029636,
+                "min_volatility_percent": 0.006,
+                "gap_to_threshold": -0.023636,
+                "passed": true,
+                "status": "PASSED",
+                "reason": "Volatility 0.029636% / minimum 0.006000% (PASSED)."
+            },
+            "phase5s_multi_pair_improvement": {
+                "missing": [],
+                "actions": []
+            },
+            "phase5t_all_pair_recovery_planner": {
+                "steps": []
+            },
+            "phase5u_phase4r_lock_inspector": {
+                "requirements": []
+            },
+            "phase5w_score_repair_advisor": {
+                "components": [],
+                "actions": []
+            },
+            "action": "-",
+            "phase4_review_improvement_guard": {
+                "enabled": true,
+                "status": "BLOCKED_BY_PHASE4_REVIEW",
+                "review_required": true,
+                "previous_status": "WAIT",
+                "previous_action": null,
+                "final_status": "WAIT",
+                "final_action": "-",
+                "creates_order": false,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reasons": [
+                    "MOMENTUM_PULLBACK score 4 below Phase 4 review minimum 5."
+                ]
+            }
+        },
+        {
+            "symbol": "BTCUSD",
+            "status": "WAIT",
+            "reason": "Latest candle is flat Open=High=Low=Close. Recent close movement was not enough to classify this as a usable price-only feed. New paper signals are blocked until live movement returns. Recent close prices moved 0.263769% across the last 10 candles with 9 close-change candle(s). This looks like a price-only feed, not fully stale data. Phase 4 review guard active: MOMENTUM_PULLBACK score 2 below Phase 4 review minimum 5.",
+            "signal": "SELL",
+            "market_status": "NORMAL",
+            "volatility_percent": 0.3069700916047253,
+            "selected_strategy": "MOMENTUM_PULLBACK",
+            "original_selected_strategy": "MOMENTUM_PULLBACK",
+            "final_strategy_sanitizer": {
+                "enabled": true,
+                "status": "NOT_NEEDED",
+                "original_strategy": "MOMENTUM_PULLBACK",
+                "sanitized_strategy": "MOMENTUM_PULLBACK",
+                "strategy_sanitized": false,
+                "allowed_fallbacks": [
+                    "BREAKOUT",
+                    "MEAN_REVERSION",
+                    "MOMENTUM_PULLBACK"
+                ],
+                "creates_order": false,
+                "unlock_phase4r": false,
+                "reason": "Selected strategy is not force-blocked; no final strategy sanitization needed."
+            },
+            "strategy_score": 2,
+            "strategy_original_score": 2,
+            "score_boost": {
+                "enabled": true,
+                "applied": false,
+                "original_score": 2,
+                "boosted_score": 2,
+                "reason": "Guarded score boost not checked yet.",
+                "positive_matches": 0,
+                "negative_matches": 0
+            },
+            "phase5a_adaptive_score": {
+                "enabled": true,
+                "applied": false,
+                "original_score": 2,
+                "adaptive_score": 2,
+                "reason": "Phase 5A adaptive score engine not checked yet."
+            },
+            "strategy_regime": "RANGING",
+            "strategy_reasons": [
+                "bearish pullback near EMA20"
+            ],
+            "phase4b_symbol_guard": {
+                "enabled": true,
+                "status": "PASSED",
+                "allowed_symbols": [
+                    "BTCUSD",
+                    "EURUSD"
+                ],
+                "policy": "WAIT",
+                "reason": "BTCUSD is allowed by Phase 4B symbol whitelist."
+            },
+            "phase5e_pair_rotation_guard": {
+                "enabled": true,
+                "status": "PASSED",
+                "symbol": "BTCUSD",
+                "rotation_mode": "QUALITY_FIRST_PRIMARY_ONLY",
+                "primary_symbols": [
+                    "BTCUSD",
+                    "EURUSD"
+                ],
+                "blocked_symbols": [
+                    "GBPUSD"
+                ],
+                "unknown_symbol_policy": "WAIT",
+                "reason": "BTCUSD passed Phase 5E quality-first pair rotation guard."
+            },
+            "phase5f_strategy_selection_guard": {
+                "enabled": true,
+                "status": "BLOCKED_SCORE",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 2,
+                "volatility_percent": 0.30697,
+                "strategy_mode": "QUALITY_FIRST_NO_TREND_FOLLOWING",
+                "allowed_strategies": [
+                    "BREAKOUT",
+                    "MEAN_REVERSION",
+                    "MOMENTUM_PULLBACK"
+                ],
+                "blocked_strategies": [
+                    "TREND_FOLLOWING"
+                ],
+                "reason": "MOMENTUM_PULLBACK requires score >= 5 by Phase 5F; current score=2.",
+                "required_score": 5,
+                "required_volatility_percent": 0.02,
+                "phase4_strategy_rule": {
+                    "type": "strategy",
+                    "name": "MOMENTUM_PULLBACK",
+                    "closed_orders": 20,
+                    "wins": 6,
+                    "losses": 12,
+                    "timeouts": 2,
+                    "net_profit_usd": 0.5437,
+                    "winrate_percent": 30.0,
+                    "profit_factor": 1.1812,
+                    "expectancy_usd": 0.0272,
+                    "guard_status": "RESTRICT",
+                    "min_score_required": 5,
+                    "allow_new_entries": true,
+                    "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+                }
+            },
+            "phase5g_pre_score_diagnostics": {
+                "enabled": true,
+                "status": "SCORE_TOO_LOW",
+                "mode": "EXPLAIN_EARLY_WAIT",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "original_score": 2,
+                "required_score": 5,
+                "score_gap": 3,
+                "volatility_percent": 0.30697,
+                "required_volatility_percent": 0.02,
+                "volatility_gap": 0.0,
+                "positive_matches": 2,
+                "negative_matches": 0,
+                "phase5a_preview_can_boost": true,
+                "preview_score_after_phase5a": 3,
+                "phase5f_status": "BLOCKED_SCORE",
+                "phase5f_reason": "MOMENTUM_PULLBACK requires score >= 5 by Phase 5F; current score=2.",
+                "reason": "Score needs +3 more point(s) to pass Phase 5F."
+            },
+            "phase5h_strategy_score_explainability": {
+                "enabled": true,
+                "status": "INSUFFICIENT_POSITIVE_CONFIRMATION",
+                "mode": "EXPLAIN_SCORE_GAP",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "original_score": 2,
+                "required_score": 5,
+                "score_gap": 3,
+                "volatility_percent": 0.30697,
+                "positive_matches": 2,
+                "negative_matches": 0,
+                "present_components": [
+                    "trend_alignment",
+                    "momentum_confirmation"
+                ],
+                "missing_components": [
+                    "volatility_quality",
+                    "replay_validation"
+                ],
+                "component_status": {
+                    "trend_alignment": {
+                        "present": true,
+                        "matched_keywords": [
+                            "ema"
+                        ],
+                        "expected_keywords": [
+                            "trend",
+                            "ema",
+                            "structure"
+                        ]
+                    },
+                    "momentum_confirmation": {
+                        "present": true,
+                        "matched_keywords": [
+                            "pullback"
+                        ],
+                        "expected_keywords": [
+                            "momentum",
+                            "adx",
+                            "pullback"
+                        ]
+                    },
+                    "volatility_quality": {
+                        "present": false,
+                        "matched_keywords": [],
+                        "expected_keywords": [
+                            "volatility",
+                            "atr",
+                            "breakout"
+                        ]
+                    },
+                    "replay_validation": {
+                        "present": false,
+                        "matched_keywords": [],
+                        "expected_keywords": [
+                            "replay",
+                            "approved"
+                        ]
+                    }
+                },
+                "phase5g_status": "SCORE_TOO_LOW",
+                "phase5g_reason": "Score needs +3 more point(s) to pass Phase 5F.",
+                "reason": "Score is low because only 2 positive confirmation(s) were found; strong setup target is 3.",
+                "phase5z_replay_validation_reconciled": false,
+                "phase5z_replay_validation_reconcile_reason": "Phase5Z has not restored replay_validation yet."
+            },
+            "phase5i_no_strategy_market_state": {
+                "enabled": true,
+                "status": "NOT_APPLICABLE",
+                "mode": "EXPLAIN_NO_STRATEGY",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "volatility_percent": 0.30697,
+                "min_volatility_percent": 0.006,
+                "reason": "Phase 5I only applies when scanner outputs NO_STRATEGY."
+            },
+            "phase5j_market_session_allowed": false,
+            "phase5j_market_session_guard": {
+                "enabled": true,
+                "status": "FLAT_LATEST_CANDLE",
+                "mode": "BLOCK_MARKET_CLOSED_OR_STALE",
+                "symbol": "BTCUSD",
+                "server_now": "2026-07-09T11:26:35",
+                "weekday": 3,
+                "reason": "Latest candle is flat Open=High=Low=Close. Recent close movement was not enough to classify this as a usable price-only feed. New paper signals are blocked until live movement returns. Recent close prices moved 0.263769% across the last 10 candles with 9 close-change candle(s). This looks like a price-only feed, not fully stale data.",
+                "source_path": "data/BTCUSD.csv",
+                "load_status": "LOADED",
+                "latest_open": 62028.3984375,
+                "latest_high": 62070.421875,
+                "latest_low": 61952.80859375,
+                "latest_close": 62029.26171875,
+                "latest_volume": 204468224.0,
+                "flat_latest_candle": false,
+                "zero_volume": false,
+                "latest_time_raw": "2026-07-09 02:15:00+00:00",
+                "latest_age_minutes": 11.59,
+                "price_only_feed_allowed": false
+            },
+            "phase5k_market_reopen_allowed": true,
+            "phase5k_market_reopen_warmup_guard": {
+                "enabled": true,
+                "status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "mode": "BLOCK_REOPEN_UNSTABLE_CANDLES",
+                "symbol": "BTCUSD",
+                "server_now": "2026-07-09T11:26:35",
+                "weekday": 3,
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "reason": "Phase 5K is not checked because Phase 5J is already blocking market/session conditions."
+            },
+            "phase5l_market_open_readiness": {
+                "enabled": true,
+                "status": "CLOSED",
+                "mode": "SCORE_MARKET_OPEN_READINESS",
+                "symbol": "BTCUSD",
+                "score": 25,
+                "max_score": 100,
+                "min_ready_score": 80,
+                "min_watch_score": 55,
+                "components": {
+                    "session_score": 0,
+                    "reopen_score": 0,
+                    "volatility_score": 25,
+                    "activity_score": 0
+                },
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "volatility_percent": 0.30697,
+                "min_volatility_percent": 0.006,
+                "reason": "Phase5J status is FLAT_LATEST_CANDLE; market is not fully open/usable yet. | Phase5K is not applicable because Phase5J is already blocking. | Volatility passed: 0.306970% >= 0.006000%. | Activity ratio is unavailable from Phase5K."
+            },
+            "phase5o_crypto_weekend_near_ready": {
+                "enabled": true,
+                "status": "NOT_NEAR_READY",
+                "mode": "DIAGNOSE_CRYPTO_WEEKEND_NEAR_READY",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 2,
+                "volatility_percent": 0.30697,
+                "allowed_phase5j_statuses": [
+                    "CRYPTO_WEEKEND_TEST_ALLOWED",
+                    "PRICE_ONLY_FEED_ALLOWED"
+                ],
+                "reason": "BTCUSD paper setup is not near-ready yet: preview score gap=2, active candle gap=2, volatility gap=0.000000%, blockers=['Phase5J=FLAT_LATEST_CANDLE', 'Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING'].",
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "phase5j_usable": false,
+                "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "phase5f_status": "BLOCKED_SCORE",
+                "phase5a_preview_can_boost": true,
+                "preview_score_after_phase5a": 3,
+                "required_score": 5,
+                "score_gap": 3,
+                "preview_score_gap": 2,
+                "active_candles": 0,
+                "min_active_candles": 2,
+                "active_candle_gap": 2,
+                "required_volatility_percent": 0.02,
+                "volatility_gap": 0.0,
+                "max_active_candle_gap": 1,
+                "max_volatility_gap_percent": 0.003,
+                "blockers": [
+                    "Phase5J=FLAT_LATEST_CANDLE",
+                    "Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING"
+                ]
+            },
+            "phase5p_controlled_score_commit": {
+                "enabled": true,
+                "status": "WAIT_NEAR_READY",
+                "mode": "COMMIT_PHASE5A_ONLY_FOR_CRYPTO_WEEKEND_NEAR_READY",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "original_score": 2,
+                "committed_score": 2,
+                "score_boost": 0,
+                "tag": "PHASE5P_CRYPTO_WEEKEND_SCORE_COMMIT",
+                "reason": "Phase 5P waits because Phase5O status is NOT_NEAR_READY, not NEAR_READY_CRYPTO_WEEKEND.",
+                "phase5o_status": "NOT_NEAR_READY",
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "phase5a_preview_can_boost": true,
+                "preview_score_after_phase5a": 3,
+                "required_score": 5,
+                "max_score_boost": 1,
+                "candidate_committed_score": 3,
+                "candidate_score_boost": 1
+            },
+            "phase5q_crypto_no_strategy_preview": {
+                "enabled": true,
+                "status": "NOT_NEEDED",
+                "mode": "CLASSIFY_CRYPTO_WEEKEND_NO_STRATEGY_PREVIEW",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "volatility_percent": 0.30697,
+                "reason": "Phase 5Q is not needed because selected strategy is MOMENTUM_PULLBACK."
+            },
+            "phase5r_controlled_strategy_assignment": {
+                "enabled": true,
+                "status": "NOT_NEEDED",
+                "mode": "ASSIGN_STRATEGY_FROM_CRYPTO_NO_STRATEGY_PREVIEW",
+                "symbol": "BTCUSD",
+                "original_strategy": "MOMENTUM_PULLBACK",
+                "assigned_strategy": "MOMENTUM_PULLBACK",
+                "original_score": 2,
+                "assigned_score": 2,
+                "original_signal": "SELL",
+                "assigned_signal": "SELL",
+                "original_decision": "SELL",
+                "assigned_decision": "SELL",
+                "tag": "PHASE5R_CRYPTO_WEEKEND_STRATEGY_ASSIGNMENT",
+                "reason": "Phase 5R is not needed because strategy is already MOMENTUM_PULLBACK.",
+                "phase5q_status": "NOT_NEEDED",
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "direction_preview": "WAIT",
+                "confidence": "UNKNOWN",
+                "allowed_preview_statuses": [
+                    "CRYPTO_MICRO_MOMENTUM_PREVIEW"
+                ],
+                "target_strategy": "MOMENTUM_PULLBACK",
+                "target_score": 4
+            },
+            "phase5s_multi_pair_strategy_improvement": {
+                "enabled": true,
+                "status": "IMPROVEMENT_NEEDED",
+                "mode": "DIAGNOSE_MULTI_PAIR_SCORE_IMPROVEMENT",
+                "tag": "PHASE5S_MULTI_PAIR_IMPROVEMENT",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 2,
+                "required_score": 5,
+                "score_gap": 3,
+                "volatility_percent": 0.30697,
+                "required_volatility_percent": 0.02,
+                "volatility_gap": 0.0,
+                "positive_matches": 2,
+                "negative_matches": 0,
+                "missing_components": [
+                    "volatility_quality",
+                    "replay_validation"
+                ],
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "phase5l_status": "CLOSED",
+                "readiness_score": 25,
+                "blockers": [
+                    "Phase5J=FLAT_LATEST_CANDLE",
+                    "score gap 3; score=2, required=5",
+                    "positive confirmations 2 < target 3"
+                ],
+                "strengths": [
+                    "Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING",
+                    "volatility 0.306970% meets required 0.020000%"
+                ],
+                "improvement_actions": [
+                    "wait for fresh usable candles or improve data feed freshness",
+                    "need +3 score point(s): require stronger trend, momentum, volatility, or replay confirmation",
+                    "require more positive strategy reasons before boosting confidence",
+                    "missing components: volatility_quality, replay_validation"
+                ],
+                "reason": "Phase 5S multi-pair improvement diagnostic: Phase5J=FLAT_LATEST_CANDLE | score gap 3; score=2, required=5 | positive confirmations 2 < target 3",
+                "phase5z_replay_validation_reconciled": false,
+                "phase5z_replay_validation_reconcile_reason": "Phase5Z has not restored replay_validation for this pair/setup."
+            },
+            "phase5t_all_pair_quality_recovery_planner": {
+                "enabled": true,
+                "status": "REVIEW_LOCK_RECOVERY_PLAN",
+                "mode": "PLAN_ALL_PAIR_QUALITY_RECOVERY",
+                "tag": "PHASE5T_ALL_PAIR_RECOVERY_PLAN",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 2,
+                "required_score": 5,
+                "score_gap": 3,
+                "volatility_percent": 0.30697,
+                "phase4r_status": "LOCKED",
+                "phase4r_locked": true,
+                "quality_status": "NOT_READY",
+                "loss_streak": 3,
+                "loss_streak_threshold": 3,
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "phase5f_status": "BLOCKED_SCORE",
+                "positive_matches": 2,
+                "missing_components": [
+                    "volatility_quality",
+                    "replay_validation"
+                ],
+                "blockers": [
+                    "Phase4R=LOCKED, quality=NOT_READY, loss_streak=3/3",
+                    "Phase5J=FLAT_LATEST_CANDLE",
+                    "Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING",
+                    "score=2 < recovery target 5",
+                    "positive confirmations=2 < 3"
+                ],
+                "ready_checks": [],
+                "recovery_steps": [
+                    "keep Phase4R locked until quality report no longer requests STOP_AND_REVIEW",
+                    "wait for usable market/session data before scoring recovery",
+                    "wait for reopen/warmup guard to pass",
+                    "raise strategy score to at least 5 using stronger confirmations",
+                    "close score gap +3 for MOMENTUM_PULLBACK",
+                    "require more positive confirmations before considering recovery sample",
+                    "restore missing components: volatility_quality, replay_validation",
+                    "wait for fresh usable candles or improve data feed freshness",
+                    "need +3 score point(s): require stronger trend, momentum, volatility, or replay confirmation",
+                    "require more positive strategy reasons before boosting confidence",
+                    "missing components: volatility_quality, replay_validation"
+                ],
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "Phase 5T all-pair recovery planner: Phase4R=LOCKED, quality=NOT_READY, loss_streak=3/3 | Phase5J=FLAT_LATEST_CANDLE | Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING | score=2 < recovery target 5 | positive confirmations=2 < 3. Diagnostic only; Phase4R remains authoritative.",
+                "phase5z_replay_validation_reconciled": false,
+                "phase5z_replay_validation_reconcile_reason": "Phase5Z has not restored replay_validation for this pair/setup."
+            },
+            "phase5u_all_pair_phase4r_lock_inspector": {
+                "enabled": true,
+                "status": "LOCKED_AND_NOT_RECOVERY_READY",
+                "mode": "INSPECT_ALL_PAIR_PHASE4R_LOCK_SOURCE",
+                "tag": "PHASE5U_PHASE4R_LOCK_INSPECTOR",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 2,
+                "phase4r_status": "LOCKED",
+                "phase4r_locked": true,
+                "quality_status": "NOT_READY",
+                "quality_action": "KEEP DRY_RUN/PAPER-ONLY. DO NOT LOOSEN GUARDS.",
+                "loss_streak": 3,
+                "loss_streak_threshold": 3,
+                "phase5f_status": "BLOCKED_SCORE",
+                "phase5j_status": "FLAT_LATEST_CANDLE",
+                "phase5k_status": "NOT_APPLICABLE_PHASE5J_BLOCKING",
+                "phase5l_status": "CLOSED",
+                "readiness_score": 25,
+                "positive_matches": 2,
+                "missing_components": [
+                    "volatility_quality",
+                    "replay_validation"
+                ],
+                "phase5t_recovery_status": "REVIEW_LOCK_RECOVERY_PLAN",
+                "lock_sources": [
+                    "quality status=NOT_READY",
+                    "loss streak=3/3"
+                ],
+                "unlock_requirements": [
+                    "quality status must improve from NOT_READY",
+                    "loss streak must reset below lock threshold through closed paper results",
+                    "restore missing components: volatility_quality, replay_validation"
+                ],
+                "recovery_readiness": [],
+                "still_blocked_by": [
+                    "market readiness not enough: Phase5J=FLAT_LATEST_CANDLE, Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING, Phase5L=CLOSED",
+                    "Phase5F=BLOCKED_SCORE",
+                    "score=2 < 5",
+                    "positive confirmations=2 < 3"
+                ],
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "Phase 5U Phase4R lock inspector: quality status=NOT_READY | loss streak=3/3. Diagnostic only; no automatic unlock is performed.",
+                "phase5z_replay_validation_reconciled": false,
+                "phase5z_replay_validation_reconcile_reason": "Phase5Z has not restored replay_validation for this pair/setup."
+            },
+            "phase5v_all_pair_shadow_recovery_marker": {
+                "enabled": true,
+                "status": "WAIT_REPAIR_REQUIRED",
+                "mode": "MARK_ALL_PAIR_SHADOW_RECOVERY_CANDIDATES",
+                "tag": "PHASE5V_SHADOW_RECOVERY_CANDIDATE",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 2,
+                "phase5u_status": "LOCKED_AND_NOT_RECOVERY_READY",
+                "phase5t_status": "REVIEW_LOCK_RECOVERY_PLAN",
+                "review_priority": "LOW",
+                "still_blocked_by": [
+                    "market readiness not enough: Phase5J=FLAT_LATEST_CANDLE, Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING, Phase5L=CLOSED",
+                    "Phase5F=BLOCKED_SCORE",
+                    "score=2 < 5",
+                    "positive confirmations=2 < 3"
+                ],
+                "recovery_readiness": [],
+                "unlock_requirements": [
+                    "quality status must improve from NOT_READY",
+                    "loss streak must reset below lock threshold through closed paper results",
+                    "restore missing components: volatility_quality, replay_validation"
+                ],
+                "improvement_actions": [
+                    "wait for fresh usable candles or improve data feed freshness",
+                    "need +3 score point(s): require stronger trend, momentum, volatility, or replay confirmation",
+                    "require more positive strategy reasons before boosting confidence",
+                    "missing components: volatility_quality, replay_validation"
+                ],
+                "creates_order": false,
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "BTCUSD is not recovery-ready yet: market readiness not enough: Phase5J=FLAT_LATEST_CANDLE, Phase5K=NOT_APPLICABLE_PHASE5J_BLOCKING, Phase5L=CLOSED | Phase5F=BLOCKED_SCORE | score=2 < 5 | positive confirmations=2 < 3"
+            },
+            "phase5w_all_pair_score_repair_advisor": {
+                "enabled": true,
+                "status": "SCORE_REPAIR_REQUIRED",
+                "mode": "ADVISE_ALL_PAIR_SCORE_REPAIR",
+                "tag": "PHASE5W_SCORE_REPAIR_ADVISOR",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 2,
+                "target_score": 5,
+                "score_gap": 3,
+                "positive_matches": 2,
+                "target_positive_confirmations": 3,
+                "positive_gap": 1,
+                "negative_matches": 0,
+                "phase5v_status": "WAIT_REPAIR_REQUIRED",
+                "component_targets": [
+                    "volatility_quality",
+                    "replay_validation"
+                ],
+                "missing_components": [
+                    "volatility_quality",
+                    "replay_validation"
+                ],
+                "repair_actions": [
+                    "raise score by +3 to reach 5",
+                    "add +1 positive confirmation(s) to reach 3",
+                    "need volatility quality confirmation: ATR/breakout/volatility reason must appear",
+                    "need replay validation: pair/setup should be approved by replay candidate filter",
+                    "wait for fresh usable candles or improve data feed freshness",
+                    "need +3 score point(s): require stronger trend, momentum, volatility, or replay confirmation",
+                    "require more positive strategy reasons before boosting confidence",
+                    "missing components: volatility_quality, replay_validation"
+                ],
+                "review_priority": "HIGH",
+                "creates_order": false,
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "Phase 5W score repair advisor for BTCUSD: score_gap=3, positive_gap=1, components=['volatility_quality', 'replay_validation']. Diagnostic only; no order is created.",
+                "phase5z_replay_validation_reconciled": false,
+                "phase5z_replay_validation_reconcile_reason": "Phase5Z has not restored replay_validation for this pair/setup."
+            },
+            "phase5x_all_pair_allowed_strategy_redirect_advisor": {
+                "enabled": true,
+                "status": "CURRENT_STRATEGY_ALLOWED",
+                "mode": "ADVISE_ALL_PAIR_ALLOWED_STRATEGY_REDIRECT",
+                "tag": "PHASE5X_ALLOWED_STRATEGY_REDIRECT",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "strategy_score": 2,
+                "volatility_percent": 0.30697,
+                "phase5f_status": "BLOCKED_SCORE",
+                "phase5w_status": "SCORE_REPAIR_REQUIRED",
+                "positive_matches": 2,
+                "missing_components": [
+                    "volatility_quality",
+                    "replay_validation"
+                ],
+                "allowed_fallback_strategies": [
+                    "BREAKOUT",
+                    "MEAN_REVERSION",
+                    "MOMENTUM_PULLBACK"
+                ],
+                "redirect_candidates": [],
+                "redirect_requirements": [],
+                "assigns_strategy": false,
+                "creates_order": false,
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "MOMENTUM_PULLBACK is already inside the allowed strategy set. No redirect advice needed."
+            },
+            "phase5z_all_pair_replay_validation_recovery_checker": {
+                "enabled": true,
+                "status": "REPLAY_VALIDATION_STILL_MISSING",
+                "mode": "CHECK_ALL_PAIR_REPLAY_VALIDATION_RECOVERY",
+                "tag": "PHASE5Z_REPLAY_VALIDATION_RECOVERY",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "phase5w_status": "SCORE_REPAIR_REQUIRED",
+                "source": "paper_replay_candidates.json",
+                "source_status": "LOADED",
+                "replay_validation_missing": true,
+                "replay_validation_restored": false,
+                "matched_candidate_count": 0,
+                "matched_candidates": [],
+                "watch_candidate_count": 0,
+                "watch_candidates": [],
+                "valid_replay_statuses": [
+                    "APPROVED",
+                    "APPROVED_REPLAY_CANDIDATE",
+                    "APPROVED_SYMBOL_FALLBACK",
+                    "CANDIDATE",
+                    "PASSED",
+                    "READY"
+                ],
+                "watch_replay_statuses": [
+                    "DRAFT_REPLAY_CANDIDATE",
+                    "WATCH",
+                    "WATCH_REPLAY_CANDIDATE"
+                ],
+                "approved_symbols_debug": [
+                    "EURUSD"
+                ],
+                "approved_symbols": [
+                    "EURUSD"
+                ],
+                "watch_symbols_debug": [
+                    "AUDJPY",
+                    "AUDJPY:MEAN_REVERSION",
+                    "AUDJPY:MOMENTUM_PULLBACK",
+                    "CADJPY",
+                    "CADJPY:MEAN_REVERSION",
+                    "CHFJPY",
+                    "CHFJPY:MEAN_REVERSION",
+                    "CHFJPY:MOMENTUM_PULLBACK",
+                    "EURGBP",
+                    "EURGBP:MEAN_REVERSION",
+                    "GBPJPY",
+                    "GBPJPY:MEAN_REVERSION",
+                    "XAGUSD",
+                    "XAGUSD:MEAN_REVERSION",
+                    "XAUUSD",
+                    "XAUUSD:MEAN_REVERSION"
+                ],
+                "watch_symbols": [
+                    "AUDJPY",
+                    "AUDJPY:MEAN_REVERSION",
+                    "AUDJPY:MOMENTUM_PULLBACK",
+                    "CADJPY",
+                    "CADJPY:MEAN_REVERSION",
+                    "CHFJPY",
+                    "CHFJPY:MEAN_REVERSION",
+                    "CHFJPY:MOMENTUM_PULLBACK",
+                    "EURGBP",
+                    "EURGBP:MEAN_REVERSION",
+                    "GBPJPY",
+                    "GBPJPY:MEAN_REVERSION",
+                    "XAGUSD",
+                    "XAGUSD:MEAN_REVERSION",
+                    "XAUUSD",
+                    "XAUUSD:MEAN_REVERSION"
+                ],
+                "candidate_symbols_debug": [
+                    "AUDJPY",
+                    "AUDJPY:MEAN_REVERSION",
+                    "AUDJPY:MOMENTUM_PULLBACK",
+                    "CADJPY",
+                    "CADJPY:MEAN_REVERSION",
+                    "CHFJPY",
+                    "CHFJPY:MEAN_REVERSION",
+                    "CHFJPY:MOMENTUM_PULLBACK",
+                    "EURGBP",
+                    "EURGBP:MEAN_REVERSION",
+                    "EURUSD",
+                    "GBPJPY",
+                    "GBPJPY:MEAN_REVERSION",
+                    "XAGUSD",
+                    "XAGUSD:MEAN_REVERSION",
+                    "XAUUSD",
+                    "XAUUSD:MEAN_REVERSION"
+                ],
+                "excluded_symbols": [
+                    "GBPUSD"
+                ],
+                "excluded_symbol_details": [
+                    {
+                        "symbol": "GBPUSD",
+                        "source": "blocked_symbols",
+                        "raw": "GBPUSD"
+                    }
+                ],
+                "blocked_symbol_exclusion_tag": "PHASE5Z_BLOCKED_SYMBOL_EXCLUSION",
+                "requirements": [
+                    "pair/setup needs a valid replay candidate before replay_validation can be considered restored",
+                    "no replay candidate matched BTCUSD MOMENTUM_PULLBACK"
+                ],
+                "creates_order": false,
+                "does_not_unlock_phase4r": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reason": "BTCUSD still misses replay_validation."
+            },
+            "phase4f_recovery_guard": {},
+            "phase4d_strategy_guard": {},
+            "phase4d_momentum_guard": {},
+            "phase4_quality_guard": {
+                "enabled": true,
+                "status": "BLOCKED_BY_PHASE4_SCORE",
+                "required_score": 5,
+                "reason": "Blocked by authoritative Phase 4 quality rules: score 2 below required 5. base Phase 4 min score requires score >= 4 | strategy MOMENTUM_PULLBACK RESTRICT requires score >= 5",
+                "symbol_rule": null,
+                "strategy_rule": {
+                    "type": "strategy",
+                    "name": "MOMENTUM_PULLBACK",
+                    "closed_orders": 20,
+                    "wins": 6,
+                    "losses": 12,
+                    "timeouts": 2,
+                    "net_profit_usd": 0.5437,
+                    "winrate_percent": 30.0,
+                    "profit_factor": 1.1812,
+                    "expectancy_usd": 0.0272,
+                    "guard_status": "RESTRICT",
+                    "min_score_required": 5,
+                    "allow_new_entries": true,
+                    "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+                },
+                "normalized_symbol_rule": null,
+                "normalized_strategy_rule": {
+                    "rule_type": "strategy",
+                    "name": "MOMENTUM_PULLBACK",
+                    "guard_status": "RESTRICT",
+                    "allow_new_entries": true,
+                    "min_score_required": 5,
+                    "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5.",
+                    "raw_rule": {
+                        "type": "strategy",
+                        "name": "MOMENTUM_PULLBACK",
+                        "closed_orders": 20,
+                        "wins": 6,
+                        "losses": 12,
+                        "timeouts": 2,
+                        "net_profit_usd": 0.5437,
+                        "winrate_percent": 30.0,
+                        "profit_factor": 1.1812,
+                        "expectancy_usd": 0.0272,
+                        "guard_status": "RESTRICT",
+                        "min_score_required": 5,
+                        "allow_new_entries": true,
+                        "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+                    }
+                },
+                "authoritative": true,
+                "paper_only": true,
+                "live_allowed": false,
+                "max_lot": 0.01
+            },
+            "phase4_quality_precheck_passed": false,
+            "market_regime_guard": {},
+            "phase4_exploration": {},
+            "phase4r_review_lock_allowed": false,
+            "phase4r_review_lock_guard": {
+                "enabled": true,
+                "status": "LOCKED",
+                "mode": "LOCK_NEW_ENTRIES_WHEN_PHASE4_REVIEW_REQUIRED",
+                "locked": true,
+                "tag": "PHASE4R_REVIEW_LOCK",
+                "quality_status": "NOT_READY",
+                "action": "KEEP DRY_RUN/PAPER-ONLY. DO NOT LOOSEN GUARDS.",
+                "loss_streak": 3,
+                "loss_streak_threshold": 3,
+                "reason": "Phase 4R review lock active: quality status is NOT_READY | loss streak 3 >= threshold 3. New paper entries are held until Phase 4 review improves.",
+                "streak_keys_checked": [
+                    "consecutive_losses",
+                    "current_consecutive_losses",
+                    "current_loss_streak",
+                    "latest_loss_streak",
+                    "loss_streak",
+                    "max_loss_streak",
+                    "recent_loss_streak",
+                    "recent_streak",
+                    "rolling_loss_streak"
+                ]
+            },
+            "phase4r_global_systemic_lock_needed": false,
+            "phase4r_pair_specific_loss_lock": {
+                "enabled": true,
+                "status": "PASSED_PAIR_NOT_LOCKED",
+                "mode": "PAIR_SPECIFIC_LOSS_LOCK_WITH_RECOVERY_EXCEPTION",
+                "tag": "PHASE4R_PAIR_SPECIFIC_LOSS_LOCK",
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "loss_streak": 0,
+                "threshold": 3,
+                "closed_orders": 1,
+                "locked_symbols": [
+                    "GBPUSD"
+                ],
+                "pair_locked": false,
+                "recovery_exception_allowed": false,
+                "creates_order": false,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "unlock_global_phase4r": false,
+                "requirements": [],
+                "reason": "BTCUSD loss streak 0 < 3; pair is not locked."
+            },
+            "post_loss_guard": {
+                "enabled": true,
+                "symbol": "BTCUSD",
+                "loss_streak": 0,
+                "global_loss_streak": 3,
+                "pair_loss_streak": 0,
+                "closed_orders": 52,
+                "pair_closed_orders": 1,
+                "locked_symbols": [
+                    "GBPUSD"
+                ],
+                "pair_specific_mode": true,
+                "systemic_pause_needed": false,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "status": "PASSED_PAIR_NOT_IN_COOLDOWN",
+                "reason": "Global loss streak is 3, but BTCUSD pair loss streak is 0. Pair-specific mode prevents unrelated pairs from being paused."
+            },
+            "post_loss_cooldown_guard": {
+                "enabled": true,
+                "symbol": "BTCUSD",
+                "loss_streak": 0,
+                "global_loss_streak": 3,
+                "pair_loss_streak": 0,
+                "closed_orders": 52,
+                "pair_closed_orders": 1,
+                "locked_symbols": [
+                    "GBPUSD"
+                ],
+                "pair_specific_mode": true,
+                "systemic_pause_needed": false,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "status": "PASSED_PAIR_NOT_IN_COOLDOWN",
+                "reason": "Global loss streak is 3, but BTCUSD pair loss streak is 0. Pair-specific mode prevents unrelated pairs from being paused."
+            },
+            "execution_lane": "MAIN_VALIDATION",
+            "sample_tag": "MAIN_VALIDATION_SAMPLE",
+            "volatility_debug": {
+                "enabled": true,
+                "symbol": "BTCUSD",
+                "strategy": "MOMENTUM_PULLBACK",
+                "volatility_percent": 0.30697,
+                "min_volatility_percent": 0.02,
+                "gap_to_threshold": -0.28697,
+                "passed": true,
+                "status": "PASSED",
+                "reason": "Volatility 0.306970% / minimum 0.020000% (PASSED)."
+            },
+            "action": "-",
+            "phase4_review_improvement_guard": {
+                "enabled": true,
+                "status": "BLOCKED_BY_PHASE4_REVIEW",
+                "review_required": true,
+                "previous_status": "WAIT",
+                "previous_action": null,
+                "final_status": "WAIT",
+                "final_action": "-",
+                "creates_order": false,
+                "live_allowed": false,
+                "max_lot": 0.01,
+                "reasons": [
+                    "MOMENTUM_PULLBACK score 2 below Phase 4 review minimum 5."
+                ]
+            }
+        }
+    ]
+}

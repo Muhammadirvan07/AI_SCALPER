@@ -1,0 +1,192 @@
+{
+  "generated_at": "2026-07-09T11:26:33.654462",
+  "mode": "PLAN_MANUAL_REPLAY_CANDIDATE_PROMOTION",
+  "enabled": true,
+  "live_allowed": false,
+  "max_lot": 0.01,
+  "source_multi_strategy_report_file": "all_pair_multi_strategy_backtest_report.json",
+  "total_symbols": 6,
+  "status_counts": {
+    "PROMOTE_TO_REPLAY_REVIEW": 5,
+    "KEEP_WATCHING_NEAR_PASS": 1
+  },
+  "promote_symbols": [
+    "EURGBP",
+    "AUDUSD",
+    "CHFJPY",
+    "EURJPY",
+    "AUDJPY"
+  ],
+  "keep_watching_symbols": [
+    "CADJPY"
+  ],
+  "rejected_symbols": [],
+  "promotion_plan": [
+    {
+      "symbol": "EURGBP",
+      "promotion_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "promotion_score": 112,
+      "best_strategy": "MEAN_REVERSION",
+      "best_profit_factor_proxy": 1.2639,
+      "best_winrate_proxy": 54.7794,
+      "best_net_return_percent_proxy": 1.0492,
+      "passed_strategies": [
+        "MEAN_REVERSION",
+        "MOMENTUM_PULLBACK"
+      ],
+      "multi_strategy_passed": true,
+      "near_pass": false,
+      "reasons": [
+        "multi_strategy_passed=True",
+        "profit_factor 1.2639 >= 1.05",
+        "strong profit_factor 1.2639 >= 1.25",
+        "winrate 54.7794% >= 45.00%",
+        "strong winrate 54.7794% >= 50.00%",
+        "net_return positive: 1.0492%",
+        "two or more strategies passed",
+        "allowed strategy bonus: MEAN_REVERSION +2"
+      ],
+      "requirements": [],
+      "tested_strategy_count": 3,
+      "next_action": "Manual review recommended. Do not auto-edit paper_replay_candidates.json or quality rules.",
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "AUDUSD",
+      "promotion_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "promotion_score": 96,
+      "best_strategy": "MOMENTUM_PULLBACK",
+      "best_profit_factor_proxy": 1.1793,
+      "best_winrate_proxy": 46.2039,
+      "best_net_return_percent_proxy": 1.1601,
+      "passed_strategies": [
+        "MOMENTUM_PULLBACK",
+        "MEAN_REVERSION"
+      ],
+      "multi_strategy_passed": true,
+      "near_pass": false,
+      "reasons": [
+        "multi_strategy_passed=True",
+        "profit_factor 1.1793 >= 1.05",
+        "winrate 46.2039% >= 45.00%",
+        "net_return positive: 1.1601%",
+        "two or more strategies passed",
+        "allowed strategy bonus: MOMENTUM_PULLBACK +1"
+      ],
+      "requirements": [],
+      "tested_strategy_count": 3,
+      "next_action": "Manual review recommended. Do not auto-edit paper_replay_candidates.json or quality rules.",
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "CHFJPY",
+      "promotion_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "promotion_score": 91,
+      "best_strategy": "MOMENTUM_PULLBACK",
+      "best_profit_factor_proxy": 1.1916,
+      "best_winrate_proxy": 53.6585,
+      "best_net_return_percent_proxy": 0.9496,
+      "passed_strategies": [
+        "MOMENTUM_PULLBACK"
+      ],
+      "multi_strategy_passed": true,
+      "near_pass": false,
+      "reasons": [
+        "multi_strategy_passed=True",
+        "profit_factor 1.1916 >= 1.05",
+        "winrate 53.6585% >= 45.00%",
+        "strong winrate 53.6585% >= 50.00%",
+        "net_return positive: 0.9496%",
+        "allowed strategy bonus: MOMENTUM_PULLBACK +1"
+      ],
+      "requirements": [],
+      "tested_strategy_count": 3,
+      "next_action": "Manual review recommended. Do not auto-edit paper_replay_candidates.json or quality rules.",
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "EURJPY",
+      "promotion_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "promotion_score": 91,
+      "best_strategy": "MOMENTUM_PULLBACK",
+      "best_profit_factor_proxy": 1.1906,
+      "best_winrate_proxy": 52.8217,
+      "best_net_return_percent_proxy": 0.7636,
+      "passed_strategies": [
+        "MOMENTUM_PULLBACK"
+      ],
+      "multi_strategy_passed": true,
+      "near_pass": false,
+      "reasons": [
+        "multi_strategy_passed=True",
+        "profit_factor 1.1906 >= 1.05",
+        "winrate 52.8217% >= 45.00%",
+        "strong winrate 52.8217% >= 50.00%",
+        "net_return positive: 0.7636%",
+        "allowed strategy bonus: MOMENTUM_PULLBACK +1"
+      ],
+      "requirements": [],
+      "tested_strategy_count": 3,
+      "next_action": "Manual review recommended. Do not auto-edit paper_replay_candidates.json or quality rules.",
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "AUDJPY",
+      "promotion_status": "PROMOTE_TO_REPLAY_REVIEW",
+      "promotion_score": 91,
+      "best_strategy": "MOMENTUM_PULLBACK",
+      "best_profit_factor_proxy": 1.0637,
+      "best_winrate_proxy": 50.1144,
+      "best_net_return_percent_proxy": 0.4145,
+      "passed_strategies": [
+        "MOMENTUM_PULLBACK"
+      ],
+      "multi_strategy_passed": true,
+      "near_pass": false,
+      "reasons": [
+        "multi_strategy_passed=True",
+        "profit_factor 1.0637 >= 1.05",
+        "winrate 50.1144% >= 45.00%",
+        "strong winrate 50.1144% >= 50.00%",
+        "net_return positive: 0.4145%",
+        "allowed strategy bonus: MOMENTUM_PULLBACK +1"
+      ],
+      "requirements": [],
+      "tested_strategy_count": 3,
+      "next_action": "Manual review recommended. Do not auto-edit paper_replay_candidates.json or quality rules.",
+      "live_allowed": false,
+      "max_lot": 0.01
+    },
+    {
+      "symbol": "CADJPY",
+      "promotion_status": "KEEP_WATCHING_NEAR_PASS",
+      "promotion_score": 26,
+      "best_strategy": "MOMENTUM_PULLBACK",
+      "best_profit_factor_proxy": 1.0474,
+      "best_winrate_proxy": 49.0956,
+      "best_net_return_percent_proxy": 0.1816,
+      "passed_strategies": [],
+      "multi_strategy_passed": false,
+      "near_pass": true,
+      "reasons": [
+        "winrate 49.0956% >= 45.00%",
+        "net_return positive: 0.1816%",
+        "allowed strategy bonus: MOMENTUM_PULLBACK +1",
+        "near pass: pf_gap=0.0026, winrate and net_return are acceptable"
+      ],
+      "requirements": [
+        "multi_strategy_passed must be True for promotion review",
+        "profit_factor must be >= 1.05; current=1.0474"
+      ],
+      "tested_strategy_count": 3,
+      "next_action": "Keep watching. Do not promote yet because profit_factor is still below threshold.",
+      "live_allowed": false,
+      "max_lot": 0.01
+    }
+  ],
+  "next_recommended_action": "Review promote_symbols manually before creating replay candidate or quality rule drafts. Do not auto-edit active_pairs, paper_replay_candidates, paper_quality_rules, or bridge settings."
+}

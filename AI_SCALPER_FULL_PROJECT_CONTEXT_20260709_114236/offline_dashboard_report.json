@@ -1,0 +1,588 @@
+{
+  "generated_at": "2026-07-09T02:26:37.459964+00:00",
+  "quality_status": "NOT_READY",
+  "live_allowed": false,
+  "active_pairs": [
+    "EURUSD"
+  ],
+  "replay_candidate_guard": {
+    "global_status": "CANDIDATES_AVAILABLE",
+    "global_action": "Use approved replay candidates for the next paper-only decision filter. Keep DRY_RUN locked.",
+    "live_allowed": false,
+    "approved_symbols": [
+      "EURUSD"
+    ],
+    "watch_symbols": [
+      "AUDJPY",
+      "CADJPY",
+      "CHFJPY",
+      "EURGBP",
+      "GBPJPY",
+      "XAUUSD",
+      "XAGUSD"
+    ],
+    "blocked_symbols": [
+      "GBPUSD"
+    ]
+  },
+  "decision_engine": {
+    "generated_at": "2026-07-09T11:26:35",
+    "replay_candidate_filter_enabled": true,
+    "ready_trade_count": 0,
+    "decision_count": 2
+  },
+  "mt5_bridge": {
+    "generated_at": "2026-07-09T11:26:35",
+    "bridge_status_generated_at": "2026-07-09T11:26:35",
+    "bridge_mode": "DRY_RUN_SIMULATOR",
+    "live_allowed": false,
+    "max_allowed_lot": 0.01,
+    "guard_enabled": true,
+    "guard_global_status": "CANDIDATES_AVAILABLE",
+    "replay_candidate_filter_enabled": true,
+    "order_count": 0,
+    "bridge_valid_order_count": 0,
+    "bridge_rejected_order_count": 0,
+    "rejected_history_count": 3,
+    "executed_history_count": 256,
+    "guarded_execution_count": 192,
+    "legacy_execution_count": 64,
+    "currently_not_approved_history_count": 26,
+    "currently_blocked_history_count": 127,
+    "latest_rejected": [
+      {
+        "signal_id": "EURUSD_SELL_20260622223806",
+        "rejected_at": "2026-06-22T23:02:25",
+        "symbol": "EURUSD",
+        "symbol_mt5": "EURUSD",
+        "order_type": "SELL",
+        "lot": 0.01,
+        "entry_price": 1.144426703453064,
+        "stop_loss": 1.144726703453064,
+        "take_profit": 1.143826703453064,
+        "selected_strategy": "TREND_FOLLOWING",
+        "strategy_score": 5,
+        "reason": "Signal was already executed.",
+        "live_allowed": false,
+        "status": "REJECTED_OR_SKIPPED"
+      },
+      {
+        "signal_id": "EURUSD_SELL_20260622223806",
+        "rejected_at": "2026-06-24T21:45:05",
+        "symbol": "EURUSD",
+        "symbol_mt5": "EURUSD",
+        "order_type": "SELL",
+        "lot": 0.01,
+        "entry_price": 1.144426703453064,
+        "stop_loss": 1.144726703453064,
+        "take_profit": 1.143826703453064,
+        "selected_strategy": "TREND_FOLLOWING",
+        "strategy_score": 5,
+        "reason": "Signal is expired.",
+        "live_allowed": false,
+        "status": "REJECTED_OR_SKIPPED"
+      },
+      {
+        "signal_id": "EURUSD_SELL_20260624221656",
+        "rejected_at": "2026-06-24T22:16:56",
+        "symbol": "EURUSD",
+        "symbol_mt5": "EURUSD",
+        "order_type": "SELL",
+        "lot": 0.01,
+        "entry_price": 1.1332728862762451,
+        "stop_loss": 1.133572886276245,
+        "take_profit": 1.1326728862762452,
+        "selected_strategy": "MOMENTUM_PULLBACK",
+        "strategy_score": 3,
+        "reason": "Signal was already executed.",
+        "live_allowed": false,
+        "status": "REJECTED_OR_SKIPPED"
+      }
+    ],
+    "latest_guarded_executed": [
+      {
+        "signal_id": "GBPUSD_SELL_20260630100651",
+        "executed_at": "2026-06-30T10:06:51",
+        "execution_source": "MT5_BRIDGE_FINAL_GUARD",
+        "symbol": "GBPUSD",
+        "symbol_mt5": "GBPUSD",
+        "order_type": "SELL",
+        "lot": 0.01,
+        "entry_price": 1.324099898338318,
+        "stop_loss": 1.324399898338318,
+        "take_profit": 1.3234998983383182,
+        "selected_strategy": "TREND_FOLLOWING",
+        "strategy_score": 5,
+        "bridge_validation_reason": "Order is valid for DRY_RUN simulated MT5 execution. Live trading is locked.",
+        "live_allowed": false,
+        "status": "SIMULATED_EXECUTED"
+      },
+      {
+        "signal_id": "EURUSD_SELL_20260630101326",
+        "executed_at": "2026-06-30T10:13:26",
+        "execution_source": "MT5_BRIDGE_FINAL_GUARD",
+        "symbol": "EURUSD",
+        "symbol_mt5": "EURUSD",
+        "order_type": "SELL",
+        "lot": 0.01,
+        "entry_price": 1.1410315036773682,
+        "stop_loss": 1.1413315036773681,
+        "take_profit": 1.1404315036773682,
+        "selected_strategy": "TREND_FOLLOWING",
+        "strategy_score": 5,
+        "bridge_validation_reason": "Order is valid for DRY_RUN simulated MT5 execution. Live trading is locked.",
+        "live_allowed": false,
+        "status": "SIMULATED_EXECUTED"
+      },
+      {
+        "signal_id": "GBPUSD_SELL_20260630101326",
+        "executed_at": "2026-06-30T10:13:26",
+        "execution_source": "MT5_BRIDGE_FINAL_GUARD",
+        "symbol": "GBPUSD",
+        "symbol_mt5": "GBPUSD",
+        "order_type": "SELL",
+        "lot": 0.01,
+        "entry_price": 1.323574185371399,
+        "stop_loss": 1.323874185371399,
+        "take_profit": 1.322974185371399,
+        "selected_strategy": "TREND_FOLLOWING",
+        "strategy_score": 5,
+        "bridge_validation_reason": "Order is valid for DRY_RUN simulated MT5 execution. Live trading is locked.",
+        "live_allowed": false,
+        "status": "SIMULATED_EXECUTED"
+      },
+      {
+        "signal_id": "EURUSD_SELL_20260630132434",
+        "executed_at": "2026-06-30T13:24:34",
+        "execution_source": "MT5_BRIDGE_FINAL_GUARD",
+        "symbol": "EURUSD",
+        "symbol_mt5": "EURUSD",
+        "order_type": "SELL",
+        "lot": 0.01,
+        "entry_price": 1.1398608684539795,
+        "stop_loss": 1.1401608684539795,
+        "take_profit": 1.1392608684539796,
+        "selected_strategy": "BREAKOUT",
+        "strategy_score": 4,
+        "bridge_validation_reason": "Order is valid for DRY_RUN simulated MT5 execution. Live trading is locked.",
+        "live_allowed": false,
+        "status": "SIMULATED_EXECUTED"
+      },
+      {
+        "signal_id": "EURUSD_BUY_20260707212838",
+        "executed_at": "2026-07-07T21:28:38",
+        "execution_source": "MT5_BRIDGE_FINAL_GUARD",
+        "symbol": "EURUSD",
+        "symbol_mt5": "EURUSD",
+        "order_type": "BUY",
+        "lot": 0.01,
+        "entry_price": 1.144426703453064,
+        "stop_loss": 1.144126703453064,
+        "take_profit": 1.145026703453064,
+        "selected_strategy": "BREAKOUT",
+        "strategy_score": 5,
+        "bridge_validation_reason": "Order is valid for DRY_RUN simulated MT5 execution. Live trading is locked.",
+        "live_allowed": false,
+        "status": "SIMULATED_EXECUTED"
+      }
+    ],
+    "latest_legacy_executed": [
+      {
+        "signal_id": "NZDUSD_SELL_20260622204004",
+        "executed_at": "2026-06-22T20:40:04",
+        "symbol": "NZDUSD",
+        "symbol_mt5": "NZDUSD",
+        "order_type": "SELL",
+        "lot": 0.01,
+        "entry_price": 0.5728689432144165,
+        "stop_loss": 0.5731689432144165,
+        "take_profit": 0.5722689432144165,
+        "selected_strategy": "MOMENTUM_PULLBACK",
+        "strategy_score": 3,
+        "status": "SIMULATED_EXECUTED"
+      },
+      {
+        "signal_id": "CHFJPY_SELL_20260622204004",
+        "executed_at": "2026-06-22T20:40:04",
+        "symbol": "CHFJPY",
+        "symbol_mt5": "CHFJPY",
+        "order_type": "SELL",
+        "lot": 0.01,
+        "entry_price": 200.0870056152344,
+        "stop_loss": 200.14259777107677,
+        "take_profit": 199.97582130354965,
+        "selected_strategy": "TREND_FOLLOWING",
+        "strategy_score": 5,
+        "status": "SIMULATED_EXECUTED"
+      },
+      {
+        "signal_id": "GBPUSD_BUY_20260622213707",
+        "executed_at": "2026-06-22T21:37:07",
+        "symbol": "GBPUSD",
+        "symbol_mt5": "GBPUSD",
+        "order_type": "BUY",
+        "lot": 0.01,
+        "entry_price": 1.325065016746521,
+        "stop_loss": 1.324765016746521,
+        "take_profit": 1.325665016746521,
+        "selected_strategy": "TREND_FOLLOWING",
+        "strategy_score": 5,
+        "status": "SIMULATED_EXECUTED"
+      },
+      {
+        "signal_id": "EURUSD_BUY_20260622213707",
+        "executed_at": "2026-06-22T21:37:07",
+        "symbol": "EURUSD",
+        "symbol_mt5": "EURUSD",
+        "order_type": "BUY",
+        "lot": 0.01,
+        "entry_price": 1.1460003852844238,
+        "stop_loss": 1.1457003852844239,
+        "take_profit": 1.1466003852844238,
+        "selected_strategy": "MOMENTUM_PULLBACK",
+        "strategy_score": 4,
+        "status": "SIMULATED_EXECUTED"
+      },
+      {
+        "signal_id": "EURUSD_SELL_20260622223806",
+        "executed_at": "2026-06-22T22:38:06",
+        "symbol": "EURUSD",
+        "symbol_mt5": "EURUSD",
+        "order_type": "SELL",
+        "lot": 0.01,
+        "entry_price": 1.144426703453064,
+        "stop_loss": 1.144726703453064,
+        "take_profit": 1.143826703453064,
+        "selected_strategy": "TREND_FOLLOWING",
+        "strategy_score": 5,
+        "status": "SIMULATED_EXECUTED"
+      }
+    ]
+  },
+  "phase4_quality_rules": {
+    "quality_status": "NOT_READY",
+    "quality_action": "Keep DRY_RUN/paper-only. Do not loosen guards.",
+    "live_allowed": false,
+    "execution_mode": "PAPER_ONLY",
+    "base_min_score": 4,
+    "next_validation_target_closed_orders": 50,
+    "symbol_rules": {
+      "EURUSD": {
+        "type": "symbol",
+        "name": "EURUSD",
+        "closed_orders": 17,
+        "wins": 7,
+        "losses": 8,
+        "timeouts": 2,
+        "net_profit_usd": 2.0437,
+        "winrate_percent": 41.18,
+        "profit_factor": 2.0219,
+        "expectancy_usd": 0.1202,
+        "guard_status": "PRIORITY",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+        ]
+      },
+      "GBPUSD": {
+        "type": "symbol",
+        "name": "GBPUSD",
+        "closed_orders": 13,
+        "wins": 4,
+        "losses": 9,
+        "timeouts": 0,
+        "net_profit_usd": -0.25,
+        "winrate_percent": 30.77,
+        "profit_factor": 0.8889,
+        "expectancy_usd": -0.0192,
+        "guard_status": "RESTRICT",
+        "min_score_required": 6,
+        "allow_new_entries": true,
+        "reason": "RESTRICT: closed=13, winrate=30.77%, net=$-0.2500. Require score >= 5. | PHASE4B_SYMBOL_RESTRICT: GBPUSD requires score >= 6 after Phase 4 review.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_SYMBOL_RESTRICT: GBPUSD requires score >= 6 after Phase 4 review."
+        ]
+      }
+    },
+    "strategy_rules": {
+      "BREAKOUT": {
+        "type": "strategy",
+        "name": "BREAKOUT",
+        "closed_orders": 5,
+        "wins": 2,
+        "losses": 3,
+        "timeouts": 0,
+        "net_profit_usd": 0.25,
+        "winrate_percent": 40.0,
+        "profit_factor": 1.3333,
+        "expectancy_usd": 0.05,
+        "guard_status": "WATCH",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "WATCH: closed=5, winrate=40.00%, net=$0.2500. Require score >= 4."
+      },
+      "MEAN_REVERSION": {
+        "type": "strategy",
+        "name": "MEAN_REVERSION",
+        "closed_orders": 2,
+        "wins": 2,
+        "losses": 0,
+        "timeouts": 0,
+        "net_profit_usd": 1.0,
+        "winrate_percent": 100.0,
+        "profit_factor": 999.0,
+        "expectancy_usd": 0.5,
+        "guard_status": "INSUFFICIENT_SAMPLE",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "Sample kecil: 2 closed orders. Belum cukup untuk strict guard."
+      },
+      "MOMENTUM_PULLBACK": {
+        "type": "strategy",
+        "name": "MOMENTUM_PULLBACK",
+        "closed_orders": 20,
+        "wins": 6,
+        "losses": 12,
+        "timeouts": 2,
+        "net_profit_usd": 0.5437,
+        "winrate_percent": 30.0,
+        "profit_factor": 1.1812,
+        "expectancy_usd": 0.0272,
+        "guard_status": "RESTRICT",
+        "min_score_required": 5,
+        "allow_new_entries": true,
+        "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+      },
+      "TREND_FOLLOWING": {
+        "type": "strategy",
+        "name": "TREND_FOLLOWING",
+        "closed_orders": 3,
+        "wins": 1,
+        "losses": 2,
+        "timeouts": 0,
+        "net_profit_usd": 0.0,
+        "winrate_percent": 33.33,
+        "profit_factor": 1.0,
+        "expectancy_usd": 0.0,
+        "guard_status": "BLOCK",
+        "min_score_required": 99,
+        "allow_new_entries": false,
+        "reason": "Sample kecil: 3 closed orders. Belum cukup untuk strict guard. | PHASE4B_FORCE_BLOCK: Strategy is temporarily blocked after Phase 4 review because winrate/quality is not READY.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_FORCE_BLOCK: Strategy is temporarily blocked after Phase 4 review because winrate/quality is not READY."
+        ]
+      }
+    },
+    "recommendations": [
+      {
+        "priority": "HIGH",
+        "type": "STRATEGY_BLOCK",
+        "name": "TREND_FOLLOWING",
+        "action": "Block until future paper data improves.",
+        "min_score_required": 99,
+        "reason": "Sample kecil: 3 closed orders. Belum cukup untuk strict guard. | PHASE4B_FORCE_BLOCK: Strategy is temporarily blocked after Phase 4 review because winrate/quality is not READY."
+      },
+      {
+        "priority": "HIGH",
+        "type": "STRATEGY_RESTRICT",
+        "name": "MOMENTUM_PULLBACK",
+        "action": "Require score >= 5 before execution.",
+        "min_score_required": 5,
+        "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+      },
+      {
+        "priority": "HIGH",
+        "type": "SYMBOL_RESTRICT",
+        "name": "GBPUSD",
+        "action": "Require score >= 6 before execution.",
+        "min_score_required": 6,
+        "reason": "RESTRICT: closed=13, winrate=30.77%, net=$-0.2500. Require score >= 5. | PHASE4B_SYMBOL_RESTRICT: GBPUSD requires score >= 6 after Phase 4 review."
+      },
+      {
+        "priority": "MEDIUM",
+        "type": "STRATEGY_WATCH",
+        "name": "BREAKOUT",
+        "action": "Require score >= 4 and avoid score 3 entries.",
+        "min_score_required": 4,
+        "reason": "WATCH: closed=5, winrate=40.00%, net=$0.2500. Require score >= 4."
+      },
+      {
+        "priority": "LOW",
+        "type": "SYMBOL_PRIORITY",
+        "name": "EURUSD",
+        "action": "Best current profile. Keep allowed in paper mode with score >= 4.",
+        "min_score_required": 4,
+        "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+      }
+    ]
+  },
+  "legacy_offline_guard_recommendations": [
+    {
+      "level": "HIGH",
+      "type": "SYMBOL_GUARD",
+      "target": "GBPUSD",
+      "reason": "Closed=29, Winrate=31.03%, Net=$-0.5",
+      "action": "Keep symbol performance guard active. Require score >= 4 before execution."
+    },
+    {
+      "level": "MEDIUM",
+      "type": "STRATEGY_GUARD",
+      "target": "MOMENTUM_PULLBACK",
+      "reason": "Closed=31, Winrate=35.48%, Net=$2.0683",
+      "action": "Keep strategy performance guard active. Require score >= 4 before execution."
+    },
+    {
+      "level": "MEDIUM",
+      "type": "STRATEGY_GUARD",
+      "target": "TREND_FOLLOWING",
+      "reason": "Closed=8, Winrate=25.00%, Net=$-0.5",
+      "action": "Keep strategy performance guard active. Require score >= 4 before execution."
+    }
+  ],
+  "guard_recommendations": [
+    {
+      "priority": "HIGH",
+      "type": "STRATEGY_BLOCK",
+      "name": "TREND_FOLLOWING",
+      "action": "Block until future paper data improves.",
+      "min_score_required": 99,
+      "reason": "Sample kecil: 3 closed orders. Belum cukup untuk strict guard. | PHASE4B_FORCE_BLOCK: Strategy is temporarily blocked after Phase 4 review because winrate/quality is not READY."
+    },
+    {
+      "priority": "HIGH",
+      "type": "STRATEGY_RESTRICT",
+      "name": "MOMENTUM_PULLBACK",
+      "action": "Require score >= 5 before execution.",
+      "min_score_required": 5,
+      "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+    },
+    {
+      "priority": "HIGH",
+      "type": "SYMBOL_RESTRICT",
+      "name": "GBPUSD",
+      "action": "Require score >= 6 before execution.",
+      "min_score_required": 6,
+      "reason": "RESTRICT: closed=13, winrate=30.77%, net=$-0.2500. Require score >= 5. | PHASE4B_SYMBOL_RESTRICT: GBPUSD requires score >= 6 after Phase 4 review."
+    },
+    {
+      "priority": "MEDIUM",
+      "type": "STRATEGY_WATCH",
+      "name": "BREAKOUT",
+      "action": "Require score >= 4 and avoid score 3 entries.",
+      "min_score_required": 4,
+      "reason": "WATCH: closed=5, winrate=40.00%, net=$0.2500. Require score >= 4."
+    },
+    {
+      "priority": "LOW",
+      "type": "SYMBOL_PRIORITY",
+      "name": "EURUSD",
+      "action": "Best current profile. Keep allowed in paper mode with score >= 4.",
+      "min_score_required": 4,
+      "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+    }
+  ],
+  "offline_readiness": {
+    "score": 8,
+    "max_score": 10,
+    "label": "WATCH_BUILDING",
+    "notes": [
+      "Sample size is sufficient for READY evaluation.",
+      "Winrate is still below WATCH-level.",
+      "Profit factor is READY-level.",
+      "Expectancy is READY-level.",
+      "Drawdown is controlled.",
+      "Recent performance is acceptable."
+    ]
+  },
+  "next_stage": {
+    "current_stage": "Phase 4 validation target reached",
+    "action": "STOP_AND_REVIEW_PHASE_4",
+    "quality_status": "NOT_READY",
+    "closed_orders": 52,
+    "phase4_target_closed_orders": 50,
+    "remaining_to_phase4_target": 0,
+    "phase4_progress_percent": 104.0,
+    "winrate_percent": 36.54,
+    "profit_factor": 1.3758,
+    "expectancy_usd": 0.0542,
+    "notes": [
+      "Phase 4 target tercapai: 52/50. Stop loop dan review kualitas sebelum lanjut.",
+      "Winrate turun di bawah WATCH. Jangan longgarkan guard.",
+      "Strength: PF dan expectancy sudah READY-level. Fokus utama sekarang sample size dan winrate.",
+      "Live trading remains locked. Continue DRY_RUN/paper mode only."
+    ]
+  },
+  "symbol_performance": {
+    "GBPUSD": {
+      "closed_orders": 29,
+      "wins": 9,
+      "losses": 20,
+      "timeouts": 0,
+      "net_profit_usd": -0.5,
+      "winrate_percent": 31.03
+    },
+    "BTCUSD": {
+      "closed_orders": 1,
+      "wins": 1,
+      "losses": 0,
+      "timeouts": 0,
+      "net_profit_usd": 0.5,
+      "winrate_percent": 100.0
+    },
+    "NZDUSD": {
+      "closed_orders": 3,
+      "wins": 1,
+      "losses": 1,
+      "timeouts": 1,
+      "net_profit_usd": 0.5246,
+      "winrate_percent": 33.33
+    },
+    "EURUSD": {
+      "closed_orders": 19,
+      "wins": 8,
+      "losses": 9,
+      "timeouts": 2,
+      "net_profit_usd": 2.2937,
+      "winrate_percent": 42.11
+    }
+  },
+  "strategy_performance": {
+    "MOMENTUM_PULLBACK": {
+      "closed_orders": 31,
+      "wins": 11,
+      "losses": 17,
+      "timeouts": 3,
+      "net_profit_usd": 2.0683,
+      "winrate_percent": 35.48
+    },
+    "MEAN_REVERSION": {
+      "closed_orders": 3,
+      "wins": 2,
+      "losses": 1,
+      "timeouts": 0,
+      "net_profit_usd": 0.75,
+      "winrate_percent": 66.67
+    },
+    "TREND_FOLLOWING": {
+      "closed_orders": 8,
+      "wins": 2,
+      "losses": 6,
+      "timeouts": 0,
+      "net_profit_usd": -0.5,
+      "winrate_percent": 25.0
+    },
+    "BREAKOUT": {
+      "closed_orders": 10,
+      "wins": 4,
+      "losses": 6,
+      "timeouts": 0,
+      "net_profit_usd": 0.5,
+      "winrate_percent": 40.0
+    }
+  }
+}

@@ -1,0 +1,22 @@
+Saya mengupload full migration pack proyek AI_SCALPER.
+
+Gunakan bahasa Indonesia. Jawaban harus tegas, ringkas, langsung aksi.
+
+Aturan wajib:
+- Jangan buka live trading.
+- Jangan set live_allowed=True.
+- Jangan naikkan max_lot di atas 0.01.
+- Jangan aktifkan demo auto-order tanpa rencana manual terpisah.
+- Jangan patch kalau saya hanya minta cek/lanjut/loop.
+- Kalau patch diperlukan, buat patch aman dan jelas.
+
+Fokus sekarang:
+FULL + SOFT OBSERVATION loop M15.
+Soft observation boleh mencatat EURUSD score >= 4 sebagai diagnostic sample saja.
+Soft observation tidak boleh membuat MT5 order atau demo outbox.
+Execution clean gate tetap ketat.
+
+Kalau saya bilang:
+- cek: baca status terminal/file dan ringkas.
+- lanjut: lanjutkan dari status terakhir.
+- simpan: simpan progres terakhir.

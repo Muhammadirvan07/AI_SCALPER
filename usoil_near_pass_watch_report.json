@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-07-09T11:26:33.908303",
+  "mode": "WATCH_USOIL_COMMODITY_REPLAY_NEAR_PASS",
+  "enabled": true,
+  "status": "USOIL_NOT_NEAR_PASS",
+  "symbol": "USOIL",
+  "source_replay_validation_report": "commodity_replay_validation_report.json",
+  "source_report_status": "PASSED_REPLAY_PROXY",
+  "best_strategy": "MEAN_REVERSION",
+  "best_profit_factor": 1.086,
+  "target_profit_factor": 1.05,
+  "profit_factor_gap": 0.0,
+  "best_winrate_percent": 47.5535,
+  "target_winrate_percent": 45.0,
+  "winrate_gap": 0.0,
+  "best_net_return_percent_proxy": 6.1215,
+  "best_max_drawdown_percent_proxy": 6.3585,
+  "best_trades": 654,
+  "is_near_pass": false,
+  "review_only": true,
+  "paper_only": true,
+  "live_allowed": false,
+  "max_lot": 0.01,
+  "reason": "USOIL is not close enough to commodity replay proxy requirements for watch consideration.",
+  "strategy_reports": [
+    {
+      "strategy": "BREAKOUT",
+      "trades": 218,
+      "wins": 111,
+      "losses": 107,
+      "winrate_percent": 50.9174,
+      "profit_factor": 1.0675,
+      "net_return_percent_proxy": 2.1578,
+      "max_drawdown_percent_proxy": 6.3534,
+      "passed": true,
+      "requirements": {
+        "min_trades": 30,
+        "min_winrate": 45.0,
+        "min_profit_factor": 1.05,
+        "max_drawdown": 30.0
+      }
+    },
+    {
+      "strategy": "MEAN_REVERSION",
+      "trades": 654,
+      "wins": 311,
+      "losses": 343,
+      "winrate_percent": 47.5535,
+      "profit_factor": 1.086,
+      "net_return_percent_proxy": 6.1215,
+      "max_drawdown_percent_proxy": 6.3585,
+      "passed": true,
+      "requirements": {
+        "min_trades": 30,
+        "min_winrate": 45.0,
+        "min_profit_factor": 1.05,
+        "max_drawdown": 30.0
+      }
+    },
+    {
+      "strategy": "MOMENTUM_PULLBACK",
+      "trades": 1634,
+      "wins": 807,
+      "losses": 827,
+      "winrate_percent": 49.388,
+      "profit_factor": 1.0431,
+      "net_return_percent_proxy": 7.4119,
+      "max_drawdown_percent_proxy": 7.8066,
+      "passed": false,
+      "requirements": {
+        "min_trades": 30,
+        "min_winrate": 45.0,
+        "min_profit_factor": 1.05,
+        "max_drawdown": 30.0
+      }
+    }
+  ],
+  "target_files_not_modified": {
+    "active_pairs": "active_pairs.json",
+    "paper_quality_rules": "paper_quality_rules.json",
+    "paper_replay_candidates": "paper_replay_candidates.json"
+  },
+  "next_recommended_action": "Keep USOIL out of WATCH/approved replay candidates until winrate reaches target. If near-pass remains stable across multiple runs, review manually before creating any WATCH-only draft."
+}

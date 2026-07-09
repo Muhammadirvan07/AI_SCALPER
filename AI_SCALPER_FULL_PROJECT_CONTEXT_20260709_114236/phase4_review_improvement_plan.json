@@ -1,0 +1,271 @@
+{
+  "generated_at": "2026-07-09T11:26:33.599529",
+  "enabled": true,
+  "status": "PHASE4_REVIEW_REQUIRED",
+  "source": "offline_dashboard_report.json",
+  "review_required": true,
+  "current_stage": "Phase 4 validation target reached",
+  "action": "STOP_AND_REVIEW_PHASE_4",
+  "quality_status": "NOT_READY",
+  "closed_orders": 52,
+  "winrate_percent": 36.54,
+  "profit_factor": 1.3758,
+  "live_allowed": false,
+  "max_lot": 0.01,
+  "blocked_symbols": [
+    "GBPUSD"
+  ],
+  "restricted_strategies": [
+    "MOMENTUM_PULLBACK"
+  ],
+  "force_block_strategies": [
+    "TREND_FOLLOWING"
+  ],
+  "priority_symbols": [
+    "EURUSD"
+  ],
+  "minimum_scores": {
+    "MOMENTUM_PULLBACK": 5,
+    "BREAKOUT": 4,
+    "MEAN_REVERSION": 4
+  },
+  "symbol_performance_snapshot": {
+    "GBPUSD": {
+      "closed_orders": 29,
+      "wins": 9,
+      "losses": 20,
+      "timeouts": 0,
+      "net_profit_usd": -0.5,
+      "winrate_percent": 31.03
+    },
+    "BTCUSD": {
+      "closed_orders": 1,
+      "wins": 1,
+      "losses": 0,
+      "timeouts": 0,
+      "net_profit_usd": 0.5,
+      "winrate_percent": 100.0
+    },
+    "NZDUSD": {
+      "closed_orders": 3,
+      "wins": 1,
+      "losses": 1,
+      "timeouts": 1,
+      "net_profit_usd": 0.5246,
+      "winrate_percent": 33.33
+    },
+    "EURUSD": {
+      "closed_orders": 19,
+      "wins": 8,
+      "losses": 9,
+      "timeouts": 2,
+      "net_profit_usd": 2.2937,
+      "winrate_percent": 42.11
+    }
+  },
+  "strategy_performance_snapshot": {
+    "MOMENTUM_PULLBACK": {
+      "closed_orders": 31,
+      "wins": 11,
+      "losses": 17,
+      "timeouts": 3,
+      "net_profit_usd": 2.0683,
+      "winrate_percent": 35.48
+    },
+    "MEAN_REVERSION": {
+      "closed_orders": 3,
+      "wins": 2,
+      "losses": 1,
+      "timeouts": 0,
+      "net_profit_usd": 0.75,
+      "winrate_percent": 66.67
+    },
+    "TREND_FOLLOWING": {
+      "closed_orders": 8,
+      "wins": 2,
+      "losses": 6,
+      "timeouts": 0,
+      "net_profit_usd": -0.5,
+      "winrate_percent": 25.0
+    },
+    "BREAKOUT": {
+      "closed_orders": 10,
+      "wins": 4,
+      "losses": 6,
+      "timeouts": 0,
+      "net_profit_usd": 0.5,
+      "winrate_percent": 40.0
+    }
+  },
+  "phase4_quality_rules_snapshot": {
+    "quality_status": "NOT_READY",
+    "quality_action": "Keep DRY_RUN/paper-only. Do not loosen guards.",
+    "live_allowed": false,
+    "execution_mode": "PAPER_ONLY",
+    "base_min_score": 4,
+    "next_validation_target_closed_orders": 50,
+    "symbol_rules": {
+      "EURUSD": {
+        "type": "symbol",
+        "name": "EURUSD",
+        "closed_orders": 17,
+        "wins": 7,
+        "losses": 8,
+        "timeouts": 2,
+        "net_profit_usd": 2.0437,
+        "winrate_percent": 41.18,
+        "profit_factor": 2.0219,
+        "expectancy_usd": 0.1202,
+        "guard_status": "PRIORITY",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+        ]
+      },
+      "GBPUSD": {
+        "type": "symbol",
+        "name": "GBPUSD",
+        "closed_orders": 13,
+        "wins": 4,
+        "losses": 9,
+        "timeouts": 0,
+        "net_profit_usd": -0.25,
+        "winrate_percent": 30.77,
+        "profit_factor": 0.8889,
+        "expectancy_usd": -0.0192,
+        "guard_status": "RESTRICT",
+        "min_score_required": 6,
+        "allow_new_entries": true,
+        "reason": "RESTRICT: closed=13, winrate=30.77%, net=$-0.2500. Require score >= 5. | PHASE4B_SYMBOL_RESTRICT: GBPUSD requires score >= 6 after Phase 4 review.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_SYMBOL_RESTRICT: GBPUSD requires score >= 6 after Phase 4 review."
+        ]
+      }
+    },
+    "strategy_rules": {
+      "BREAKOUT": {
+        "type": "strategy",
+        "name": "BREAKOUT",
+        "closed_orders": 5,
+        "wins": 2,
+        "losses": 3,
+        "timeouts": 0,
+        "net_profit_usd": 0.25,
+        "winrate_percent": 40.0,
+        "profit_factor": 1.3333,
+        "expectancy_usd": 0.05,
+        "guard_status": "WATCH",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "WATCH: closed=5, winrate=40.00%, net=$0.2500. Require score >= 4."
+      },
+      "MEAN_REVERSION": {
+        "type": "strategy",
+        "name": "MEAN_REVERSION",
+        "closed_orders": 2,
+        "wins": 2,
+        "losses": 0,
+        "timeouts": 0,
+        "net_profit_usd": 1.0,
+        "winrate_percent": 100.0,
+        "profit_factor": 999.0,
+        "expectancy_usd": 0.5,
+        "guard_status": "INSUFFICIENT_SAMPLE",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "Sample kecil: 2 closed orders. Belum cukup untuk strict guard."
+      },
+      "MOMENTUM_PULLBACK": {
+        "type": "strategy",
+        "name": "MOMENTUM_PULLBACK",
+        "closed_orders": 20,
+        "wins": 6,
+        "losses": 12,
+        "timeouts": 2,
+        "net_profit_usd": 0.5437,
+        "winrate_percent": 30.0,
+        "profit_factor": 1.1812,
+        "expectancy_usd": 0.0272,
+        "guard_status": "RESTRICT",
+        "min_score_required": 5,
+        "allow_new_entries": true,
+        "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+      },
+      "TREND_FOLLOWING": {
+        "type": "strategy",
+        "name": "TREND_FOLLOWING",
+        "closed_orders": 3,
+        "wins": 1,
+        "losses": 2,
+        "timeouts": 0,
+        "net_profit_usd": 0.0,
+        "winrate_percent": 33.33,
+        "profit_factor": 1.0,
+        "expectancy_usd": 0.0,
+        "guard_status": "BLOCK",
+        "min_score_required": 99,
+        "allow_new_entries": false,
+        "reason": "Sample kecil: 3 closed orders. Belum cukup untuk strict guard. | PHASE4B_FORCE_BLOCK: Strategy is temporarily blocked after Phase 4 review because winrate/quality is not READY.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_FORCE_BLOCK: Strategy is temporarily blocked after Phase 4 review because winrate/quality is not READY."
+        ]
+      }
+    },
+    "recommendations": [
+      {
+        "priority": "HIGH",
+        "type": "STRATEGY_BLOCK",
+        "name": "TREND_FOLLOWING",
+        "action": "Block until future paper data improves.",
+        "min_score_required": 99,
+        "reason": "Sample kecil: 3 closed orders. Belum cukup untuk strict guard. | PHASE4B_FORCE_BLOCK: Strategy is temporarily blocked after Phase 4 review because winrate/quality is not READY."
+      },
+      {
+        "priority": "HIGH",
+        "type": "STRATEGY_RESTRICT",
+        "name": "MOMENTUM_PULLBACK",
+        "action": "Require score >= 5 before execution.",
+        "min_score_required": 5,
+        "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+      },
+      {
+        "priority": "HIGH",
+        "type": "SYMBOL_RESTRICT",
+        "name": "GBPUSD",
+        "action": "Require score >= 6 before execution.",
+        "min_score_required": 6,
+        "reason": "RESTRICT: closed=13, winrate=30.77%, net=$-0.2500. Require score >= 5. | PHASE4B_SYMBOL_RESTRICT: GBPUSD requires score >= 6 after Phase 4 review."
+      },
+      {
+        "priority": "MEDIUM",
+        "type": "STRATEGY_WATCH",
+        "name": "BREAKOUT",
+        "action": "Require score >= 4 and avoid score 3 entries.",
+        "min_score_required": 4,
+        "reason": "WATCH: closed=5, winrate=40.00%, net=$0.2500. Require score >= 4."
+      },
+      {
+        "priority": "LOW",
+        "type": "SYMBOL_PRIORITY",
+        "name": "EURUSD",
+        "action": "Best current profile. Keep allowed in paper mode with score >= 4.",
+        "min_score_required": 4,
+        "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+      }
+    ]
+  },
+  "recommendations": [
+    "Stop normal loop while Phase 4 quality is NOT_READY.",
+    "Keep GBPUSD blocked/restricted from execution.",
+    "Keep TREND_FOLLOWING force-blocked.",
+    "Require MOMENTUM_PULLBACK score >= 5 and extra quality confirmation.",
+    "Avoid score 3 and 4 MOMENTUM_PULLBACK entries.",
+    "Keep EURUSD as the preferred review symbol, but do not force entry.",
+    "Continue paper/demo only; live trading remains locked."
+  ]
+}

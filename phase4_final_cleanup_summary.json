@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-07-09T11:26:33.601642",
+  "enabled": true,
+  "mode": "EXPORT_PHASE4_FINAL_CLEANUP_AUDIT",
+  "status": "PHASE4_FINAL_CLEANUP_SUMMARY_EXPORTED",
+  "quality_status": "NOT_READY",
+  "phase4_action": "STOP_AND_REVIEW_PHASE_4",
+  "closed_orders": 52,
+  "winrate_percent": 36.54,
+  "profit_factor": 1.3758,
+  "safety": {
+    "live_allowed": false,
+    "max_lot": 0.01,
+    "review_only": true,
+    "ready_trade_count": 0,
+    "mt5_order_count": 0,
+    "demo_outbox_order_count": 0,
+    "bridge_valid_order_count": 0
+  },
+  "cleanup_checks": {
+    "phase4_review_plan_exported": true,
+    "phase4_review_report_exported": true,
+    "phase4_rule_adjustment_draft_exported": true,
+    "phase4_manual_apply_plan_exported": true,
+    "paper_quality_rules_manual_adjusted": false,
+    "xauusd_watch_quality_rule_present": false,
+    "xagusd_watch_quality_rule_present": false,
+    "gbpusd_removed_from_replay_approved": true,
+    "gbpusd_blocked_in_replay_candidates": true,
+    "gbpusd_deprecated_from_old_approval": true,
+    "bridge_label_cleanup_enabled": true,
+    "bridge_execution_approved_only_eurusd": true,
+    "bridge_execution_blocked_gbpusd": true,
+    "bridge_shadow_btcusd": true,
+    "no_ready_trade": true,
+    "no_mt5_order": true,
+    "demo_outbox_empty": true,
+    "live_allowed_false": true,
+    "max_lot_safe": true
+  },
+  "source_state": {
+    "quality_symbol_rules": [
+      "EURUSD",
+      "GBPUSD"
+    ],
+    "quality_strategy_rules": [
+      "BREAKOUT",
+      "MEAN_REVERSION",
+      "MOMENTUM_PULLBACK",
+      "TREND_FOLLOWING"
+    ],
+    "replay_approved_symbols": [
+      "EURUSD"
+    ],
+    "replay_blocked_symbols": [
+      "GBPUSD"
+    ],
+    "replay_deprecated_approved_symbols": [
+      "GBPUSD"
+    ],
+    "bridge_source_approved_symbols": [
+      "BTCUSD",
+      "EURUSD"
+    ],
+    "bridge_execution_approved_symbols": [
+      "EURUSD"
+    ],
+    "bridge_execution_blocked_symbols": [
+      "GBPUSD"
+    ],
+    "bridge_shadow_symbols": [
+      "BTCUSD"
+    ]
+  },
+  "final_recommendation": [
+    "Keep Phase 4 Review status active while quality_status remains NOT_READY.",
+    "Keep Phase4R locked; do not unlock from this summary.",
+    "Keep EURUSD as the only execution-approved label in bridge status.",
+    "Keep GBPUSD blocked/restricted until a new review proves recovery.",
+    "Keep BTCUSD as shadow/diagnostic only unless future replay validation passes.",
+    "Do not promote XAUUSD, XAGUSD, or USOIL from this summary.",
+    "Continue paper/demo only with live_allowed=False and max_lot=0.01."
+  ]
+}

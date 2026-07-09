@@ -1,0 +1,3816 @@
+{
+  "enabled": true,
+  "mode": "ACCUMULATE_DECISION_RUNS",
+  "created_at": "2026-07-04T20:11:33",
+  "updated_at": "2026-07-09T11:26:35",
+  "total_runs": 211,
+  "total_items": 406,
+  "ready_count": 1,
+  "wait_count": 405,
+  "primary_blockers": {
+    "Phase5J:MARKET_CLOSED_WEEKEND": 6,
+    "Phase5J:MARKET_CLOSED_STALE_DATA": 63,
+    "Phase5K:INSUFFICIENT_ACTIVE_CANDLES": 7,
+    "Phase5K:LOW_ACTIVE_CANDLE_RATIO": 1,
+    "Phase5F:BLOCKED_SCORE": 91,
+    "Phase5F:STRATEGY_NOT_ALLOWED": 52,
+    "UNKNOWN:WAIT": 67,
+    "Phase5F:BLOCKED_FORCE_STRATEGY": 84,
+    "Phase5J:FLAT_LATEST_CANDLE": 34,
+    "NONE:READY_TO_TRADE": 1
+  },
+  "readiness_status_counts": {
+    "CLOSED": 103,
+    "WARMUP": 8,
+    "READY_CHECK": 281,
+    "WATCH": 14
+  },
+  "strategy_counts": {
+    "MOMENTUM_PULLBACK": 218,
+    "NO_STRATEGY": 64,
+    "BREAKOUT": 22,
+    "TREND_FOLLOWING": 3,
+    "NO_ALLOWED_STRATEGY": 95,
+    "MEAN_REVERSION": 4
+  },
+  "volatility_status_counts": {
+    "BELOW_THRESHOLD": 99,
+    "PASSED": 307
+  },
+  "recent_runs": [
+    {
+      "run_number": 112,
+      "generated_at": "2026-07-08T00:00:52",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 94,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MEAN_REVERSION",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 113,
+      "generated_at": "2026-07-08T00:00:57",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 94,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MEAN_REVERSION",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 114,
+      "generated_at": "2026-07-08T00:06:02",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 86,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 115,
+      "generated_at": "2026-07-08T00:06:07",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 86,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 116,
+      "generated_at": "2026-07-08T00:11:13",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 92,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 117,
+      "generated_at": "2026-07-08T00:11:17",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 92,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 118,
+      "generated_at": "2026-07-08T00:16:23",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 92,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 119,
+      "generated_at": "2026-07-08T00:16:29",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 92,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 120,
+      "generated_at": "2026-07-08T00:21:35",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 121,
+      "generated_at": "2026-07-08T00:21:40",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 122,
+      "generated_at": "2026-07-08T00:26:45",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 84,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 123,
+      "generated_at": "2026-07-08T00:26:51",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 84,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 124,
+      "generated_at": "2026-07-08T00:31:56",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 83,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 125,
+      "generated_at": "2026-07-08T00:32:01",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 83,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 126,
+      "generated_at": "2026-07-08T00:37:06",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "WATCH",
+          "readiness_score": 79,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 127,
+      "generated_at": "2026-07-08T00:37:11",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "WATCH",
+          "readiness_score": 79,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 128,
+      "generated_at": "2026-07-08T00:40:35",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 23,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 129,
+      "generated_at": "2026-07-08T00:40:40",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 23,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 130,
+      "generated_at": "2026-07-08T00:45:45",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 86,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 131,
+      "generated_at": "2026-07-08T00:45:50",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 86,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 132,
+      "generated_at": "2026-07-08T00:50:55",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 20,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 133,
+      "generated_at": "2026-07-08T00:51:00",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 20,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 134,
+      "generated_at": "2026-07-08T00:56:05",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 135,
+      "generated_at": "2026-07-08T00:56:09",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 136,
+      "generated_at": "2026-07-08T01:01:14",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 89,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 137,
+      "generated_at": "2026-07-08T01:01:19",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 89,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 138,
+      "generated_at": "2026-07-08T01:06:24",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 22,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 139,
+      "generated_at": "2026-07-08T01:06:29",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 22,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 140,
+      "generated_at": "2026-07-08T01:11:34",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 88,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "BREAKOUT",
+          "strategy_score": 6,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 141,
+      "generated_at": "2026-07-08T01:11:39",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 88,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "BREAKOUT",
+          "strategy_score": 6,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 142,
+      "generated_at": "2026-07-08T01:16:44",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 88,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 143,
+      "generated_at": "2026-07-08T01:16:49",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 88,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 144,
+      "generated_at": "2026-07-08T05:07:40",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 21,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "BREAKOUT",
+          "strategy_score": 6,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 145,
+      "generated_at": "2026-07-08T05:23:51",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5K:INSUFFICIENT_ACTIVE_CANDLES": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5K:INSUFFICIENT_ACTIVE_CANDLES",
+          "readiness_status": "WARMUP",
+          "readiness_score": 44,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 146,
+      "generated_at": "2026-07-08T11:37:23",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 17,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 147,
+      "generated_at": "2026-07-08T11:37:28",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 17,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 148,
+      "generated_at": "2026-07-08T17:40:44",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 96,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 149,
+      "generated_at": "2026-07-08T17:58:19",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 94,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 150,
+      "generated_at": "2026-07-08T19:58:25",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 85,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 151,
+      "generated_at": "2026-07-08T20:02:53",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 87,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 152,
+      "generated_at": "2026-07-08T20:09:02",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 24,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 153,
+      "generated_at": "2026-07-08T20:12:15",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 154,
+      "generated_at": "2026-07-08T20:15:58",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 87,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 155,
+      "generated_at": "2026-07-08T20:18:46",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 83,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 156,
+      "generated_at": "2026-07-08T20:25:58",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 87,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 157,
+      "generated_at": "2026-07-08T20:38:02",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 84,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 158,
+      "generated_at": "2026-07-08T20:41:00",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 159,
+      "generated_at": "2026-07-08T20:46:13",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 160,
+      "generated_at": "2026-07-08T20:49:28",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 161,
+      "generated_at": "2026-07-08T20:53:23",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 162,
+      "generated_at": "2026-07-08T21:07:58",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 94,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "BREAKOUT",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 163,
+      "generated_at": "2026-07-08T21:10:30",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 92,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 164,
+      "generated_at": "2026-07-08T21:15:51",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 165,
+      "generated_at": "2026-07-08T21:33:07",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "BREAKOUT",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 166,
+      "generated_at": "2026-07-08T21:34:51",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 24,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "BREAKOUT",
+          "strategy_score": 6,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 167,
+      "generated_at": "2026-07-08T21:34:55",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 24,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "BREAKOUT",
+          "strategy_score": 6,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 168,
+      "generated_at": "2026-07-08T21:35:05",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5J:FLAT_LATEST_CANDLE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 24,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 169,
+      "generated_at": "2026-07-08T21:35:10",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 24,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 170,
+      "generated_at": "2026-07-08T21:35:18",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 24,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 171,
+      "generated_at": "2026-07-08T21:35:23",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 24,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 172,
+      "generated_at": "2026-07-08T21:35:31",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 22,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 173,
+      "generated_at": "2026-07-08T21:35:36",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 22,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 174,
+      "generated_at": "2026-07-08T21:36:24",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 22,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "BREAKOUT",
+          "strategy_score": 6,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 175,
+      "generated_at": "2026-07-08T21:36:29",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 22,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 176,
+      "generated_at": "2026-07-08T21:37:45",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 19,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 177,
+      "generated_at": "2026-07-08T21:37:50",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 19,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 178,
+      "generated_at": "2026-07-08T21:38:50",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 17,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 179,
+      "generated_at": "2026-07-08T21:38:57",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 17,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 180,
+      "generated_at": "2026-07-08T21:44:02",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 18,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 181,
+      "generated_at": "2026-07-08T21:44:06",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 18,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 182,
+      "generated_at": "2026-07-08T21:49:12",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 86,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 183,
+      "generated_at": "2026-07-08T21:49:16",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_SCORE": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 86,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 184,
+      "generated_at": "2026-07-08T21:54:21",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 14,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 185,
+      "generated_at": "2026-07-08T21:54:26",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 14,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "BELOW_THRESHOLD",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 186,
+      "generated_at": "2026-07-08T21:59:32",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 187,
+      "generated_at": "2026-07-08T21:59:36",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 188,
+      "generated_at": "2026-07-08T22:04:42",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 189,
+      "generated_at": "2026-07-08T22:04:46",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 90,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 190,
+      "generated_at": "2026-07-08T22:09:52",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 86,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 191,
+      "generated_at": "2026-07-08T22:09:57",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1,
+        "UNKNOWN:WAIT": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 86,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 5,
+          "primary_blocker": "UNKNOWN:WAIT",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "PASSED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 192,
+      "generated_at": "2026-07-08T22:15:03",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 88,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 193,
+      "generated_at": "2026-07-08T22:15:07",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:STRATEGY_NOT_ALLOWED": 1,
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_STRATEGY",
+          "strategy_score": 0,
+          "primary_blocker": "Phase5F:STRATEGY_NOT_ALLOWED",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 88,
+          "phase5f_status": "STRATEGY_NOT_ALLOWED",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 194,
+      "generated_at": "2026-07-08T22:19:53",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 92,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 195,
+      "generated_at": "2026-07-08T22:19:58",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5F:BLOCKED_FORCE_STRATEGY": 1,
+        "Phase5F:BLOCKED_SCORE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5F:BLOCKED_FORCE_STRATEGY",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 92,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 3,
+          "primary_blocker": "Phase5F:BLOCKED_SCORE",
+          "readiness_status": "READY_CHECK",
+          "readiness_score": 98,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 196,
+      "generated_at": "2026-07-08T22:27:01",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 197,
+      "generated_at": "2026-07-08T22:27:06",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 198,
+      "generated_at": "2026-07-08T22:37:08",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 199,
+      "generated_at": "2026-07-08T22:37:12",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 200,
+      "generated_at": "2026-07-08T22:41:55",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 201,
+      "generated_at": "2026-07-08T22:41:58",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "NO_ALLOWED_STRATEGY",
+          "strategy_score": 5,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_FORCE_STRATEGY",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 202,
+      "generated_at": "2026-07-09T10:57:20",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "BREAKOUT",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 203,
+      "generated_at": "2026-07-09T10:57:24",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "BREAKOUT",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 204,
+      "generated_at": "2026-07-09T11:12:35",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 205,
+      "generated_at": "2026-07-09T11:12:39",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 206,
+      "generated_at": "2026-07-09T11:17:17",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5J:FLAT_LATEST_CANDLE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 207,
+      "generated_at": "2026-07-09T11:17:21",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:MARKET_CLOSED_STALE_DATA": 1,
+        "Phase5J:FLAT_LATEST_CANDLE": 1
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:MARKET_CLOSED_STALE_DATA",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 208,
+      "generated_at": "2026-07-09T11:23:47",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 209,
+      "generated_at": "2026-07-09T11:23:51",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 210,
+      "generated_at": "2026-07-09T11:26:31",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    },
+    {
+      "run_number": 211,
+      "generated_at": "2026-07-09T11:26:35",
+      "total_items": 2,
+      "ready_count": 0,
+      "wait_count": 2,
+      "has_ready_trade": false,
+      "primary_blockers": {
+        "Phase5J:FLAT_LATEST_CANDLE": 2
+      },
+      "items": [
+        {
+          "symbol": "EURUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 4,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        },
+        {
+          "symbol": "BTCUSD",
+          "status": "WAIT",
+          "strategy": "MOMENTUM_PULLBACK",
+          "strategy_score": 2,
+          "primary_blocker": "Phase5J:FLAT_LATEST_CANDLE",
+          "readiness_status": "CLOSED",
+          "readiness_score": 25,
+          "phase5f_status": "BLOCKED_SCORE",
+          "volatility_status": "PASSED",
+          "bridge_ready": false
+        }
+      ]
+    }
+  ],
+  "safe_mode": "DRY_RUN_ONLY",
+  "live_allowed": false,
+  "max_lot": 0.01
+}

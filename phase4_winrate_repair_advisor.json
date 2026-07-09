@@ -1,0 +1,142 @@
+{
+  "generated_at": "2026-07-09T11:26:33.603265",
+  "enabled": true,
+  "mode": "ADVISE_PHASE4_WINRATE_REPAIR",
+  "status": "PHASE4_WINRATE_REPAIR_ADVISOR_EXPORTED",
+  "review_only": true,
+  "do_not_unlock_phase4r": true,
+  "quality_status": "NOT_READY",
+  "phase4_action": "STOP_AND_REVIEW_PHASE_4",
+  "closed_orders": 52,
+  "winrate_percent": 36.54,
+  "profit_factor": 1.3758,
+  "targets": {
+    "near_ready_winrate": 42.0,
+    "ready_winrate": 45.0,
+    "min_score_focus": 5,
+    "min_positive_confirmations": 3,
+    "min_profit_factor": 1.2
+  },
+  "gaps": {
+    "winrate_gap_to_near_ready": 5.46,
+    "winrate_gap_to_ready": 8.46,
+    "profit_factor_ready": true
+  },
+  "decision_issues": {
+    "no_strategy_count": 0,
+    "score_below_focus_count": 2,
+    "phase4_score_block_count": 0,
+    "phase5f_block_count": 2,
+    "replay_missing_count": 2,
+    "low_positive_confirmation_count": 2
+  },
+  "repair_focus": [
+    {
+      "area": "WINRATE_DEFICIT",
+      "priority": "HIGH",
+      "current": 36.54,
+      "near_ready_target": 42.0,
+      "ready_target": 45.0,
+      "gap_to_near_ready": 5.46,
+      "gap_to_ready": 8.46,
+      "advice": "Reduce low-confidence entries before increasing sample size."
+    },
+    {
+      "area": "PROFIT_FACTOR_PRESERVATION",
+      "priority": "MEDIUM",
+      "current": 1.3758,
+      "ready_target": 1.2,
+      "advice": "Profit factor is acceptable; avoid loosening filters just to increase entries."
+    },
+    {
+      "area": "LOW_SCORE_FILTERING",
+      "priority": "HIGH",
+      "count": 2,
+      "minimum_score": 5,
+      "advice": "Recovery sample should focus on score >= 5 only."
+    },
+    {
+      "area": "REPLAY_VALIDATION_MISSING",
+      "priority": "MEDIUM",
+      "count": 2,
+      "advice": "Do not promote setups without replay validation while Phase4R is locked."
+    }
+  ],
+  "suggested_filters": [
+    {
+      "filter": "VALID_STRATEGY_ONLY",
+      "rule": "Reject NO_STRATEGY from recovery sample.",
+      "creates_order": false
+    },
+    {
+      "filter": "SCORE_AT_LEAST_5",
+      "rule": "Only monitor setups with score >= 5 as repair candidates.",
+      "creates_order": false
+    },
+    {
+      "filter": "POSITIVE_CONFIRMATIONS_AT_LEAST_3",
+      "rule": "Require at least 3 positive confirmations before considering setup as clean sample.",
+      "creates_order": false
+    },
+    {
+      "filter": "REPLAY_VALIDATION_REQUIRED",
+      "rule": "Require approved replay candidate or valid watch lane before recovery consideration.",
+      "creates_order": false
+    },
+    {
+      "filter": "EURUSD_PRIORITY_ONLY",
+      "rule": "Keep EURUSD as primary repair focus; keep GBPUSD blocked and BTCUSD shadow-only.",
+      "creates_order": false
+    }
+  ],
+  "source_state": {
+    "recovery_monitor_status": "RECOVERY_BLOCKED",
+    "recovery_plan_status": "PHASE4_RECOVERY_PLAN_EXPORTED",
+    "final_cleanup_summary_status": "PHASE4_FINAL_CLEANUP_SUMMARY_EXPORTED",
+    "quality_symbol_rules": [
+      "EURUSD",
+      "GBPUSD"
+    ],
+    "quality_strategy_rules": [
+      "BREAKOUT",
+      "MEAN_REVERSION",
+      "MOMENTUM_PULLBACK",
+      "TREND_FOLLOWING"
+    ],
+    "replay_approved_symbols": [
+      "EURUSD"
+    ],
+    "replay_blocked_symbols": [
+      "GBPUSD"
+    ],
+    "bridge_execution_approved_symbols": [
+      "EURUSD"
+    ],
+    "bridge_execution_blocked_symbols": [
+      "GBPUSD"
+    ],
+    "bridge_shadow_symbols": [
+      "BTCUSD"
+    ]
+  },
+  "safety": {
+    "live_allowed": false,
+    "max_lot": 0.01,
+    "creates_order": false,
+    "ready_trade_count": 0,
+    "mt5_order_count": 0,
+    "demo_outbox_order_count": 0,
+    "bridge_valid_order_count": 0,
+    "modifies_active_pairs": false,
+    "modifies_replay_candidates": false,
+    "modifies_quality_rules": false
+  },
+  "next_steps": [
+    "Keep Phase4R locked while quality_status remains NOT_READY.",
+    "Repair winrate by rejecting NO_STRATEGY and low-score setups from recovery samples.",
+    "Preserve profit factor; do not loosen filters to force more entries.",
+    "Use EURUSD as primary repair focus only after score, confirmations, volatility, and replay validation pass.",
+    "Keep GBPUSD blocked and BTCUSD shadow-only.",
+    "Continue paper/demo only with live_allowed=False and max_lot=0.01."
+  ]
+}

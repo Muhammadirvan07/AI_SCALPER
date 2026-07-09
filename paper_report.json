@@ -1,0 +1,71 @@
+{
+    "generated_at": "2026-07-09T02:26:35.988568+00:00",
+    "total_orders": 52,
+    "closed_orders": 52,
+    "open_orders": 0,
+    "stale_open_orders": 0,
+    "wins": 19,
+    "losses": 30,
+    "timeouts": 3,
+    "winrate_percent": 36.54,
+    "gross_profit_usd": 10.32,
+    "gross_loss_usd": 7.5,
+    "net_profit_usd": 2.82,
+    "profit_factor": 1.38,
+    "expectancy_usd": 0.0542,
+    "by_symbol": {
+        "GBPUSD": {
+            "total": 29,
+            "wins": 9,
+            "losses": 20,
+            "profit_usd": -0.5
+        },
+        "BTCUSD": {
+            "total": 1,
+            "wins": 1,
+            "losses": 0,
+            "profit_usd": 0.5
+        },
+        "NZDUSD": {
+            "total": 3,
+            "wins": 1,
+            "losses": 1,
+            "profit_usd": 0.5246,
+            "timeouts": 1
+        },
+        "EURUSD": {
+            "total": 19,
+            "wins": 8,
+            "losses": 9,
+            "profit_usd": 2.2937000000000003,
+            "timeouts": 2
+        }
+    },
+    "by_strategy": {
+        "MOMENTUM_PULLBACK": {
+            "total": 31,
+            "wins": 11,
+            "losses": 17,
+            "profit_usd": 2.0683,
+            "timeouts": 3
+        },
+        "MEAN_REVERSION": {
+            "total": 3,
+            "wins": 2,
+            "losses": 1,
+            "profit_usd": 0.75
+        },
+        "TREND_FOLLOWING": {
+            "total": 8,
+            "wins": 2,
+            "losses": 6,
+            "profit_usd": -0.5
+        },
+        "BREAKOUT": {
+            "total": 10,
+            "wins": 4,
+            "losses": 6,
+            "profit_usd": 0.5
+        }
+    }
+}

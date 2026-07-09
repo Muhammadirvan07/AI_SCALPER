@@ -1,0 +1,238 @@
+{
+  "generated_at": "2026-07-09T11:26:33.600785",
+  "enabled": true,
+  "mode": "DRAFT_PHASE4_RULE_ADJUSTMENTS_FROM_REVIEW_REPORT",
+  "status": "PHASE4_RULE_ADJUSTMENT_DRAFT_EXPORTED",
+  "source": "phase4_review_report.json",
+  "review_required": true,
+  "phase4_action": "STOP_AND_REVIEW_PHASE_4",
+  "quality_status": "NOT_READY",
+  "closed_orders": 52,
+  "winrate_percent": 36.54,
+  "profit_factor": 1.3758,
+  "safety": {
+    "live_allowed": false,
+    "max_lot": 0.01,
+    "do_not_apply": true,
+    "review_only": true,
+    "ready_trade_count": 0,
+    "mt5_order_count": 0,
+    "demo_outbox_order_count": 0
+  },
+  "draft_actions": [
+    {
+      "target_file": "paper_quality_rules.json",
+      "target_section": "symbol_rules.GBPUSD",
+      "action": "KEEP_OR_SET_RESTRICT",
+      "review_only": true,
+      "apply_now": false,
+      "recommended_rule": {
+        "guard_status": "RESTRICT",
+        "min_score_required": 6,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "GBPUSD remains weak in Phase 4 review and should not be used for execution expansion."
+      },
+      "existing_snapshot": {
+        "type": "symbol",
+        "name": "GBPUSD",
+        "closed_orders": 13,
+        "wins": 4,
+        "losses": 9,
+        "timeouts": 0,
+        "net_profit_usd": -0.25,
+        "winrate_percent": 30.77,
+        "profit_factor": 0.8889,
+        "expectancy_usd": -0.0192,
+        "guard_status": "RESTRICT",
+        "min_score_required": 6,
+        "allow_new_entries": true,
+        "reason": "RESTRICT: closed=13, winrate=30.77%, net=$-0.2500. Require score >= 5. | PHASE4B_SYMBOL_RESTRICT: GBPUSD requires score >= 6 after Phase 4 review.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_SYMBOL_RESTRICT: GBPUSD requires score >= 6 after Phase 4 review."
+        ]
+      }
+    },
+    {
+      "target_file": "paper_quality_rules.json",
+      "target_section": "symbol_rules.EURUSD",
+      "action": "KEEP_PRIORITY_WITH_REVIEW_LOCK",
+      "review_only": true,
+      "apply_now": false,
+      "recommended_rule": {
+        "guard_status": "PRIORITY",
+        "min_score_required": 4,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "EURUSD is the strongest current symbol, but Phase 4 global quality remains NOT_READY so it must not be unlocked."
+      },
+      "existing_snapshot": {
+        "type": "symbol",
+        "name": "EURUSD",
+        "closed_orders": 17,
+        "wins": 7,
+        "losses": 8,
+        "timeouts": 2,
+        "net_profit_usd": 2.0437,
+        "winrate_percent": 41.18,
+        "profit_factor": 2.0219,
+        "expectancy_usd": 0.1202,
+        "guard_status": "PRIORITY",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "WATCH: closed=17, winrate=41.18%, net=$2.0437. Require score >= 4. | PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_PRIORITY_SYMBOL: EURUSD remains the preferred paper-validation symbol."
+        ]
+      }
+    },
+    {
+      "target_file": "paper_quality_rules.json",
+      "target_section": "strategy_rules.MOMENTUM_PULLBACK",
+      "action": "KEEP_OR_SET_RESTRICT_WITH_CONFIRMATION_REQUIREMENT",
+      "review_only": true,
+      "apply_now": false,
+      "recommended_rule": {
+        "guard_status": "RESTRICT",
+        "min_score_required": 5,
+        "min_positive_confirmations_required": 3,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "MOMENTUM_PULLBACK has weak Phase 4 winrate and should require score >= 5 plus 3 positive confirmations."
+      },
+      "existing_snapshot": {
+        "type": "strategy",
+        "name": "MOMENTUM_PULLBACK",
+        "closed_orders": 20,
+        "wins": 6,
+        "losses": 12,
+        "timeouts": 2,
+        "net_profit_usd": 0.5437,
+        "winrate_percent": 30.0,
+        "profit_factor": 1.1812,
+        "expectancy_usd": 0.0272,
+        "guard_status": "RESTRICT",
+        "min_score_required": 5,
+        "allow_new_entries": true,
+        "reason": "RESTRICT: closed=20, winrate=30.00%, net=$0.5437. Require score >= 5."
+      }
+    },
+    {
+      "target_file": "paper_quality_rules.json",
+      "target_section": "strategy_rules.BREAKOUT",
+      "action": "KEEP_WATCH_NO_EXPANSION",
+      "review_only": true,
+      "apply_now": false,
+      "recommended_rule": {
+        "guard_status": "WATCH",
+        "min_score_required": 4,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "BREAKOUT has limited sample and should stay watch/review only."
+      },
+      "existing_snapshot": {
+        "type": "strategy",
+        "name": "BREAKOUT",
+        "closed_orders": 5,
+        "wins": 2,
+        "losses": 3,
+        "timeouts": 0,
+        "net_profit_usd": 0.25,
+        "winrate_percent": 40.0,
+        "profit_factor": 1.3333,
+        "expectancy_usd": 0.05,
+        "guard_status": "WATCH",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "WATCH: closed=5, winrate=40.00%, net=$0.2500. Require score >= 4."
+      }
+    },
+    {
+      "target_file": "paper_quality_rules.json",
+      "target_section": "strategy_rules.MEAN_REVERSION",
+      "action": "KEEP_INSUFFICIENT_SAMPLE_OR_WATCH",
+      "review_only": true,
+      "apply_now": false,
+      "recommended_rule": {
+        "guard_status": "INSUFFICIENT_SAMPLE",
+        "min_score_required": 4,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "MEAN_REVERSION is promising but sample is too small; keep review-only."
+      },
+      "existing_snapshot": {
+        "type": "strategy",
+        "name": "MEAN_REVERSION",
+        "closed_orders": 2,
+        "wins": 2,
+        "losses": 0,
+        "timeouts": 0,
+        "net_profit_usd": 1.0,
+        "winrate_percent": 100.0,
+        "profit_factor": 999.0,
+        "expectancy_usd": 0.5,
+        "guard_status": "INSUFFICIENT_SAMPLE",
+        "min_score_required": 4,
+        "allow_new_entries": true,
+        "reason": "Sample kecil: 2 closed orders. Belum cukup untuk strict guard."
+      }
+    },
+    {
+      "target_file": "paper_quality_rules.json",
+      "target_section": "strategy_rules.TREND_FOLLOWING",
+      "action": "KEEP_BLOCKED",
+      "review_only": true,
+      "apply_now": false,
+      "recommended_rule": {
+        "guard_status": "BLOCK",
+        "min_score_required": 99,
+        "paper_only": true,
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "reason": "TREND_FOLLOWING remains blocked due weak Phase 4 performance."
+      },
+      "existing_snapshot": {
+        "type": "strategy",
+        "name": "TREND_FOLLOWING",
+        "closed_orders": 3,
+        "wins": 1,
+        "losses": 2,
+        "timeouts": 0,
+        "net_profit_usd": 0.0,
+        "winrate_percent": 33.33,
+        "profit_factor": 1.0,
+        "expectancy_usd": 0.0,
+        "guard_status": "BLOCK",
+        "min_score_required": 99,
+        "allow_new_entries": false,
+        "reason": "Sample kecil: 3 closed orders. Belum cukup untuk strict guard. | PHASE4B_FORCE_BLOCK: Strategy is temporarily blocked after Phase 4 review because winrate/quality is not READY.",
+        "phase4b_refinement": true,
+        "phase4b_refinement_reasons": [
+          "PHASE4B_FORCE_BLOCK: Strategy is temporarily blocked after Phase 4 review because winrate/quality is not READY."
+        ]
+      }
+    }
+  ],
+  "blocked_from_auto_apply": [
+    "paper_quality_rules.json",
+    "active_pairs.json",
+    "paper_replay_candidates.json",
+    "mt5_trade_signals.json",
+    "mt5_demo_bridge_outbox.json"
+  ],
+  "manual_review_checklist": [
+    "Confirm quality_status is still NOT_READY before applying any rule change.",
+    "Do not unlock Phase4R from this draft.",
+    "Do not enable GBPUSD execution.",
+    "Do not enable TREND_FOLLOWING.",
+    "Do not promote BTCUSD, XAUUSD, XAGUSD, or USOIL from this draft.",
+    "Keep live_allowed=False and max_lot=0.01."
+  ]
+}
