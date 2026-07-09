@@ -1,0 +1,46 @@
+{
+    "generated_at": "2026-07-09T20:40:00",
+    "mode": "DRY_RUN_SIMULATOR",
+    "live_allowed": false,
+    "max_allowed_lot": 0.01,
+    "guard_enabled": true,
+    "guard_global_status": "CANDIDATES_AVAILABLE",
+    "approved_symbols": [
+        "BTCUSD",
+        "EURUSD"
+    ],
+    "blocked_symbols": [
+        "GBPUSD"
+    ],
+    "valid_order_count": 0,
+    "rejected_order_count": 0,
+    "valid_orders": [],
+    "rejected_orders": [],
+    "bridge_label_cleanup_enabled": true,
+    "bridge_label_cleanup_mode": "SEPARATE_REPLAY_CANDIDATES_FROM_EXECUTION_APPROVED",
+    "approved_symbols_label_note": "approved_symbols is a legacy/source/candidate label, not final execution approval.",
+    "source_approved_symbols": [
+        "BTCUSD",
+        "EURUSD"
+    ],
+    "source_blocked_symbols": [
+        "GBPUSD"
+    ],
+    "execution_approved_symbols": [
+        "EURUSD"
+    ],
+    "execution_blocked_symbols": [
+        "GBPUSD"
+    ],
+    "shadow_symbols": [
+        "BTCUSD"
+    ],
+    "execution_label_safety": {
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "creates_order": false,
+        "does_not_override_existing_guards": true,
+        "does_not_modify_replay_candidates": true,
+        "does_not_modify_active_pairs": true
+    }
+}

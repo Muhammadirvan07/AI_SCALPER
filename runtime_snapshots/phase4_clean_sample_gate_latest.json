@@ -1,0 +1,131 @@
+{
+  "generated_at": "2026-07-09T20:40:00.609301",
+  "enabled": true,
+  "mode": "GATE_PHASE4_RECOVERY_CLEAN_SAMPLE",
+  "status": "NO_CLEAN_SAMPLE_READY",
+  "review_only": true,
+  "do_not_unlock_phase4r": true,
+  "clean_sample_count": 0,
+  "blocked_sample_count": 2,
+  "decision_source_used": "decision_health_snapshot.json",
+  "decision_source_key": "items",
+  "decision_count": 2,
+  "decision_symbols_seen": [
+    "BTCUSD",
+    "EURUSD"
+  ],
+  "clean_samples": [],
+  "blocked_samples": [
+    {
+      "symbol": "EURUSD",
+      "strategy": "NO_STRATEGY",
+      "score": 0.0,
+      "source_fields_mode": "FINAL_VALUE_EXTRACTION",
+      "passed": false,
+      "requirements": {
+        "primary_symbol": true,
+        "not_blocked_symbol": true,
+        "not_shadow_symbol": true,
+        "valid_strategy": false,
+        "score_passed": false,
+        "positive_confirmations_passed": false,
+        "replay_validation_passed": true,
+        "market_usable": false
+      },
+      "creates_order": false,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "missing_requirements": [
+        "valid_strategy",
+        "score_passed",
+        "positive_confirmations_passed",
+        "market_usable"
+      ]
+    },
+    {
+      "symbol": "BTCUSD",
+      "strategy": "NO_STRATEGY",
+      "score": 0.0,
+      "source_fields_mode": "FINAL_VALUE_EXTRACTION",
+      "passed": false,
+      "requirements": {
+        "primary_symbol": false,
+        "not_blocked_symbol": true,
+        "not_shadow_symbol": false,
+        "valid_strategy": false,
+        "score_passed": false,
+        "positive_confirmations_passed": false,
+        "replay_validation_passed": false,
+        "market_usable": false
+      },
+      "creates_order": false,
+      "live_allowed": false,
+      "max_lot": 0.01,
+      "missing_requirements": [
+        "primary_symbol",
+        "not_shadow_symbol",
+        "valid_strategy",
+        "score_passed",
+        "positive_confirmations_passed",
+        "replay_validation_passed",
+        "market_usable"
+      ]
+    }
+  ],
+  "gate_requirements": {
+    "primary_symbols": [
+      "EURUSD"
+    ],
+    "blocked_symbols": [
+      "GBPUSD"
+    ],
+    "shadow_symbols": [
+      "BTCUSD"
+    ],
+    "allowed_strategies": [
+      "BREAKOUT",
+      "MEAN_REVERSION",
+      "MOMENTUM_PULLBACK"
+    ],
+    "min_score": 5,
+    "min_positive_confirmations": 3,
+    "require_replay_validation": true,
+    "require_market_usable": true
+  },
+  "source_state": {
+    "advisor_status": "PHASE4_WINRATE_REPAIR_ADVISOR_EXPORTED",
+    "recovery_monitor_status": "RECOVERY_BLOCKED",
+    "quality_status": "NOT_READY",
+    "phase4_action": "STOP_AND_REVIEW_PHASE_4",
+    "bridge_execution_approved_symbols": [
+      "EURUSD"
+    ],
+    "bridge_execution_blocked_symbols": [
+      "GBPUSD"
+    ],
+    "bridge_shadow_symbols": [
+      "BTCUSD"
+    ]
+  },
+  "safety": {
+    "live_allowed": false,
+    "max_lot": 0.01,
+    "creates_order": false,
+    "ready_trade_count": 0,
+    "mt5_order_count": 0,
+    "demo_outbox_order_count": 0,
+    "bridge_valid_order_count": 0,
+    "modifies_active_pairs": false,
+    "modifies_replay_candidates": false,
+    "modifies_quality_rules": false
+  },
+  "next_steps": [
+    "Use only clean_sample_count as review-only recovery sample counter.",
+    "Do not count blocked samples toward winrate repair.",
+    "Keep Phase4R locked while quality_status remains NOT_READY.",
+    "Do not create paper/demo orders from this clean sample gate.",
+    "Keep EURUSD as primary clean sample focus.",
+    "Keep GBPUSD blocked and BTCUSD shadow-only.",
+    "Continue paper/demo only with live_allowed=False and max_lot=0.01."
+  ]
+}
