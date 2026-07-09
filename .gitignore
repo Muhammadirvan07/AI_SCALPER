@@ -6,3 +6,4 @@ __pycache__/
 *.pyc
 .DS_Store
 paper_forward_runs.json
+.codex/

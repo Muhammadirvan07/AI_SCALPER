@@ -7152,25 +7152,25 @@ def evaluate_phase5j_market_session_guard(symbol):
             )
             return True, guard
 
-    if crypto_weekend_allowed:
-        guard["status"] = "CRYPTO_WEEKEND_WAIT_FLAT_CANDLE"
-        guard["price_only_feed_allowed"] = False
-        guard["reason"] = (
-            f"{symbol} crypto weekend test did not find a usable non-flat candle in the "
-            f"last {PHASE5J_CRYPTO_VALID_CANDLE_LOOKBACK} candles. Paper signal stays WAIT. "
-            + price_only_check.get("reason", "")
-        )
-    else:
-        guard["status"] = "FLAT_LATEST_CANDLE"
-        guard["price_only_feed_allowed"] = False
-        guard["reason"] = (
-            "Latest candle is flat Open=High=Low=Close. "
-            "Recent close movement was not enough to classify this as a usable price-only feed. "
-            "New paper signals are blocked until live movement returns. "
-            + price_only_check.get("reason", "")
-        )
+        if crypto_weekend_allowed:
+            guard["status"] = "CRYPTO_WEEKEND_WAIT_FLAT_CANDLE"
+            guard["price_only_feed_allowed"] = False
+            guard["reason"] = (
+                f"{symbol} crypto weekend test did not find a usable non-flat candle in the "
+                f"last {PHASE5J_CRYPTO_VALID_CANDLE_LOOKBACK} candles. Paper signal stays WAIT. "
+                + price_only_check.get("reason", "")
+            )
+        else:
+            guard["status"] = "FLAT_LATEST_CANDLE"
+            guard["price_only_feed_allowed"] = False
+            guard["reason"] = (
+                "Latest candle is flat Open=High=Low=Close. "
+                "Recent close movement was not enough to classify this as a usable price-only feed. "
+                "New paper signals are blocked until live movement returns. "
+                + price_only_check.get("reason", "")
+            )
 
-    return False, guard
+        return False, guard
 
     if latest_age_minutes is not None and latest_age_minutes > PHASE5J_MAX_LATEST_CANDLE_AGE_MINUTES:
         guard["status"] = "STALE_CANDLE_TIME"
