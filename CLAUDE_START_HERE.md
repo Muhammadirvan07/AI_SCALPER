@@ -71,3 +71,40 @@ Patch summary:
 Safety impact:
 Test command:
 Rollback command:
+
+## Required skills/checklist for every patch/improvement/fix
+
+For every patch, improvement, bug fix, refactor, or diff review, use these skills/checklists:
+
+- code-reviewer
+- pr-review-expert
+- senior-backend
+- senior-architect
+- focused-fix
+- ship-gate
+- adversarial-reviewer
+- ai-security
+- financial-analyst
+- tech-debt-tracker
+- runbook-generator
+
+Every proposed change must include:
+- Problem
+- Root cause
+- Files touched
+- Patch summary
+- Safety impact
+- Trading/financial risk impact
+- Test command
+- Rollback command
+- Ship / No-Ship decision
+
+Hard safety rules:
+- Do not set live_allowed=True.
+- Do not raise max_lot above 0.01.
+- Do not enable demo auto-order.
+- Do not create MT5 orders.
+- Do not send soft observation to outbox.
+- Do not promote GBPUSD.
+- Do not promote BTCUSD from shadow.
+- Do not unlock Phase4R without manual review.
