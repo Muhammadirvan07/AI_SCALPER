@@ -9579,11 +9579,28 @@ def build_phase5h_strategy_score_explainability(
     for component_name, keywords in PHASE5H_STRONG_COMPONENT_KEYWORDS.items():
         matched_keywords = [keyword for keyword in keywords if keyword in reason_text]
         is_present = len(matched_keywords) > 0
+        detection_source = "strategy_reason_keywords" if is_present else "missing"
+
+        if component_name == "volatility_quality" and not is_present:
+            required_volatility_percent = float(
+                PHASE5F_MIN_VOL_BY_STRATEGY.get(
+                    selected_strategy,
+                    MIN_VOLATILITY_PERCENT,
+                )
+                or MIN_VOLATILITY_PERCENT
+            )
+            volatility_gap_percent = max(0.0, required_volatility_percent - volatility_percent)
+
+            if volatility_gap_percent <= 0:
+                is_present = True
+                detection_source = "volatility_threshold"
+                matched_keywords = ["phase5g_volatility_threshold"]
 
         component_status[component_name] = {
             "present": is_present,
             "matched_keywords": matched_keywords,
             "expected_keywords": keywords,
+            "detection_source": detection_source,
         }
 
         if is_present:
