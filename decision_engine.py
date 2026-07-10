@@ -246,6 +246,7 @@ PHASE5K_BLOCK_MONDAY_REOPEN = True
 PHASE5K_MONDAY_REOPEN_HOUR_LIMIT = 3
 PHASE5K_REQUIRE_NON_ZERO_VOLUME = True
 PHASE5K_REQUIRE_NON_FLAT_CANDLE = True
+PHASE5K_ZERO_VOLUME_FEED_RATIO_THRESHOLD = 0.80
 
 
 # =========================
@@ -7199,10 +7200,11 @@ def evaluate_phase5k_market_reopen_warmup_guard(symbol, phase5j_market_session_g
     phase5j_market_session_guard = phase5j_market_session_guard or {}
     phase5j_status = str(phase5j_market_session_guard.get("status", "")).upper()
     crypto_weekend_allowed = (
-    is_weekend_crypto_test_symbol(symbol)
-    and phase5j_status == "CRYPTO_WEEKEND_TEST_ALLOWED"
-)
+        is_weekend_crypto_test_symbol(symbol)
+        and phase5j_status == "CRYPTO_WEEKEND_TEST_ALLOWED"
+    )
     price_only_feed_allowed = phase5j_status == "PRICE_ONLY_FEED_ALLOWED"
+
     guard = {
         "enabled": ENABLE_PHASE5K_MARKET_REOPEN_WARMUP_GUARD,
         "status": "NOT_CHECKED",
@@ -7275,8 +7277,17 @@ def evaluate_phase5k_market_reopen_warmup_guard(symbol, phase5j_market_session_g
 
     non_flat_candle = ~flat_candles
 
-    if price_only_feed_allowed:
-        close_changes = pd.to_numeric(recent["Close"].diff().abs(), errors="coerce").fillna(0)
+    zero_volume_ratio_in_window = (
+        float((~non_zero_volume).mean()) if len(non_zero_volume) > 0 else 0.0
+    )
+    zero_volume_feed = bool(
+        zero_volume_ratio_in_window >= PHASE5K_ZERO_VOLUME_FEED_RATIO_THRESHOLD
+    )
+
+    if price_only_feed_allowed or zero_volume_feed:
+        close_changes = pd.to_numeric(
+            recent["Close"].diff().abs(), errors="coerce"
+        ).fillna(0)
         active_candles = close_changes > 0
     elif PHASE5K_REQUIRE_NON_ZERO_VOLUME and PHASE5K_REQUIRE_NON_FLAT_CANDLE:
         active_candles = non_zero_volume & non_flat_candle
@@ -7294,13 +7305,13 @@ def evaluate_phase5k_market_reopen_warmup_guard(symbol, phase5j_market_session_g
 
     min_active_candles_required = (
         PHASE5K_CRYPTO_WEEKEND_MIN_ACTIVE_CANDLES
-        if crypto_weekend_allowed or price_only_feed_allowed
+        if crypto_weekend_allowed or price_only_feed_allowed or zero_volume_feed
         else PHASE5K_MIN_ACTIVE_CANDLES
     )
 
     min_active_ratio_required = (
         PHASE5K_CRYPTO_WEEKEND_MIN_ACTIVE_CANDLE_RATIO
-        if crypto_weekend_allowed or price_only_feed_allowed
+        if crypto_weekend_allowed or price_only_feed_allowed or zero_volume_feed
         else PHASE5K_MIN_ACTIVE_CANDLE_RATIO
     )
 
@@ -7314,6 +7325,7 @@ def evaluate_phase5k_market_reopen_warmup_guard(symbol, phase5j_market_session_g
             "min_active_candles": min_active_candles_required,
             "min_active_ratio": min_active_ratio_required,
             "price_only_feed_allowed": price_only_feed_allowed,
+            "zero_volume_feed": zero_volume_feed,
         }
     )
 
@@ -7357,6 +7369,14 @@ def evaluate_phase5k_market_reopen_warmup_guard(symbol, phase5j_market_session_g
     elif price_only_feed_allowed:
         guard["reason"] = (
             f"Market reopen warmup guard passed with price-only feed relaxation: "
+            f"close-change active candles {active_count} >= required {min_active_candles_required}, "
+            f"active ratio {active_ratio:.2f} >= required {min_active_ratio_required:.2f}."
+        )
+    elif zero_volume_feed:
+        guard["reason"] = (
+            f"Market reopen warmup guard passed with zero-volume FX feed relaxation "
+            f"(zero_volume_ratio={round(zero_volume_ratio, 4)} >= "
+            f"{PHASE5K_ZERO_VOLUME_FEED_RATIO_THRESHOLD}): "
             f"close-change active candles {active_count} >= required {min_active_candles_required}, "
             f"active ratio {active_ratio:.2f} >= required {min_active_ratio_required:.2f}."
         )
