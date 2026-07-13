@@ -8694,6 +8694,7 @@ def build_phase5x_all_pair_allowed_strategy_redirect_advisor(
     phase5f_strategy_selection_guard=None,
     phase5h_strategy_score_explainability=None,
     phase5w_all_pair_score_repair_advisor=None,
+    original_selected_strategy=None,
 ):
     symbol = str(symbol or "UNKNOWN").upper()
     selected_strategy = str(selected_strategy or "UNKNOWN").upper()
@@ -8720,6 +8721,7 @@ def build_phase5x_all_pair_allowed_strategy_redirect_advisor(
         phase5h_strategy_score_explainability.get("positive_matches", 0) or 0
     )
     missing_components = phase5h_strategy_score_explainability.get("missing_components", [])
+
 
     allowed_strategies = sorted(
         strategy
@@ -8804,6 +8806,32 @@ def build_phase5x_all_pair_allowed_strategy_redirect_advisor(
         redirect_requirements.append(f"review unknown strategy={selected_strategy} before allowing any setup")
         reason = f"{selected_strategy} is not recognized in the allowed strategy set."
 
+    # Diagnostic-only reporting fields. These values do not affect blocking,
+    # scoring, strategy assignment, order creation, or safety gates.
+    original_blocked_strategy = str(original_selected_strategy or selected_strategy).upper()
+    sanitized_strategy = selected_strategy
+    raw_positive_matches = positive_matches
+    matched_confirmation_categories = list(
+        dict.fromkeys(
+            phase5h_strategy_score_explainability.get("present_components", []) or []
+        )
+    )
+    matched_confirmation_count = len(matched_confirmation_categories)
+    effective_positive_matches = max(raw_positive_matches, matched_confirmation_count)
+    positive_confirmation_gap = max(
+        0, PHASE5H_REQUIRED_POSITIVE_MATCHES_FOR_STRONG_SETUP - effective_positive_matches
+    )
+    raw_positive_confirmation_gap = max(
+        0, PHASE5H_REQUIRED_POSITIVE_MATCHES_FOR_STRONG_SETUP - raw_positive_matches
+    )
+    positive_match_count_mismatch = raw_positive_matches != matched_confirmation_count
+    missing_confirmation_categories = missing_components
+    diagnostic_positive_match_note = (
+        "positive_matches normalized from present_components for diagnostic consistency"
+        if positive_match_count_mismatch
+        else "positive_matches consistent with present_components"
+    )
+
     return {
         "enabled": True,
         "status": status,
@@ -8811,17 +8839,28 @@ def build_phase5x_all_pair_allowed_strategy_redirect_advisor(
         "tag": PHASE5X_OUTPUT_TAG,
         "symbol": symbol,
         "strategy": selected_strategy,
+        "original_blocked_strategy": original_blocked_strategy,
+        "sanitized_strategy": sanitized_strategy,
         "strategy_score": strategy_score,
         "volatility_percent": round(volatility_percent, 6),
         "phase5f_status": phase5f_status,
         "phase5w_status": phase5w_status,
-        "positive_matches": positive_matches,
+        "positive_matches": effective_positive_matches,
+        "raw_positive_matches": raw_positive_matches,
+        "matched_confirmation_count": matched_confirmation_count,
+        "positive_match_count_mismatch": positive_match_count_mismatch,
+        "positive_confirmation_gap": positive_confirmation_gap,
+        "raw_positive_confirmation_gap": raw_positive_confirmation_gap,
+        "matched_confirmation_categories": matched_confirmation_categories,
+        "missing_confirmation_categories": missing_confirmation_categories,
+        "diagnostic_positive_match_note": diagnostic_positive_match_note,
         "missing_components": missing_components,
         "allowed_fallback_strategies": allowed_strategies,
         "redirect_candidates": redirect_candidates,
         "redirect_requirements": list(dict.fromkeys(redirect_requirements)),
         "assigns_strategy": False,
         "creates_order": False,
+        "unlocks_safety_guard": False,
         "does_not_unlock_phase4r": PHASE5X_DO_NOT_UNLOCK_PHASE4R,
         "paper_only": True,
         "live_allowed": False,
@@ -12676,6 +12715,7 @@ def build_trade_decision(
         phase5f_strategy_selection_guard,
         phase5h_strategy_score_explainability,
         phase5w_all_pair_score_repair_advisor,
+        original_selected_strategy,
     )
 
     phase5z_replay_candidate_payload = get_phase5z_replay_candidate_payload_cached()
