@@ -851,7 +851,14 @@ def print_next_stage_section(quality, orders):
         f"{summary['closed_orders']}/{summary['phase4_target_closed_orders']} closed orders "
         f"({summary['phase4_progress_percent']}%)",
     )
-    print_kv("Remaining", f"{summary['remaining_to_phase4_target']} closed orders")
+    sample_target_status = (
+        "TARGET_REACHED"
+        if summary["remaining_to_phase4_target"] <= 0
+        else "NEEDS_MORE_SAMPLES"
+    )
+    print_kv("Sample remaining", f"{summary['remaining_to_phase4_target']} closed orders")
+    print_kv("Sample target status", sample_target_status)
+    print_kv("Quality gate status", summary.get("quality_status", "UNKNOWN"))
     print_kv("Winrate target", f"{summary['winrate_percent']:.2f}% / 45.00% READY target")
     print_kv("PF target", f"{summary['profit_factor']:.4f} / 1.20 READY target")
     print_kv("Expectancy target", f"${summary['expectancy_usd']:.4f} / $0.03 READY target")
@@ -898,7 +905,8 @@ def build_next_stage_summary(quality, orders):
         )
     else:
         notes.append(
-            f"Phase 4 target tercapai: {closed_orders}/{phase4_target}. Stop loop dan review kualitas sebelum lanjut."
+            f"Sample target tercapai: {closed_orders}/{phase4_target}. "
+            "Quality gate masih perlu review sebelum next-stage unlock."
         )
 
     if winrate >= 45.0:
