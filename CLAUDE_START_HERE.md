@@ -108,3 +108,23 @@ Hard safety rules:
 - Do not promote GBPUSD.
 - Do not promote BTCUSD from shadow.
 - Do not unlock Phase4R without manual review.
+
+## AI-Trader Inspired Internal Skill Adaptation
+
+Read before proposing agent, copy-trading, signal-platform, or external API changes:
+
+docs/AI_TRADER_INTERNAL_SKILL_ADAPTATION.md
+
+Rules:
+- internal / handoff-only
+- no external API integration
+- no copy trading
+- no realtime publish
+- no live/demo auto-order unlock
+- no bridge / MT5 / order execution edits
+- preserve live_allowed=False
+- preserve safe_to_demo_auto_order=False
+- preserve max_lot=0.01
+- preserve orders=0
+- preserve Phase4R locked
+- preserve TREND_FOLLOWING blocked by Phase5F
