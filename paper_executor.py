@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 from datetime import datetime, timezone
@@ -23,6 +24,24 @@ TRADE_SIGNAL_OUTPUT = "trade_signals.json"
 PAPER_OBSERVATION_ONLY_STATUS = "PAPER_OBSERVATION_ONLY"
 PAPER_ENTRY_ALLOWED_STATUSES = {"READY_TO_TRADE", PAPER_OBSERVATION_ONLY_STATUS}
 PAPER_LOG_FILE = "paper_orders.json"
+SHADOW_PROBE_LOG_FILE = "paper_probe_orders.json"
+SHADOW_PROBE_EXECUTED_IDS_FILE = "paper_probe_executed_signal_ids.json"
+ENABLE_SHADOW_PROBE_ORDERS = True
+MAX_SHADOW_PROBE_ORDERS_PER_RUN = 1
+SHADOW_PROBE_ALLOWED_SYMBOLS = {"EURUSD"}
+SHADOW_PROBE_ALLOWED_STATUSES = {"WAIT"}
+SHADOW_PROBE_EXCLUDED_FROM_PHASE4_QUALITY = True
+SHADOW_PROBE_DEFAULT_LOT = 0.01
+SHADOW_PROBE_DEFAULT_RISK_USD = 0.10
+SHADOW_PROBE_EURUSD_SL_PIPS = 10
+SHADOW_PROBE_EURUSD_TP_PIPS = 15
+SHADOW_PROBE_EURUSD_PIP_SIZE = 0.0001
+SHADOW_PROBE_PRICE_FILES = [
+    "data/EURUSD_M15.csv",
+    "data/EURUSD.csv",
+    "EURUSD_M15.csv",
+    "EURUSD.csv",
+]
 EXECUTED_IDS_FILE = "executed_signal_ids.json"
 QUALITY_REPORT_FILE = "paper_quality_report.json"
 PAPER_QUALITY_RULES_FILE = "paper_quality_rules.json"
@@ -149,6 +168,290 @@ def merge_phase4r_paper_observation_signals(signals):
             existing_ids.add(signal_id)
 
     return merged
+
+
+# =========================
+# SHADOW PROBE ORDER HELPERS
+# =========================
+
+
+# Helper: Best-effort latest close price for diagnostic-only shadow probe entries
+def get_latest_shadow_probe_price(symbol):
+    """Best-effort latest close price for diagnostic-only shadow probe entries."""
+    symbol = str(symbol or "").upper()
+    if symbol != "EURUSD":
+        return 0.0
+
+    for path in SHADOW_PROBE_PRICE_FILES:
+        if not os.path.exists(path):
+            continue
+
+        try:
+            with open(path, "r", newline="") as f:
+                rows = list(csv.DictReader(f))
+        except Exception:
+            continue
+
+        if not rows:
+            continue
+
+        latest = rows[-1]
+        for key in ["close", "Close", "CLOSE", "bid", "Bid", "price", "Price"]:
+            try:
+                value = float(latest.get(key, 0) or 0)
+            except Exception:
+                value = 0.0
+            if value > 0:
+                return value
+
+    return 0.0
+
+
+# Helper: Add synthetic diagnostic-only execution fields for shadow probe signals
+def enrich_shadow_probe_signal(item):
+    """Add synthetic diagnostic-only execution fields when blocked WAIT lacks entry/SL/TP.
+
+    This does not make the signal official, live, demo-auto, or MT5-ready.
+    It only enables a separate paper_probe_orders.json diagnostic track.
+    """
+    safe_item = dict(item)
+    symbol = str(safe_item.get("symbol", "") or "").upper()
+    action = str(get_first_value(safe_item, ["type", "action", "order_type", "signal"], "") or "").upper()
+
+    if action not in {"BUY", "SELL"}:
+        return None
+
+    entry = get_signal_entry(safe_item)
+    if entry <= 0:
+        entry = get_latest_shadow_probe_price(symbol)
+
+    if entry <= 0:
+        return None
+
+    lot = float(safe_item.get("lot", 0) or 0)
+    if lot <= 0:
+        lot = min(SHADOW_PROBE_DEFAULT_LOT, MAX_LOT)
+
+    if lot <= 0 or lot > MAX_LOT:
+        return None
+
+    sl = get_signal_sl(safe_item)
+    tp = get_signal_tp(safe_item)
+
+    sl_distance = SHADOW_PROBE_EURUSD_SL_PIPS * SHADOW_PROBE_EURUSD_PIP_SIZE
+    tp_distance = SHADOW_PROBE_EURUSD_TP_PIPS * SHADOW_PROBE_EURUSD_PIP_SIZE
+
+    if sl <= 0 or tp <= 0:
+        if action == "BUY":
+            sl = round(entry - sl_distance, 5)
+            tp = round(entry + tp_distance, 5)
+        else:
+            sl = round(entry + sl_distance, 5)
+            tp = round(entry - tp_distance, 5)
+
+    if action == "BUY" and not (sl < entry < tp):
+        return None
+    if action == "SELL" and not (tp < entry < sl):
+        return None
+
+    safe_item["type"] = action
+    safe_item["action"] = action
+    safe_item["lot"] = lot
+    safe_item["entry"] = round(entry, 5)
+    safe_item["sl"] = sl
+    safe_item["tp"] = tp
+    safe_item["risk_usd"] = float(safe_item.get("risk_usd", 0) or SHADOW_PROBE_DEFAULT_RISK_USD)
+    safe_item["shadow_probe_synthetic_execution"] = True
+    safe_item["shadow_probe_synthetic_reason"] = (
+        "Blocked WAIT decision had no executable entry/SL/TP/lot; synthetic diagnostic-only probe fields were generated."
+    )
+    return safe_item
+
+
+def load_shadow_probe_signals():
+    """Load diagnostic-only blocked WAIT decisions for separate shadow probe tracking.
+
+    Safety contract:
+    - Does not write to mt5_trade_signals.json.
+    - Does not create official paper_orders.json entries.
+    - Excluded from Phase 4 quality/winrate calculations.
+    - EURUSD only by default.
+    """
+    if not ENABLE_SHADOW_PROBE_ORDERS:
+        return []
+
+    payload = load_json(TRADE_SIGNAL_OUTPUT, {})
+    decisions = payload.get("all_decisions", [])
+
+    if not isinstance(decisions, list):
+        return []
+
+    allowed = []
+    for item in decisions:
+        if not isinstance(item, dict):
+            continue
+
+        symbol = str(item.get("symbol", "") or "").upper()
+        status = str(item.get("status", "") or "").upper()
+        strategy = str(item.get("selected_strategy", item.get("strategy", "")) or "").upper()
+
+        if symbol not in SHADOW_PROBE_ALLOWED_SYMBOLS:
+            continue
+        if status not in SHADOW_PROBE_ALLOWED_STATUSES:
+            continue
+        if item.get("mt5_ready") is True:
+            continue
+        if item.get("live_allowed") is True:
+            continue
+        if item.get("safe_to_demo_auto_order") is True:
+            continue
+        if strategy in {"NO_STRATEGY", "NO_ALLOWED_STRATEGY"}:
+            # No clean executable strategy lane; keep this as diagnostic only.
+            pass
+
+        safe_item = enrich_shadow_probe_signal(item)
+        if safe_item is None:
+            continue
+
+        safe_item["shadow_probe_only"] = True
+        safe_item["excluded_from_phase4_quality"] = SHADOW_PROBE_EXCLUDED_FROM_PHASE4_QUALITY
+        safe_item["paper_observation_only"] = False
+        safe_item["live_allowed"] = False
+        safe_item["safe_to_demo_auto_order"] = False
+        safe_item["mt5_ready"] = False
+        allowed.append(safe_item)
+
+    return allowed
+
+
+def get_open_shadow_probe_orders(shadow_orders):
+    if not isinstance(shadow_orders, list):
+        return []
+
+    return [
+        order for order in shadow_orders
+        if order.get("status") == "SHADOW_PROBE_OPEN"
+    ]
+
+
+
+def calculate_shadow_probe_profit_usd(order, close_price):
+    """Approximate diagnostic-only probe P/L in USD for EURUSD micro-lot probes."""
+    try:
+        entry = float(order.get("entry", 0) or 0)
+        lot = float(order.get("lot", 0) or 0)
+        action = str(order.get("type", "") or "").upper()
+        close_price = float(close_price or 0)
+    except Exception:
+        return 0.0
+
+    if entry <= 0 or lot <= 0 or close_price <= 0:
+        return 0.0
+
+    pip_value = 10.0 * lot
+    if action == "BUY":
+        pips = (close_price - entry) / SHADOW_PROBE_EURUSD_PIP_SIZE
+    elif action == "SELL":
+        pips = (entry - close_price) / SHADOW_PROBE_EURUSD_PIP_SIZE
+    else:
+        return 0.0
+
+    return round(pips * pip_value, 4)
+
+
+def monitor_shadow_probe_orders(shadow_orders):
+    """Close SHADOW_PROBE_OPEN orders when diagnostic TP/SL is reached."""
+    if not isinstance(shadow_orders, list):
+        return []
+
+    closed = []
+    for order in shadow_orders:
+        if order.get("status") != "SHADOW_PROBE_OPEN":
+            continue
+
+        symbol = str(order.get("symbol", "") or "").upper()
+        action = str(order.get("type", "") or "").upper()
+        latest_price = get_latest_shadow_probe_price(symbol)
+
+        if latest_price <= 0:
+            continue
+
+        try:
+            sl = float(order.get("sl", 0) or 0)
+            tp = float(order.get("tp", 0) or 0)
+        except Exception:
+            continue
+
+        if sl <= 0 or tp <= 0:
+            continue
+
+        result = None
+        if action == "BUY":
+            if latest_price <= sl:
+                result = "LOSS"
+            elif latest_price >= tp:
+                result = "WIN"
+        elif action == "SELL":
+            if latest_price >= sl:
+                result = "LOSS"
+            elif latest_price <= tp:
+                result = "WIN"
+
+        if result is None:
+            continue
+
+        order["result"] = result
+        order["status"] = "SHADOW_PROBE_WIN" if result == "WIN" else "SHADOW_PROBE_LOSS"
+        order["close_price"] = round(latest_price, 5)
+        order["closed_at"] = utc_now_iso()
+        order["profit_usd"] = calculate_shadow_probe_profit_usd(order, latest_price)
+        order["excluded_from_phase4_quality"] = True
+        order["live_allowed"] = False
+        order["safe_to_demo_auto_order"] = False
+        order["mt5_ready"] = False
+        closed.append(order)
+
+    return closed
+
+
+
+def create_shadow_probe_order(signal):
+    symbol = str(signal.get("symbol", "") or "").upper()
+    action = get_signal_action(signal)
+    strategy = get_signal_strategy(signal)
+    signal_id = signal.get("signal_id") or f"{symbol}_{action}_{strategy}_{utc_now_iso()}"
+
+    return {
+        "paper_probe_order_id": f"PROBE_{signal_id}",
+        "signal_id": signal_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "symbol": symbol,
+        "type": action,
+        "lot": float(signal.get("lot", 0) or 0),
+        "entry": get_signal_entry(signal),
+        "sl": get_signal_sl(signal),
+        "tp": get_signal_tp(signal),
+        "strategy": strategy,
+        "score": get_signal_score(signal),
+        "risk_usd": get_signal_risk_usd(signal),
+        "status": "SHADOW_PROBE_OPEN",
+        "result": None,
+        "close_price": None,
+        "closed_at": None,
+        "profit_usd": 0.0,
+        "shadow_probe_only": True,
+        "excluded_from_phase4_quality": SHADOW_PROBE_EXCLUDED_FROM_PHASE4_QUALITY,
+        "source_status": signal.get("status"),
+        "source_reason": signal.get("reason"),
+        "shadow_probe_synthetic_execution": bool(signal.get("shadow_probe_synthetic_execution")),
+        "shadow_probe_synthetic_reason": signal.get("shadow_probe_synthetic_reason"),
+        "live_allowed": False,
+        "safe_to_demo_auto_order": False,
+        "mt5_ready": False,
+        "executor_created_at": utc_now_iso(),
+        "executor_mode": EXECUTION_MODE,
+        "source": "AI_SCALPER_SHADOW_PROBE",
+    }
 
 def save_json(path, data):
     with open(path, "w") as f:
@@ -804,6 +1107,35 @@ def main():
     signals = merge_phase4r_paper_observation_signals(signals)
     paper_orders = load_json(PAPER_LOG_FILE, [])
     executed_ids = load_json(EXECUTED_IDS_FILE, [])
+    shadow_probe_orders = load_json(SHADOW_PROBE_LOG_FILE, [])
+    shadow_probe_executed_ids = load_json(SHADOW_PROBE_EXECUTED_IDS_FILE, [])
+    shadow_probe_closed = monitor_shadow_probe_orders(shadow_probe_orders)
+
+    shadow_probe_accepted = []
+    shadow_probe_rejected = []
+    open_shadow_probe_orders = get_open_shadow_probe_orders(shadow_probe_orders)
+
+    if ENABLE_SHADOW_PROBE_ORDERS and not open_shadow_probe_orders:
+        for probe_signal in load_shadow_probe_signals():
+            if len(shadow_probe_accepted) >= MAX_SHADOW_PROBE_ORDERS_PER_RUN:
+                break
+
+            probe_signal_id = probe_signal.get("signal_id")
+            if probe_signal_id and probe_signal_id in shadow_probe_executed_ids:
+                shadow_probe_rejected.append({
+                    "signal": probe_signal,
+                    "reasons": ["Duplicate shadow probe signal_id already processed."],
+                })
+                continue
+
+            probe_order = create_shadow_probe_order(probe_signal)
+            shadow_probe_accepted.append(probe_order)
+            shadow_probe_orders.append(probe_order)
+            if probe_signal_id:
+                shadow_probe_executed_ids.append(probe_signal_id)
+
+    save_json(SHADOW_PROBE_LOG_FILE, shadow_probe_orders)
+    save_json(SHADOW_PROBE_EXECUTED_IDS_FILE, shadow_probe_executed_ids)
 
     if not signals:
         if isinstance(raw_signals, dict):
@@ -812,10 +1144,68 @@ def main():
 
             if status in ["NO_TRADE", "WAIT"] or orders == []:
                 print("No ready trade signal found. Market condition is WAIT or no order passed filters.")
+                print(f"Shadow probe order log saved to: {SHADOW_PROBE_LOG_FILE}")
+                if shadow_probe_accepted:
+                    print("Accepted shadow probe order(s):")
+                    for order in shadow_probe_accepted:
+                        print(
+                            f"{order['symbol']} {order['type']} | "
+                            f"Lot: {order['lot']} | "
+                            f"Entry: {order['entry']} | "
+                            f"SL: {order['sl']} | "
+                            f"TP: {order['tp']} | "
+                            f"Strategy: {order['strategy']} | "
+                            f"Score: {order['score']} | "
+                            f"Status: {order['status']} | "
+                            f"Excluded from Phase4 quality: {order['excluded_from_phase4_quality']}"
+                        )
+                else:
+                    print("No accepted shadow probe order.")
+
+                if shadow_probe_closed:
+                    print("Closed shadow probe order(s):")
+                    for order in shadow_probe_closed:
+                        print(
+                            f"{order['symbol']} {order['type']} | "
+                            f"Close: {order['close_price']} | "
+                            f"Result: {order['result']} | "
+                            f"Profit: ${order['profit_usd']} | "
+                            f"Status: {order['status']} | "
+                            f"Excluded from Phase4 quality: {order['excluded_from_phase4_quality']}"
+                        )
                 return
 
         print("No valid signal found in mt5_trade_signals.json or PAPER_OBSERVATION_ONLY in trade_signals.json.")
         print("Supported MT5 formats: list of signals, or dict with key: signals/orders/valid_orders/ready_orders/trade_signals.")
+        print(f"Shadow probe order log saved to: {SHADOW_PROBE_LOG_FILE}")
+        if shadow_probe_accepted:
+            print("Accepted shadow probe order(s):")
+            for order in shadow_probe_accepted:
+                print(
+                    f"{order['symbol']} {order['type']} | "
+                    f"Lot: {order['lot']} | "
+                    f"Entry: {order['entry']} | "
+                    f"SL: {order['sl']} | "
+                    f"TP: {order['tp']} | "
+                    f"Strategy: {order['strategy']} | "
+                    f"Score: {order['score']} | "
+                    f"Status: {order['status']} | "
+                    f"Excluded from Phase4 quality: {order['excluded_from_phase4_quality']}"
+                )
+        else:
+            print("No accepted shadow probe order.")
+
+        if shadow_probe_closed:
+            print("Closed shadow probe order(s):")
+            for order in shadow_probe_closed:
+                print(
+                    f"{order['symbol']} {order['type']} | "
+                    f"Close: {order['close_price']} | "
+                    f"Result: {order['result']} | "
+                    f"Profit: ${order['profit_usd']} | "
+                    f"Status: {order['status']} | "
+                    f"Excluded from Phase4 quality: {order['excluded_from_phase4_quality']}"
+                )
         return
 
     accepted = []
@@ -884,6 +1274,38 @@ def main():
     else:
         print("No accepted paper order.")
 
+    print("\n=== CLOSED SHADOW PROBE ORDERS ===")
+    if shadow_probe_closed:
+        for order in shadow_probe_closed:
+            print(
+                f"{order['symbol']} {order['type']} | "
+                f"Close: {order['close_price']} | "
+                f"Result: {order['result']} | "
+                f"Profit: ${order['profit_usd']} | "
+                f"Status: {order['status']} | "
+                f"Excluded from Phase4 quality: {order['excluded_from_phase4_quality']}"
+            )
+    else:
+        print("No closed shadow probe order.")
+
+    print("\n=== ACCEPTED SHADOW PROBE ORDERS ===")
+    if shadow_probe_accepted:
+        for order in shadow_probe_accepted:
+            print(
+                f"{order['symbol']} {order['type']} | "
+                f"Lot: {order['lot']} | "
+                f"Entry: {order['entry']} | "
+                f"SL: {order['sl']} | "
+                f"TP: {order['tp']} | "
+                f"Strategy: {order['strategy']} | "
+                f"Score: {order['score']} | "
+                f"Risk: ${order['risk_usd']} | "
+                f"Status: {order['status']} | "
+                f"Excluded from Phase4 quality: {order['excluded_from_phase4_quality']}"
+            )
+    else:
+        print("No accepted shadow probe order.")
+
     print("\n=== REJECTED ORDERS ===")
     if rejected:
         for item in rejected:
@@ -908,6 +1330,7 @@ def main():
     print(f"\nSignal cleanup applied: {cleanup_applied}")
     print(f"Signal cleanup reason : {cleanup_reason}")
     print(f"Paper order log saved to: {PAPER_LOG_FILE}")
+    print(f"Shadow probe order log saved to: {SHADOW_PROBE_LOG_FILE}")
     print(f"Executed signal IDs saved to: {EXECUTED_IDS_FILE}")
     print(f"Paper executor report saved to: {PAPER_EXECUTOR_REPORT_FILE}")
 
