@@ -19,6 +19,9 @@ from executor_config import (
 )
 
 SIGNAL_FILE = "mt5_trade_signals.json"
+TRADE_SIGNAL_OUTPUT = "trade_signals.json"
+PAPER_OBSERVATION_ONLY_STATUS = "PAPER_OBSERVATION_ONLY"
+PAPER_ENTRY_ALLOWED_STATUSES = {"READY_TO_TRADE", PAPER_OBSERVATION_ONLY_STATUS}
 PAPER_LOG_FILE = "paper_orders.json"
 EXECUTED_IDS_FILE = "executed_signal_ids.json"
 QUALITY_REPORT_FILE = "paper_quality_report.json"
@@ -83,6 +86,69 @@ def load_json(path, default):
     except Exception:
         return default
 
+
+
+def load_phase4r_paper_observation_signals():
+    """Load Phase4R paper-observation-only decisions from trade_signals.json.
+
+    Safety contract:
+    - Does not read from MT5-ready export.
+    - Does not create live/demo-auto permission.
+    - Only returns strict PAPER_OBSERVATION_ONLY decisions.
+    """
+    payload = load_json(TRADE_SIGNAL_OUTPUT, {})
+    decisions = payload.get("all_decisions", [])
+
+    if not isinstance(decisions, list):
+        return []
+
+    allowed = []
+    for item in decisions:
+        if not isinstance(item, dict):
+            continue
+        if item.get("status") != PAPER_OBSERVATION_ONLY_STATUS:
+            continue
+        if item.get("paper_observation_only") is not True:
+            continue
+        if item.get("mt5_ready") is True:
+            continue
+        if item.get("live_allowed") is True:
+            continue
+        if item.get("safe_to_demo_auto_order") is True:
+            continue
+
+        safe_item = dict(item)
+        safe_item["paper_observation_only"] = True
+        safe_item["phase4r_paper_observation_allowed"] = True
+        safe_item["live_allowed"] = False
+        safe_item["safe_to_demo_auto_order"] = False
+        safe_item["mt5_ready"] = False
+        allowed.append(safe_item)
+
+    return allowed
+
+
+def merge_phase4r_paper_observation_signals(signals):
+    """Append PAPER_OBSERVATION_ONLY decisions to paper executor input only.
+
+    These signals must never be written to mt5_trade_signals.json.
+    """
+    merged = list(signals or [])
+    existing_ids = {
+        str(item.get("signal_id") or item.get("id") or "")
+        for item in merged
+        if isinstance(item, dict)
+    }
+
+    for item in load_phase4r_paper_observation_signals():
+        signal_id = str(item.get("signal_id") or item.get("id") or "")
+        if signal_id and signal_id in existing_ids:
+            continue
+        merged.append(item)
+        if signal_id:
+            existing_ids.add(signal_id)
+
+    return merged
 
 def save_json(path, data):
     with open(path, "w") as f:
@@ -676,6 +742,12 @@ def create_paper_order(signal, phase4_guard_info=None):
         "risk_usd": get_signal_risk_usd(signal),
         "symbol_risk_profile": symbol_profile,
         "status": "PAPER_OPEN",
+        "paper_observation_only": signal.get("status") == PAPER_OBSERVATION_ONLY_STATUS,
+        "phase4r_review_lock": "LOCKED" if signal.get("status") == PAPER_OBSERVATION_ONLY_STATUS else signal.get("phase4r_review_lock"),
+        "phase4r_paper_observation_allowed": bool(signal.get("status") == PAPER_OBSERVATION_ONLY_STATUS or signal.get("phase4r_paper_observation_allowed")),
+        "live_allowed": False,
+        "safe_to_demo_auto_order": False,
+        "mt5_ready": False,
         "result": None,
         "close_price": None,
         "closed_at": None,
@@ -729,6 +801,7 @@ def main():
 
     raw_signals = load_json(SIGNAL_FILE, [])
     signals = normalize_signals(raw_signals)
+    signals = merge_phase4r_paper_observation_signals(signals)
     paper_orders = load_json(PAPER_LOG_FILE, [])
     executed_ids = load_json(EXECUTED_IDS_FILE, [])
 
@@ -741,8 +814,8 @@ def main():
                 print("No ready trade signal found. Market condition is WAIT or no order passed filters.")
                 return
 
-        print("No valid signal found in mt5_trade_signals.json.")
-        print("Supported formats: list of signals, or dict with key: signals/orders/valid_orders/ready_orders/trade_signals.")
+        print("No valid signal found in mt5_trade_signals.json or PAPER_OBSERVATION_ONLY in trade_signals.json.")
+        print("Supported MT5 formats: list of signals, or dict with key: signals/orders/valid_orders/ready_orders/trade_signals.")
         return
 
     accepted = []

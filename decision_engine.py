@@ -891,6 +891,12 @@ EXPLORATION_TAG = "EXPERIMENTAL_PHASE4_SAMPLE"
 # =========================
 # Paper-only safety lock. Tidak membuka live trading.
 # Fungsinya menahan sinyal baru saat Phase 4 quality report meminta STOP_AND_REVIEW.
+# Safety-preserving recovery lane: Phase4R lock must block live/demo-auto/MT5-ready
+# promotion, but it should not freeze paper-only recovery sampling forever.
+ENABLE_PHASE4R_PAPER_OBSERVATION_WHILE_LOCKED = True
+PHASE4R_PAPER_OBSERVATION_STATUS = "PAPER_OBSERVATION_ONLY"
+PHASE4R_PAPER_OBSERVATION_TAG = "PHASE4R_LOCKED_PAPER_OBSERVATION_ONLY"
+
 
 # =========================
 # PHASE 4 REVIEW IMPROVEMENT GUARD
@@ -1460,54 +1466,57 @@ def cleanup_replay_validation_noise_in_item(item):
 
 
 def enforce_phase4r_locked_final_wait(item):
-    """Force WAIT when Phase4R review lock is active.
+    """
+    Phase4R review lock must block promotion/live/demo-auto/MT5-ready export.
 
-    Safety-only. Tidak membuka live trading, tidak menaikkan lot,
-    dan tidak mengubah guard rules. Jika Phase4R LOCKED, item tidak boleh
-    READY_TO_TRADE atau masuk MT5-ready output.
+    Safety-preserving recovery behavior:
+    - Non-ready items remain forced/kept as WAIT while locked.
+    - READY_TO_TRADE items may continue only as PAPER_OBSERVATION_ONLY.
+    - PAPER_OBSERVATION_ONLY must never be exported as MT5-ready/live/demo-auto.
     """
     if not isinstance(item, dict):
         return item
 
-    phase4r_review_lock = item.get("phase4r_review_lock", {})
-    if not isinstance(phase4r_review_lock, dict):
-        for candidate_key, candidate_value in item.items():
-            if (
-                isinstance(candidate_key, str)
-                and "phase4r" in candidate_key.lower()
-                and "review" in candidate_key.lower()
-                and isinstance(candidate_value, dict)
-            ):
-                phase4r_review_lock = candidate_value
-                break
+    lock_status = str(item.get("phase4r_review_lock", "")).upper()
+    lock_guard = item.get("phase4r_review_lock_guard")
 
-    phase4r_status = str(phase4r_review_lock.get("status", "") or "").upper()
-    if phase4r_status != "LOCKED":
+    guard_locked = False
+    if isinstance(lock_guard, dict):
+        guard_locked = str(lock_guard.get("status", "")).upper() == "LOCKED"
+
+    if lock_status != "LOCKED" and not guard_locked:
         return item
 
-    previous_status = item.get("status")
-    previous_action = item.get("action")
+    guarded_item = dict(item)
+    original_status = guarded_item.get("status")
 
-    item["status"] = "WAIT"
-    item["action"] = "-"
-    item["phase4r_final_wait_override"] = {
-        "enabled": True,
-        "applied": True,
-        "previous_status": previous_status,
-        "previous_action": previous_action,
-        "final_status": "WAIT",
-        "final_action": "-",
-        "creates_order": False,
-        "live_allowed": False,
-        "reason": "Phase4R review lock is active; final status forced to WAIT and MT5-ready export is blocked.",
-    }
+    if (
+        ENABLE_PHASE4R_PAPER_OBSERVATION_WHILE_LOCKED
+        and original_status == "READY_TO_TRADE"
+    ):
+        guarded_item["status"] = PHASE4R_PAPER_OBSERVATION_STATUS
+        guarded_item["paper_observation_only"] = True
+        guarded_item["phase4r_paper_observation_allowed"] = True
+        guarded_item["phase4r_review_lock"] = "LOCKED"
+        guarded_item["phase4r_review_lock_tag"] = PHASE4R_PAPER_OBSERVATION_TAG
+        guarded_item["mt5_ready"] = False
+        guarded_item["live_allowed"] = False
+        guarded_item["safe_to_demo_auto_order"] = False
+        guarded_item["reason"] = (
+            "Phase4R review lock active: promotion/live/demo-auto/MT5-ready export blocked. "
+            "Paper-observation-only entry allowed under strict guards."
+        )
+        return guarded_item
 
-    existing_reason = str(item.get("reason", "") or "").strip()
-    override_reason = "Phase4R review lock active; final status forced to WAIT."
-    if override_reason not in existing_reason:
-        item["reason"] = f"{existing_reason} {override_reason}".strip()
-
-    return item
+    guarded_item["status"] = "WAIT"
+    guarded_item["mt5_ready"] = False
+    guarded_item["live_allowed"] = False
+    guarded_item["safe_to_demo_auto_order"] = False
+    guarded_item["phase4r_review_lock"] = "LOCKED"
+    guarded_item["reason"] = (
+        "Phase4R review lock is active; final status forced to WAIT and MT5-ready export is blocked."
+    )
+    return guarded_item
 
 
 def export_all_pair_source_audit():
