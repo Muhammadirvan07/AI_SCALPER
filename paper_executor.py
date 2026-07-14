@@ -25,6 +25,7 @@ PAPER_OBSERVATION_ONLY_STATUS = "PAPER_OBSERVATION_ONLY"
 PAPER_ENTRY_ALLOWED_STATUSES = {"READY_TO_TRADE", PAPER_OBSERVATION_ONLY_STATUS}
 PAPER_LOG_FILE = "paper_orders.json"
 SHADOW_PROBE_LOG_FILE = "paper_probe_orders.json"
+RECOVERY_EVALUATION_REPORT_FILE = "recovery_evaluation_report.json"
 SHADOW_PROBE_EXECUTED_IDS_FILE = "paper_probe_executed_signal_ids.json"
 ENABLE_SHADOW_PROBE_ORDERS = True
 MAX_SHADOW_PROBE_ORDERS_PER_RUN = 1
@@ -412,6 +413,78 @@ def monitor_shadow_probe_orders(shadow_orders):
         closed.append(order)
 
     return closed
+
+
+
+
+def build_recovery_evaluation_report(shadow_orders):
+    """Build official diagnostic recovery evaluation from shadow probe orders.
+
+    This is separate from official Phase 4 paper quality.
+    It must not unlock live/demo-auto/MT5 and must not modify paper_orders.json.
+    """
+    orders = shadow_orders if isinstance(shadow_orders, list) else []
+    closed = [
+        order for order in orders
+        if order.get("status") in {"SHADOW_PROBE_WIN", "SHADOW_PROBE_LOSS"}
+    ]
+    wins = [order for order in closed if order.get("result") == "WIN"]
+    losses = [order for order in closed if order.get("result") == "LOSS"]
+    open_orders = [order for order in orders if order.get("status") == "SHADOW_PROBE_OPEN"]
+
+    gross_profit = round(sum(float(order.get("profit_usd", 0) or 0) for order in wins), 4)
+    gross_loss_abs = round(abs(sum(float(order.get("profit_usd", 0) or 0) for order in losses)), 4)
+    net_profit = round(sum(float(order.get("profit_usd", 0) or 0) for order in closed), 4)
+    winrate = round((len(wins) / len(closed) * 100), 2) if closed else 0.0
+    profit_factor = round(gross_profit / gross_loss_abs, 4) if gross_loss_abs > 0 else (999.0 if gross_profit > 0 else 0.0)
+
+    current_loss_streak = 0
+    max_loss_streak = 0
+    for order in closed:
+        if order.get("result") == "LOSS":
+            current_loss_streak += 1
+            max_loss_streak = max(max_loss_streak, current_loss_streak)
+        elif order.get("result") == "WIN":
+            current_loss_streak = 0
+
+    recommendation = "CONTINUE_MONITORING"
+    reasons = []
+    if len(closed) < 10:
+        reasons.append("Recovery sample below 10 closed probes.")
+    elif winrate > 50 and net_profit > 0 and current_loss_streak <= 2:
+        recommendation = "CANDIDATE_FOR_RULE_IMPROVEMENT"
+        reasons.append("Recovery sample has positive WR, positive net, and controlled current loss streak.")
+    elif current_loss_streak >= 3 or net_profit <= 0:
+        recommendation = "KEEP_BLOCK"
+        reasons.append("Recovery sample still shows weak net or elevated loss streak.")
+
+    return {
+        "generated_at": utc_now_iso(),
+        "source_file": SHADOW_PROBE_LOG_FILE,
+        "report_file": RECOVERY_EVALUATION_REPORT_FILE,
+        "evaluation_lane": "OFFICIAL_RECOVERY_EVALUATION_DIAGNOSTIC_ONLY",
+        "excluded_from_phase4_quality": True,
+        "live_allowed": False,
+        "safe_to_demo_auto_order": False,
+        "mt5_ready": False,
+        "total_orders": len(orders),
+        "closed_orders": len(closed),
+        "open_orders": len(open_orders),
+        "wins": len(wins),
+        "losses": len(losses),
+        "winrate": winrate,
+        "gross_profit_usd": gross_profit,
+        "gross_loss_abs_usd": gross_loss_abs,
+        "net_profit_usd": net_profit,
+        "profit_factor": profit_factor,
+        "current_loss_streak": current_loss_streak,
+        "max_loss_streak": max_loss_streak,
+        "min_sample_for_rule_review": 10,
+        "recommendation": recommendation,
+        "recommendation_reasons": reasons,
+        "last_5_closed": closed[-5:],
+        "open_probe_orders": open_orders[-3:],
+    }
 
 
 
@@ -1134,8 +1207,10 @@ def main():
             if probe_signal_id:
                 shadow_probe_executed_ids.append(probe_signal_id)
 
+    recovery_evaluation_report = build_recovery_evaluation_report(shadow_probe_orders)
     save_json(SHADOW_PROBE_LOG_FILE, shadow_probe_orders)
     save_json(SHADOW_PROBE_EXECUTED_IDS_FILE, shadow_probe_executed_ids)
+    save_json(RECOVERY_EVALUATION_REPORT_FILE, recovery_evaluation_report)
 
     if not signals:
         if isinstance(raw_signals, dict):
@@ -1145,6 +1220,15 @@ def main():
             if status in ["NO_TRADE", "WAIT"] or orders == []:
                 print("No ready trade signal found. Market condition is WAIT or no order passed filters.")
                 print(f"Shadow probe order log saved to: {SHADOW_PROBE_LOG_FILE}")
+                print(f"Recovery evaluation report saved to: {RECOVERY_EVALUATION_REPORT_FILE}")
+                print(
+                    "Recovery evaluation: "
+                    f"closed={recovery_evaluation_report['closed_orders']} | "
+                    f"WR={recovery_evaluation_report['winrate']}% | "
+                    f"net=${recovery_evaluation_report['net_profit_usd']} | "
+                    f"PF={recovery_evaluation_report['profit_factor']} | "
+                    f"recommendation={recovery_evaluation_report['recommendation']}"
+                )
                 if shadow_probe_accepted:
                     print("Accepted shadow probe order(s):")
                     for order in shadow_probe_accepted:
@@ -1178,6 +1262,15 @@ def main():
         print("No valid signal found in mt5_trade_signals.json or PAPER_OBSERVATION_ONLY in trade_signals.json.")
         print("Supported MT5 formats: list of signals, or dict with key: signals/orders/valid_orders/ready_orders/trade_signals.")
         print(f"Shadow probe order log saved to: {SHADOW_PROBE_LOG_FILE}")
+        print(f"Recovery evaluation report saved to: {RECOVERY_EVALUATION_REPORT_FILE}")
+        print(
+            "Recovery evaluation: "
+            f"closed={recovery_evaluation_report['closed_orders']} | "
+            f"WR={recovery_evaluation_report['winrate']}% | "
+            f"net=${recovery_evaluation_report['net_profit_usd']} | "
+            f"PF={recovery_evaluation_report['profit_factor']} | "
+            f"recommendation={recovery_evaluation_report['recommendation']}"
+        )
         if shadow_probe_accepted:
             print("Accepted shadow probe order(s):")
             for order in shadow_probe_accepted:
@@ -1331,6 +1424,15 @@ def main():
     print(f"Signal cleanup reason : {cleanup_reason}")
     print(f"Paper order log saved to: {PAPER_LOG_FILE}")
     print(f"Shadow probe order log saved to: {SHADOW_PROBE_LOG_FILE}")
+    print(f"Recovery evaluation report saved to: {RECOVERY_EVALUATION_REPORT_FILE}")
+    print(
+        "Recovery evaluation: "
+        f"closed={recovery_evaluation_report['closed_orders']} | "
+        f"WR={recovery_evaluation_report['winrate']}% | "
+        f"net=${recovery_evaluation_report['net_profit_usd']} | "
+        f"PF={recovery_evaluation_report['profit_factor']} | "
+        f"recommendation={recovery_evaluation_report['recommendation']}"
+    )
     print(f"Executed signal IDs saved to: {EXECUTED_IDS_FILE}")
     print(f"Paper executor report saved to: {PAPER_EXECUTOR_REPORT_FILE}")
 
