@@ -35,6 +35,10 @@ Run dependency validation:
 python -m pip check
 ```
 
+Run the cost-aware strategy validation checks described in
+`docs/STRATEGY_VALIDATION_RUNBOOK.md` before changing any active-pair or
+execution policy.
+
 Run the offline decision pipeline without downloading new market data:
 
 ```bash

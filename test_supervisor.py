@@ -10,14 +10,14 @@ from agents.supervisor_agent import SupervisorAgent
 df = pd.read_csv("data/btcusd.csv")
 
 # Trend
-signal = analyze_trend(df)
+signal = analyze_trend(df, symbol="BTCUSD")
 
 # Volatility
 atr = get_atr(df)
 
 # Market status
 price = df["Close"].iloc[-1]
-market_status = classify_market(atr, price)
+market_status = classify_market(atr, price, symbol="BTCUSD")
 
 # Risk
 rm = RiskManager()

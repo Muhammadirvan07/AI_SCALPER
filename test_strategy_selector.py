@@ -16,8 +16,8 @@ def test_symbol(symbol):
     data_path = f"data/{symbol}.csv"
     df = pd.read_csv(data_path)
 
-    result = select_best_strategy(df)
-    all_strategies, context = evaluate_strategies(df)
+    result = select_best_strategy(df, symbol=symbol)
+    all_strategies, context = evaluate_strategies(df, symbol=symbol)
 
     print(f"\n=== {symbol.upper()} ===")
     print(f"Market Regime     : {result['market_regime']}")

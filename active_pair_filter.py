@@ -7,15 +7,15 @@ from strategy.strategy_selector import select_best_strategy
 from agents.volatility_agent import get_atr
 from agents.market_status import classify_market
 from agents.supervisor_agent import SupervisorAgent
+from execution_policy import is_execution_symbol_allowed
 
 ACTIVE_PAIRS_FILE = "active_pairs.json"
 DATA_DIR = "data"
 
 DEFAULT_ACTIVE_PAIRS = [
-    "gbpusd",
     "eurusd",
-    "btcusd",
 ]
+SHADOW_SCAN_PAIRS = ["btcusd"]
 
 
 def normalize_active_pairs(active_pairs):
@@ -25,20 +25,34 @@ def normalize_active_pairs(active_pairs):
         if str(symbol).strip()
     ]
 
-    if "btcusd" not in symbols:
-        symbols.append("btcusd")
+    shadow_only = set(SHADOW_SCAN_PAIRS)
+    return [
+        symbol
+        for symbol in dict.fromkeys(symbols)
+        if symbol not in shadow_only
+    ]
 
-    return list(dict.fromkeys(symbols))
+
+def get_scan_pairs():
+    return list(dict.fromkeys(load_active_pairs() + SHADOW_SCAN_PAIRS))
 
 
 def load_active_pairs():
     if not os.path.exists(ACTIVE_PAIRS_FILE):
         return normalize_active_pairs(DEFAULT_ACTIVE_PAIRS)
 
-    with open(ACTIVE_PAIRS_FILE, "r") as file:
-        payload = json.load(file)
+    try:
+        with open(ACTIVE_PAIRS_FILE, "r") as file:
+            payload = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return normalize_active_pairs(DEFAULT_ACTIVE_PAIRS)
 
-    active_pairs = payload.get("active_pairs", [])
+    if isinstance(payload, dict):
+        active_pairs = payload.get("active_pairs", [])
+    elif isinstance(payload, list):
+        active_pairs = payload
+    else:
+        return normalize_active_pairs(DEFAULT_ACTIVE_PAIRS)
 
     if not active_pairs:
         return normalize_active_pairs(DEFAULT_ACTIVE_PAIRS)
@@ -90,7 +104,7 @@ def analyze_active_pair(symbol):
 
     supervisor = SupervisorAgent()
 
-    strategy_result = select_best_strategy(df)
+    strategy_result = select_best_strategy(df, symbol=symbol)
     signal = strategy_result["signal"]
     selected_strategy = strategy_result["strategy"]
     strategy_score = strategy_result["score"]
@@ -100,7 +114,7 @@ def analyze_active_pair(symbol):
     atr = get_atr(df)
     price = df["Close"].iloc[-1]
     volatility_percent = (atr / price) * 100
-    market_status = classify_market(atr, price)
+    market_status = classify_market(atr, price, symbol=symbol)
 
     decision = supervisor.make_decision(
         signal,
@@ -109,6 +123,11 @@ def analyze_active_pair(symbol):
 
     return {
         "symbol": symbol.upper(),
+        "scan_scope": (
+            "EXECUTION_CANDIDATE"
+            if is_execution_symbol_allowed(symbol)
+            else "SHADOW_ONLY"
+        ),
         "price": price,
         "atr": atr,
         "volatility_percent": volatility_percent,
@@ -123,7 +142,7 @@ def analyze_active_pair(symbol):
 
 
 def scan_active_pairs():
-    active_pairs = load_active_pairs()
+    active_pairs = get_scan_pairs()
     results = []
 
     for symbol in active_pairs:
@@ -179,6 +198,7 @@ def get_tradeable_pairs():
     tradeable_pairs = [
         item for item in results
         if item.get("decision") in ["BUY", "SELL"]
+        and is_execution_symbol_allowed(item.get("symbol"))
     ]
 
     return tradeable_pairs
@@ -189,7 +209,8 @@ def main():
 
     print("\n=== AI ACTIVE PAIR FILTER ===")
     print(f"ACTIVE_PAIRS = {active_pairs}")
-    print("\nAI should only focus on these pairs until the next backtest refresh.")
+    print(f"SHADOW_SCAN_PAIRS = {SHADOW_SCAN_PAIRS}")
+    print("\nOnly execution-approved active pairs may become trade candidates.")
 
     results = scan_active_pairs()
     print_active_pair_scan(results)

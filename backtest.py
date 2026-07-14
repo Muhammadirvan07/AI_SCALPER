@@ -1,7 +1,8 @@
 import json
 import pandas as pd
 
-from strategy.trend_analyzer import analyze_trend
+from strategy.strategy_profiles import get_strategy_profile
+from strategy.strategy_selector import select_best_strategy
 from agents.volatility_agent import get_atr
 from agents.supervisor_agent import SupervisorAgent
 
@@ -48,8 +49,11 @@ MIN_PROFIT_FACTOR_FOR_ACTIVE_PAIR = DEFAULT_MIN_PROFIT_FACTOR_FOR_ACTIVE_PAIR
 MIN_EXPECTANCY_FOR_ACTIVE_PAIR = 0.0
 MIN_NET_PROFIT_FOR_ACTIVE_PAIR = 0.0
 MAX_ACTIVE_PAIRS = 4
-ACTIVE_PAIRS_OUTPUT = "active_pairs.json"
+# Legacy backtest results are review-only.  They must never overwrite the
+# execution policy input in active_pairs.json.
+ACTIVE_PAIRS_OUTPUT = "active_pairs_backtest_draft.json"
 PAPER_REPLAY_CANDIDATES_FILE = "paper_replay_candidates.json"
+ROBUST_VALIDATION_REPORT_FILE = "strategy_walk_forward_report.json"
 
 USE_REPLAY_FILTER_FOR_ACTIVE_PAIRS = True
 REPLAY_FILTER_REQUIRE_GLOBAL_CANDIDATES = True
@@ -185,19 +189,19 @@ def print_replay_filter_rejections(results):
             f"Reason: {item.get('replay_filter_reason', 'Rejected by replay filter.')}"
         )
 
-def classify_market_by_percent(atr, price):
+def classify_market_by_percent(atr, price, symbol="UNKNOWN"):
     volatility_percent = (atr / price) * 100
+    asset_class = get_strategy_profile(symbol).asset_class
 
-    # Forex pairs have much smaller M1 percent volatility than XAUUSD/BTCUSD.
-    if price < 300:
+    if asset_class == "FOREX":
         high_threshold = 0.05
         normal_threshold = 0.006
-    elif price < 10000:
-        high_threshold = 0.35
-        normal_threshold = 0.05
-    else:
+    elif asset_class == "CRYPTO":
         high_threshold = 0.50
         normal_threshold = 0.03
+    else:
+        high_threshold = 0.35
+        normal_threshold = 0.05
 
     if volatility_percent > high_threshold:
         return "HIGH", volatility_percent
@@ -311,6 +315,7 @@ def run_backtest(symbol, verbose=True):
         "buy_losses": 0,
         "sell_wins": 0,
         "sell_losses": 0,
+        "strategy_counts": {},
         "timeout_trades": 0,
         "trailing_stop_hits": 0,
         "gross_profit": 0.0,
@@ -337,17 +342,17 @@ def run_backtest(symbol, verbose=True):
         if len(window) < 250:
             continue
 
-        signal = analyze_trend(window)
+        strategy_result = select_best_strategy(window, symbol=symbol)
+        signal = strategy_result["signal"]
+        selected_strategy = strategy_result["strategy"]
         current_close = window["Close"].iloc[-1]
-
-        breakout_high = window["High"].iloc[-21:-1].max()
-        breakout_low = window["Low"].iloc[-21:-1].min()
 
         atr = get_atr(window)
 
         market_status, current_volatility_percent = classify_market_by_percent(
             atr,
             current_close,
+            symbol=symbol,
         )
 
         decision = supervisor.make_decision(
@@ -359,14 +364,6 @@ def run_backtest(symbol, verbose=True):
             stats["skipped_sideways"] += 1
             continue
 
-        if signal == "BUY" and current_close <= breakout_high:
-            stats["breakout_rejected"] += 1
-            continue
-
-        if signal == "SELL" and current_close >= breakout_low:
-            stats["breakout_rejected"] += 1
-            continue
-
         if market_status == "LOW":
             stats["skipped_low_vol"] += 1
             continue
@@ -374,6 +371,10 @@ def run_backtest(symbol, verbose=True):
         if decision == "WAIT":
             stats["skipped_wait"] += 1
             continue
+
+        stats["strategy_counts"][selected_strategy] = (
+            stats["strategy_counts"].get(selected_strategy, 0) + 1
+        )
 
         entry = df.iloc[i]["Close"]
         volatility_percent = (atr / entry) * 100
@@ -516,6 +517,12 @@ def run_backtest(symbol, verbose=True):
 
 
 def get_profitable_pairs(results):
+    robust_report = load_json_file(ROBUST_VALIDATION_REPORT_FILE, {})
+    robust_by_symbol = {
+        str(report.get("symbol", "")).upper(): report
+        for report in robust_report.get("symbol_reports", [])
+        if isinstance(report, dict) and report.get("symbol")
+    } if isinstance(robust_report, dict) else {}
     valid_pairs = []
 
     for item in results:
@@ -525,6 +532,22 @@ def get_profitable_pairs(results):
         item["min_profit_factor_required"] = min_pf
         item["active_pair_filter_status"] = "REJECTED"
         item["active_pair_filter_reasons"] = []
+        item["legacy_backtest_promotion_eligible"] = False
+
+        robust_symbol_report = robust_by_symbol.get(symbol.upper())
+        item["robust_validation_status"] = (
+            robust_symbol_report.get("status", "UNKNOWN")
+            if robust_symbol_report
+            else "MISSING"
+        )
+        item["robust_watch_ready"] = bool(
+            robust_symbol_report and robust_symbol_report.get("watch_ready", False)
+        )
+
+        if not item["robust_watch_ready"]:
+            item["active_pair_filter_reasons"].append(
+                "Cost-aware chronological validation has not passed WATCH gate."
+            )
 
         if item["trades"] < MIN_TRADES_FOR_ACTIVE_PAIR:
             item["active_pair_filter_reasons"].append(
@@ -600,6 +623,12 @@ def save_active_pairs(active_pairs):
     ]
 
     payload = {
+        "status": "REVIEW_ONLY_BACKTEST_DRAFT",
+        "promotion_eligible": False,
+        "live_allowed": False,
+        "safe_to_demo_auto_order": False,
+        "authoritative_active_pairs_file": "active_pairs.json",
+        "validation_source": ROBUST_VALIDATION_REPORT_FILE,
         "active_pairs": pair_names,
         "criteria": {
             "min_trades": MIN_TRADES_FOR_ACTIVE_PAIR,
@@ -611,7 +640,7 @@ def save_active_pairs(active_pairs):
             "use_replay_filter_for_active_pairs": USE_REPLAY_FILTER_FOR_ACTIVE_PAIRS,
             "replay_filter_require_global_candidates": REPLAY_FILTER_REQUIRE_GLOBAL_CANDIDATES,
         },
-            "details": active_pairs,
+        "details": active_pairs,
     }
 
     with open(ACTIVE_PAIRS_OUTPUT, "w") as file:
@@ -710,8 +739,6 @@ def print_multi_report(results):
     print("High SIDE means trend filter is blocking most candles.")
     print("High LOW means volatility filter is too strict or market is quiet.")
     print("High BO_REJ means breakout confirmation is rejecting many signals.")
-print("ACTIVE_PAIRS is generated from symbol-specific PF, expectancy, net profit, and minimum trade count.")
-
 def run_multi_backtest():
     results = []
 
@@ -782,6 +809,10 @@ def print_report(stats):
 
 
 if __name__ == "__main__":
+    print(
+        "Backtest output is review-only; active_pairs.json cannot be overwritten "
+        "by this script."
+    )
     run_multi_backtest()
 
     # Untuk test satu pair saja, matikan run_multi_backtest() lalu aktifkan baris ini.

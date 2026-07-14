@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import subprocess
@@ -48,6 +49,7 @@ MIN_STOP_POINTS_BTCUSD = 300
 TRADE_SIGNAL_OUTPUT = "trade_signals.json"
 MT5_SIGNAL_OUTPUT = "mt5_trade_signals.json"
 PAPER_REPLAY_CANDIDATES_FILE = "paper_replay_candidates.json"
+STRATEGY_WALK_FORWARD_REPORT_FILE = "strategy_walk_forward_report.json"
 OFFLINE_DASHBOARD_REPORT_FILE = "offline_dashboard_report.json"
 PAPER_QUALITY_RULES_FILE = "paper_quality_rules.json"
 PAPER_ORDERS_FILE = "paper_orders.json"
@@ -2695,6 +2697,11 @@ def export_all_pair_multi_strategy_backtest_report(all_pair_replay_validation_pl
         "generated_at": datetime.now().isoformat(),
         "mode": ALL_PAIR_MULTI_STRATEGY_BACKTEST_MODE,
         "enabled": True,
+        "validation_tier": "LEGACY_NEXT_CANDLE_PROXY",
+        "transaction_costs_included": False,
+        "chronological_holdout_included": False,
+        "promotion_eligible": False,
+        "authoritative_validation_file": STRATEGY_WALK_FORWARD_REPORT_FILE,
         "live_allowed": False,
         "max_lot": 0.01,
         "source_replay_validation_plan_file": ALL_PAIR_REPLAY_VALIDATION_OUTPUT,
@@ -2750,9 +2757,141 @@ def export_all_pair_candidate_promotion_plan(all_pair_multi_strategy_backtest_re
             "max_lot": 0.01,
         }
 
-    report_rows = all_pair_multi_strategy_backtest_report.get("report", [])
-    if not isinstance(report_rows, list):
-        report_rows = []
+    # The legacy multi-strategy report uses overlapping next-candle returns and
+    # excludes trading costs.  It is retained for diagnostics only; promotion
+    # must use the cost-aware chronological validator.
+    walk_forward_report = load_json_file(STRATEGY_WALK_FORWARD_REPORT_FILE, {})
+    walk_forward_rows = (
+        walk_forward_report.get("symbol_reports", [])
+        if isinstance(walk_forward_report, dict)
+        else []
+    )
+    if not isinstance(walk_forward_rows, list) or not walk_forward_rows:
+        return {
+            "enabled": True,
+            "status": "NO_COST_AWARE_VALIDATION_REPORT_AVAILABLE",
+            "reason": (
+                f"{STRATEGY_WALK_FORWARD_REPORT_FILE} is required before any "
+                "all-pair promotion review."
+            ),
+            "live_allowed": False,
+            "max_lot": 0.01,
+        }
+
+    report_promotion_eligible = bool(
+        walk_forward_report.get("promotion_eligible") is True
+        and walk_forward_report.get("runtime_parity_verified") is True
+        and walk_forward_report.get("holdout_used_for_selection") is False
+    )
+
+    report_rows = []
+    for symbol_report in walk_forward_rows:
+        if not isinstance(symbol_report, dict):
+            continue
+        strategy_reports = symbol_report.get("strategy_reports", [])
+        if not isinstance(strategy_reports, list):
+            strategy_reports = []
+        best_strategy = symbol_report.get("best_strategy")
+        best_strategy_report = next(
+            (
+                strategy_report
+                for strategy_report in strategy_reports
+                if isinstance(strategy_report, dict)
+                and strategy_report.get("strategy") == best_strategy
+            ),
+            strategy_reports[0] if strategy_reports else {},
+        )
+        if not isinstance(best_strategy_report, dict):
+            best_strategy_report = {}
+        overall = (
+            best_strategy_report.get("overall", {})
+            if isinstance(best_strategy_report, dict)
+            else {}
+        )
+        holdout = {}
+        for segment in best_strategy_report.get("segments", []):
+            if isinstance(segment, dict) and segment.get("segment") == "HOLDOUT":
+                holdout = segment.get("metrics", {})
+                break
+        best_watch_failures = symbol_report.get(
+            "component_watch_failures",
+            best_strategy_report.get("watch_failures", []),
+        )
+        if not isinstance(best_watch_failures, list):
+            best_watch_failures = ["invalid WATCH failure evidence"]
+
+        normalized_symbol = str(symbol_report.get("symbol", "") or "").upper()
+        expected_source_csv = Path(DATA_DIR) / f"{normalized_symbol.lower()}.csv"
+        source_csv = symbol_report.get("source_csv")
+        expected_source_hash = str(
+            symbol_report.get("source_csv_sha256", "") or ""
+        ).lower()
+        source_hash_matches = False
+        source_path_is_expected = bool(
+            source_csv and Path(str(source_csv)) == expected_source_csv
+        )
+        if source_path_is_expected and len(expected_source_hash) == 64:
+            try:
+                current_source_hash = hashlib.sha256(
+                    expected_source_csv.read_bytes()
+                ).hexdigest()
+                source_hash_matches = current_source_hash == expected_source_hash
+            except OSError:
+                source_hash_matches = False
+
+        symbol_promotion_eligible = bool(
+            report_promotion_eligible
+            and symbol_report.get("promotion_eligible") is True
+            and symbol_report.get("runtime_parity_verified") is True
+            and symbol_report.get("holdout_used_for_selection") is False
+            and source_hash_matches
+        )
+        promotion_failures = list(best_watch_failures)
+        if not report_promotion_eligible:
+            promotion_failures.append(
+                "validation report is diagnostic-only or runtime parity is unverified"
+            )
+        if not symbol_promotion_eligible:
+            promotion_failures.append(
+                "symbol validation is not promotion-eligible"
+            )
+        if not source_hash_matches:
+            promotion_failures.append(
+                "source CSV hash is missing, stale, or mismatched"
+            )
+        report_rows.append(
+            {
+                "symbol": symbol_report.get("symbol"),
+                "best_strategy": best_strategy,
+                "best_profit_factor": overall.get("profit_factor", 0.0),
+                "best_winrate_percent": overall.get("winrate_percent", 0.0),
+                "best_net_return_percent": overall.get("net_return_percent", 0.0),
+                "best_profit_factor_proxy": overall.get("profit_factor", 0.0),
+                "best_winrate_proxy": overall.get("winrate_percent", 0.0),
+                "best_net_return_percent_proxy": overall.get("net_return_percent", 0.0),
+                "holdout_profit_factor": holdout.get("profit_factor", 0.0),
+                "holdout_winrate_percent": holdout.get("winrate_percent", 0.0),
+                "holdout_trades": holdout.get("trades", 0),
+                "watch_failures": list(dict.fromkeys(promotion_failures)),
+                "passed_strategies": [
+                    strategy_report.get("strategy")
+                    for strategy_report in strategy_reports
+                    if isinstance(strategy_report, dict)
+                    and strategy_report.get("watch_ready") is True
+                ],
+                "multi_strategy_passed": bool(
+                    symbol_report.get("watch_ready") is True
+                    and symbol_promotion_eligible
+                ),
+                "promotion_eligible": symbol_promotion_eligible,
+                "runtime_parity_verified": bool(
+                    symbol_report.get("runtime_parity_verified") is True
+                ),
+                "source_hash_matches": source_hash_matches,
+                "tested_strategies": strategy_reports,
+                "validation_source": STRATEGY_WALK_FORWARD_REPORT_FILE,
+            }
+        )
 
     promotion_rows = []
 
@@ -2765,6 +2904,9 @@ def export_all_pair_candidate_promotion_plan(all_pair_multi_strategy_backtest_re
         best_profit_factor = float(row.get("best_profit_factor_proxy", 0.0) or 0.0)
         best_winrate = float(row.get("best_winrate_proxy", 0.0) or 0.0)
         best_net_return = float(row.get("best_net_return_percent_proxy", 0.0) or 0.0)
+        holdout_profit_factor = float(row.get("holdout_profit_factor", 0.0) or 0.0)
+        holdout_winrate = float(row.get("holdout_winrate_percent", 0.0) or 0.0)
+        holdout_trades = int(row.get("holdout_trades", 0) or 0)
 
         passed_strategies = row.get("passed_strategies", [])
         if not isinstance(passed_strategies, list):
@@ -2778,13 +2920,17 @@ def export_all_pair_candidate_promotion_plan(all_pair_multi_strategy_backtest_re
 
         promotion_score = 0
         reasons = []
-        requirements = []
+        requirements = [
+            str(reason)
+            for reason in row.get("watch_failures", [])
+            if str(reason).strip()
+        ]
 
         if multi_strategy_passed:
             promotion_score += 40
-            reasons.append("multi_strategy_passed=True")
+            reasons.append("cost-aware chronological WATCH gate passed")
         else:
-            requirements.append("multi_strategy_passed must be True for promotion review")
+            reasons.append("cost-aware chronological WATCH gate did not pass")
 
         if best_profit_factor >= ALL_PAIR_CANDIDATE_PROMOTION_MIN_PROFIT_FACTOR:
             promotion_score += 20
@@ -2792,9 +2938,7 @@ def export_all_pair_candidate_promotion_plan(all_pair_multi_strategy_backtest_re
                 f"profit_factor {best_profit_factor:.4f} >= {ALL_PAIR_CANDIDATE_PROMOTION_MIN_PROFIT_FACTOR:.2f}"
             )
         else:
-            requirements.append(
-                f"profit_factor must be >= {ALL_PAIR_CANDIDATE_PROMOTION_MIN_PROFIT_FACTOR:.2f}; current={best_profit_factor:.4f}"
-            )
+            reasons.append("overall profit factor is below the diagnostic score threshold")
 
         if best_profit_factor >= ALL_PAIR_CANDIDATE_PROMOTION_STRONG_PROFIT_FACTOR:
             promotion_score += 10
@@ -2808,9 +2952,7 @@ def export_all_pair_candidate_promotion_plan(all_pair_multi_strategy_backtest_re
                 f"winrate {best_winrate:.4f}% >= {ALL_PAIR_CANDIDATE_PROMOTION_MIN_WINRATE:.2f}%"
             )
         else:
-            requirements.append(
-                f"winrate must be >= {ALL_PAIR_CANDIDATE_PROMOTION_MIN_WINRATE:.2f}%; current={best_winrate:.4f}%"
-            )
+            reasons.append("overall winrate is below the diagnostic score threshold")
 
         if best_winrate >= ALL_PAIR_CANDIDATE_PROMOTION_STRONG_WINRATE:
             promotion_score += 5
@@ -2822,9 +2964,7 @@ def export_all_pair_candidate_promotion_plan(all_pair_multi_strategy_backtest_re
             promotion_score += 10
             reasons.append(f"net_return positive: {best_net_return:.4f}%")
         else:
-            requirements.append(
-                f"net_return must be > {ALL_PAIR_CANDIDATE_PROMOTION_MIN_NET_RETURN:.2f}%; current={best_net_return:.4f}%"
-            )
+            reasons.append("overall net return is not positive")
 
         if len(passed_strategies) >= 2:
             promotion_score += 10
@@ -2835,21 +2975,18 @@ def export_all_pair_candidate_promotion_plan(all_pair_multi_strategy_backtest_re
             promotion_score += strategy_bonus
             reasons.append(f"allowed strategy bonus: {best_strategy} +{strategy_bonus}")
 
-        pf_gap = ALL_PAIR_CANDIDATE_PROMOTION_MIN_PROFIT_FACTOR - best_profit_factor
         near_pass = (
             not multi_strategy_passed
-            and best_profit_factor >= ALL_PAIR_CANDIDATE_PROMOTION_NEAR_PASS_PROFIT_FACTOR
-            and 0 <= pf_gap <= ALL_PAIR_CANDIDATE_PROMOTION_NEAR_PASS_MAX_PF_GAP
-            and best_winrate >= ALL_PAIR_CANDIDATE_PROMOTION_MIN_WINRATE
+            and len(requirements) == 1
+            and best_profit_factor >= 1.0
+            and holdout_profit_factor >= 1.0
             and best_net_return > ALL_PAIR_CANDIDATE_PROMOTION_MIN_NET_RETURN
         )
 
         if near_pass:
-            reasons.append(
-                f"near pass: pf_gap={pf_gap:.4f}, winrate and net_return are acceptable"
-            )
+            reasons.append("near pass: exactly one WATCH requirement remains")
 
-        if multi_strategy_passed and not requirements:
+        if multi_strategy_passed:
             promotion_status = "PROMOTE_TO_REPLAY_REVIEW"
             next_action = (
                 "Manual review recommended. Do not auto-edit paper_replay_candidates.json or quality rules."
@@ -2871,6 +3008,14 @@ def export_all_pair_candidate_promotion_plan(all_pair_multi_strategy_backtest_re
                 "promotion_status": promotion_status,
                 "promotion_score": int(promotion_score),
                 "best_strategy": best_strategy,
+                "validation_tier": "COST_AWARE_CHRONOLOGICAL_WALK_FORWARD",
+                "best_profit_factor": round(float(best_profit_factor), 4),
+                "best_winrate_percent": round(float(best_winrate), 4),
+                "best_net_return_percent": round(float(best_net_return), 4),
+                "holdout_profit_factor": round(float(holdout_profit_factor), 4),
+                "holdout_winrate_percent": round(float(holdout_winrate), 4),
+                "holdout_trades": holdout_trades,
+                # Backward-compatible field names for existing draft builders.
                 "best_profit_factor_proxy": round(float(best_profit_factor), 4),
                 "best_winrate_proxy": round(float(best_winrate), 4),
                 "best_net_return_percent_proxy": round(float(best_net_return), 4),
@@ -2917,9 +3062,15 @@ def export_all_pair_candidate_promotion_plan(all_pair_multi_strategy_backtest_re
         "generated_at": datetime.now().isoformat(),
         "mode": ALL_PAIR_CANDIDATE_PROMOTION_MODE,
         "enabled": True,
+        "status": (
+            "COST_AWARE_REPLAY_REVIEW_CANDIDATES_AVAILABLE"
+            if promote_symbols
+            else "NO_SYMBOL_PASSED_COST_AWARE_WATCH"
+        ),
+        "validation_tier": "COST_AWARE_CHRONOLOGICAL_WALK_FORWARD",
         "live_allowed": False,
         "max_lot": 0.01,
-        "source_multi_strategy_report_file": ALL_PAIR_MULTI_STRATEGY_BACKTEST_OUTPUT,
+        "source_multi_strategy_report_file": STRATEGY_WALK_FORWARD_REPORT_FILE,
         "total_symbols": len(promotion_rows),
         "status_counts": status_counts,
         "promote_symbols": promote_symbols,
@@ -4542,6 +4693,11 @@ def export_xauusd_commodity_replay_validation_report(commodity_expansion_plan=No
         "mode": XAUUSD_COMMODITY_REPLAY_VALIDATION_MODE,
         "enabled": True,
         "status": status,
+        "validation_tier": "LEGACY_NEXT_CANDLE_PROXY",
+        "transaction_costs_included": False,
+        "chronological_holdout_included": False,
+        "promotion_eligible": False,
+        "authoritative_validation_file": STRATEGY_WALK_FORWARD_REPORT_FILE,
         "symbol": XAUUSD_COMMODITY_SYMBOL,
         "source_csv": str(csv_path),
         "rows": len(df),
@@ -4626,19 +4782,56 @@ def export_xauusd_commodity_watch_draft(xauusd_commodity_replay_validation_repor
     if not isinstance(best_report, dict):
         best_report = {}
 
+    walk_forward_report = load_json_file(STRATEGY_WALK_FORWARD_REPORT_FILE, {})
+    walk_forward_symbol_report = {}
+    if isinstance(walk_forward_report, dict):
+        for candidate in walk_forward_report.get("symbol_reports", []):
+            if not isinstance(candidate, dict):
+                continue
+            if str(candidate.get("symbol", "") or "").upper() == symbol:
+                walk_forward_symbol_report = candidate
+                break
+
+    robust_strategy_reports = walk_forward_symbol_report.get("strategy_reports", [])
+    if not isinstance(robust_strategy_reports, list):
+        robust_strategy_reports = []
+
     allowed_strategies = [
-        str(strategy or "").upper()
-        for strategy in passed_strategies
-        if str(strategy or "").upper() in PHASE5F_ALLOWED_STRATEGIES
-        and str(strategy or "").upper() not in PHASE5F_FORCE_BLOCK_STRATEGIES
+        str(strategy_report.get("strategy", "") or "").upper()
+        for strategy_report in robust_strategy_reports
+        if isinstance(strategy_report, dict)
+        and strategy_report.get("watch_ready") is True
+        and str(strategy_report.get("strategy", "") or "").upper() in PHASE5F_ALLOWED_STRATEGIES
+        and str(strategy_report.get("strategy", "") or "").upper() not in PHASE5F_FORCE_BLOCK_STRATEGIES
     ]
 
-    if best_strategy and best_strategy in PHASE5F_ALLOWED_STRATEGIES and best_strategy not in allowed_strategies:
-        allowed_strategies.insert(0, best_strategy)
+    robust_best_strategy = str(
+        walk_forward_symbol_report.get("best_strategy", "") or ""
+    ).upper()
+    robust_best_report = next(
+        (
+            strategy_report
+            for strategy_report in robust_strategy_reports
+            if isinstance(strategy_report, dict)
+            and str(strategy_report.get("strategy", "") or "").upper()
+            == robust_best_strategy
+        ),
+        {},
+    )
+    robust_best_metrics = (
+        robust_best_report.get("overall", {})
+        if isinstance(robust_best_report, dict)
+        else {}
+    )
+    if robust_best_strategy:
+        best_strategy = robust_best_strategy
+    if isinstance(robust_best_metrics, dict) and robust_best_metrics:
+        best_report = robust_best_metrics
 
     ready_for_watch_draft = (
         report_status == "PASSED_COMMODITY_REPLAY_PROXY"
         and symbol == XAUUSD_COMMODITY_SYMBOL
+        and walk_forward_symbol_report.get("watch_ready") is True
         and bool(allowed_strategies)
     )
 
@@ -4647,12 +4840,20 @@ def export_xauusd_commodity_watch_draft(xauusd_commodity_replay_validation_repor
             "generated_at": datetime.now().isoformat(),
             "mode": XAUUSD_COMMODITY_WATCH_DRAFT_MODE,
             "enabled": True,
-            "status": "XAUUSD_NOT_READY_FOR_WATCH_DRAFT",
-            "reason": "XAUUSD replay proxy must pass and at least one allowed strategy must exist.",
+            "status": "XAUUSD_VALIDATION_HOLD",
+            "reason": (
+                "Legacy replay proxy is insufficient. Cost-aware chronological validation "
+                "must pass WATCH gates before XAUUSD can become a replay candidate."
+            ),
             "source_report_status": report_status,
+            "walk_forward_report_file": STRATEGY_WALK_FORWARD_REPORT_FILE,
+            "walk_forward_status": walk_forward_symbol_report.get("status", "MISSING"),
+            "walk_forward_watch_ready": walk_forward_symbol_report.get("watch_ready", False),
+            "walk_forward_best_strategy": robust_best_strategy or None,
+            "walk_forward_best_report": robust_best_report,
             "symbol": symbol,
             "passed_strategies": passed_strategies,
-            "allowed_strategies": allowed_strategies,
+            "allowed_strategies": [],
             "review_only": True,
             "paper_only": True,
             "live_allowed": False,
@@ -4667,18 +4868,18 @@ def export_xauusd_commodity_watch_draft(xauusd_commodity_replay_validation_repor
         "min_score_required": XAUUSD_COMMODITY_WATCH_DRAFT_MIN_SCORE_REQUIRED,
         "allowed_strategies": allowed_strategies,
         "preferred_strategy": best_strategy,
-        "source": XAUUSD_COMMODITY_REPLAY_VALIDATION_OUTPUT,
-        "source_status": report_status,
-        "best_profit_factor_proxy": best_report.get("profit_factor"),
-        "best_winrate_proxy": best_report.get("winrate_percent"),
-        "best_net_return_percent_proxy": best_report.get("net_return_percent_proxy"),
-        "best_max_drawdown_percent_proxy": best_report.get("max_drawdown_percent_proxy"),
+        "source": STRATEGY_WALK_FORWARD_REPORT_FILE,
+        "source_status": walk_forward_symbol_report.get("status"),
+        "best_profit_factor": best_report.get("profit_factor"),
+        "best_winrate": best_report.get("winrate_percent"),
+        "best_net_return_percent": best_report.get("net_return_percent"),
+        "best_max_drawdown_percent": best_report.get("max_drawdown_percent"),
         "review_only": True,
         "paper_only": True,
         "live_allowed": False,
         "max_lot": XAUUSD_COMMODITY_WATCH_DRAFT_MAX_LOT,
         "notes": (
-            "XAUUSD commodity WATCH-only draft from commodity replay proxy. "
+            "XAUUSD WATCH-only draft from cost-aware chronological validation. "
             "Manual review required before copying into paper_quality_rules.json."
         ),
     }
@@ -4687,7 +4888,7 @@ def export_xauusd_commodity_watch_draft(xauusd_commodity_replay_validation_repor
         "symbol": symbol,
         "strategy": "ANY",
         "status": XAUUSD_COMMODITY_WATCH_DRAFT_REPLAY_STATUS,
-        "source": XAUUSD_COMMODITY_REPLAY_VALIDATION_OUTPUT,
+        "source": STRATEGY_WALK_FORWARD_REPORT_FILE,
         "preferred_strategy": best_strategy,
         "allowed_strategies": allowed_strategies,
         "min_score_required": XAUUSD_COMMODITY_WATCH_DRAFT_MIN_SCORE_REQUIRED,
@@ -4695,7 +4896,7 @@ def export_xauusd_commodity_watch_draft(xauusd_commodity_replay_validation_repor
         "paper_only": True,
         "live_allowed": False,
         "max_lot": XAUUSD_COMMODITY_WATCH_DRAFT_MAX_LOT,
-        "reason": "XAUUSD passed commodity replay proxy; WATCH-only candidate for manual review.",
+        "reason": "XAUUSD passed cost-aware chronological WATCH validation; manual review is still required.",
     }
 
     replay_setup_drafts = []
@@ -4705,7 +4906,7 @@ def export_xauusd_commodity_watch_draft(xauusd_commodity_replay_validation_repor
                 "symbol": symbol,
                 "strategy": strategy,
                 "status": XAUUSD_COMMODITY_WATCH_DRAFT_REPLAY_STATUS,
-                "source": XAUUSD_COMMODITY_REPLAY_VALIDATION_OUTPUT,
+                "source": STRATEGY_WALK_FORWARD_REPORT_FILE,
                 "preferred_strategy": best_strategy,
                 "min_score_required": XAUUSD_COMMODITY_WATCH_DRAFT_MIN_SCORE_REQUIRED,
                 "review_only": True,
@@ -4726,7 +4927,7 @@ def export_xauusd_commodity_watch_draft(xauusd_commodity_replay_validation_repor
         "paper_only": True,
         "live_allowed": False,
         "max_lot": XAUUSD_COMMODITY_WATCH_DRAFT_MAX_LOT,
-        "source_replay_validation_report": XAUUSD_COMMODITY_REPLAY_VALIDATION_OUTPUT,
+        "source_replay_validation_report": STRATEGY_WALK_FORWARD_REPORT_FILE,
         "quality_rule_draft": quality_rule_draft,
         "replay_symbol_draft": replay_symbol_draft,
         "replay_setup_drafts": replay_setup_drafts,
@@ -5311,6 +5512,11 @@ def build_simple_multi_strategy_proxy_report(
         "symbol": symbol,
         "mode": mode,
         "status": "PASSED_REPLAY_PROXY" if passed_reports else "FAILED_REPLAY_PROXY",
+        "validation_tier": "LEGACY_NEXT_CANDLE_PROXY",
+        "transaction_costs_included": False,
+        "chronological_holdout_included": False,
+        "promotion_eligible": False,
+        "authoritative_validation_file": STRATEGY_WALK_FORWARD_REPORT_FILE,
         "source_csv": str(csv_path),
         "rows": int(len(df)),
         "clean_rows": int(len(work)),
@@ -7755,6 +7961,7 @@ def load_phase5z_replay_candidates():
         "candidates": [],
         "approved_symbols": [],
         "blocked_symbols": [],
+        "deprecated_approved_symbols": [],
         "reason": "Replay candidate file not checked yet.",
     }
 
@@ -7773,6 +7980,7 @@ def load_phase5z_replay_candidates():
     candidates = []
     approved_symbols = set()
     blocked_symbols = set()
+    deprecated_approved_symbols = set()
 
     def normalize_symbol(value):
         text = str(value or "").strip().upper()
@@ -7811,9 +8019,10 @@ def load_phase5z_replay_candidates():
         if normalized_symbol != "UNKNOWN":
             blocked_symbols.add(normalized_symbol)
 
-    def parse_candidate_item(item, source="candidate"):
+    def parse_candidate_item(item, source="candidate", default_status=None):
         if isinstance(item, str):
-            add_candidate(item, "APPROVED", "ANY", source)
+            if default_status is not None:
+                add_candidate(item, default_status, "ANY", source)
             return
 
         if not isinstance(item, dict):
@@ -7823,10 +8032,11 @@ def load_phase5z_replay_candidates():
             "symbol",
             item.get("pair", item.get("name", item.get("instrument", ""))),
         )
-        status = item.get(
-            "status",
-            item.get("guard_status", item.get("quality_status", "APPROVED")),
-        )
+        status = item.get("status", item.get("guard_status", item.get("quality_status")))
+        if status is None:
+            status = default_status
+        if status is None:
+            return
         strategy = item.get(
             "strategy",
             item.get("setup", item.get("selected_strategy", "ANY")),
@@ -7834,63 +8044,111 @@ def load_phase5z_replay_candidates():
 
         add_candidate(symbol, status, strategy, source, item)
 
-    def scan_container(value, source="root"):
-        if isinstance(value, list):
-            for item in value:
-                parse_candidate_item(item, source)
-            return
+    # Parse an explicit schema only.  The former recursive scan treated lists
+    # inside merge history and WATCH metadata as approvals (for example an
+    # XAUUSD VALIDATION_HOLD note containing ``merged_strategy_setups``).
+    # Unknown/nested fields are deliberately ignored and missing statuses are
+    # never silently upgraded to APPROVED.
+    if not isinstance(data, dict):
+        payload["status"] = "INVALID_SCHEMA"
+        payload["reason"] = "Replay candidate payload must be a JSON object."
+        return payload
 
-        if not isinstance(value, dict):
-            return
+    approved_entries = data.get("approved_symbols", [])
+    if isinstance(approved_entries, (list, tuple)):
+        for item in approved_entries:
+            parse_candidate_item(item, "approved_symbols", default_status="APPROVED")
+    elif isinstance(approved_entries, (dict, str)):
+        parse_candidate_item(
+            approved_entries,
+            "approved_symbols",
+            default_status="APPROVED",
+        )
 
-        for key, child in value.items():
-            normalized_key = str(key or "").strip().lower()
+    for explicit_key in ("candidate_setups", "candidates", "replay_candidates"):
+        entries = data.get(explicit_key, [])
+        if isinstance(entries, list):
+            for item in entries:
+                parse_candidate_item(item, explicit_key, default_status=None)
+        elif isinstance(entries, dict):
+            parse_candidate_item(entries, explicit_key, default_status=None)
 
-            if normalized_key in {
-                "approved_symbols",
-                "approved",
-                "approved_candidates",
-                "candidates",
-                "candidate_symbols",
-                "replay_candidates",
-                "watchlist",
-                "items",
-            }:
-                if isinstance(child, list):
-                    for item in child:
-                        parse_candidate_item(item, normalized_key)
-                elif isinstance(child, dict):
-                    parse_candidate_item(child, normalized_key)
-                elif isinstance(child, str):
-                    add_candidate(child, "APPROVED", "ANY", normalized_key)
-                continue
+    # WATCH rows remain diagnostic and require an explicit status; they can
+    # never enter approved_symbols unless that status is itself authoritative.
+    watch_entries = data.get("watch_symbols", [])
+    if isinstance(watch_entries, list):
+        for item in watch_entries:
+            if isinstance(item, dict):
+                forced_watch_item = dict(item)
+                forced_watch_item["status"] = "WATCH"
+                parse_candidate_item(
+                    forced_watch_item,
+                    "watch_symbols",
+                    default_status="WATCH",
+                )
+            elif isinstance(item, str):
+                add_candidate(item, "WATCH", "ANY", "watch_symbols")
 
-            if normalized_key in {"blocked_symbols", "blocked", "blocked_candidates"}:
-                if isinstance(child, list):
-                    for item in child:
-                        if isinstance(item, dict):
-                            add_blocked_symbol(
-                                item.get(
-                                    "symbol",
-                                    item.get("pair", item.get("name", item.get("instrument", ""))),
-                                )
-                            )
-                        else:
-                            add_blocked_symbol(item)
-                elif isinstance(child, dict):
-                    add_blocked_symbol(
-                        child.get(
-                            "symbol",
-                            child.get("pair", child.get("name", child.get("instrument", ""))),
-                        )
+    blocked_entries = data.get("blocked_symbols", [])
+    if isinstance(blocked_entries, list):
+        for item in blocked_entries:
+            if isinstance(item, dict):
+                add_blocked_symbol(
+                    item.get(
+                        "symbol",
+                        item.get("pair", item.get("name", item.get("instrument", ""))),
                     )
-                elif isinstance(child, str):
-                    add_blocked_symbol(child)
-                continue
+                )
+            else:
+                add_blocked_symbol(item)
+    elif isinstance(blocked_entries, dict):
+        add_blocked_symbol(
+            blocked_entries.get(
+                "symbol",
+                blocked_entries.get(
+                    "pair",
+                    blocked_entries.get("name", blocked_entries.get("instrument", "")),
+                ),
+            )
+        )
+    elif isinstance(blocked_entries, str):
+        add_blocked_symbol(blocked_entries)
 
-            scan_container(child, normalized_key)
+    deprecated_entries = data.get("deprecated_approved_symbols", [])
+    if isinstance(deprecated_entries, list):
+        for item in deprecated_entries:
+            if isinstance(item, dict):
+                deprecated_symbol = item.get(
+                    "symbol",
+                    item.get("pair", item.get("name", item.get("instrument", ""))),
+                )
+            else:
+                deprecated_symbol = item
+            normalized_deprecated = normalize_symbol(deprecated_symbol)
+            if normalized_deprecated != "UNKNOWN":
+                deprecated_approved_symbols.add(normalized_deprecated)
+    elif isinstance(deprecated_entries, dict):
+        normalized_deprecated = normalize_symbol(
+            deprecated_entries.get(
+                "symbol",
+                deprecated_entries.get(
+                    "pair",
+                    deprecated_entries.get(
+                        "name",
+                        deprecated_entries.get("instrument", ""),
+                    ),
+                ),
+            )
+        )
+        if normalized_deprecated != "UNKNOWN":
+            deprecated_approved_symbols.add(normalized_deprecated)
+    elif isinstance(deprecated_entries, str):
+        normalized_deprecated = normalize_symbol(deprecated_entries)
+        if normalized_deprecated != "UNKNOWN":
+            deprecated_approved_symbols.add(normalized_deprecated)
 
-    scan_container(data)
+    approved_symbols.difference_update(blocked_symbols)
+    approved_symbols.difference_update(deprecated_approved_symbols)
 
     normalized_candidates = []
     seen = set()
@@ -7924,6 +8182,9 @@ def load_phase5z_replay_candidates():
         if status in PHASE5Z_VALID_REPLAY_STATUSES:
             approved_symbols.add(symbol)
 
+    approved_symbols.difference_update(blocked_symbols)
+    approved_symbols.difference_update(deprecated_approved_symbols)
+
     for symbol in sorted(approved_symbols):
         key = (symbol, "ANY", "APPROVED")
         if key in seen:
@@ -7948,10 +8209,12 @@ def load_phase5z_replay_candidates():
             "candidate_count": len(normalized_candidates),
             "approved_symbols": sorted(approved_symbols),
             "blocked_symbols": sorted(symbol for symbol in blocked_symbols if symbol != "UNKNOWN"),
+            "deprecated_approved_symbols": sorted(deprecated_approved_symbols),
             "reason": (
                 f"Loaded {len(normalized_candidates)} replay candidate item(s); "
                 f"approved symbols={sorted(approved_symbols)}; "
-                f"blocked symbols={sorted(blocked_symbols)}."
+                f"blocked symbols={sorted(blocked_symbols)}; "
+                f"deprecated approved symbols={sorted(deprecated_approved_symbols)}."
             ),
         }
     )
@@ -12168,20 +12431,51 @@ def enforce_min_stop_distance(symbol, signal, price, stop_loss, take_profit, ris
 
 def calculate_lot_size(symbol, entry_price, stop_loss, effective_risk_percent=None):
     risk_percent = RISK_PERCENT if effective_risk_percent is None else float(effective_risk_percent)
-    risk_amount = ACCOUNT_BALANCE * (risk_percent / 100)
+    target_risk_amount = ACCOUNT_BALANCE * (risk_percent / 100)
     pip_size = get_pip_size(symbol)
 
     stop_distance = abs(entry_price - stop_loss)
     stop_pips = stop_distance / pip_size
 
     if stop_pips <= 0:
-        return MIN_LOT, stop_pips, risk_amount
+        return MIN_LOT, stop_pips, target_risk_amount
 
-    lot_size = risk_amount / (stop_pips * DEFAULT_PIP_VALUE_PER_001_LOT) * 0.01
+    lot_size = target_risk_amount / (stop_pips * DEFAULT_PIP_VALUE_PER_001_LOT) * 0.01
     lot_size = max(MIN_LOT, min(lot_size, MAX_LOT))
     lot_size = round(lot_size, 2)
 
-    return lot_size, stop_pips, risk_amount
+    return lot_size, stop_pips, target_risk_amount
+
+
+def calculate_actual_risk_amount(symbol, entry_price, stop_loss, lot_size):
+    """Estimate stop-loss exposure after the final executable lot is known.
+
+    This uses the project's existing pip-value assumption. It is a safety
+    estimate for the currently approved EURUSD path, not broker validation or
+    evidence that any symbol is ready for live execution.
+    """
+    entry = to_finite_float(entry_price)
+    stop = to_finite_float(stop_loss)
+    final_lot = to_finite_float(lot_size)
+    pip_size = to_finite_float(get_pip_size(symbol))
+
+    if (
+        entry is None
+        or stop is None
+        or final_lot is None
+        or pip_size is None
+        or final_lot <= 0
+        or pip_size <= 0
+    ):
+        return float("inf")
+
+    stop_pips = abs(entry - stop) / pip_size
+    actual_risk_amount = (
+        stop_pips
+        * DEFAULT_PIP_VALUE_PER_001_LOT
+        * (final_lot / MIN_LOT)
+    )
+    return round(actual_risk_amount, 8)
 
 
 def evaluate_phase5b_adaptive_risk_engine(
@@ -12295,7 +12589,7 @@ def get_symbol_risk_profile(symbol):
     }
 
 
-def validate_symbol_risk_profile(symbol, strategy_score, lot_size, risk_amount):
+def validate_symbol_risk_profile(symbol, strategy_score, lot_size, actual_risk_amount):
     profile = get_symbol_risk_profile(symbol)
     violations = []
 
@@ -12309,9 +12603,10 @@ def validate_symbol_risk_profile(symbol, strategy_score, lot_size, risk_amount):
             f"Lot {lot_size} exceeds {symbol.upper()} profile max lot {profile['max_lot']}."
         )
 
-    if risk_amount > profile["max_risk_usd"]:
+    if actual_risk_amount > profile["max_risk_usd"]:
         violations.append(
-            f"Risk ${risk_amount:.2f} exceeds {symbol.upper()} profile max ${profile['max_risk_usd']:.2f}."
+            f"Actual max loss ${actual_risk_amount:.2f} exceeds "
+            f"{symbol.upper()} profile max ${profile['max_risk_usd']:.2f}."
         )
 
     return len(violations) == 0, profile, violations
@@ -12352,6 +12647,25 @@ def build_mt5_order_payload(trade_decision):
     if action == "SELL" and not take_profit < entry_price < stop_loss:
         return None
 
+    actual_risk_amount = calculate_actual_risk_amount(
+        symbol,
+        entry_price,
+        stop_loss,
+        lot_size,
+    )
+    profile_ok, _, _ = validate_symbol_risk_profile(
+        symbol,
+        int(trade_decision.get("strategy_score", 0) or 0),
+        lot_size,
+        actual_risk_amount,
+    )
+    if not profile_ok:
+        return None
+
+    target_risk_amount = to_finite_float(
+        trade_decision.get("target_risk_amount", trade_decision.get("risk_amount"))
+    )
+
     created_at = datetime.now()
     expires_at = created_at + timedelta(minutes=SIGNAL_EXPIRY_MINUTES)
 
@@ -12367,7 +12681,9 @@ def build_mt5_order_payload(trade_decision):
         "entry_price": entry_price,
         "stop_loss": stop_loss,
         "take_profit": take_profit,
-        "risk_amount": trade_decision["risk_amount"],
+        "risk_amount": actual_risk_amount,
+        "target_risk_amount": target_risk_amount,
+        "actual_risk_amount": actual_risk_amount,
         "risk_percent": trade_decision["risk_percent"],
         "symbol_risk_profile": trade_decision.get("symbol_risk_profile", {}),
         "symbol_risk_violations": trade_decision.get("symbol_risk_violations", []),
@@ -13146,7 +13462,7 @@ def build_trade_decision(
         phase5c_adaptive_sltp.get("risk_reward_ratio", RISK_REWARD_RATIO),
     )
 
-    lot_size, stop_pips, risk_amount = calculate_lot_size(
+    lot_size, stop_pips, target_risk_amount = calculate_lot_size(
         symbol,
         price,
         stop_loss,
@@ -13161,11 +13477,18 @@ def build_trade_decision(
     elif exploration_ok:
         lot_size = min(lot_size, EXPLORATION_MAX_LOT)
 
+    actual_risk_amount = calculate_actual_risk_amount(
+        symbol,
+        price,
+        stop_loss,
+        lot_size,
+    )
+
     profile_ok, symbol_profile, profile_violations = validate_symbol_risk_profile(
         symbol,
         strategy_score,
         lot_size,
-        risk_amount,
+        actual_risk_amount,
     )
 
     if not profile_ok:
@@ -13179,7 +13502,9 @@ def build_trade_decision(
                 "stop_loss": stop_loss,
                 "take_profit": take_profit,
                 "lot_size": lot_size,
-                "risk_amount": risk_amount,
+                "risk_amount": actual_risk_amount,
+                "target_risk_amount": target_risk_amount,
+                "actual_risk_amount": actual_risk_amount,
                 "symbol_risk_profile": symbol_profile,
                 "symbol_risk_violations": profile_violations,
                 "offline_performance_guard": "PASSED",
@@ -13201,7 +13526,9 @@ def build_trade_decision(
         "stop_points": stop_points,
         "stop_adjusted": stop_adjusted,
         "min_stop_points": get_min_stop_points(symbol),
-        "risk_amount": risk_amount,
+        "risk_amount": actual_risk_amount,
+        "target_risk_amount": target_risk_amount,
+        "actual_risk_amount": actual_risk_amount,
         "account_balance": ACCOUNT_BALANCE,
         "risk_percent": phase5b_adaptive_risk.get("effective_risk_percent", RISK_PERCENT),
         "symbol_risk_profile": symbol_profile,
@@ -16138,7 +16465,7 @@ def print_trade_plan(trade_plan):
         )
 
 
-def main():
+def export_diagnostic_reports():
 
     phase4_review_improvement_plan = export_phase4_review_improvement_plan()
     if isinstance(phase4_review_improvement_plan, dict) and phase4_review_improvement_plan.get("enabled"):
@@ -16459,17 +16786,20 @@ def main():
             f"best={btcusd_near_pass_watch_report.get('best_strategy')} | "
             f"pf_gap={btcusd_near_pass_watch_report.get('profit_factor_gap')}"
         )
+
+
+def run_decision_cycle():
     data_updated = update_market_data()
 
     if not data_updated:
         print("Decision engine stopped because market data update failed.")
-        return
+        return 1
 
     active_pairs_updated = update_active_pairs()
 
     if not active_pairs_updated:
         print("Decision engine stopped because active pair filter update failed.")
-        return
+        return 1
 
     trade_plan = generate_trade_plan()
     trade_plan = block_trade_plan_if_paper_order_open(trade_plan)
@@ -16483,6 +16813,13 @@ def main():
     if not bridge_ran:
         print("Decision engine finished, but MT5 bridge reader failed.")
 
+    return 0
+
+
+def main():
+    export_diagnostic_reports()
+    return run_decision_cycle()
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

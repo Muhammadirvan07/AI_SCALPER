@@ -2,9 +2,15 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 
 RUN_LOG_FILE = "paper_forward_runs.json"
+DEFAULT_STEP_TIMEOUT_SECONDS = 300
+DEFAULT_MAX_RUN_LOG_ENTRIES = 2000
+STEP_TIMEOUT_ENV = "AI_SCALPER_FORWARD_STEP_TIMEOUT_SECONDS"
+RUN_LOG_MAX_ENTRIES_ENV = "AI_SCALPER_FORWARD_LOG_MAX_ENTRIES"
+COMPACT_OUTPUT_TAIL_CHARS = 500
 
 PAPER_REPORT_FILE = "paper_report.json"
 PAPER_ORDERS_FILE = "paper_orders.json"
@@ -57,19 +63,72 @@ def load_json(path, default):
         return default
 
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return default
 
 
 def save_json(path, data):
-    with open(path, "w") as f:
-        json.dump(data, f, indent=4)
+    """Atomically replace a JSON file so readers never observe partial content."""
+    destination = os.path.abspath(path)
+    directory = os.path.dirname(destination)
+    temporary_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=directory,
+            prefix=f".{os.path.basename(destination)}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = temporary_file.name
+            json.dump(data, temporary_file, indent=4)
+            temporary_file.write("\n")
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+
+        os.replace(temporary_path, destination)
+        temporary_path = None
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
 
 
-def clear_mt5_signals(reason):
-    if not CLEAR_MT5_SIGNALS_WHEN_PAPER_ORDER_OPEN:
+def positive_int_from_env(name, default):
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+    return value if value > 0 else default
+
+
+def get_step_timeout_seconds(step):
+    configured_default = positive_int_from_env(
+        STEP_TIMEOUT_ENV,
+        DEFAULT_STEP_TIMEOUT_SECONDS,
+    )
+    try:
+        timeout = int(step.get("timeout_seconds", configured_default))
+    except (TypeError, ValueError):
+        return configured_default
+
+    return timeout if timeout > 0 else configured_default
+
+
+def normalize_process_output(value):
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def clear_mt5_signals(reason, force=False):
+    if not force and not CLEAR_MT5_SIGNALS_WHEN_PAPER_ORDER_OPEN:
         return
 
     payload = {
@@ -90,23 +149,46 @@ def run_step(step):
 
     started_at = datetime.now(timezone.utc).isoformat()
 
-    result = subprocess.run(
-        step["command"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    timeout_seconds = get_step_timeout_seconds(step)
+
+    try:
+        result = subprocess.run(
+            step["command"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+        stdout = normalize_process_output(result.stdout)
+        stderr = normalize_process_output(result.stderr)
+        returncode = result.returncode
+        timed_out = False
+        error_type = None
+    except subprocess.TimeoutExpired as exc:
+        stdout = normalize_process_output(exc.stdout)
+        stderr = normalize_process_output(exc.stderr)
+        timeout_message = f"Step timed out after {timeout_seconds} seconds."
+        stderr = f"{stderr}\n{timeout_message}".strip()
+        returncode = 124
+        timed_out = True
+        error_type = "TIMEOUT"
+    except OSError as exc:
+        stdout = ""
+        stderr = f"Unable to start step: {exc}"
+        returncode = 127
+        timed_out = False
+        error_type = "SPAWN_ERROR"
 
     finished_at = datetime.now(timezone.utc).isoformat()
 
-    if result.stdout:
-        print(result.stdout)
+    if stdout:
+        print(stdout)
 
-    if result.stderr:
+    if stderr:
         print("--- STDERR ---")
-        print(result.stderr)
+        print(stderr)
 
-    success = result.returncode == 0
+    success = returncode == 0
 
     return {
         "name": step["name"],
@@ -114,9 +196,12 @@ def run_step(step):
         "started_at": started_at,
         "finished_at": finished_at,
         "success": success,
-        "returncode": result.returncode,
-        "stdout_tail": result.stdout[-3000:] if result.stdout else "",
-        "stderr_tail": result.stderr[-3000:] if result.stderr else "",
+        "returncode": returncode,
+        "timeout_seconds": timeout_seconds,
+        "timed_out": timed_out,
+        "error_type": error_type,
+        "stdout_tail": stdout[-3000:],
+        "stderr_tail": stderr[-3000:],
     }
 
 
@@ -372,14 +457,168 @@ def extract_phase4_validation_state(quality_report, phase4_rules, order_snapshot
     }
 
 
-def append_run_log(run_entry):
+def select_fields(source, field_names):
+    if not isinstance(source, dict):
+        return {}
+    return {name: source.get(name) for name in field_names if name in source}
+
+
+def compact_run_entry(run_entry):
+    """Keep operational evidence without copying large runtime snapshots per run."""
+    if not isinstance(run_entry, dict):
+        return {}
+
+    compact_steps = []
+    for step in run_entry.get("steps", []) or []:
+        compact_step = select_fields(
+            step,
+            (
+                "name",
+                "command",
+                "started_at",
+                "finished_at",
+                "success",
+                "skipped",
+                "skip_reason",
+                "returncode",
+                "timeout_seconds",
+                "timed_out",
+                "error_type",
+            ),
+        )
+        if not step.get("success"):
+            compact_step["stderr_tail"] = normalize_process_output(
+                step.get("stderr_tail")
+            )[-COMPACT_OUTPUT_TAIL_CHARS:]
+        compact_steps.append(compact_step)
+
+    monitor_info = select_fields(
+        run_entry.get("monitor_info", {}),
+        (
+            "monitor_updated",
+            "order_book_changed",
+            "open_monitor_changed",
+            "closed_orders_before",
+            "closed_orders_after",
+            "open_orders_before",
+            "open_orders_after",
+            "total_orders_before",
+            "total_orders_after",
+            "timeout_orders_before",
+            "timeout_orders_after",
+        ),
+    )
+    paper_report = select_fields(
+        run_entry.get("paper_report", {}),
+        (
+            "total_orders",
+            "closed_orders",
+            "open_orders",
+            "wins",
+            "losses",
+            "timeouts",
+            "winrate_percent",
+            "net_profit_usd",
+            "profit_factor",
+            "expectancy_usd",
+        ),
+    )
+    quality_metrics = run_entry.get("quality_metrics", {})
+    if not isinstance(quality_metrics, dict) or not quality_metrics:
+        quality_report = run_entry.get("quality_report", {})
+        if isinstance(quality_report, dict):
+            quality_metrics = quality_report.get("metrics", {})
+    quality_metrics = select_fields(
+        quality_metrics,
+        (
+            "closed_orders",
+            "open_orders",
+            "wins",
+            "losses",
+            "timeouts",
+            "winrate_percent",
+            "net_profit_usd",
+            "profit_factor",
+            "expectancy_usd",
+            "recent_loss_streak",
+        ),
+    )
+
+    order_snapshot = run_entry.get("order_snapshot", {})
+    compact_order_snapshot = select_fields(
+        order_snapshot,
+        ("total_orders", "open_orders", "closed_orders", "timeout_orders"),
+    )
+    if isinstance(order_snapshot, dict) and order_snapshot.get("latest_order"):
+        compact_order_snapshot["latest_order"] = select_fields(
+            order_snapshot.get("latest_order"),
+            (
+                "paper_order_id",
+                "symbol",
+                "type",
+                "strategy",
+                "status",
+                "result",
+                "profit_usd",
+                "created_at",
+                "closed_at",
+            ),
+        )
+
+    return {
+        "log_schema_version": 2,
+        **select_fields(
+            run_entry,
+            (
+                "run_id",
+                "started_at",
+                "finished_at",
+                "success",
+                "pipeline_success",
+                "execution_blocked",
+                "execution_block_reason",
+                "new_order_added",
+                "new_order_count",
+                "monitor_updated",
+                "order_book_changed",
+                "quality_status",
+            ),
+        ),
+        "new_order_ids": list(run_entry.get("new_order_ids", []) or [])[-10:],
+        "monitor_info": monitor_info,
+        "phase4_validation": run_entry.get("phase4_validation", {}),
+        "steps": compact_steps,
+        "paper_report": paper_report,
+        "quality_metrics": quality_metrics,
+        "order_snapshot": compact_order_snapshot,
+    }
+
+
+def append_run_log(run_entry, max_entries=None):
     logs = load_json(RUN_LOG_FILE, [])
 
     if not isinstance(logs, list):
         logs = []
 
-    logs.append(run_entry)
-    save_json(RUN_LOG_FILE, logs)
+    if max_entries is None:
+        max_entries = positive_int_from_env(
+            RUN_LOG_MAX_ENTRIES_ENV,
+            DEFAULT_MAX_RUN_LOG_ENTRIES,
+        )
+    else:
+        try:
+            max_entries = max(int(max_entries), 1)
+        except (TypeError, ValueError):
+            max_entries = DEFAULT_MAX_RUN_LOG_ENTRIES
+
+    compact_logs = [
+        compact_run_entry(log_entry)
+        for log_entry in logs
+        if isinstance(log_entry, dict)
+    ]
+    compact_logs.append(compact_run_entry(run_entry))
+    compact_logs = compact_logs[-max_entries:]
+    save_json(RUN_LOG_FILE, compact_logs)
 
 
 def print_final_summary(run_entry):
@@ -395,6 +634,9 @@ def print_final_summary(run_entry):
     print(f"Open monitor chg : {run_entry.get('monitor_info', {}).get('open_monitor_changed')}")
     print(f"Order book change: {run_entry.get('order_book_changed')}")
     print(f"Quality status   : {run_entry.get('quality_status')}")
+    print(f"Execution blocked: {run_entry.get('execution_blocked')}")
+    if run_entry.get("execution_block_reason"):
+        print(f"Block reason     : {run_entry.get('execution_block_reason')}")
 
     phase4_state = run_entry.get("phase4_validation", {}) or {}
     if phase4_state:
@@ -464,6 +706,9 @@ def main():
     before_snapshot = get_order_snapshot()
     step_results = []
     pipeline_success = True
+    decision_completed_successfully = False
+    decision_block_reason = None
+    execution_block_reason = None
 
     for step in STEPS:
         if step["name"] == "Data Collector" and not RUN_DATA_COLLECTOR_BEFORE_MONITOR:
@@ -472,6 +717,14 @@ def main():
             continue
 
         if step["name"] == "Decision Engine":
+            if decision_block_reason:
+                execution_block_reason = decision_block_reason
+                clear_mt5_signals(decision_block_reason, force=True)
+                step_results.append(
+                    build_skipped_step_result(step["name"], decision_block_reason)
+                )
+                continue
+
             pre_decision_snapshot = get_order_snapshot()
             open_orders_before_decision = pre_decision_snapshot.get("open_orders", 0)
 
@@ -481,10 +734,21 @@ def main():
                     "Runner will wait until TP, SL, or timeout closes the open order before generating new signals."
                 )
                 clear_mt5_signals(reason)
+                execution_block_reason = reason
                 step_results.append(build_skipped_step_result(step["name"], reason))
                 continue
 
         if step["name"] == "Paper Executor":
+            if execution_block_reason or not decision_completed_successfully:
+                reason = execution_block_reason or (
+                    "Skipped because Decision Engine did not complete successfully "
+                    "during this runner cycle."
+                )
+                execution_block_reason = reason
+                clear_mt5_signals(reason, force=True)
+                step_results.append(build_skipped_step_result(step["name"], reason))
+                continue
+
             mid_snapshot = get_order_snapshot()
             open_orders_after_mid = mid_snapshot.get("open_orders", 0)
 
@@ -494,21 +758,61 @@ def main():
                     "Executor will wait until TP, SL, or timeout closes the open order."
                 )
                 clear_mt5_signals(reason)
+                execution_block_reason = reason
                 step_results.append(build_skipped_step_result(step["name"], reason))
                 continue
 
         result = run_step(step)
         step_results.append(result)
 
-        if not result["success"]:
-            if step.get("optional"):
-                print(f"\nOptional step failed but runner will continue: {step['name']}")
-                pipeline_success = False
-                continue
+        if result["success"]:
+            if step["name"] == "Decision Engine":
+                decision_completed_successfully = True
+            continue
 
-            pipeline_success = False
-            print(f"\nStopping runner because step failed: {step['name']}")
-            break
+        pipeline_success = False
+        failure_kind = "timed out" if result.get("timed_out") else "failed"
+        failure_reason = (
+            f"{step['name']} {failure_kind} (return code {result.get('returncode')})."
+        )
+
+        if step["name"] == "Data Collector":
+            decision_block_reason = (
+                f"{failure_reason} Decision Engine and Paper Executor are blocked "
+                "because fresh market data was not confirmed."
+            )
+            execution_block_reason = decision_block_reason
+            clear_mt5_signals(decision_block_reason, force=True)
+        elif step["name"] == "Paper Trade Monitor - Pre":
+            decision_block_reason = (
+                f"{failure_reason} Decision Engine and Paper Executor are blocked "
+                "because the open-order state was not confirmed."
+            )
+            execution_block_reason = decision_block_reason
+            clear_mt5_signals(decision_block_reason, force=True)
+        elif step["name"] == "Decision Engine":
+            execution_block_reason = (
+                f"{failure_reason} Paper Executor is blocked because no successful "
+                "decision was produced in this cycle."
+            )
+            clear_mt5_signals(execution_block_reason, force=True)
+        elif step["name"] == "Paper Trade Monitor - Mid":
+            execution_block_reason = (
+                f"{failure_reason} Paper Executor is blocked because the latest "
+                "open-order state was not confirmed."
+            )
+            clear_mt5_signals(execution_block_reason, force=True)
+        elif step["name"] == "Paper Executor":
+            execution_block_reason = (
+                f"{failure_reason} MT5-ready signals were cleared to prevent an "
+                "uncontrolled retry."
+            )
+            clear_mt5_signals(execution_block_reason, force=True)
+
+        if step.get("optional"):
+            print(f"\nOptional step failed; continuing safe monitor/quality steps: {step['name']}")
+        else:
+            print(f"\nStep failed; continuing safe monitor/quality steps: {step['name']}")
 
     run_finished_at = datetime.now(timezone.utc).isoformat()
     after_order_ids = get_order_ids()
@@ -531,6 +835,8 @@ def main():
         "finished_at": run_finished_at,
         "success": pipeline_success,
         "pipeline_success": pipeline_success,
+        "execution_blocked": bool(execution_block_reason),
+        "execution_block_reason": execution_block_reason,
         "new_order_added": new_order_info["new_order_added"],
         "new_order_count": new_order_info["new_order_count"],
         "new_order_ids": new_order_info["new_order_ids"],
@@ -548,7 +854,13 @@ def main():
 
     append_run_log(run_entry)
     print_final_summary(run_entry)
+    return run_entry
+
+
+def cli_main():
+    run_entry = main()
+    return 0 if run_entry.get("pipeline_success") is True else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(cli_main())

@@ -28,6 +28,8 @@ from typing import Dict, Any, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from market_data_quality import keep_completed_candles
+
 
 # ============================================================
 # CONFIG
@@ -237,18 +239,15 @@ def calculate_ema(series: pd.Series, period: int) -> pd.Series:
 
 
 def calculate_candle_quality(df: pd.DataFrame) -> Tuple[float, float]:
-    # Use the latest valid completed candle, not the currently forming candle.
-    # This avoids false weak-body / wick-spike readings when the latest candle is incomplete,
-    # flat, or has Open == Close.
+    # Incomplete candles are removed before this function is called, so start
+    # with the latest completed bar and only walk backward across doji bars.
     if df is None or df.empty:
         return 0.0, 999.0
 
     lookback = min(6, len(df))
 
-    # Skip the latest candle [-1] because it may still be forming.
-    # Search from [-2] backward until a valid candle body is found.
     selected = None
-    for i in range(2, lookback + 1):
+    for i in range(1, lookback + 1):
         candle = df.iloc[-i]
 
         candle_range = abs(float(candle["High"]) - float(candle["Low"]))
@@ -260,12 +259,9 @@ def calculate_candle_quality(df: pd.DataFrame) -> Tuple[float, float]:
                 selected = candle
                 break
 
-    # Fallback: use last completed candle if all recent candles are flat/doji.
+    # Fallback: use the latest completed candle if recent bars are flat/doji.
     if selected is None:
-        if len(df) >= 2:
-            selected = df.iloc[-2]
-        else:
-            selected = df.iloc[-1]
+        selected = df.iloc[-1]
 
     candle_range = abs(float(selected["High"]) - float(selected["Low"]))
     body = abs(float(selected["Close"]) - float(selected["Open"]))
@@ -309,6 +305,7 @@ def detect_market_regime(
 
     try:
         data = normalize_ohlcv(df)
+        data, _ = keep_completed_candles(data)
     except Exception as exc:
         return RegimeResult(
             symbol=symbol,

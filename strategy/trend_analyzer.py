@@ -1,12 +1,42 @@
 from ta.trend import EMAIndicator, ADXIndicator
 from ta.momentum import RSIIndicator
 
+from strategy.strategy_profiles import normalize_symbol
+
 DEBUG_TREND = False
 
 
-def get_instrument_settings(current_price):
-    # Forex pairs move much smaller in percent than XAUUSD/BTCUSD on M1 data.
-    if current_price < 300:
+def get_instrument_settings(current_price, symbol=None):
+    """Return symbol-aware thresholds without inferring asset class from price."""
+
+    normalized_symbol = normalize_symbol(symbol)
+
+    if normalized_symbol == "BTCUSD":
+        return {
+            "instrument_type": "BTCUSD",
+            "high_vol_threshold": 0.50,
+            "normal_vol_threshold": 0.03,
+            "min_volatility_percent": 0.03,
+            "min_ema_distance_percent": 0.10,
+            "min_price_momentum_percent": 0.03,
+            "min_trend_score": 4,
+            "require_ema200_slope": True,
+        }
+
+    if normalized_symbol in {"XAUUSD", "XAGUSD", "USOIL"}:
+        return {
+            "instrument_type": normalized_symbol,
+            "high_vol_threshold": 0.35,
+            "normal_vol_threshold": 0.05,
+            "min_volatility_percent": 0.05,
+            "min_ema_distance_percent": 0.10,
+            "min_price_momentum_percent": 0.05,
+            "min_trend_score": 4,
+            "require_ema200_slope": True,
+        }
+
+    # All configured currency pairs use the normalized forex thresholds.
+    if normalized_symbol != "UNKNOWN" or current_price < 300:
         return {
             "instrument_type": "FOREX",
             "high_vol_threshold": 0.05,
@@ -18,6 +48,7 @@ def get_instrument_settings(current_price):
             "require_ema200_slope": False,
         }
 
+    # Backward-compatible fallback for callers that do not provide a symbol.
     if current_price < 10000:
         return {
             "instrument_type": "XAUUSD",
@@ -42,7 +73,7 @@ def get_instrument_settings(current_price):
     }
 
 
-def analyze_trend(df):
+def analyze_trend(df, symbol=None):
     # Butuh data cukup untuk EMA200 dan slope
     if len(df) < 250:
         return "SIDEWAYS"
@@ -83,7 +114,7 @@ def analyze_trend(df):
 
     current_price = df["Close"].iloc[-1]
 
-    settings = get_instrument_settings(current_price)
+    settings = get_instrument_settings(current_price, symbol=symbol)
 
     instrument_type = settings["instrument_type"]
     high_vol_threshold = settings["high_vol_threshold"]

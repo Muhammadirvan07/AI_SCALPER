@@ -3,8 +3,14 @@ import importlib
 import json
 import os
 import sys
+import tempfile
 from datetime import datetime, timezone
 from types import ModuleType
+
+import pandas as pd
+
+from data_source_policy import YFINANCE_TICKERS, get_data_source_metadata
+from market_data_quality import keep_completed_candles
 
 try:
     yf: ModuleType | None = importlib.import_module("yfinance")
@@ -17,41 +23,25 @@ except ImportError:
 # =========================
 
 # Pair utama dan instrumen populer untuk scalping/backtest
-SYMBOLS = {
-    # Major forex pairs
-    "EURUSD": "EURUSD=X",
-    "GBPUSD": "GBPUSD=X",
-    "USDJPY": "JPY=X",
-    "USDCHF": "CHF=X",
-    "AUDUSD": "AUDUSD=X",
-    "NZDUSD": "NZDUSD=X",
-    "USDCAD": "CAD=X",
-
-    # Cross pairs populer
-    "EURJPY": "EURJPY=X",
-    "GBPJPY": "GBPJPY=X",
-    "EURGBP": "EURGBP=X",
-    "AUDJPY": "AUDJPY=X",
-    "CADJPY": "CADJPY=X",
-    "CHFJPY": "CHFJPY=X",
-
-    # Instrumen tambahan yang sering dipakai trader scalping
-    "XAUUSD": "GC=F",      # Gold futures proxy
-    "XAGUSD": "SI=F",      # Silver futures proxy
-    "USOIL": "CL=F",       # WTI crude oil futures proxy
-    "BTCUSD": "BTC-USD",
-}
+SYMBOLS = YFINANCE_TICKERS
 
 # Fallback kalau active_pairs.json belum ada / kosong.
-DEFAULT_FAST_SYMBOLS = ["EURUSD", "GBPUSD", "BTCUSD"]
+DEFAULT_FAST_SYMBOLS = ["EURUSD", "BTCUSD"]
 
 # Commodity symbols are available for FULL/CUSTOM data repair mode,
 # but are intentionally not added to DEFAULT_FAST_SYMBOLS to avoid
 # accidentally expanding the live/paper decision universe.
 COMMODITY_REPAIR_SYMBOLS = ["XAUUSD", "XAGUSD", "USOIL"]
 
+# XAUUSD is refreshed for future-primary WATCH validation only.  Being in this
+# list does not add it to active_pairs or execution_policy.
+WATCH_DATA_SYMBOLS = ["XAUUSD"]
+
 PERIOD = "30d"
 INTERVAL = "15m"
+# Yahoo can revise the just-closed intraday bar.  Wait one additional full
+# bar before persisting it so repeated downloads use finalized observations.
+FINALIZATION_LAG = INTERVAL
 DATA_DIR = "data"
 ACTIVE_PAIRS_FILE = "active_pairs.json"
 PAPER_ORDERS_FILE = "paper_orders.json"
@@ -85,8 +75,28 @@ def load_json(path, default):
 
 
 def save_json(path, data):
-    with open(path, "w") as f:
-        json.dump(data, f, indent=4)
+    destination = os.path.abspath(path)
+    directory = os.path.dirname(destination)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=directory,
+            prefix=f".{os.path.basename(destination)}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = temporary_file.name
+            json.dump(data, temporary_file, indent=4)
+            temporary_file.write("\n")
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        os.replace(temporary_path, destination)
+        temporary_path = None
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
 
 
 def get_yfinance_module():
@@ -186,8 +196,7 @@ def get_fast_symbols():
     if not symbols:
         symbols = unique_symbols(DEFAULT_FAST_SYMBOLS + open_order_symbols)
 
-    if "BTCUSD" not in symbols:
-        symbols = unique_symbols(symbols + ["BTCUSD"])
+    symbols = unique_symbols(symbols + ["BTCUSD"] + WATCH_DATA_SYMBOLS)
 
     return symbols
 
@@ -255,6 +264,24 @@ def validate_data(df, symbol_name):
         print(f"❌ {symbol_name}: kolom hilang {missing_columns}")
         return False
 
+    numeric = df.loc[:, required_columns].apply(pd.to_numeric, errors="coerce")
+    if numeric.tail(50).isna().any().any():
+        print(f"❌ {symbol_name}: latest OHLCV contains invalid numeric values")
+        return False
+
+    invalid_ohlc = (
+        (numeric["High"] < numeric[["Open", "Close"]].max(axis=1))
+        | (numeric["Low"] > numeric[["Open", "Close"]].min(axis=1))
+        | (numeric[["Open", "High", "Low", "Close"]] <= 0).any(axis=1)
+    )
+    if invalid_ohlc.any():
+        print(f"❌ {symbol_name}: invalid OHLC price ordering")
+        return False
+
+    if getattr(df.index, "has_duplicates", False):
+        print(f"❌ {symbol_name}: duplicate candle timestamps detected")
+        return False
+
     return True
 
 
@@ -272,6 +299,11 @@ def download_symbol(symbol_name, yahoo_ticker, verbose=True):
     )
 
     df = clean_columns(df)
+    df, dropped_incomplete_candle = keep_completed_candles(
+        df,
+        timeframe=INTERVAL,
+        finalization_lag=FINALIZATION_LAG,
+    )
 
     if not validate_data(df, symbol_name):
         return False, None
@@ -279,7 +311,25 @@ def download_symbol(symbol_name, yahoo_ticker, verbose=True):
     os.makedirs(DATA_DIR, exist_ok=True)
 
     output_path = f"{DATA_DIR}/{symbol_name.lower()}.csv"
-    df.to_csv(output_path)
+    temporary_csv = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=DATA_DIR,
+            prefix=f".{symbol_name.lower()}.",
+            suffix=".csv.tmp",
+            delete=False,
+        ) as temporary_file:
+            temporary_csv = temporary_file.name
+        df.to_csv(temporary_csv)
+        with open(temporary_csv, "rb") as temporary_file:
+            os.fsync(temporary_file.fileno())
+        os.replace(temporary_csv, output_path)
+        temporary_csv = None
+    finally:
+        if temporary_csv and os.path.exists(temporary_csv):
+            os.unlink(temporary_csv)
 
     latest_index = str(df.index[-1]) if not df.empty else None
     latest_close = None
@@ -294,13 +344,19 @@ def download_symbol(symbol_name, yahoo_ticker, verbose=True):
     if verbose:
         print(df.tail(3))
 
+    source_metadata = get_data_source_metadata(symbol_name)
+
     return True, {
         "symbol": symbol_name,
         "ticker": yahoo_ticker,
         "output_path": output_path,
         "rows": int(len(df)),
         "latest_candle": latest_index,
+        "last_closed_candle_at": latest_index,
         "latest_close": latest_close,
+        "dropped_incomplete_candle": dropped_incomplete_candle,
+        "finalization_lag": FINALIZATION_LAG,
+        "data_source": source_metadata,
     }
 
 
@@ -382,6 +438,7 @@ def main():
         "mode": mode,
         "period": PERIOD,
         "interval": INTERVAL,
+        "finalization_lag": FINALIZATION_LAG,
         "data_dir": DATA_DIR,
         "selected_symbols": selected_symbols,
         "success_count": success_count,

@@ -29,7 +29,7 @@ def diagnose_symbol(symbol):
     if df is None:
         return {"symbol": symbol, "status": "NO_DATA"}
 
-    strategy_result = select_best_strategy(df)
+    strategy_result = select_best_strategy(df, symbol=symbol)
 
     phase5j_allowed, phase5j_guard = de.evaluate_phase5j_market_session_guard(symbol)
     phase5k_allowed, phase5k_guard = de.evaluate_phase5k_market_reopen_warmup_guard(

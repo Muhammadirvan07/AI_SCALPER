@@ -33,7 +33,7 @@ def test_latest_trend(symbol):
     if len(df) < 250:
         return "NOT_ENOUGH_DATA"
 
-    return analyze_trend(df)
+    return analyze_trend(df, symbol=symbol)
 
 
 def main():

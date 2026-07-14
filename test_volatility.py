@@ -43,7 +43,7 @@ def test_volatility(symbol):
     atr = get_atr(df)
     price = df["Close"].iloc[-1]
     volatility_percent = (atr / price) * 100
-    market_status = classify_market(atr, price)
+    market_status = classify_market(atr, price, symbol=symbol)
 
     return {
         "symbol": symbol.upper(),
