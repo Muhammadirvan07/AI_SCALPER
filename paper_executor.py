@@ -1,5 +1,6 @@
 import csv
 import json
+import math
 import os
 from datetime import datetime, timezone
 
@@ -500,7 +501,7 @@ def create_shadow_probe_order(signal):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "symbol": symbol,
         "type": action,
-        "lot": float(signal.get("lot", 0) or 0),
+        "lot": safe_float(signal.get("lot", 0)),
         "entry": get_signal_entry(signal),
         "sl": get_signal_sl(signal),
         "tp": get_signal_tp(signal),
@@ -955,24 +956,40 @@ def get_first_value(signal, keys, default=None):
     return default
 
 
+def safe_float(value, default=0.0):
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return default
+    return result if math.isfinite(result) else default
+
+
+def safe_int(value, default=0):
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return default
+    return int(result) if math.isfinite(result) else default
+
+
 def get_signal_entry(signal):
-    return float(get_first_value(signal, ["entry", "entry_price", "price"], 0) or 0)
+    return safe_float(get_first_value(signal, ["entry", "entry_price", "price"], 0))
 
 
 def get_signal_sl(signal):
-    return float(get_first_value(signal, ["sl", "stop_loss", "stoploss"], 0) or 0)
+    return safe_float(get_first_value(signal, ["sl", "stop_loss", "stoploss"], 0))
 
 
 def get_signal_tp(signal):
-    return float(get_first_value(signal, ["tp", "take_profit", "takeprofit"], 0) or 0)
+    return safe_float(get_first_value(signal, ["tp", "take_profit", "takeprofit"], 0))
 
 
 def get_signal_score(signal):
-    return int(get_first_value(signal, ["score", "strategy_score"], 0) or 0)
+    return safe_int(get_first_value(signal, ["score", "strategy_score"], 0))
 
 
 def get_signal_risk_usd(signal):
-    return float(get_first_value(signal, ["risk_usd", "risk_amount"], 0) or 0)
+    return safe_float(get_first_value(signal, ["risk_usd", "risk_amount"], 0))
 
 
 def get_signal_strategy(signal):
@@ -996,7 +1013,7 @@ def validate_signal(signal, executed_ids, paper_orders, phase4_rules=None):
     strategy_performance_min_score = get_strategy_performance_min_score(strategy)
     action = get_signal_action(signal)
     phase4_reasons, phase4_guard_info = validate_phase4_executor_guard(signal, phase4_rules)
-    lot = float(signal.get("lot", 0) or 0)
+    lot = safe_float(signal.get("lot", 0))
     score = get_signal_score(signal)
     risk_usd = get_signal_risk_usd(signal)
     signal_id = signal.get("signal_id")
@@ -1105,7 +1122,7 @@ def create_paper_order(signal, phase4_guard_info=None):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "symbol": symbol,
         "type": action,
-        "lot": float(signal.get("lot", 0) or 0),
+        "lot": safe_float(signal.get("lot", 0)),
         "entry": get_signal_entry(signal),
         "sl": get_signal_sl(signal),
         "tp": get_signal_tp(signal),

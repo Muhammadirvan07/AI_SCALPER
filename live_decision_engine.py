@@ -21,6 +21,7 @@ RUN_MT5_BRIDGE_AFTER_DECISION = True
 MAX_SIGNAL_AGE_SECONDS = 10
 LIVE_DATA_MAX_AGE_SECONDS = 60
 REQUIRE_FRESH_CSV_DATA = True
+LIVE_ENGINE_ENABLED = False
 
 
 def load_active_pairs_for_freshness_check():
@@ -243,6 +244,12 @@ def print_live_trade_plan(trade_plan, elapsed_seconds):
 
 
 def main():
+    if not LIVE_ENGINE_ENABLED:
+        print("\n=== LIVE FAST DECISION ENGINE ===")
+        print("Live engine is hard-locked. Use decision_engine.py for paper-only evaluation.")
+        print("No signal file was modified and no MT5 bridge was started.")
+        return
+
     started_at = time.time()
 
     if REQUIRE_FRESH_CSV_DATA:

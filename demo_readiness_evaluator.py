@@ -2,6 +2,13 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from execution_policy import (
+    EXECUTION_APPROVED_SYMBOLS,
+    EXECUTION_BLOCKED_SYMBOLS,
+    EXECUTION_MAX_LOT,
+    SHADOW_ONLY_SYMBOLS,
+)
+
 OUTPUT = "demo_readiness_evaluator.json"
 
 MIN_READY_WINRATE = 45.0
@@ -9,11 +16,18 @@ NEAR_READY_WINRATE = 42.0
 MIN_PROFIT_FACTOR = 1.20
 MIN_CLEAN_SAMPLES = 20
 MAX_LOSS_STREAK = 2
-MAX_LOT = 0.01
+MAX_LOT = EXECUTION_MAX_LOT
 
-PRIMARY_SYMBOLS = {"EURUSD"}
-BLOCKED_SYMBOLS = {"GBPUSD"}
-SHADOW_SYMBOLS = {"BTCUSD"}
+PRIMARY_SYMBOLS = EXECUTION_APPROVED_SYMBOLS
+BLOCKED_SYMBOLS = EXECUTION_BLOCKED_SYMBOLS
+SHADOW_SYMBOLS = SHADOW_ONLY_SYMBOLS
+
+
+def first_not_none(*values):
+    for value in values:
+        if value is not None:
+            return value
+    return None
 
 
 def load_json(path, default=None):
@@ -44,19 +58,41 @@ def safe_int(value, default=0):
         return default
 
 
-def get_dashboard_metrics(dashboard):
+def get_dashboard_metrics(dashboard, quality_report=None):
     ns = dashboard.get("next_stage", {}) if isinstance(dashboard, dict) else {}
     if not isinstance(ns, dict):
         ns = {}
+    quality_report = quality_report if isinstance(quality_report, dict) else {}
+    quality_metrics = quality_report.get("metrics", {})
+    if not isinstance(quality_metrics, dict):
+        quality_metrics = {}
 
     return {
-        "quality_status": ns.get("quality_status") or dashboard.get("quality_status"),
-        "phase4_action": ns.get("action") or dashboard.get("phase4_action"),
-        "closed_orders": ns.get("closed_orders") or dashboard.get("closed_orders"),
-        "winrate_percent": ns.get("winrate_percent") or dashboard.get("winrate_percent"),
-        "profit_factor": ns.get("profit_factor") or dashboard.get("profit_factor"),
-        "expectancy": ns.get("expectancy") or dashboard.get("expectancy") or dashboard.get("expectancy_usd"),
-        "current_loss_streak": ns.get("current_loss_streak") or dashboard.get("current_loss_streak") or dashboard.get("loss_streak"),
+        "quality_status": first_not_none(
+            quality_report.get("status"), ns.get("quality_status"), dashboard.get("quality_status")
+        ),
+        "phase4_action": first_not_none(ns.get("action"), dashboard.get("phase4_action")),
+        "closed_orders": first_not_none(
+            quality_metrics.get("closed_orders"), ns.get("closed_orders"), dashboard.get("closed_orders")
+        ),
+        "winrate_percent": first_not_none(
+            quality_metrics.get("winrate_percent"), ns.get("winrate_percent"), dashboard.get("winrate_percent")
+        ),
+        "profit_factor": first_not_none(
+            quality_metrics.get("profit_factor"), ns.get("profit_factor"), dashboard.get("profit_factor")
+        ),
+        "expectancy": first_not_none(
+            quality_metrics.get("expectancy_usd"),
+            ns.get("expectancy"),
+            dashboard.get("expectancy"),
+            dashboard.get("expectancy_usd"),
+        ),
+        "current_loss_streak": first_not_none(
+            quality_metrics.get("recent_loss_streak"),
+            ns.get("current_loss_streak"),
+            dashboard.get("current_loss_streak"),
+            dashboard.get("loss_streak"),
+        ),
     }
 
 
@@ -67,20 +103,21 @@ def main():
     recovery_plan = load_json("phase4_recovery_plan.json")
     final_summary = load_json("phase4_final_cleanup_summary.json")
     dashboard = load_json("offline_dashboard_report.json")
+    quality_report = load_json("paper_quality_report.json")
     bridge = load_json("bridge_status.json")
     outbox = load_json("mt5_demo_bridge_outbox.json")
     trade_signals = load_json("trade_signals.json")
     mt5_signals = load_json("mt5_trade_signals.json")
 
-    metrics = get_dashboard_metrics(dashboard)
+    metrics = get_dashboard_metrics(dashboard, quality_report)
 
     quality_status = metrics.get("quality_status") or monitor.get("quality_status")
     phase4_action = metrics.get("phase4_action") or monitor.get("phase4_action")
     winrate = safe_float(metrics.get("winrate_percent"), safe_float(monitor.get("winrate_percent"), 0.0))
     pf = safe_float(metrics.get("profit_factor"), safe_float(monitor.get("profit_factor"), 0.0))
     closed_orders = safe_int(metrics.get("closed_orders"), safe_int(monitor.get("closed_orders"), 0))
-    expectancy = metrics.get("expectancy") or monitor.get("expectancy")
-    loss_streak = metrics.get("current_loss_streak") or monitor.get("current_loss_streak")
+    expectancy = first_not_none(metrics.get("expectancy"), monitor.get("expectancy"))
+    loss_streak = first_not_none(metrics.get("current_loss_streak"), monitor.get("current_loss_streak"))
 
     clean_count = safe_int(gate.get("clean_sample_count"), 0)
     blocked_count = safe_int(gate.get("blocked_sample_count"), 0)
@@ -113,10 +150,11 @@ def main():
         "winrate_near_ready": winrate >= NEAR_READY_WINRATE,
         "profit_factor_ready": pf >= MIN_PROFIT_FACTOR,
         "clean_sample_target_met": clean_count >= MIN_CLEAN_SAMPLES,
-        "loss_streak_safe_or_unknown": loss_streak is None or safe_int(loss_streak, 99) <= MAX_LOSS_STREAK,
+        "loss_streak_safe": loss_streak is not None and safe_int(loss_streak, 99) <= MAX_LOSS_STREAK,
         "bridge_demo_safe": (
             bridge.get("live_allowed") is False
             and outbox.get("live_allowed") is False
+            and outbox.get("safe_to_demo_auto_order") is False
             and safe_float(bridge.get("max_allowed_lot"), MAX_LOT) <= MAX_LOT
             and safe_float(outbox.get("max_lot"), MAX_LOT) <= MAX_LOT
         ),
@@ -170,7 +208,7 @@ def main():
             "action": "Count only EURUSD setups with valid strategy, score >= 5, confirmations >= 3, replay restored, and market usable.",
         })
 
-    if not checks["loss_streak_safe_or_unknown"]:
+    if not checks["loss_streak_safe"]:
         missing_logic_to_improve.append({
             "area": "LOSS_STREAK_RECOVERY",
             "current": loss_streak,

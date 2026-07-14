@@ -1,5 +1,12 @@
 # executor_config.py
 
+from execution_policy import (
+    EXECUTION_APPROVED_SYMBOLS,
+    EXECUTION_BLOCKED_SYMBOLS,
+    EXECUTION_MAX_LOT,
+    SHADOW_ONLY_SYMBOLS as POLICY_SHADOW_ONLY_SYMBOLS,
+)
+
 # =========================
 # EXECUTION SAFETY CONFIG
 # =========================
@@ -18,7 +25,7 @@ ALLOW_LIVE_TRADING = False
 # =========================
 
 MAX_RISK_PER_TRADE_USD = 0.50
-MAX_LOT = 0.01
+MAX_LOT = EXECUTION_MAX_LOT
 MIN_SCORE_TO_EXECUTE = 3
 MAX_ORDERS_PER_RUN = 1
 MAX_OPEN_PAPER_ORDERS_GLOBAL = 1
@@ -28,14 +35,12 @@ MAX_OPEN_PAPER_ORDERS_PER_SYMBOL = 1
 # SYMBOL GUARD
 # =========================
 
-ALLOWED_SYMBOLS = [
-    "EURUSD",
-    "GBPUSD",
-    "AUDUSD",
-    "NZDUSD",
-    "XAUUSD",
-    "BTCUSD",
-]
+ALLOWED_SYMBOLS = sorted(EXECUTION_APPROVED_SYMBOLS)
+
+# Execution policy is fail-closed. GBPUSD is blocked and BTCUSD remains
+# diagnostic/shadow-only; neither may create a new official paper order.
+BLOCKED_SYMBOLS = sorted(EXECUTION_BLOCKED_SYMBOLS)
+SHADOW_ONLY_SYMBOLS = sorted(POLICY_SHADOW_ONLY_SYMBOLS)
 
 # =========================
 # SYMBOL RISK PROFILE GUARD

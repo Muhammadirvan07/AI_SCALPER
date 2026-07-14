@@ -16,7 +16,8 @@ signal = analyze_trend(df)
 atr = get_atr(df)
 
 # Market status
-market_status = classify_market(atr)
+price = df["Close"].iloc[-1]
+market_status = classify_market(atr, price)
 
 # Risk
 rm = RiskManager()

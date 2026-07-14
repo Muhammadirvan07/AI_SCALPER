@@ -1,6 +1,18 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+
+from execution_policy import (
+    EXECUTION_APPROVED_SYMBOLS,
+    EXECUTION_BLOCKED_SYMBOLS,
+    EXECUTION_MAX_LOT,
+    LIVE_ALLOWED as POLICY_LIVE_ALLOWED,
+    SAFE_TO_DEMO_AUTO_ORDER as POLICY_SAFE_TO_DEMO_AUTO_ORDER,
+    SHADOW_ONLY_SYMBOLS,
+    to_finite_float,
+    validate_execution_lot,
+    validate_execution_symbol,
+)
 
 
 # =========================
@@ -11,7 +23,8 @@ ENABLE_DEMO_MT5_FILE_BRIDGE = True
 DEMO_MT5_FILE_BRIDGE_OUTPUT = "mt5_demo_bridge_outbox.json"
 DEMO_MT5_FILE_BRIDGE_MODE = "DEMO_ONLY_FILE_BRIDGE"
 DEMO_MT5_FILE_BRIDGE_LIVE_ALLOWED = False
-DEMO_MT5_FILE_BRIDGE_MAX_LOT = 0.01
+DEMO_MT5_FILE_BRIDGE_MAX_LOT = EXECUTION_MAX_LOT
+SAFE_TO_DEMO_AUTO_ORDER = POLICY_SAFE_TO_DEMO_AUTO_ORDER
 
 MT5_SIGNAL_FILE = "mt5_trade_signals.json"
 EXECUTED_SIGNAL_LOG = "executed_signals.json"
@@ -23,20 +36,20 @@ MAX_REJECTED_HISTORY = 500
 
 USE_REPLAY_CANDIDATE_FINAL_GUARD = True
 REPLAY_FINAL_GUARD_REQUIRE_GLOBAL_CANDIDATES = True
-LIVE_ALLOWED = False
-MAX_ALLOWED_LOT = 0.01
+LIVE_ALLOWED = POLICY_LIVE_ALLOWED
+MAX_ALLOWED_LOT = EXECUTION_MAX_LOT
 
 # =========================
 # BRIDGE APPROVED LABEL CLEANUP
 # =========================
 # Diagnostic/status cleanup only. Does not unlock trading or create orders.
 ENABLE_BRIDGE_APPROVED_LABEL_CLEANUP = True
-BRIDGE_EXECUTION_APPROVED_SYMBOLS = {"EURUSD"}
-BRIDGE_EXECUTION_BLOCKED_SYMBOLS = {"GBPUSD"}
-BRIDGE_SHADOW_SYMBOLS = {"BTCUSD"}
+BRIDGE_EXECUTION_APPROVED_SYMBOLS = EXECUTION_APPROVED_SYMBOLS
+BRIDGE_EXECUTION_BLOCKED_SYMBOLS = EXECUTION_BLOCKED_SYMBOLS
+BRIDGE_SHADOW_SYMBOLS = SHADOW_ONLY_SYMBOLS
 BRIDGE_LABEL_CLEANUP_MODE = "SEPARATE_REPLAY_CANDIDATES_FROM_EXECUTION_APPROVED"
 BRIDGE_LABEL_CLEANUP_LIVE_ALLOWED = False
-BRIDGE_LABEL_CLEANUP_MAX_LOT = 0.01
+BRIDGE_LABEL_CLEANUP_MAX_LOT = EXECUTION_MAX_LOT
 
 
 
@@ -138,9 +151,6 @@ def load_replay_candidate_final_guard():
 
     approved_symbols = approved_symbols - blocked_symbols
 
-    if "BTCUSD" not in blocked_symbols:
-        approved_symbols.add("BTCUSD")
-
     return {
         "enabled": True,
         "global_status": global_status,
@@ -151,7 +161,16 @@ def load_replay_candidate_final_guard():
 
 
 def is_order_symbol_allowed_by_final_guard(order, final_guard):
-    symbol = str(order.get("symbol") or order.get("symbol_mt5") or "").upper()
+    symbol = str(order.get("symbol") or "").strip().upper()
+    symbol_mt5 = str(order.get("symbol_mt5") or "").strip().upper()
+
+    policy_allowed, policy_reason = validate_execution_symbol(
+        symbol,
+        symbol_mt5,
+        require_mt5_match=True,
+    )
+    if not policy_allowed:
+        return False, policy_reason
 
     if not final_guard.get("enabled", False):
         return True, "Replay candidate final guard is disabled."
@@ -166,7 +185,7 @@ def is_order_symbol_allowed_by_final_guard(order, final_guard):
     if REPLAY_FINAL_GUARD_REQUIRE_GLOBAL_CANDIDATES and global_status != "CANDIDATES_AVAILABLE":
         return False, f"Replay global status is {global_status}; MT5 bridge execution is blocked."
 
-    if approved_symbols and symbol not in approved_symbols:
+    if symbol not in approved_symbols:
         return False, f"{symbol} is not in approved replay candidate symbols."
 
     return True, "Symbol passed replay candidate final guard."
@@ -181,8 +200,8 @@ def parse_datetime(value):
         return None
 
     try:
-        return datetime.fromisoformat(value)
-    except ValueError:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
         return None
 
 
@@ -192,7 +211,8 @@ def is_signal_expired(order):
     if expires_at is None:
         return True
 
-    return datetime.now() > expires_at
+    current_time = datetime.now(timezone.utc) if expires_at.tzinfo else datetime.now()
+    return current_time > expires_at
 
 
 def is_signal_already_executed(order, executed_payload):
@@ -216,17 +236,25 @@ def validate_order(order, executed_payload, final_guard):
     if is_signal_already_executed(order, executed_payload):
         return False, "Signal was already executed."
 
-    if order.get("order_type") not in ["BUY", "SELL"]:
+    order_type = str(order.get("order_type") or "").upper()
+    if order_type not in ["BUY", "SELL"]:
         return False, "Order type is not BUY or SELL."
 
-    if order.get("lot", 0) <= 0:
-        return False, "Lot size is invalid."
+    lot_allowed, lot_reason = validate_execution_lot(order.get("lot"))
+    if not lot_allowed:
+        return False, lot_reason
 
-    if order.get("lot", 0) > MAX_ALLOWED_LOT:
-        return False, f"Lot size {order.get('lot')} exceeds max allowed lot {MAX_ALLOWED_LOT}."
+    entry_price = to_finite_float(order.get("entry_price"))
+    stop_loss = to_finite_float(order.get("stop_loss"))
+    take_profit = to_finite_float(order.get("take_profit"))
+    if entry_price is None or stop_loss is None or take_profit is None:
+        return False, "Entry, SL, and TP must be finite numbers."
 
-    if order.get("stop_loss") is None or order.get("take_profit") is None:
-        return False, "SL or TP is missing."
+    if order_type == "BUY" and not stop_loss < entry_price < take_profit:
+        return False, "BUY price structure is invalid; expected SL < Entry < TP."
+
+    if order_type == "SELL" and not take_profit < entry_price < stop_loss:
+        return False, "SELL price structure is invalid; expected TP < Entry < SL."
 
     if not is_live_trading_allowed():
         return True, "Order is valid for DRY_RUN simulated MT5 execution. Live trading is locked."
@@ -500,8 +528,9 @@ def export_demo_mt5_file_bridge_outbox(valid_orders=None, bridge_status=None):
         bridge_status = {}
 
     demo_orders = []
+    demo_auto_order_allowed = SAFE_TO_DEMO_AUTO_ORDER is True
 
-    for order in valid_orders:
+    for order in valid_orders if demo_auto_order_allowed else []:
         if not isinstance(order, dict):
             continue
 
@@ -523,10 +552,15 @@ def export_demo_mt5_file_bridge_outbox(valid_orders=None, bridge_status=None):
         "generated_at": datetime.now().isoformat(),
         "mode": DEMO_MT5_FILE_BRIDGE_MODE,
         "enabled": True,
-        "status": "DEMO_OUTBOX_EXPORTED",
+        "status": (
+            "DEMO_OUTBOX_EXPORTED"
+            if demo_auto_order_allowed
+            else "BLOCKED_BY_DEMO_AUTO_ORDER_LOCK"
+        ),
         "demo_only": True,
         "paper_only": True,
         "live_allowed": DEMO_MT5_FILE_BRIDGE_LIVE_ALLOWED,
+        "safe_to_demo_auto_order": demo_auto_order_allowed,
         "max_lot": DEMO_MT5_FILE_BRIDGE_MAX_LOT,
         "order_count": len(demo_orders),
         "orders": demo_orders,
@@ -534,6 +568,7 @@ def export_demo_mt5_file_bridge_outbox(valid_orders=None, bridge_status=None):
         "safety_notes": [
             "This outbox is for MT5 demo account testing only.",
             "This exporter does not unlock live trading.",
+            "Demo auto-order remains blocked unless SAFE_TO_DEMO_AUTO_ORDER is explicitly reviewed and enabled.",
             "Orders remain blocked when the main bridge has no valid order.",
             "Lot is capped at 0.01."
         ],

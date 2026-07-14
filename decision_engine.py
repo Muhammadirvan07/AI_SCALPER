@@ -8,6 +8,12 @@ from pathlib import Path
 import pandas as pd
 
 from active_pair_filter import scan_active_pairs
+from execution_policy import (
+    EXECUTION_MAX_LOT,
+    is_execution_lot_allowed,
+    is_execution_symbol_allowed,
+    to_finite_float,
+)
 from executor_config import DEFAULT_SYMBOL_RISK_PROFILE, SYMBOL_RISK_PROFILES
 from market_regime_filter import build_regime_guard
 
@@ -31,7 +37,7 @@ WEEKEND_CRYPTO_MIN_VOLATILITY_PERCENT = 0.020
 ACCOUNT_BALANCE = 50.0
 RISK_PERCENT = 0.5
 MIN_LOT = 0.01
-MAX_LOT = 0.10
+MAX_LOT = EXECUTION_MAX_LOT
 DEFAULT_PIP_VALUE_PER_001_LOT = 0.10
 
 MIN_STOP_POINTS_FOREX = 30
@@ -12317,11 +12323,35 @@ def build_signal_id(symbol, action):
 
 
 def build_mt5_order_payload(trade_decision):
-    if trade_decision["status"] != "READY_TO_TRADE":
+    if not isinstance(trade_decision, dict):
         return None
 
-    symbol = trade_decision["symbol"]
-    action = trade_decision["action"]
+    if trade_decision.get("status") != "READY_TO_TRADE":
+        return None
+
+    symbol = str(trade_decision.get("symbol") or "").strip().upper()
+    if not is_execution_symbol_allowed(symbol):
+        return None
+
+    lot_size = to_finite_float(trade_decision.get("lot_size"))
+    if not is_execution_lot_allowed(lot_size):
+        return None
+
+    action = str(trade_decision.get("action") or "").strip().upper()
+    if action not in {"BUY", "SELL"}:
+        return None
+
+    entry_price = to_finite_float(trade_decision.get("entry_price"))
+    stop_loss = to_finite_float(trade_decision.get("stop_loss"))
+    take_profit = to_finite_float(trade_decision.get("take_profit"))
+    if entry_price is None or stop_loss is None or take_profit is None:
+        return None
+
+    if action == "BUY" and not stop_loss < entry_price < take_profit:
+        return None
+    if action == "SELL" and not take_profit < entry_price < stop_loss:
+        return None
+
     created_at = datetime.now()
     expires_at = created_at + timedelta(minutes=SIGNAL_EXPIRY_MINUTES)
 
@@ -12333,10 +12363,10 @@ def build_mt5_order_payload(trade_decision):
         "symbol": symbol,
         "symbol_mt5": get_mt5_symbol(symbol),
         "order_type": action,
-        "lot": trade_decision["lot_size"],
-        "entry_price": trade_decision["entry_price"],
-        "stop_loss": trade_decision["stop_loss"],
-        "take_profit": trade_decision["take_profit"],
+        "lot": lot_size,
+        "entry_price": entry_price,
+        "stop_loss": stop_loss,
+        "take_profit": take_profit,
         "risk_amount": trade_decision["risk_amount"],
         "risk_percent": trade_decision["risk_percent"],
         "symbol_risk_profile": trade_decision.get("symbol_risk_profile", {}),
@@ -12638,7 +12668,7 @@ def build_trade_decision(
             "Phase4 quality diagnostics are available."
         ),
     }
-        # Early diagnostic preview so post-loss cooldown appears even when the setup
+    # Early diagnostic preview so post-loss cooldown appears even when the setup
     # returns WAIT before the normal post-loss blocking stage.
     # This does not create orders, does not disable guards, does not unlock live trading,
     # and does not increase lot size.
@@ -12766,14 +12796,6 @@ def build_trade_decision(
         phase5h_strategy_score_explainability,
     )
 
-    if not phase4r_pair_lock_allowed:
-        return wait_decision(
-            phase4r_pair_specific_loss_lock.get(
-                "reason",
-                "Pair-specific Phase4R loss lock active.",
-            )
-        )
-
     def wait_decision(reason, extra=None):
         payload = {
             "symbol": symbol,
@@ -12835,6 +12857,15 @@ def build_trade_decision(
             payload.update(extra)
 
         return payload
+
+    if not phase4r_pair_lock_allowed:
+        return wait_decision(
+            phase4r_pair_specific_loss_lock.get(
+                "reason",
+                "Pair-specific Phase4R loss lock active.",
+            ),
+            {"phase4r_pair_lock_allowed": False},
+        )
 
     if not phase4r_review_lock_allowed and global_phase4r_systemic_lock_needed:
         return wait_decision(

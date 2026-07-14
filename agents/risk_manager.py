@@ -15,6 +15,6 @@ class RiskManager:
 
         return {
             "risk_amount": round(risk_amount, 2),
-            "stop_loss": round(stop_loss, 2),
-            "take_profit": round(take_profit, 2)
+            "stop_loss": round(stop_loss, 6),
+            "take_profit": round(take_profit, 6)
         }

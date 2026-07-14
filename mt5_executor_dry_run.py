@@ -1,14 +1,25 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+
+from execution_policy import (
+    EXECUTION_APPROVED_SYMBOLS,
+    EXECUTION_BLOCKED_SYMBOLS,
+    EXECUTION_MAX_LOT,
+    EXECUTION_MIN_LOT,
+    SHADOW_ONLY_SYMBOLS,
+    to_finite_float,
+    validate_execution_lot,
+    validate_execution_symbol,
+)
 
 MT5_SIGNAL_FILE = "mt5_trade_signals.json"
 DRY_RUN_LOG_FILE = "mt5_dry_run_orders.json"
 MAX_DRY_RUN_HISTORY = 500
 
 ALLOWED_ORDER_TYPES = ["BUY", "SELL"]
-MIN_LOT = 0.01
-MAX_LOT = 0.10
+MIN_LOT = EXECUTION_MIN_LOT
+MAX_LOT = EXECUTION_MAX_LOT
 MAX_SPREAD_POINTS_SIMULATION = 300
 STOP_DISTANCE_TOLERANCE_POINTS = 0.1
 
@@ -30,7 +41,10 @@ def parse_datetime(value):
     if not value:
         return None
 
-    return datetime.fromisoformat(value)
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
 
 
 def load_mt5_orders():
@@ -97,8 +111,8 @@ def get_symbol_execution_profile(symbol):
 
 
 def calculate_stop_points(order, profile):
-    entry_price = order.get("entry_price")
-    stop_loss = order.get("stop_loss")
+    entry_price = to_finite_float(order.get("entry_price"))
+    stop_loss = to_finite_float(order.get("stop_loss"))
 
     if entry_price is None or stop_loss is None:
         return None
@@ -137,7 +151,8 @@ def validate_order_expiry(order):
     if expires_at is None:
         return False, "Order expiry is missing or invalid."
 
-    if datetime.now() > expires_at:
+    current_time = datetime.now(timezone.utc) if expires_at.tzinfo else datetime.now()
+    if current_time > expires_at:
         return False, "Order signal is expired."
 
     return True, "Order signal is still valid."
@@ -154,19 +169,22 @@ def validate_duplicate(order, dry_run_log):
 
 
 def validate_order_values(order):
-    order_type = order.get("order_type")
+    order_type = str(order.get("order_type", "")).upper()
 
     if order_type not in ALLOWED_ORDER_TYPES:
         return False, "Order type must be BUY or SELL."
 
-    lot = order.get("lot", 0)
+    lot = to_finite_float(order.get("lot"))
 
-    if lot < MIN_LOT or lot > MAX_LOT:
+    if lot is None or not validate_execution_lot(lot)[0]:
         return False, f"Lot is outside allowed range: {lot}."
 
-    entry_price = order.get("entry_price")
-    stop_loss = order.get("stop_loss")
-    take_profit = order.get("take_profit")
+    entry_price = to_finite_float(order.get("entry_price"))
+    stop_loss = to_finite_float(order.get("stop_loss"))
+    take_profit = to_finite_float(order.get("take_profit"))
+
+    if entry_price is None or stop_loss is None or take_profit is None:
+        return False, "Entry, stop loss, and take profit must be finite numbers."
 
     if order_type == "BUY":
         if not stop_loss < entry_price < take_profit:
@@ -177,6 +195,12 @@ def validate_order_values(order):
             return False, "SELL order price structure is invalid. Expected TP < Entry < SL."
 
     return True, "Order values are valid."
+
+
+def validate_symbol_policy(order):
+    symbol = str(order.get("symbol") or "").strip().upper()
+    symbol_mt5 = str(order.get("symbol_mt5") or "").strip().upper()
+    return validate_execution_symbol(symbol, symbol_mt5, require_mt5_match=True)
 
 
 def validate_stop_distance(order, profile):
@@ -205,10 +229,10 @@ def build_dry_run_order(order, profile):
         "symbol": order.get("symbol"),
         "symbol_mt5": order.get("symbol_mt5"),
         "order_type": order.get("order_type"),
-        "volume": order.get("lot"),
-        "entry_reference_price": round(order.get("entry_price"), profile["digits"]),
-        "stop_loss": round(order.get("stop_loss"), profile["digits"]),
-        "take_profit": round(order.get("take_profit"), profile["digits"]),
+        "volume": to_finite_float(order.get("lot")),
+        "entry_reference_price": round(to_finite_float(order.get("entry_price")), profile["digits"]),
+        "stop_loss": round(to_finite_float(order.get("stop_loss")), profile["digits"]),
+        "take_profit": round(to_finite_float(order.get("take_profit")), profile["digits"]),
         "magic_number": order.get("magic_number"),
         "comment": order.get("comment"),
         "selected_strategy": order.get("selected_strategy"),
@@ -227,6 +251,11 @@ def validate_order(order, dry_run_log):
 
     if not structure_ok:
         return False, structure_reason, None
+
+    symbol_ok, symbol_reason = validate_symbol_policy(order)
+
+    if not symbol_ok:
+        return False, symbol_reason, None
 
     expiry_ok, expiry_reason = validate_order_expiry(order)
 

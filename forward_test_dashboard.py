@@ -14,6 +14,7 @@ EXECUTED_SIGNALS_FILE = "executed_signals.json"
 BRIDGE_REJECTED_SIGNALS_FILE = "bridge_rejected_signals.json"
 BRIDGE_STATUS_FILE = "bridge_status.json"
 PAPER_REPLAY_CANDIDATES_FILE = "paper_replay_candidates.json"
+RECOVERY_EVALUATION_REPORT_FILE = "recovery_evaluation_report.json"
 OFFLINE_DASHBOARD_REPORT_FILE = "offline_dashboard_report.json"
 
 
@@ -752,6 +753,79 @@ def print_phase4_quality_rules_section(phase4_rules):
     print("- INSUFFICIENT_SAMPLE: allowed only in paper mode while collecting more data.")
 
 
+def print_recovery_probe_orders(title, orders, is_open=False):
+    valid_orders = [order for order in orders if isinstance(order, dict)]
+
+    print(f"\n{title}:")
+    if not valid_orders:
+        print("- none")
+        return
+
+    for order in valid_orders:
+        if is_open:
+            print(
+                f"- {order.get('symbol', '-')} {order.get('type', '-')} | "
+                f"Strategy: {order.get('strategy', '-')} | "
+                f"Score: {order.get('score', '-')} | "
+                f"Entry: {order.get('entry', '-')} | "
+                f"SL: {order.get('sl', '-')} | "
+                f"TP: {order.get('tp', '-')} | "
+                f"Status: {order.get('status', '-')}"
+            )
+        else:
+            print(
+                f"- {order.get('symbol', '-')} {order.get('type', '-')} | "
+                f"Strategy: {order.get('strategy', '-')} | "
+                f"Result: {order.get('result', '-')} | "
+                f"Profit: {money(order.get('profit_usd', 0))} | "
+                f"Closed: {order.get('closed_at', '-')}"
+            )
+
+
+def print_recovery_evaluation_section(recovery):
+    print_header("RECOVERY EVALUATION / SHADOW PROBE")
+
+    if not isinstance(recovery, dict) or not recovery:
+        print(
+            "No recovery evaluation data yet. "
+            "Run python paper_executor.py to generate recovery_evaluation_report.json."
+        )
+        return
+
+    reasons = recovery.get("recommendation_reasons", [])
+    last_closed = recovery.get("last_5_closed", [])
+    open_probes = recovery.get("open_probe_orders", [])
+
+    reasons = reasons if isinstance(reasons, list) else []
+    last_closed = last_closed if isinstance(last_closed, list) else []
+    open_probes = open_probes if isinstance(open_probes, list) else []
+
+    print_kv("Evaluation lane", recovery.get("evaluation_lane", "-"))
+    print_kv("Excluded from Phase4", recovery.get("excluded_from_phase4_quality", "UNKNOWN"))
+    print_kv("Live allowed", recovery.get("live_allowed", False))
+    print_kv("Demo auto-order safe", recovery.get("safe_to_demo_auto_order", False))
+    print_kv("MT5 ready", recovery.get("mt5_ready", False))
+    print_kv("Closed / Open probes", f"{safe_int(recovery.get('closed_orders'))} / {safe_int(recovery.get('open_orders'))}")
+    print_kv("Wins / Losses", f"{safe_int(recovery.get('wins'))} / {safe_int(recovery.get('losses'))}")
+    print_kv("Recovery winrate", pct(recovery.get("winrate", 0)))
+    print_kv("Recovery net", money(recovery.get("net_profit_usd", 0)))
+    print_kv("Recovery PF", safe_float(recovery.get("profit_factor", 0)))
+    print_kv("Current / Max LS", f"{safe_int(recovery.get('current_loss_streak'))} / {safe_int(recovery.get('max_loss_streak'))}")
+    print_kv("Min sample for review", safe_int(recovery.get("min_sample_for_rule_review"), "-"))
+    print_kv("Recommendation", recovery.get("recommendation", "UNKNOWN"))
+    print("Safety note: diagnostic display only; no Phase4/live/demo/MT5 unlock.")
+
+    print("\nRecommendation reasons:")
+    if reasons:
+        for reason in reasons:
+            print(f"- {reason}")
+    else:
+        print("- none")
+
+    print_recovery_probe_orders("Last closed probes", last_closed)
+    print_recovery_probe_orders("Open probes", open_probes, is_open=True)
+
+
 def calculate_offline_readiness_score(quality, orders):
     metrics = quality.get("metrics", {}) if isinstance(quality, dict) else {}
     drawdown = quality.get("drawdown", {}) if isinstance(quality, dict) else {}
@@ -1041,6 +1115,7 @@ def main():
     executed_data = load_json(EXECUTED_SIGNALS_FILE, {})
     bridge_status = load_json(BRIDGE_STATUS_FILE, {})
     rejected_data = load_json(BRIDGE_REJECTED_SIGNALS_FILE, {})
+    recovery_evaluation = load_json(RECOVERY_EVALUATION_REPORT_FILE, {})
 
     if not isinstance(orders, list):
         orders = []
@@ -1050,6 +1125,8 @@ def main():
         quality = {}
     if not isinstance(phase4_rules, dict):
         phase4_rules = {}
+    if not isinstance(recovery_evaluation, dict):
+        recovery_evaluation = {}
 
     print_quality_section(quality, paper_report)
     print_orders_section(orders)
@@ -1062,6 +1139,7 @@ def main():
     print_runner_section(runs)
     print_warnings_section(quality)
     print_phase4_quality_rules_section(phase4_rules)
+    print_recovery_evaluation_section(recovery_evaluation)
     print_guard_recommendation_section(orders)
     print_offline_readiness_section(quality, orders)
     print_next_stage_section(quality, orders)
