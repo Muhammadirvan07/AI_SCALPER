@@ -1138,7 +1138,6 @@ class MT5EvidenceExporter:
             "point": "point",
             "tick_size": "trade_tick_size",
             "contract_size": "trade_contract_size",
-            "tick_value": "trade_tick_value",
             "volume_min": "volume_min",
             "volume_max": "volume_max",
             "volume_step": "volume_step",
@@ -1151,6 +1150,15 @@ class MT5EvidenceExporter:
                 continue
             if actual != Decimal(str(spec[expected_field])):
                 failures.append(expected_field.upper())
+        # MT5 reports trade_tick_value in the account currency. It therefore
+        # moves with conversion rates when profit currency != account currency
+        # (for example EURUSD on a JPY account). Availability and positivity
+        # are broker facts; exact equality is not an immutable symbol identity.
+        # Runtime risk remains based on order_calc_profit(), never this snapshot.
+        try:
+            _decimal(symbol["trade_tick_value"], "trade_tick_value")
+        except (KeyError, ValueError):
+            failures.append("TICK_VALUE_UNAVAILABLE")
         if str(symbol.get("currency_profit", "") or "").upper() != spec["profit_currency"]:
             failures.append("PROFIT_CURRENCY")
         if str(symbol.get("currency_margin", "") or "").upper() != spec["margin_currency"]:

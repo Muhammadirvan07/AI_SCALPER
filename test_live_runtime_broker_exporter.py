@@ -426,6 +426,21 @@ class BrokerExporterTests(unittest.TestCase):
             )
         self.assertEqual(1, len(fake.calls))
 
+    def test_dynamic_account_currency_tick_value_is_not_identity_drift(self) -> None:
+        dynamic = dict(self.symbol, trade_tick_value=1.234567)
+        ticks = self.exporter(self.fake(symbol=dynamic)).collect(
+            "GOLD.a", start_utc=self.start, end_utc=self.end
+        )
+        self.assertFalse(ticks.empty)
+
+        unavailable = dict(self.symbol, trade_tick_value=0.0)
+        with self.assertRaisesRegex(
+            BrokerExportBindingError, "TICK_VALUE_UNAVAILABLE"
+        ):
+            self.exporter(self.fake(symbol=unavailable)).collect(
+                "GOLD.a", start_utc=self.start, end_utc=self.end
+            )
+
     def test_collect_requires_observed_boundaries_and_bounded_continuity(self) -> None:
         with self.assertRaisesRegex(ValueError, "left/right boundary"):
             self.exporter(self.fake(self.rows)).collect(
