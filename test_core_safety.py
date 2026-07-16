@@ -3,11 +3,14 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import demo_readiness_evaluator as readiness
+import execution_policy
 import executor_config
 import live_decision_engine
 import mt5_bridge_reader as bridge
 import mt5_executor_dry_run as dry_run
 import paper_executor
+from live_runtime import health, parity, permit, risk
+from validation_evidence.core import DEVELOPMENT_SOURCES, REQUIRED_SYMBOLS
 
 
 def valid_order(symbol="EURUSD", lot=0.01):
@@ -93,6 +96,26 @@ class CoreSafetyTests(unittest.TestCase):
         with patch.object(live_decision_engine, "generate_live_trade_plan") as generate:
             live_decision_engine.main()
         generate.assert_not_called()
+
+    def test_live_grade_foundation_preserves_every_hard_lock(self):
+        self.assertFalse(execution_policy.LIVE_ALLOWED)
+        self.assertFalse(execution_policy.SAFE_TO_DEMO_AUTO_ORDER)
+        self.assertEqual(0.01, execution_policy.EXECUTION_MAX_LOT)
+        self.assertFalse(risk.LIVE_ALLOWED)
+        self.assertFalse(risk.SAFE_TO_DEMO_AUTO_ORDER)
+        self.assertFalse(permit.LIVE_ALLOWED)
+        self.assertFalse(permit.SAFE_TO_DEMO_AUTO_ORDER)
+        self.assertFalse(health.LIVE_ALLOWED)
+        self.assertFalse(health.SAFE_TO_DEMO_AUTO_ORDER)
+        self.assertFalse(parity.LIVE_ALLOWED)
+        self.assertFalse(parity.SAFE_TO_DEMO_AUTO_ORDER)
+        self.assertEqual(
+            ("XAUUSD", "EURUSD", "USDJPY", "AUDUSD"),
+            REQUIRED_SYMBOLS,
+        )
+        self.assertEqual("DEVELOPMENT_ONLY", DEVELOPMENT_SOURCES["XAUUSD"]["evidence_role"])
+        self.assertIn("GBPUSD", execution_policy.EXECUTION_BLOCKED_SYMBOLS)
+        self.assertIn("BTCUSD", execution_policy.SHADOW_ONLY_SYMBOLS)
 
 
 if __name__ == "__main__":

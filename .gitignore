@@ -8,6 +8,12 @@ __pycache__/
 .env
 .env.*
 !.env.example
+runtime_state/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+validation_artifacts/
 paper_forward_runs.json
 active_pairs_backtest_draft.json
 strategy_walk_forward_report.json

@@ -1,0 +1,131 @@
+{
+  "schema_version": "broker-candidate-plan-v1",
+  "status": "PLANNED_BINDING_REQUIRED",
+  "execution_enabled": false,
+  "credentials_allowed": false,
+  "operational_priority": {
+    "primary_shadow_broker": "xm",
+    "standby_preparation_broker": "finex",
+    "deferred_benchmark_brokers": ["fbs"]
+  },
+  "required_symbols": ["XAUUSD", "EURUSD", "USDJPY", "AUDUSD"],
+  "minimum_sessions_per_candidate": 20,
+  "candidates": [
+    {
+      "candidate_id": "fbs",
+      "display_name": "FBS",
+      "role": "DEFERRED_BENCHMARK",
+      "server": null,
+      "account_type": null,
+      "binding_status": "NOT_STARTED"
+    },
+    {
+      "candidate_id": "xm",
+      "display_name": "XM",
+      "role": "PRIMARY_READ_ONLY_SHADOW",
+      "environment": "DEMO",
+      "server": "XMTrading-MT5 3",
+      "account_type": "XMZero",
+      "leverage": "500:1",
+      "binding_status": "PARTIAL_OBSERVED",
+      "observed_at": "2026-07-16",
+      "broker_symbols_observed": {
+        "XAUUSD": "GOLD.",
+        "EURUSD": "EURUSD.",
+        "USDJPY": "USDJPY.",
+        "AUDUSD": "AUDUSD."
+      },
+      "instrument_specification_status": "PARTIAL_SCREENSHOT_CAPTURE",
+      "instrument_specifications_observed": {
+        "XAUUSD": {
+          "broker_symbol": "GOLD.",
+          "digits": 2,
+          "contract_size": 100,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "USD",
+          "profit_currency": "USD",
+          "calculation": "CFD_LEVERAGE",
+          "tick_size": 0.01,
+          "tick_value": 1,
+          "execution": "MARKET",
+          "filling": "IMMEDIATE_OR_CANCEL",
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01
+        },
+        "EURUSD": {
+          "broker_symbol": "EURUSD.",
+          "digits": 5,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "EUR",
+          "profit_currency": "USD",
+          "calculation": "FOREX",
+          "execution": "MARKET",
+          "filling": "IMMEDIATE_OR_CANCEL",
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01
+        },
+        "USDJPY": {
+          "broker_symbol": "USDJPY.",
+          "digits": 3,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "USD",
+          "profit_currency": "JPY",
+          "calculation": "FOREX",
+          "execution": "MARKET",
+          "filling": "IMMEDIATE_OR_CANCEL",
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01
+        },
+        "AUDUSD": {
+          "broker_symbol": "AUDUSD.",
+          "digits": 5,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "AUD",
+          "profit_currency": "USD",
+          "calculation": "FOREX",
+          "execution": "MARKET",
+          "filling": "IMMEDIATE_OR_CANCEL",
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01
+        }
+      },
+      "specification_missing_fields": [
+        "account_currency",
+        "margin_mode",
+        "freeze_level_points",
+        "session_timezone_and_calendar_hash",
+        "EURUSD.tick_size",
+        "EURUSD.tick_value",
+        "USDJPY.tick_size",
+        "USDJPY.tick_value",
+        "AUDUSD.tick_size",
+        "AUDUSD.tick_value"
+      ],
+      "account_identifier_stored": false
+    },
+    {
+      "candidate_id": "finex",
+      "display_name": "FINEX",
+      "role": "STANDBY_PREPARATION",
+      "environment": "DEMO",
+      "server": null,
+      "account_type": null,
+      "binding_status": "AWAITING_DEMO_ACCOUNT_FACTS",
+      "broker_symbols_observed": null,
+      "instrument_specification_status": "NOT_CAPTURED",
+      "account_identifier_stored": false
+    }
+  ],
+  "notes": "Server, account type, broker symbol names, and contract hashes must be discovered from each demo MT5 terminal. Do not guess or store credentials here."
+}
