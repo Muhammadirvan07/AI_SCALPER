@@ -174,11 +174,12 @@ def _snapshot_inputs(repo_root: Path) -> tuple[dict, dict, dict]:
         if "Datetime" not in frame or len(frame) < 2:
             raise EvidenceBootstrapError(f"development CSV has insufficient rows: {relative}")
         timestamps = pd.to_datetime(frame["Datetime"], errors="raise", utc=True)
-        ordered = timestamps.sort_values(kind="mergesort").reset_index(drop=True)
+        frame = frame.copy()
+        frame["Datetime"] = timestamps
         frames[symbol] = frame
         boundaries[symbol] = {
-            "development_end_at_utc": ordered.iloc[-2],
-            "seen_legacy_end_at_utc": ordered.iloc[-1],
+            "development_end_at_utc": timestamps.iloc[-2],
+            "seen_legacy_end_at_utc": timestamps.iloc[-1],
         }
     return frames, dict(DEVELOPMENT_SOURCES), boundaries
 

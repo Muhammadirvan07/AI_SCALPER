@@ -12,6 +12,8 @@ from live_runtime.contracts import canonical_sha256
 from live_runtime.evidence_bootstrap import (
     CONTRACT_ID,
     EvidenceBootstrapError,
+    SNAPSHOT_ID,
+    ensure_frozen_snapshot,
     register_xm_diagnostic_contract,
     verify_calendar_bundle,
     verify_discovery_receipt,
@@ -169,6 +171,33 @@ class EvidenceBootstrapTests(unittest.TestCase):
         bad_calendar["calendars"]["XAUUSD"]["metadata"]["calendar_version"] = "tampered"
         with self.assertRaisesRegex(EvidenceBootstrapError, "SHA-256"):
             verify_calendar_bundle(bad_calendar)
+
+    def test_snapshot_converts_aware_source_offsets_to_strict_utc(self):
+        repo = self.root / "offset-repo"
+        offsets = {
+            "xauusd": "-04:00",
+            "eurusd": "+01:00",
+            "usdjpy": "+01:00",
+            "audusd": "+01:00",
+        }
+        for symbol, offset in offsets.items():
+            path = repo / "data" / f"{symbol}.csv"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                "Datetime,Open,High,Low,Close,Volume\n"
+                f"2026-07-09 00:00:00{offset},100,101,99,100.5,1\n"
+                f"2026-07-09 00:15:00{offset},100.5,102,100,101,1\n",
+                encoding="utf-8",
+            )
+        manifest = ensure_frozen_snapshot(
+            repo,
+            self.root / "offset-artifacts",
+            created_at=datetime(2026, 7, 16, 5, 0, tzinfo=UTC),
+        )
+        self.assertEqual(SNAPSHOT_ID, manifest["snapshot_id"])
+        for item in manifest["symbols"].values():
+            self.assertTrue(item["first_at_utc"].endswith("Z"))
+            self.assertTrue(item["last_at_utc"].endswith("Z"))
 
     def test_contract_binds_one_terminal_cohort_and_stays_diagnostic(self):
         now = datetime(2026, 7, 16, 5, 0, tzinfo=UTC)
