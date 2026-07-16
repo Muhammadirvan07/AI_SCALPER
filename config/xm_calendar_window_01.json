@@ -1,0 +1,27 @@
+{
+  "candidate_id": "xm",
+  "broker_legal_name": "Tradexfin Limited",
+  "broker_server": "XMTrading-MT5 3",
+  "broker_symbols": {
+    "XAUUSD": "GOLD.",
+    "EURUSD": "EURUSD.",
+    "USDJPY": "USDJPY.",
+    "AUDUSD": "AUDUSD."
+  },
+  "discovery_receipt_sha256": "a53b6c55e91c6afb63b575686c7a8de1883c02b21a913479776a46f33e51bdbb",
+  "server_timezone": "Europe/Helsinki",
+  "calendar_version": "xm-window-01-v1",
+  "captured_at_utc": "2026-07-16T04:00:00Z",
+  "observation_start_at_utc": "2026-07-19T21:00:00Z",
+  "blind_until_utc": "2026-08-01T21:00:00Z",
+  "expected_complete_sessions": 10,
+  "special_hours_review": {
+    "attested": true,
+    "source": "https://fxplus.xmtrading.com/news/n2026063001.html",
+    "source_published_date": "2026-06-30",
+    "source_last_updated_date": "2026-07-01",
+    "covered_through_server_date": "2026-07-31",
+    "affected_required_symbols": [],
+    "review_note": "Official July notice lists no changes for GOLD or required FX symbols after July 6; window 01 ends after the July 31 trading session."
+  }
+}

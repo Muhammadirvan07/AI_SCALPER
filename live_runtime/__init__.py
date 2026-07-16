@@ -59,6 +59,11 @@ from .shadow_phase import (
     ShadowSessionReceipt,
     ShadowSessionStore,
 )
+from .session_calendar import (
+    SessionCalendarError,
+    build_calendar_bundle,
+    write_calendar_bundle_exclusive,
+)
 
 
 __all__ = [
@@ -100,6 +105,7 @@ __all__ = [
     "TradeIntent",
     "ShadowSessionReceipt",
     "ShadowSessionStore",
+    "SessionCalendarError",
     "canonical_json",
     "canonical_sha256",
     "account_alias_sha256",
@@ -107,6 +113,7 @@ __all__ = [
     "broker_export_binding_from_spec",
     "build_decision_snapshot",
     "build_runtime_decision_snapshot",
+    "build_calendar_bundle",
     "compare_parity",
     "evaluate_risk",
     "evaluate_runtime_health",
@@ -118,4 +125,5 @@ __all__ = [
     "verify_decision_model",
     "validate_permit",
     "write_discovery_exclusive",
+    "write_calendar_bundle_exclusive",
 ]

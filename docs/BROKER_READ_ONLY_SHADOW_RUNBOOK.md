@@ -62,6 +62,26 @@ Perintah tidak menerima login/password dan hanya membaca `account_info()` serta
 menolak overwrite, tidak menyimpan MT ID, nama akun, balance, atau equity, dan
 mengikat hash payload. Jangan unggah file tersebut sebelum memeriksa isinya.
 
+## Calendar window 01
+
+Window pertama sengaja dibatasi menjadi 10 sesi, bukan langsung 20, karena
+special-hours notice Agustus belum diterbitkan sebelum window dimulai. Plan
+`config/xm_calendar_window_01.json` mencakup pembukaan server Senin 20 Juli
+hingga penutupan Jumat 31 Juli 2026. Sumber resmi Juli tidak mencantumkan
+perubahan GOLD atau FX wajib setelah 6 Juli.
+
+Sesudah pull commit calendar terbaru di Windows, jalankan:
+
+```powershell
+python .\build_xm_calendar.py --output .\runtime_state\broker_discovery\xm-calendar-window-01.json
+```
+
+Generator memakai `Europe/Helsinki` untuk aturan GMT+2/GMT+3, mengubah semua
+bucket ke UTC, memasukkan weekend closure untuk seluruh simbol dan daily break
+GOLD, lalu memvalidasi exact partition dengan verifier evidence yang sama.
+Output tidak memberi izin trading. Window kedua baru boleh didaftarkan setelah
+notice special-hours Agustus tersedia dan direview sebelum observasi.
+
 ## Bukti yang belum ada
 
 - Exact field XM yang belum tersedia melalui screenshot dan seluruh exact demo
