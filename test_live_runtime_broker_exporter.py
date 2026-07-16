@@ -541,7 +541,16 @@ class BrokerExporterTests(unittest.TestCase):
             "end_utc": self.end,
             "exported_at": datetime(2026, 1, 2, 0, 46, tzinfo=UTC),
         }
-        exporter = self.exporter()
+        identity_provider = lambda: {"test": "identity"}
+        clock_provider = lambda: arguments["exported_at"]
+        exporter = MT5EvidenceExporter(
+            self.fake(),
+            binding=self.binding,
+            max_observed_tick_gap_seconds=900,
+            signing_key=b"exporter-injected-test-key-32bytes-minimum",
+            build_identity_provider=identity_provider,
+            clock_provider=clock_provider,
+        )
         # The export and coverage hashes are deterministic but only known once
         # aggregation runs; bind the fake result at call time.
         def paired_result(*args, **kwargs):
@@ -589,6 +598,15 @@ class BrokerExporterTests(unittest.TestCase):
             coverage["broker_binding_post_observed_facts_sha256"],
         )
         append_pair.assert_called_once()
+        self.assertEqual(
+            b"exporter-injected-test-key-32bytes-minimum",
+            append_pair.call_args.kwargs["signing_key"],
+        )
+        self.assertIs(
+            identity_provider,
+            append_pair.call_args.kwargs["build_identity_provider"],
+        )
+        self.assertIs(clock_provider, append_pair.call_args.kwargs["clock_provider"])
         with self.assertRaisesRegex(
             PairedAppendRecoveryRequired, "duplicate append is blocked"
         ):

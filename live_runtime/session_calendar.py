@@ -115,9 +115,11 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
     calendars: dict[str, object] = {}
     hashes: dict[str, str] = {}
     receipt_hash = str(plan.get("discovery_receipt_sha256") or "")
+    source_instance_id = str(plan.get("source_instance_id") or "").strip()
+    if not source_instance_id:
+        raise SessionCalendarError("one terminal cohort source_instance_id is required")
     for symbol in sorted(REQUIRED_SYMBOLS):
         broker_symbol = str(symbols[symbol])
-        source_instance_id = f"xm-{receipt_hash[:16]}-{symbol.lower()}"
         broker_source = {
             "provider_kind": "BROKER_EXPORT",
             "broker_legal_name": str(plan.get("broker_legal_name")),

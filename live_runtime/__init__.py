@@ -64,6 +64,16 @@ from .session_calendar import (
     build_calendar_bundle,
     write_calendar_bundle_exclusive,
 )
+from .shadow_collector import (
+    BarPlan,
+    ReadOnlyMT5Facade,
+    ShadowCollectorError,
+    ShadowCycleReceipt,
+    ShadowCycleStore,
+    expected_bar_opens,
+    plan_next_bar,
+    run_shadow_cycle,
+)
 
 
 __all__ = [
@@ -72,6 +82,7 @@ __all__ = [
     "BrokerExportResult",
     "BrokerCandidateRegistration",
     "BrokerSpec",
+    "BarPlan",
     "DecisionSnapshot",
     "DecisionCoreResult",
     "DecisionProvenance",
@@ -98,6 +109,7 @@ __all__ = [
     "RiskDecision",
     "RiskGovernor",
     "ReadOnlyShadowService",
+    "ReadOnlyMT5Facade",
     "RuntimeHealthDecision",
     "RuntimeHealthFacts",
     "ParityFixture",
@@ -105,6 +117,9 @@ __all__ = [
     "TradeIntent",
     "ShadowSessionReceipt",
     "ShadowSessionStore",
+    "ShadowCollectorError",
+    "ShadowCycleReceipt",
+    "ShadowCycleStore",
     "SessionCalendarError",
     "canonical_json",
     "canonical_sha256",
@@ -120,8 +135,11 @@ __all__ = [
     "evaluate_market_guards",
     "discover_mt5_facts",
     "evaluate_decision_core",
+    "expected_bar_opens",
     "paired_append_recovery_status",
+    "plan_next_bar",
     "reset_reason_sha256",
+    "run_shadow_cycle",
     "verify_decision_model",
     "validate_permit",
     "write_discovery_exclusive",

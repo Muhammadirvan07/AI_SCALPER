@@ -32,6 +32,16 @@ class SessionCalendarTests(unittest.TestCase):
                 bundle["session_calendar_sha256"][symbol],
                 canonical_evidence_payload_sha256(calendar),
             )
+        self.assertEqual(
+            {calendar["metadata"]["source_instance_id"] for calendar in bundle["calendars"].values()},
+            {"xm-a53b6c55e91c6afb-window-01"},
+        )
+
+    def test_terminal_cohort_id_is_required(self):
+        plan = self.plan()
+        plan.pop("source_instance_id")
+        with self.assertRaisesRegex(SessionCalendarError, "terminal cohort"):
+            build_calendar_bundle(plan)
 
     def test_gold_has_daily_breaks_but_fx_does_not(self):
         calendars = build_calendar_bundle(self.plan())["calendars"]

@@ -15,7 +15,7 @@ import math
 from pathlib import Path
 import re
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 import pandas as pd
 
@@ -1060,6 +1060,9 @@ class MT5EvidenceExporter:
         *,
         binding: BrokerExportBinding,
         max_observed_tick_gap_seconds: int = MAX_OBSERVED_TICK_GAP_SECONDS,
+        signing_key: bytes | str | None = None,
+        build_identity_provider: Callable[[], Mapping[str, object]] | None = None,
+        clock_provider: Callable[[], object] | None = None,
     ):
         required_methods = ("copy_ticks_range", "account_info", "symbol_info")
         if mt5_module is None or any(
@@ -1079,6 +1082,9 @@ class MT5EvidenceExporter:
         self.mt5 = mt5_module
         self.binding = binding
         self.max_observed_tick_gap_seconds = max_observed_tick_gap_seconds
+        self.signing_key = signing_key
+        self.build_identity_provider = build_identity_provider
+        self.clock_provider = clock_provider
 
     def _margin_mode_name(self, raw_value: object) -> str:
         try:
@@ -1417,6 +1423,9 @@ class MT5EvidenceExporter:
                 broker_binding_sha256=binding_hash,
                 coverage_metadata_sha256=coverage_metadata_hash,
                 exported_at=exported_at,
+                signing_key=self.signing_key,
+                build_identity_provider=self.build_identity_provider,
+                clock_provider=self.clock_provider,
                 capture_start_at=aggregation.coverage_start_at,
                 capture_end_at=aggregation.finalized_through_at,
             )

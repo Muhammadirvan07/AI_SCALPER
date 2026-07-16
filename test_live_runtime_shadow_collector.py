@@ -1,0 +1,264 @@
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from live_runtime.broker_exporter import BrokerExportResult
+from live_runtime.session_calendar import build_calendar_bundle
+from live_runtime.shadow_collector import (
+    ReadOnlyMT5Facade,
+    ShadowCollectorError,
+    ShadowCycleStore,
+    plan_next_bar,
+    run_shadow_cycle,
+)
+import json
+
+
+UTC = timezone.utc
+SYMBOLS = ("XAUUSD", "EURUSD", "USDJPY", "AUDUSD")
+
+
+def contract_fixture():
+    plan = json.loads(Path("config/xm_calendar_window_01.json").read_text(encoding="utf-8"))
+    bundle = build_calendar_bundle(plan)
+    return {
+        "timeframe_seconds": 900,
+        "finalization_lag_seconds": 900,
+        "max_append_lag_seconds": 60,
+        "session_calendars": bundle["calendars"],
+    }
+
+
+def export_result(symbol: str) -> BrokerExportResult:
+    result = object.__new__(BrokerExportResult)
+    for key, value in {
+        "contract_id": "xm-window-01-diagnostic-v2",
+        "symbol": symbol,
+        "raw_tick_partition": {"rows": 1, "partition_payload_sha256": "a" * 64},
+        "finalized_bar_segment": {"rows": 1, "segment_payload_sha256": "b" * 64},
+        "exported_at": datetime(2026, 7, 19, 21, 30, tzinfo=UTC),
+        "coverage_metadata": {"fixture": True},
+        "broker_binding_sha256": "c" * 64,
+        "status": "FINALIZED_EVIDENCE_APPENDED",
+        "paired_commit_receipt": None,
+    }.items():
+        object.__setattr__(result, key, value)
+    return result
+
+
+class FakeMT5:
+    COPY_TICKS_ALL = 1
+    ACCOUNT_TRADE_MODE_DEMO = 0
+    ACCOUNT_TRADE_MODE_REAL = 2
+    ACCOUNT_MARGIN_MODE_RETAIL_NETTING = 0
+    ACCOUNT_MARGIN_MODE_EXCHANGE = 1
+    ACCOUNT_MARGIN_MODE_RETAIL_HEDGING = 2
+
+    def account_info(self):
+        return {}
+
+    def symbol_info(self, symbol):
+        return {}
+
+    def copy_ticks_range(self, symbol, start, end, flags):
+        return []
+
+    def order_send(self, request):
+        raise AssertionError("must never be reachable")
+
+
+class ShadowCollectorTests(unittest.TestCase):
+    def test_fx_and_gold_follow_exact_registered_open_grid(self):
+        contract = contract_fixture()
+        fx_due = datetime(2026, 7, 19, 21, 30, tzinfo=UTC)
+        self.assertEqual(
+            "DUE",
+            plan_next_bar(contract, "EURUSD", last_open_at=None, now=fx_due).status,
+        )
+        self.assertEqual(
+            "NOT_DUE",
+            plan_next_bar(contract, "XAUUSD", last_open_at=None, now=fx_due).status,
+        )
+        gold = plan_next_bar(
+            contract,
+            "XAUUSD",
+            last_open_at=None,
+            now=datetime(2026, 7, 19, 22, 30, tzinfo=UTC),
+        )
+        self.assertEqual("DUE", gold.status)
+        self.assertEqual(datetime(2026, 7, 19, 22, 0, tzinfo=UTC), gold.open_at)
+
+    def test_missed_append_deadline_fails_closed(self):
+        contract = contract_fixture()
+        plan = plan_next_bar(
+            contract,
+            "EURUSD",
+            last_open_at=None,
+            now=datetime(2026, 7, 19, 21, 31, 1, tzinfo=UTC),
+        )
+        self.assertEqual("HOLD", plan.status)
+        self.assertEqual("APPEND_DEADLINE_MISSED", plan.reason_code)
+
+    def test_last_bar_advances_without_crossing_registered_closures(self):
+        contract = contract_fixture()
+        first = datetime(2026, 7, 19, 21, 0, tzinfo=UTC)
+        plan = plan_next_bar(
+            contract,
+            "EURUSD",
+            last_open_at=first,
+            now=first + timedelta(minutes=45),
+        )
+        self.assertEqual(first + timedelta(minutes=15), plan.open_at)
+
+    def test_facade_exposes_no_order_capability(self):
+        facade = ReadOnlyMT5Facade(FakeMT5())
+        self.assertFalse(hasattr(facade, "order_send"))
+        self.assertFalse(hasattr(facade, "positions_get"))
+
+    def test_cycle_receipt_is_durable_and_reconciles_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ShadowCycleStore(Path(directory) / "cycles.sqlite3")
+            self.addCleanup(store.close)
+            statuses = {symbol: "NOT_DUE" for symbol in SYMBOLS}
+            statuses["EURUSD"] = "APPENDED"
+            results = {"EURUSD": export_result("EURUSD")}
+            now = datetime(2026, 7, 19, 21, 30, tzinfo=UTC)
+            first = store.record(
+                cycle_id="cycle-1",
+                observed_at=now,
+                symbol_status=statuses,
+                results=results,
+                failures=(),
+            )
+            second = store.record(
+                cycle_id="cycle-1",
+                observed_at=now,
+                symbol_status=statuses,
+                results=results,
+                failures=(),
+            )
+            self.assertEqual("APPENDED", first.status)
+            self.assertEqual(first.payload_sha256, second.payload_sha256)
+            self.assertFalse(first.live_allowed)
+            self.assertFalse(first.safe_to_demo_auto_order)
+            bad = dict(statuses, USDJPY="APPENDED")
+            with self.assertRaisesRegex(ShadowCollectorError, "reconcile"):
+                store.record(
+                    cycle_id="cycle-2",
+                    observed_at=now,
+                    symbol_status=bad,
+                    results=results,
+                    failures=(),
+                )
+
+    def test_read_only_cycle_exports_due_fx_and_leaves_closed_gold_idle(self):
+        contract = contract_fixture()
+        broker_symbols = {
+            "XAUUSD": "GOLD.",
+            "EURUSD": "EURUSD.",
+            "USDJPY": "USDJPY.",
+            "AUDUSD": "AUDUSD.",
+        }
+        identities = {
+            "XAUUSD": ("XAU", "USD", "SPOT_METAL_CFD", 2, 0.01, 100.0, "USD"),
+            "EURUSD": ("EUR", "USD", "FOREX_SPOT_CFD", 5, 0.00001, 100000.0, "EUR"),
+            "USDJPY": ("USD", "JPY", "FOREX_SPOT_CFD", 3, 0.001, 100000.0, "USD"),
+            "AUDUSD": ("AUD", "USD", "FOREX_SPOT_CFD", 5, 0.00001, 100000.0, "AUD"),
+        }
+        contract["broker_sources"] = {}
+        contract["instrument_specs"] = {}
+        for symbol, broker_symbol in broker_symbols.items():
+            base, quote, kind, digits, point, size, margin = identities[symbol]
+            contract["broker_sources"][symbol] = {
+                "provider_kind": "BROKER_EXPORT",
+                "broker_legal_name": "Tradexfin Limited",
+                "broker_server": "XMTrading-MT5 3",
+                "environment": "DEMO",
+                "canonical_symbol": symbol,
+                "broker_symbol": broker_symbol,
+                "source_instance_id": "xm-test-terminal-window-01",
+                "quote_mode": "FINALIZED_BID_ASK_BARS",
+                "exporter_version": "test",
+                "exporter_signing_key_id": "test-key",
+                "feed_grade": "DEMO_BROKER_ALIGNED_ONLY",
+            }
+            contract["instrument_specs"][symbol] = {
+                "canonical_symbol": symbol,
+                "instrument_kind": kind,
+                "base_currency": base,
+                "quote_currency": quote,
+                "digits": digits,
+                "point": str(point),
+                "tick_size": str(point),
+                "contract_size": str(size),
+                "tick_value": "1",
+                "volume_min": "0.01",
+                "volume_max": "50",
+                "volume_step": "0.01",
+                "stops_level_points": 0,
+                "freeze_level_points": 0,
+                "profit_currency": quote,
+                "margin_currency": margin,
+                "margin_mode": "RETAIL_HEDGING",
+                "session_calendar_sha256": "d" * 64,
+            }
+
+        class ConnectedMT5(FakeMT5):
+            def account_info(self):
+                return {
+                    "login": 123456,
+                    "currency": "JPY",
+                }
+
+        calls = []
+
+        class FakeExporter:
+            def __init__(self, mt5, *, binding, **kwargs):
+                self.binding = binding
+
+            def export(self, **kwargs):
+                calls.append(kwargs["canonical_symbol"])
+                return export_result(kwargs["canonical_symbol"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            forward = root / "validation_artifacts" / "forward" / "xm-window-01-diagnostic-v2"
+            (forward / "heads" / "segments").mkdir(parents=True)
+            (forward / "contract.json").write_text(json.dumps(contract), encoding="utf-8")
+            for symbol in SYMBOLS:
+                (forward / "heads" / "segments" / f"{symbol}.json").write_text(
+                    '{"last_at_utc":null}', encoding="utf-8"
+                )
+            store = ShadowCycleStore(root / "cycles.sqlite3")
+            self.addCleanup(store.close)
+            now = datetime(2026, 7, 19, 21, 30, tzinfo=UTC)
+            with (
+                patch(
+                    "live_runtime.shadow_collector.verify_forward_evidence",
+                    return_value={"valid": True, "failures": []},
+                ),
+                patch(
+                    "live_runtime.shadow_collector.build_current_identity",
+                    return_value={"test": "identity"},
+                ),
+                patch("live_runtime.shadow_collector.MT5EvidenceExporter", FakeExporter),
+            ):
+                receipt = run_shadow_cycle(
+                    ConnectedMT5(),
+                    repo_root=root,
+                    artifact_root=root / "validation_artifacts",
+                    signing_key=b"collector-test-signing-key-32bytes-minimum",
+                    store=store,
+                    now_provider=lambda: now,
+                )
+            self.assertEqual("APPENDED", receipt.status)
+            self.assertEqual({"AUDUSD", "EURUSD", "USDJPY"}, set(calls))
+            self.assertEqual("NOT_DUE", receipt.symbol_status["XAUUSD"])
+
+
+if __name__ == "__main__":
+    unittest.main()
