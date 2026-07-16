@@ -618,6 +618,35 @@ class ValidationEvidenceTests(unittest.TestCase):
                 build_identity_provider=_build_identity,
             )
 
+    def test_forward_contract_checks_clock_before_slow_dependency_validation(self):
+        snapshot = self._create_snapshot(snapshot_id="clock-entry-snapshot")
+        sources = self._broker_sources()
+        calendars = self._session_calendars(broker_sources=sources)
+        current_clock = {"value": pd.Timestamp("2026-01-01T12:00:00Z")}
+
+        def delayed_git_state():
+            current_clock["value"] += pd.to_timedelta(2.314425, unit="s")
+            return self._clean_git_state()
+
+        contract = _register_forward_contract(
+            self.root,
+            snapshot,
+            self._ruleset(),
+            sources,
+            self._instrument_specs(calendars),
+            session_calendars=calendars,
+            contract_id="contract-clock-entry",
+            registered_at="2026-01-01T12:00:00Z",
+            observation_start_at="2026-01-02T00:00:00Z",
+            blind_until="2026-01-03T00:00:00Z",
+            validation_profile="DIAGNOSTIC",
+            git_state_provider=delayed_git_state,
+            clock_provider=lambda: current_clock["value"],
+            signing_key=TEST_SIGNING_KEY,
+        )
+
+        self.assertEqual("2026-01-01T12:00:00Z", contract["registered_at_utc"])
+
     def test_forward_contract_binds_rules_profiles_sources_and_specs(self):
         contract = self._register_contract()
 

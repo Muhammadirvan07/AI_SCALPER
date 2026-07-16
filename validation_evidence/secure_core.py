@@ -1506,6 +1506,10 @@ def register_forward_contract(
 ) -> dict:
     contract_id = _validate_id(contract_id, "contract_id")
     key = _resolve_signing_key(signing_key)
+    registered = _utc_timestamp(registered_at, "registered_at")
+    # Validate the registration-start claim before snapshot and Git I/O can
+    # consume the one-second trusted-clock tolerance.
+    _require_current_clock_claim(registered, field="registered_at", clock_provider=clock_provider)
     if not isinstance(snapshot_manifest, Mapping):
         raise EvidenceValidationError("SNAPSHOT_MANIFEST_INVALID")
     snapshot_id = _validate_id(snapshot_manifest.get("snapshot_id"), "snapshot_id")
@@ -1519,8 +1523,6 @@ def register_forward_contract(
         raise EvidenceValidationError("SNAPSHOT_MANIFEST_MISMATCH")
     git_state = (git_state_provider or _default_git_state_provider)()
     locked_ruleset = _validate_ruleset(ruleset, git_state)
-    registered = _utc_timestamp(registered_at, "registered_at")
-    _require_current_clock_claim(registered, field="registered_at", clock_provider=clock_provider)
     observation_start = _utc_timestamp(observation_start_at, "observation_start_at")
     blind = _utc_timestamp(blind_until, "blind_until")
     profile = _validation_profile(validation_profile)
