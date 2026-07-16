@@ -30,7 +30,11 @@ from .contracts import (
     require_text,
     require_utc,
 )
-from .decision_core import DecisionProvenance, build_runtime_decision_snapshot
+from .decision_core import (
+    DecisionProvenance,
+    build_runtime_decision_snapshot,
+    explain_decision_core,
+)
 from .mt5_readonly import ReadOnlyMT5Facade, attest_mt5_read_only
 
 
@@ -402,6 +406,7 @@ class DiagnosticJournal:
         snapshot: DecisionSnapshot | None,
         paper_opened: bool,
         reason_codes: Sequence[str] = (),
+        decision_explanation: Mapping[str, object] | None = None,
     ) -> str:
         canonical_symbol = require_text("symbol", symbol, upper=True)
         if canonical_symbol not in REQUIRED_SYMBOLS:
@@ -427,6 +432,28 @@ class DiagnosticJournal:
             raise RealtimeDiagnosticError(
                 "paper position requires a trade decision snapshot"
             )
+        explanation_payload = None
+        if decision_explanation is not None:
+            if snapshot is None:
+                raise RealtimeDiagnosticError(
+                    "decision explanation requires a decision snapshot"
+                )
+            explanation_payload = dict(decision_explanation)
+            expected = {
+                "symbol": snapshot.symbol,
+                "action": snapshot.side,
+                "selected_strategy": snapshot.strategy,
+                "score": snapshot.score,
+            }
+            mismatches = {
+                key: (explanation_payload.get(key), value)
+                for key, value in expected.items()
+                if explanation_payload.get(key) != value
+            }
+            if mismatches:
+                raise RealtimeDiagnosticError(
+                    f"decision explanation does not match snapshot: {mismatches}"
+                )
         payload = {
             "decision_id": decision_id,
             "canonical_symbol": canonical_symbol,
@@ -437,6 +464,7 @@ class DiagnosticJournal:
             "reason_codes": tuple(sorted(set(str(item) for item in reason_codes))),
             "snapshot": snapshot_payload,
             "snapshot_sha256": snapshot.content_sha256 if snapshot else None,
+            "decision_explanation": explanation_payload,
             "outcome_quality": "BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
         }
         event_id = "bar_" + canonical_sha256(
@@ -618,6 +646,9 @@ class DiagnosticJournal:
             elif envelope["event_type"] == "PAPER_CLOSE":
                 closes.append(envelope["payload"])
         action_counts = {"BUY": 0, "SELL": 0, "WAIT": 0, "NO_SNAPSHOT": 0}
+        wait_reason_counts: dict[str, int] = {}
+        market_regime_counts: dict[str, int] = {}
+        candidate_filter_counts: dict[str, dict[str, int]] = {}
         per_symbol: dict[str, dict[str, object]] = {
             symbol: {
                 "decisions": 0,
@@ -625,6 +656,9 @@ class DiagnosticJournal:
                 "closed": 0,
                 "wins": 0,
                 "losses": 0,
+                "wait_reason_counts": {},
+                "market_regime_counts": {},
+                "candidate_filter_counts": {},
             }
             for symbol in REQUIRED_SYMBOLS
         }
@@ -641,6 +675,38 @@ class DiagnosticJournal:
                 per_symbol[symbol]["decisions"] += 1
                 if item.get("paper_opened") is True:
                     per_symbol[symbol]["paper_opened"] += 1
+            explanation = item.get("decision_explanation")
+            if not isinstance(explanation, Mapping):
+                continue
+            regime = str(explanation.get("market_regime", "UNKNOWN"))
+            market_regime_counts[regime] = market_regime_counts.get(regime, 0) + 1
+            if symbol in per_symbol:
+                symbol_regimes = per_symbol[symbol]["market_regime_counts"]
+                symbol_regimes[regime] = symbol_regimes.get(regime, 0) + 1
+            if action != "WAIT":
+                continue
+            for raw_reason in explanation.get("reasons", ()):
+                reason = str(raw_reason)
+                wait_reason_counts[reason] = wait_reason_counts.get(reason, 0) + 1
+                if symbol in per_symbol:
+                    symbol_reasons = per_symbol[symbol]["wait_reason_counts"]
+                    symbol_reasons[reason] = symbol_reasons.get(reason, 0) + 1
+            for candidate in explanation.get("strategy_candidates", ()):
+                if not isinstance(candidate, Mapping):
+                    continue
+                strategy = str(candidate.get("strategy", "UNKNOWN"))
+                global_strategy = candidate_filter_counts.setdefault(strategy, {})
+                symbol_strategy = None
+                if symbol in per_symbol:
+                    per_symbol_candidates = per_symbol[symbol][
+                        "candidate_filter_counts"
+                    ]
+                    symbol_strategy = per_symbol_candidates.setdefault(strategy, {})
+                for raw_reason in candidate.get("reasons", ()):
+                    reason = str(raw_reason)
+                    global_strategy[reason] = global_strategy.get(reason, 0) + 1
+                    if symbol_strategy is not None:
+                        symbol_strategy[reason] = symbol_strategy.get(reason, 0) + 1
         gross_win_r = 0.0
         gross_loss_r = 0.0
         for item in closes:
@@ -672,6 +738,24 @@ class DiagnosticJournal:
             "journal_sha256_chain_valid": self.verify_chain(),
             "decisions": len(decisions),
             "action_counts": action_counts,
+            "decision_diagnostics": {
+                "explained_decisions": sum(
+                    1
+                    for item in decisions
+                    if isinstance(item.get("decision_explanation"), Mapping)
+                ),
+                "unexplained_decisions": sum(
+                    1
+                    for item in decisions
+                    if not isinstance(item.get("decision_explanation"), Mapping)
+                ),
+                "wait_reason_counts": dict(sorted(wait_reason_counts.items())),
+                "market_regime_counts": dict(sorted(market_regime_counts.items())),
+                "candidate_filter_counts": {
+                    strategy: dict(sorted(reasons.items()))
+                    for strategy, reasons in sorted(candidate_filter_counts.items())
+                },
+            },
             "paper_opened": sum(
                 1 for item in decisions if item.get("paper_opened") is True
             ),
@@ -1114,6 +1198,7 @@ def run_diagnostic_cycle(
                 first_eligible_tick_at=quote.observed_at,
                 provenance=provenance,
             )
+            explanation = explain_decision_core(frame, symbol)
             open_symbols = {
                 position.symbol for position in journal.open_positions()
             }
@@ -1134,6 +1219,7 @@ def run_diagnostic_cycle(
                 status=status,
                 snapshot=snapshot,
                 paper_opened=paper_opened,
+                decision_explanation=explanation,
             )
             symbol_status[symbol] = status
         except Exception as exc:

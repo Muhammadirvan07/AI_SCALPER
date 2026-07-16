@@ -14,6 +14,7 @@ from live_runtime.decision_core import (
     DecisionProvenance,
     build_runtime_decision_snapshot,
     evaluate_decision_core,
+    explain_decision_core,
 )
 import strategy.replay_validator as replay_validator
 from strategy.replay_validator import build_replay_decision_snapshot
@@ -166,6 +167,32 @@ class DecisionCoreTests(unittest.TestCase):
                     5 if symbol == "XAUUSD" else 4,
                     get_strategy_profile(symbol).min_strategy_score,
                 )
+
+    def test_explanation_exposes_indicators_and_candidate_filters(self) -> None:
+        frame = broker_frame("XAUUSD").iloc[: SIGNAL_INDEX + 1]
+        core = evaluate_decision_core(frame, "XAUUSD")
+        explanation = explain_decision_core(frame, "XAUUSD")
+
+        self.assertEqual("decision-explanation-v1", explanation["schema_version"])
+        self.assertEqual(core.symbol, explanation["symbol"])
+        self.assertEqual(core.action, explanation["action"])
+        self.assertEqual(core.strategy, explanation["selected_strategy"])
+        self.assertEqual(core.score, explanation["score"])
+        self.assertIn("adx", explanation["indicators"])
+        self.assertIn("rsi", explanation["indicators"])
+        self.assertIn("atr_ratio", explanation["indicators"])
+        self.assertEqual(
+            {
+                "TREND_FOLLOWING",
+                "BREAKOUT",
+                "MEAN_REVERSION",
+                "MOMENTUM_PULLBACK",
+            },
+            {
+                candidate["strategy"]
+                for candidate in explanation["strategy_candidates"]
+            },
+        )
 
     def test_snapshot_adapter_rejects_unfinalized_naive_or_drifted_time(self) -> None:
         frame = broker_frame("XAUUSD")

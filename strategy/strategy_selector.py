@@ -449,11 +449,25 @@ def _no_strategy_result(reason: str, context: dict | None = None) -> dict:
         "volatility_percent": context.get("volatility_percent", 0.0),
         "all_strategies": context.get("all_strategies", []),
         "reasons": [reason],
-        "decision_context": {
-            "price": context.get("price"),
-            "atr": context.get("atr"),
-        },
+        "decision_context": _decision_context(context),
     }
+
+
+def _decision_context(context: dict) -> dict:
+    """Return stable, non-authoritative diagnostics for runtime explanation."""
+
+    keys = (
+        "price",
+        "atr",
+        "adx",
+        "rsi",
+        "atr_ratio",
+        "candle_body_ratio",
+        "regime_confidence",
+        "regime_direction",
+        "regime_trade_allowed",
+    )
+    return {key: context.get(key) for key in keys}
 
 
 def select_best_strategy(df: pd.DataFrame, symbol: str = "UNKNOWN") -> dict:
@@ -509,10 +523,7 @@ def select_best_strategy(df: pd.DataFrame, symbol: str = "UNKNOWN") -> dict:
                 f"best strategy score {best_result['score']} below "
                 f"{symbol} minimum {profile.min_strategy_score}"
             ],
-            "decision_context": {
-                "price": context.get("price"),
-                "atr": context.get("atr"),
-            },
+            "decision_context": _decision_context(context),
         }
 
     return {
@@ -524,8 +535,5 @@ def select_best_strategy(df: pd.DataFrame, symbol: str = "UNKNOWN") -> dict:
         "volatility_percent": context["volatility_percent"],
         "all_strategies": strategy_results,
         "reasons": best_result["reasons"],
-        "decision_context": {
-            "price": context.get("price"),
-            "atr": context.get("atr"),
-        },
+        "decision_context": _decision_context(context),
     }

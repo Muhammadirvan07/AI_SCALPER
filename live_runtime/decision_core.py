@@ -256,6 +256,14 @@ def evaluate_decision_core(
 ) -> DecisionCoreResult:
     """Evaluate existing selector, volatility, and supervisor semantics purely."""
 
+    core, _ = _evaluate_decision_core_selection(finalized_bars, symbol)
+    return core
+
+
+def _evaluate_decision_core_selection(
+    finalized_bars: pd.DataFrame,
+    symbol: str,
+) -> tuple[DecisionCoreResult, Mapping[str, object]]:
     canonical_symbol = normalize_symbol(symbol)
     selection = select_best_strategy(
         _selector_frame(finalized_bars),
@@ -284,7 +292,7 @@ def evaluate_decision_core(
         if market_status == "NOT_EVALUATED"
         else SupervisorAgent().make_decision(signal, market_status)
     )
-    return DecisionCoreResult(
+    core = DecisionCoreResult(
         symbol=canonical_symbol,
         selector_signal=signal,
         action=action,
@@ -298,6 +306,65 @@ def evaluate_decision_core(
         atr=atr,
         reasons=tuple(selection.get("reasons", ())),
     )
+    return core, selection
+
+
+def explain_decision_core(
+    finalized_bars: pd.DataFrame,
+    symbol: str,
+) -> dict[str, object]:
+    """Expose deterministic diagnostic context without changing the snapshot."""
+
+    core, selection = _evaluate_decision_core_selection(finalized_bars, symbol)
+    raw_context = selection.get("decision_context", {})
+    context = dict(raw_context) if isinstance(raw_context, Mapping) else {}
+    raw_candidates = selection.get("all_strategies", ())
+    candidates: list[dict[str, object]] = []
+    if isinstance(raw_candidates, (list, tuple)):
+        for raw_candidate in raw_candidates:
+            if not isinstance(raw_candidate, Mapping):
+                continue
+            candidates.append(
+                {
+                    "strategy": str(
+                        raw_candidate.get("strategy", "UNKNOWN")
+                    ).upper(),
+                    "signal": str(
+                        raw_candidate.get("signal", "SIDEWAYS")
+                    ).upper(),
+                    "score": int(raw_candidate.get("score", 0) or 0),
+                    "eligible": raw_candidate.get("eligible") is True,
+                    "reasons": [
+                        str(reason)
+                        for reason in raw_candidate.get("reasons", ())
+                    ],
+                }
+            )
+    return {
+        "schema_version": "decision-explanation-v1",
+        "symbol": core.symbol,
+        "selector_signal": core.selector_signal,
+        "action": core.action,
+        "selected_strategy": core.strategy,
+        "score": core.score,
+        "score_components": dict(core.score_components),
+        "market_regime": core.market_regime,
+        "market_status": core.market_status,
+        "volatility_percent": core.volatility_percent,
+        "indicators": {
+            "price": context.get("price"),
+            "atr": context.get("atr"),
+            "adx": context.get("adx"),
+            "rsi": context.get("rsi"),
+            "atr_ratio": context.get("atr_ratio"),
+            "candle_body_ratio": context.get("candle_body_ratio"),
+            "regime_confidence": context.get("regime_confidence"),
+            "regime_direction": context.get("regime_direction"),
+            "regime_trade_allowed": context.get("regime_trade_allowed"),
+        },
+        "reasons": list(core.reasons),
+        "strategy_candidates": candidates,
+    }
 
 
 def _validated_finalized_m15_bars(
@@ -431,4 +498,5 @@ __all__ = [
     "build_decision_snapshot",
     "build_runtime_decision_snapshot",
     "evaluate_decision_core",
+    "explain_decision_core",
 ]

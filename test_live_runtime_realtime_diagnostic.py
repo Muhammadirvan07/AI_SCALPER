@@ -277,6 +277,67 @@ class RealtimeDiagnosticTests(unittest.TestCase):
                 self.assertEqual(4, summary["wins"])
                 self.assertEqual(100.0, summary["win_rate_percent"])
                 self.assertTrue(summary["journal_sha256_chain_valid"])
+                diagnostics = summary["decision_diagnostics"]
+                self.assertEqual(4, diagnostics["explained_decisions"])
+                self.assertEqual(0, diagnostics["unexplained_decisions"])
+                self.assertEqual({"TREND": 4}, diagnostics["market_regime_counts"])
+                for symbol in REQUIRED_SYMBOLS:
+                    self.assertEqual(
+                        {"TREND": 1},
+                        summary["per_symbol"][symbol]["market_regime_counts"],
+                    )
+
+    def test_wait_summary_explains_each_failed_strategy_filter(self) -> None:
+        fake = FakeMT5()
+        for broker_symbol in BROKER_SYMBOLS.values():
+            previous_close = float(fake.rates[broker_symbol][-2]["close"])
+            fake.rates[broker_symbol][-1].update(
+                {
+                    "open": previous_close,
+                    "high": previous_close * 1.00005,
+                    "low": previous_close * 0.99995,
+                    "close": previous_close,
+                }
+            )
+        closed_at = START + timedelta(minutes=15 * ROWS)
+        with tempfile.TemporaryDirectory() as directory:
+            with DiagnosticJournal(Path(directory) / "diagnostic.sqlite3") as journal:
+                run_diagnostic_cycle(
+                    ReadOnlyMT5Facade(fake),
+                    journal,
+                    cycle_id="cycle-wait",
+                    expected_server="XMTrading-MT5 3",
+                    expected_account_identity_sha256=ACCOUNT_IDENTITY,
+                    broker_symbols=BROKER_SYMBOLS,
+                    identity=identity(),
+                    observed_at=closed_at + timedelta(seconds=5),
+                )
+                summary = journal.summary()
+
+        self.assertEqual(4, summary["action_counts"]["WAIT"])
+        diagnostics = summary["decision_diagnostics"]
+        self.assertEqual(
+            4,
+            diagnostics["wait_reason_counts"][
+                "no allowed strategy passed direction, regime, and quality filters"
+            ],
+        )
+        self.assertIn("BREAKOUT", diagnostics["candidate_filter_counts"])
+        self.assertIn(
+            "no buffered Donchian break",
+            diagnostics["candidate_filter_counts"]["BREAKOUT"],
+        )
+        self.assertIn(
+            "EMA touch/rejection and RSI are not aligned",
+            diagnostics["candidate_filter_counts"]["MOMENTUM_PULLBACK"],
+        )
+        for symbol in REQUIRED_SYMBOLS:
+            self.assertEqual(
+                1,
+                summary["per_symbol"][symbol]["wait_reason_counts"][
+                    "no allowed strategy passed direction, regime, and quality filters"
+                ],
+            )
 
     def test_active_bar_is_filtered_and_registered_broker_offset_is_bounded(
         self,
