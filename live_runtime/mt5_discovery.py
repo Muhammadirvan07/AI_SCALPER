@@ -8,11 +8,22 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
+from .account_identity import (
+    ACCOUNT_IDENTITY_SCHEME,
+    DISCOVERY_RECEIPT_DOMAIN,
+    account_identity_sha256,
+    payload_hmac_sha256,
+)
 from .benchmark import REQUIRED_SYMBOLS
 from .contracts import canonical_json, canonical_sha256, require_text, require_utc
+from .evidence_credentials import signing_key_fingerprint
+from .mt5_readonly import (
+    MT5ReadOnlyCapabilityError,
+    ReadOnlyMT5Facade,
+)
 
 
-DISCOVERY_SCHEMA_VERSION = "mt5-read-only-discovery-v1"
+DISCOVERY_SCHEMA_VERSION = "mt5-read-only-discovery-v3"
 LIVE_ALLOWED = False
 SAFE_TO_DEMO_AUTO_ORDER = False
 MAX_LOT = 0.01
@@ -47,6 +58,7 @@ def discover_mt5_facts(
     expected_server: str,
     broker_symbols: Mapping[str, str],
     captured_at: datetime,
+    signing_key: bytes,
 ) -> dict[str, object]:
     """Read a fixed allowlist of public facts from an already-open demo terminal."""
 
@@ -59,21 +71,44 @@ def discover_mt5_facts(
     }
     if set(normalized_symbols) != set(REQUIRED_SYMBOLS):
         raise MT5DiscoveryError("exactly four required symbol mappings are required")
-    if not callable(getattr(mt5_module, "account_info", None)) or not callable(
-        getattr(mt5_module, "symbol_info", None)
-    ):
-        raise MT5DiscoveryError("MT5 module lacks read-only account/symbol APIs")
+    try:
+        readonly = (
+            mt5_module
+            if type(mt5_module) is ReadOnlyMT5Facade
+            else ReadOnlyMT5Facade(mt5_module)
+        )
+    except MT5ReadOnlyCapabilityError as exc:
+        raise MT5DiscoveryError(str(exc)) from exc
 
-    account = _mapping(mt5_module.account_info())
+    account = _mapping(readonly.account_info())
     if not account:
         raise MT5DiscoveryError("MT5 account_info is unavailable")
+    terminal = _mapping(readonly.terminal_info())
+    if not terminal:
+        raise MT5DiscoveryError("MT5 terminal_info is unavailable")
     server = str(_required(account, "server"))
     if server != expected_server:
         raise MT5DiscoveryError("connected MT5 server does not match candidate binding")
     trade_mode = int(_required(account, "trade_mode"))
-    demo_mode = int(getattr(mt5_module, "ACCOUNT_TRADE_MODE_DEMO", 0))
+    demo_mode = int(getattr(readonly, "ACCOUNT_TRADE_MODE_DEMO", 0))
     if trade_mode != demo_mode:
         raise MT5DiscoveryError("phase 3 discovery requires a demo account")
+    if account.get("trade_allowed") is not False:
+        raise MT5DiscoveryError(
+            "phase 3 discovery requires an investor/read-only account login"
+        )
+    if account.get("trade_expert") is not False:
+        raise MT5DiscoveryError(
+            "phase 3 discovery requires expert trading disabled for the account"
+        )
+    if terminal.get("trade_allowed") is not False:
+        raise MT5DiscoveryError(
+            "phase 3 discovery requires terminal Algo Trading disabled"
+        )
+    if terminal.get("tradeapi_disabled") is not True:
+        raise MT5DiscoveryError(
+            "phase 3 discovery requires the external Python trading API disabled"
+        )
 
     safe_account = {
         "company": str(_required(account, "company")),
@@ -82,9 +117,24 @@ def discover_mt5_facts(
         "currency": str(_required(account, "currency")).upper(),
         "leverage": int(_required(account, "leverage")),
         "margin_mode": int(_required(account, "margin_mode")),
+        "trade_allowed": False,
+        "trade_expert": False,
+        "account_identity_sha256": account_identity_sha256(
+            account,
+            signing_key,
+            environment="DEMO",
+        ),
+        "account_identity_scheme": ACCOUNT_IDENTITY_SCHEME,
+        "account_identity_key_id": (
+            "wincred-" + signing_key_fingerprint(signing_key)
+        ),
         "login_stored": False,
         "name_stored": False,
         "balance_stored": False,
+    }
+    safe_terminal = {
+        "trade_allowed": False,
+        "tradeapi_disabled": True,
     }
     allowed_fields = (
         "name", "path", "description", "digits", "point",
@@ -97,7 +147,7 @@ def discover_mt5_facts(
     )
     discovered_symbols: dict[str, object] = {}
     for canonical_symbol, broker_symbol in sorted(normalized_symbols.items()):
-        facts = _mapping(mt5_module.symbol_info(broker_symbol))
+        facts = _mapping(readonly.symbol_info(broker_symbol))
         if not facts:
             raise MT5DiscoveryError(f"symbol_info unavailable: {broker_symbol}")
         if str(_required(facts, "name")) != broker_symbol:
@@ -111,6 +161,7 @@ def discover_mt5_facts(
         "candidate_id": candidate_id,
         "captured_at_utc": captured_at,
         "account": safe_account,
+        "terminal": safe_terminal,
         "symbols": discovered_symbols,
         "session_calendar_status": "BROKER_TIMEZONE_AND_CALENDAR_ATTESTATION_REQUIRED",
         "execution_enabled": False,
@@ -118,7 +169,15 @@ def discover_mt5_facts(
         "safe_to_demo_auto_order": False,
         "max_lot": MAX_LOT,
     }
-    return {**body, "payload_sha256": canonical_sha256(body)}
+    receipt = {**body, "payload_sha256": canonical_sha256(body)}
+    return {
+        **receipt,
+        "receipt_hmac_sha256": payload_hmac_sha256(
+            receipt,
+            signing_key,
+            domain=DISCOVERY_RECEIPT_DOMAIN,
+        ),
+    }
 
 
 def write_discovery_exclusive(path: str | Path, payload: Mapping[str, object]) -> Path:

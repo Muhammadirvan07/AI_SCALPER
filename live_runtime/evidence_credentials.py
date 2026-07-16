@@ -45,11 +45,21 @@ class WindowsEvidenceKeyStore:
             )
         if backend is None:
             try:
-                import keyring as backend  # type: ignore[no-redef]
+                import keyring
             except ImportError as exc:
                 raise EvidenceCredentialError(
                     "keyring is required on the Windows evidence host"
                 ) from exc
+            selected = keyring.get_keyring()
+            selected_type = type(selected)
+            if (
+                selected_type.__module__ != "keyring.backends.Windows"
+                or selected_type.__name__ != "WinVaultKeyring"
+            ):
+                raise EvidenceCredentialError(
+                    "Windows Credential Manager backend is required"
+                )
+            backend = selected
         if any(
             not callable(getattr(backend, name, None))
             for name in ("get_password", "set_password")

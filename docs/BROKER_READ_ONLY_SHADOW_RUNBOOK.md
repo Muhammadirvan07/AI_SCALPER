@@ -1,38 +1,15 @@
 # Phase 3 — Broker Read-Only Shadow
 
-Status: **LOCAL RUNNER READY / BROKER BINDING PENDING / NOT_READY**
+Status: **XM JAPAN LEGAL-BLOCKED / FINEX BINDING PENDING /
+BROKER-FORWARD DATA NOT STARTED / NOT_READY**
 
-Prioritas operasional saat ini adalah **XM sebagai primary read-only shadow**
-dan **FINEX sebagai standby preparation**. FBS tetap disimpan sebagai deferred
-benchmark, bukan jalur aktif. Daftar terencana ada di
-`config/broker_candidates.phase3.json`. Nilai yang belum diamati langsung dari
-terminal demo MT5 tetap `null`. Jangan menyimpan login, password, investor
-password, token, atau secret di repository.
+Belum ada primary shadow broker yang boleh dijalankan. XM tetap terkonfigurasi
+sebagai referensi teknis, tetapi diblokir untuk operasi dari Jepang. FINEX
+tetap standby preparation dan harus memiliki discovery, key, contract, symbol
+specification, calendar, serta ledger terpisah. FBS deferred. Evidence
+antarbroker tidak boleh dicampur.
 
-## Urutan onboarding
-
-Selesaikan XM terlebih dahulu dan mulai evidence shadow setelah exact binding
-lolos. FINEX disiapkan dengan kontrak dan proses yang sama, tetapi evidence-nya
-tidak boleh dicampur dengan XM. Setiap broker memiliki candidate ID, server,
-instrument spec hash, forward contract, dan ledger sesi sendiri.
-
-1. Buat akun **demo MT5** dan catat exact legal/company name, server, account
-   type, currency, serta trade mode yang dilaporkan terminal.
-2. Verifikasi eligibility/legalitas secara independen. Status yang belum
-   diverifikasi harus tetap `legal_eligible=false` dan tidak dapat lolos
-   benchmark.
-3. Temukan exact broker symbol untuk XAUUSD, EURUSD, USDJPY, dan AUDUSD,
-   termasuk suffix/prefix. Jika satu simbol tidak tersedia, kandidat HOLD.
-4. Ekspor `digits`, `point`, `trade_tick_size`, `trade_contract_size`,
-   `trade_tick_value`, `volume_min/max/step`, stops/freeze level, currency,
-   margin mode, dan session calendar; hash menjadi exact binding.
-5. Buat `BrokerCandidateRegistration`, lalu jalankan satu
-   `ReadOnlyShadowService.run_once()` per sesi. Hanya
-   `FINALIZED_EVIDENCE_APPENDED` untuk keempat simbol yang dihitung COMPLETE.
-6. Kumpulkan minimal 20 sesi COMPLETE per kandidat. Angka 20 hanya membuka
-   review benchmark manual; tidak membuka demo-auto ataupun live.
-
-## Kontrol tetap
+Kontrol permanen fase ini:
 
 ```text
 live_allowed = false
@@ -41,57 +18,70 @@ promotion_eligible = false
 max_lot = 0.01
 ```
 
-`live_runtime.shadow_phase` tidak mengimpor adapter order dan hanya menerima
-callable eksportir read-only. Kegagalan satu simbol dicatat durable sebagai
-HOLD. Penggunaan ulang `candidate_id + session_id` dengan payload berbeda
-ditolak. Ledger menggunakan SQLite WAL dan dapat dilanjutkan setelah restart.
+## Urutan onboarding broker
 
-## Discovery XM di Windows
+1. Verifikasi legal eligibility secara independen.
+2. Rekam exact legal entity, server, DEMO environment, account currency, dan
+   empat broker symbol.
+3. Buat HMAC discovery receipt tanpa menyimpan login atau credential.
+4. Bind instrument specification serta session calendar ke satu contract.
+5. Jalankan read-only shadow; tidak ada adapter order pada jalur ini.
+6. Kumpulkan minimal 20 sesi COMPLETE per kandidat sebelum benchmark manual.
 
-Pastikan terminal XM MT5 sudah terbuka dan login ke demo server exact
-`XMTrading-MT5 3`. Dari PowerShell di root proyek, aktifkan environment lalu
-jalankan:
+Angka minimum sesi hanya membuka review benchmark. Itu tidak membuka
+demo-auto, live, promotion permit, atau peningkatan lot.
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-python .\mt5_readonly_discovery.py --candidate xm --output .\runtime_state\broker_discovery\xm-first.json
-```
+Setiap runner broker wajib memiliki journal SQLite sendiri dengan:
 
-Perintah tidak menerima login/password dan hanya membaca `account_info()` serta
-`symbol_info()`. Output dibuat exclusive dengan permission lokal terbatas,
-menolak overwrite, tidak menyimpan MT ID, nama akun, balance, atau equity, dan
-mengikat hash payload. Jangan unggah file tersebut sebelum memeriksa isinya.
+- hash-chained receipt untuk seluruh startup/cycle outcome;
+- heartbeat, last-success, serta status failed/stale yang eksplisit;
+- free-disk guard sebelum evidence append;
+- verified create-exclusive audit export+manifest per invocation untuk
+  dipindahkan off-host, ditambah backup SQLite terjadwal untuk restore.
 
-## Calendar window 01
+Kegagalan journal, disk, heartbeat, audit export, atau backup adalah `HOLD`.
+Stdout bukan sumber audit. Jangan memakai journal, export, atau backup XM untuk
+FINEX.
 
-Window pertama sengaja dibatasi menjadi 10 sesi, bukan langsung 20, karena
-special-hours notice Agustus belum diterbitkan sebelum window dimulai. Plan
-`config/xm_calendar_window_01.json` mencakup pembukaan server Senin 20 Juli
-hingga penutupan Jumat 31 Juli 2026. Sumber resmi Juli tidak mencantumkan
-perubahan GOLD atau FX wajib setelah 6 Juli.
+## Jalur XM diblokir untuk Jepang
 
-Sesudah pull commit calendar terbaru di Windows, jalankan:
+Gunakan prosedur lengkap di `docs/XM_READ_ONLY_SHADOW_RUNBOOK.md` hanya sebagai
+runbook masa depan. Japan FSA legal gate saat ini menolak XM/Tradexfin, sehingga
+artefak Window 02 v3 berikut belum boleh dibuat:
 
-```powershell
-python .\build_xm_calendar.py --output .\runtime_state\broker_discovery\xm-calendar-window-01.json
-```
+- discovery: `xm-window-02-v3.json`
+- plan: `xm-calendar-window-02-plan-v3.json`
+- calendar: `xm-calendar-window-02-v3.json`
+- contract: `xm-window-02-diagnostic-v3`
 
-Generator memakai `Europe/Helsinki` untuk aturan GMT+2/GMT+3, mengubah semua
-bucket ke UTC, memasukkan weekend closure untuk seluruh simbol dan daily break
-GOLD, lalu memvalidasi exact partition dengan verifier evidence yang sama.
-Output tidak memberi izin trading. Window kedua baru boleh didaftarkan setelah
-notice special-hours Agustus tersedia dan direview sebelum observasi.
+`xm-window-01-diagnostic-v2` dan artefak pendahulunya tetap immutable,
+read-only, dan tidak boleh ditimpa atau dilanjutkan oleh runtime v3.
 
-## Bukti yang belum ada
+## FINEX standby
 
-- Exact field XM yang belum tersedia melalui screenshot dan seluruh exact demo
-  binding FINEX.
-- Independent legal/regulatory eligibility review.
-- Exact four-symbol mapping dan instrument specification hash.
-- 20 sesi lengkap XM; FINEX tetap membutuhkan 20 sesi tersendiri sebelum dapat
-  dibandingkan atau dipilih.
-- Measured spread, fill quality, feed uptime, dan operational scores.
-- Pemilihan satu exact broker server melalui manual review.
+Jangan menyalin binding XM ke FINEX. Sebelum menyiapkan contract FINEX,
+lengkapi:
 
-Karena itu Fase 3 sudah memiliki jalur software lokal, tetapi pengumpulan
-broker-forward nyata belum dimulai dan sistem tetap **NOT_READY**.
+- exact legal/company name dan regulatory eligibility;
+- exact demo server dan account type;
+- exact XAUUSD/EURUSD/USDJPY/AUDUSD symbol mapping;
+- digits, point, tick size, contract size, lot step, stop/freeze level,
+  currencies, margin mode, dan session calendar;
+- key dan source-instance ID yang berbeda dari XM.
+
+Registrasi broker FINEX di Bappebti telah dicatat dari sumber resmi, tetapi itu
+belum membuktikan eligibility operasi saat user masih berada di Jepang.
+Sampai eligibility dan data terminal FINEX tersedia, kandidat tetap
+`BROKER BINDING PENDING / NO OPERATION`.
+
+## Bukti yang masih belum ada
+
+- Minimal 20 sesi broker-forward XM yang valid.
+- Minimal 20 sesi FINEX terpisah.
+- Measured spread, uptime, cost, serta fill quality.
+- Demo manual order/reconciliation evidence.
+- Demo-auto soak 30 hari/50 fill.
+- Acceptance gate lane XAUUSD dan secondary FX.
+
+Karena bukti itu belum ada, sistem tetap **NOT_READY** walaupun infrastruktur
+read-only telah di-hardening.

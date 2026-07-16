@@ -13,7 +13,7 @@ membuka demo-auto maupun live.
 |---|---|---|
 | 1. Baseline terkunci | Sebagian | Seluruh safety lock terjaga, tetapi worktree telah berisi perubahan user/runtime sebelum implementasi sehingga clean baseline commit terisolasi belum dibuat. |
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v3, signed session calendar per simbol, append chains/heads, seal, blinded receipt, dan strict UTC/build/source/spec/grid verification tersedia. |
-| 3. Broker read-only shadow | XM primary binding partial; FINEX standby pending | XM ditetapkan primary read-only shadow dan screenshot specs empat simbol telah dicatat parsial; FINEX disiapkan sebagai standby dengan isolasi per broker. Durable SQLite WAL session ledger, four-symbol runner, exporter, paired evidence append, dan benchmark tersedia. Exact API binding dan 20 sesi belum terkumpul. |
+| 3. Broker read-only shadow | Software hardened; XM blocked in Japan; evidence not started | Discovery lama hanya historis. Receipt v3 sekarang mewajibkan investor login serta terminal Python-order lock, tetapi Japan FSA legal gate menandai XM/Tradexfin `VERIFIED_INELIGIBLE` untuk operating jurisdiction saat ini. Window 02 tidak boleh diregistrasi. FINEX telah diverifikasi sebagai broker terdaftar Bappebti, namun exact demo binding dan eligibility operasi dari Jepang tetap pending. |
 | 4. Manual demo | Component foundation ready, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-wide fence, risk governor, fenced journal, one-shot runtime composition, MT5 preflight/executor/reconciliation, dan dual-control kill-switch reset tersedia. Sepuluh order demo belum dilakukan. |
 | 5. Demo-auto soak | Not started | Policy tetap locked; belum ada 30 hari, 50 fill, minimal 20 XAU, atau clean incident record. |
 | 6. XAUUSD live canary | Not started | XAUUSD belum execution-approved dan belum memiliki promotion evidence/permit/soak maupun 50 closed live trades. |
@@ -43,6 +43,20 @@ membuka demo-auto maupun live.
   build, waktu, dan urutan. Reader juga mengambil lock yang sama sehingga tidak
   melihat keadaan setengah jadi; crash di tengah append membuat kontrak invalid
   dan recovery marker memblokir append berikutnya.
+- MT5 login hanya digunakan di memori sebagai input HMAC domain-separated.
+  Discovery, contract, broker binding, dan paired commit mengikat exact account
+  identity/key/currency tanpa menyimpan login mentah. Identity diverifikasi
+  sebelum dan sesudah tick collection.
+- Discovery v3 dan setiap capture juga mewajibkan investor/read-only account
+  serta terminal-native order lock: `account.trade_allowed=false`,
+  `account.trade_expert=false`, `terminal.trade_allowed=false`, dan
+  `terminal.tradeapi_disabled=true`. Runtime shadow mengimpor package secara
+  lazy dan facade tidak menyimpan raw MT5 module atau mengekspor execution
+  stack.
+- Shadow collector memegang persistent OS singleton fence untuk seluruh siklus
+  verify, plan, collect, append, dan SQLite receipt. Optimistic paired sequence
+  fence menolak stale writer, sedangkan timestamp append baru dicetak setelah
+  tick collection selesai.
 
 ### Runtime trust boundary
 
@@ -115,8 +129,34 @@ BTCUSD = shadow-only
   critical reconciliation condition melatch kill switch.
 - File bridge/MQL5 lama tetap legacy demo-only. Tidak ada entrypoint produksi
   saat ini yang mengaktifkan demo-auto atau live coordinator.
-- Direct dependency pins dan import checks tersedia, tetapi belum ada hashed
-  transitive lock yang di-resolve pada Windows CPython 3.12.
+- Hashed transitive `pylock.windows-cp312.toml` mengikat 14 dependency runtime
+  minimal untuk
+  CPython 3.12 `win_amd64`, exact MetaTrader5 wheel, dan reproducible vendored
+  `ta` wheel. Exact pip vendored menjalankan bootstrap dari wheelhouse flat yang
+  diverifikasi tanpa mempercayai pip lama; validator lalu menolak target,
+  version, artifact, hash, selected-wheel, installed tree, bytecode, wrapper,
+  source-manifest, package-set, atau wheel-availability drift. `yfinance` dan
+  dependency Yahoo tidak boleh masuk runtime live. Ruleset contract mengikat
+  lock, wheel-tree manifest, hashed requirements, guard, bootstrap, dan
+  verification scripts.
+- CycloneDX 1.6 SBOM deterministik mengikat tepat 14 dependency runtime dan
+  satu wheel bootstrap `pip`, termasuk exact purl, role, filename, ukuran, dan
+  SHA-256 wheel. Validator membangun ulang expected SBOM dari lock serta install
+  manifest dan menolak semantic rewrite, package drift, encoding noncanonical,
+  atau hash mismatch.
+- Gate vulnerability OSV terpisah mengikat exact lock/SBOM/package inventory,
+  seluruh raw query/response dan pagination, freshness maksimum 24 jam, key ID,
+  payload hash, serta HMAC. Provider unavailable/incomplete/unknown, receipt
+  stale/future/tampered, atau satu known vulnerability selalu memblokir.
+  Signing key file wajib berada di luar repository. Belum ada receipt OSV nyata
+  yang diklaim sebagai bukti release.
+- Builder release Windows memakai exact allowlist dari clean Git commit,
+  output deterministik create-exclusive di luar repository, local-import
+  closure, secret/state/history exclusion, dan immutable safety/usage policy.
+  Modul executor/MT5 adapter/reconciliation/MQL5 serta primitive
+  `order_send`, `order_check`, action/order constants, dan `CTrade` ditolak
+  struktural dari profile read-only. Bundle saat ini tetap operator tooling,
+  bukan service runtime.
 
 ## Batas bukti yang masih fail-closed
 
@@ -130,8 +170,12 @@ BTCUSD = shadow-only
    terpisah/HSM-backed. Local signature bukan bukti independen dari host yang
    menghasilkan data. `external_key_custody_verified` tetap `false`.
 3. Python MT5 tidak menyediakan broker-authenticated monotonic tick sequence.
-   Local `source_sequence` hanya membuktikan urutan exporter sendiri, sehingga
-   `external_tick_sequence_authenticity_verified` tetap `false`.
+   Local `source_sequence` hanya dapat dipakai bila benar-benar tersedia dan
+   contiguous, sehingga `external_tick_sequence_authenticity_verified` tetap
+   `false`. Tanpa sequence, tick berbeda pada millisecond yang sama
+   mempertahankan urutan yang dikembalikan broker; sistem tidak lagi membuat
+   urutan lexicographic sintetis. Record yang benar-benar identik ditolak
+   fail-closed karena urutan aslinya tidak dapat dibedakan.
 4. Signed session calendar membuktikan kalender tidak berubah setelah kontrak
    dibuat, bukan bahwa jadwal awalnya diterbitkan dan di-attest oleh broker.
    Exact broker calendar exporter serta provenance eksternalnya belum dijalankan.
@@ -156,10 +200,19 @@ BTCUSD = shadow-only
     issuer production yang membuka, menghitung ulang, dan memverifikasi trade
     ledger, bootstrap, fold, evidence-store receipt, serta parity corpus belum
     tersedia.
-11. One-shot composition service tersedia, tetapi broker-tick loop, periodic
-    reconciliation supervisor, watchdog bootstrap, durable soak/demotion reset
-    tracker, dan off-host alert integration belum diimplementasikan atau diuji
-    pada Windows VPS.
+11. One-shot shadow runner kini memiliki durable per-stage receipt,
+    hash-chained operational journal, singleton fence, disk floor, heartbeat
+    projection, status-only watchdog, dan verified create-exclusive audit
+    export. Namun broker-tick loop produksi, periodic reconciliation
+    supervisor, durable soak/demotion reset tracker, actual off-host alert/WORM
+    delivery, serta restore drill belum dipasang atau diuji pada Windows VPS.
+12. Supply-chain workflow, SBOM, OSV receipt verifier, dan deterministic
+    release builder sudah tersedia lokal, tetapi actual OSV collection,
+    independent signing-key custody, clean committed release identity, dan
+    clean-checkout build pada exact Windows host belum dilakukan. Worktree saat
+    ini juga masih dirty; branch remote belum memuat seluruh hardening terbaru.
+    Karena itu source/ZIP dari remote saat ini tidak boleh dipakai sebagai
+    release.
 
 Karena batas di atas, kalender yang valid dapat membuat
 `session_calendar_verified=true` dan data grid dapat lengkap secara lokal,
@@ -168,9 +221,11 @@ eksternal belum terpenuhi.
 
 ## Blocker eksternal sebelum tahap berikutnya
 
-1. Selesaikan exact demo MT5 binding dan legal/regulatory review XM, lalu
-   kumpulkan minimal 20 sesi primary shadow. Siapkan FINEX secara terisolasi
-   sebagai standby dan ulangi 20 sesi tersendiri sebelum perbandingan manual.
+1. Jangan menjalankan XM Window 02 selama operating jurisdiction masih Jepang.
+   Pilih broker yang eligible untuk yurisdiksi saat ini, atau tunggu perubahan
+   yurisdiksi dan review legal baru. Untuk FINEX, lengkapi exact demo
+   server/account/symbol/spec serta eligibility lintas yurisdiksi sebelum
+   discovery. Setiap kandidat tetap membutuhkan minimal 20 sesi terpisah.
 2. Jalankan broker read-only shadow pada exact symbols; ekspor signed session
    calendars, finalized M15 bid/ask bars, raw ticks, spread/fill distributions,
    dan bukti minimal delapan minggu per lane.
@@ -188,13 +243,19 @@ eksternal belum terpenuhi.
 7. Provision dua identitas approver reset yang benar-benar independen beserta
    secret custody; lakukan drill latch/restart/stale/mismatch/replay dan simpan
    audit receipt.
-8. Generate hashed transitive Windows dependency lock, ikat hash ke clean
-   release/forward contract, lalu ulangi import, vulnerability, rollback, dan
-   reproducibility checks pada VPS target.
-9. Selesaikan failure drills serta repeated paired bar/raw ingestion, lalu
+8. Install dan verifikasi hashed Windows lock pada exact VPS menggunakan pip
+   26.1.2 serta binary-only mode, lalu ulangi import, vulnerability, rollback,
+   clean-checkout, dan reproducibility checks pada host target.
+9. Setelah perubahan direview, buat clean commit baru, bangun bundle dengan
+   exact allowlist dari clean checkout, collect receipt OSV nyata dengan key di
+   luar repository, dan arsipkan manifest/receipt melalui channel off-host.
+10. Pisahkan service-runtime minimal dari deployment-tooling bundle dengan
+    menghapus coupling build identity terhadap generator/network tooling.
+    Jangan menjalankan bundle operator melalui Task Scheduler/service account.
+11. Selesaikan failure drills serta repeated paired bar/raw ingestion, lalu
    jalankan 10 manual-demo order dan 30-day demo-auto soak hanya setelah policy
    review terpisah.
-10. Penuhi gate statistik per lane: OOS/forward trade minimum, purged folds,
+12. Penuhi gate statistik per lane: OOS/forward trade minimum, purged folds,
     PF, bootstrap expectancy lower bound, drawdown, cost stress, dan 100%
     deterministic replay/runtime parity.
 

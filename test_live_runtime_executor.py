@@ -11,9 +11,9 @@ from unittest.mock import patch
 from live_runtime.contracts import (
     BrokerSpec,
     DecisionSnapshot,
-    ExecutionReceipt,
     TradeIntent,
     _mint_decision_snapshot,
+    _mint_execution_receipt,
 )
 from live_runtime.contracts import canonical_sha256
 from live_runtime.account_fence import account_runtime_identity
@@ -34,6 +34,7 @@ from live_runtime.mt5_adapter import (
     MT5Preflight,
     SubmissionUncertainError,
     _mint_mt5_preflight,
+    _mint_mt5_submission_guard,
 )
 from live_runtime.permit import PromotionPermit, account_alias_sha256
 from live_runtime.risk import RiskContext
@@ -321,13 +322,17 @@ class StubAdapter:
         )
 
     def submission_guard(self, trade_intent, broker_spec, *, expected_equity, now):
-        return {
-            "account_equity": expected_equity,
-            "active_order_count": 0,
-            "active_position_count": 0,
-            "broker_spec_sha256": broker_spec.content_sha256,
-            "checked_at_utc": now,
-        }
+        return _mint_mt5_submission_guard(
+            intent_id=trade_intent.intent_id,
+            account_id=trade_intent.account_id,
+            server=trade_intent.server,
+            symbol=trade_intent.symbol,
+            account_equity=expected_equity,
+            active_order_count=0,
+            active_position_count=0,
+            broker_spec_sha256=broker_spec.content_sha256,
+            checked_at_utc=now,
+        )
 
     def submit(
         self,
@@ -342,7 +347,7 @@ class StubAdapter:
         if self.uncertain:
             raise SubmissionUncertainError("connection lost after send")
         filled = 0.0 if self.receipt_state == "REJECTED" else 0.01
-        return ExecutionReceipt(
+        return _mint_execution_receipt(
             intent_id=trade_intent.intent_id,
             state=self.receipt_state,
             account_id="account-alias",
@@ -366,7 +371,11 @@ class ExecutionCoordinatorTests(unittest.TestCase):
     def setUp(self) -> None:
         tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(tempdir.cleanup)
-        self.journal = ExecutionJournal(Path(tempdir.name) / "journal.sqlite")
+        self.journal_clock = [NOW]
+        self.journal = ExecutionJournal(
+            Path(tempdir.name) / "journal.sqlite",
+            clock_provider=lambda: self.journal_clock[0],
+        )
         self.owner = "executor-a"
         self.fence = self.journal.claim_executor(
             self.owner,
@@ -483,6 +492,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             **values,
         )
         clock[0] = NOW + timedelta(milliseconds=100)
+        self.journal_clock[0] = clock[0]
         second = self.execute_with_controls(
             coordinator,
             self.journal,
@@ -524,6 +534,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             **values,
         )
         clock[0] = NOW + timedelta(milliseconds=100)
+        self.journal_clock[0] = clock[0]
         second_intent = replace(
             first_intent,
             created_at=clock[0],
@@ -547,7 +558,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             with self.subTest(missing_control=missing_control):
                 tempdir = tempfile.TemporaryDirectory()
                 self.addCleanup(tempdir.cleanup)
-                journal = ExecutionJournal(Path(tempdir.name) / "journal.sqlite")
+                journal = ExecutionJournal(
+                    Path(tempdir.name) / "journal.sqlite",
+                    clock_provider=lambda: NOW,
+                )
                 owner = f"control-{missing_control}"
                 fence = journal.claim_executor(owner, now=NOW, lease_seconds=60)
                 adapter = StubAdapter()
@@ -592,7 +606,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         for directory in directories:
             self.addCleanup(directory.cleanup)
         journals = [
-            ExecutionJournal(Path(directory.name) / "journal.sqlite")
+            ExecutionJournal(
+                Path(directory.name) / "journal.sqlite",
+                clock_provider=lambda: NOW,
+            )
             for directory in directories
         ]
         owners = ("split-a", "split-b")
@@ -658,7 +675,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         for directory in directories:
             self.addCleanup(directory.cleanup)
         journals = [
-            ExecutionJournal(Path(directory.name) / "journal.sqlite")
+            ExecutionJournal(
+                Path(directory.name) / "journal.sqlite",
+                clock_provider=lambda: NOW,
+            )
             for directory in directories
         ]
         owners = ("restart-a", "restart-b")
@@ -721,7 +741,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             with self.subTest(symbol=symbol):
                 tempdir = tempfile.TemporaryDirectory()
                 self.addCleanup(tempdir.cleanup)
-                journal = ExecutionJournal(Path(tempdir.name) / "journal.sqlite")
+                journal = ExecutionJournal(
+                    Path(tempdir.name) / "journal.sqlite",
+                    clock_provider=lambda: NOW,
+                )
                 owner = f"owner-{symbol}"
                 fence = journal.claim_executor(owner, now=NOW, lease_seconds=60)
                 adapter = StubAdapter()
@@ -787,7 +810,8 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             fence_token=self.fence,
             now=NOW,
         )
-        self.assertEqual("REJECTED", outcome.state)
+        self.assertEqual("UNCERTAIN", outcome.state)
+        self.assertEqual("SUBMISSION_HELD_BEFORE_SEND", outcome.status)
         self.assertIn(
             "EXECUTION_EVIDENCE_EXPIRED_BEFORE_SEND", outcome.reason_codes
         )
@@ -844,7 +868,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             with self.subTest(expected_reason=expected_reason):
                 tempdir = tempfile.TemporaryDirectory()
                 self.addCleanup(tempdir.cleanup)
-                journal = ExecutionJournal(Path(tempdir.name) / "journal.sqlite")
+                journal = ExecutionJournal(
+                    Path(tempdir.name) / "journal.sqlite",
+                    clock_provider=lambda: NOW,
+                )
                 fence = journal.claim_executor("owner", now=NOW, lease_seconds=60)
                 adapter = StubAdapter()
                 trade_intent, permit = journal_bound_order(journal)
@@ -885,7 +912,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             with self.subTest(reason=reason):
                 tempdir = tempfile.TemporaryDirectory()
                 self.addCleanup(tempdir.cleanup)
-                journal = ExecutionJournal(Path(tempdir.name) / "journal.sqlite")
+                journal = ExecutionJournal(
+                    Path(tempdir.name) / "journal.sqlite",
+                    clock_provider=lambda: NOW,
+                )
                 fence = journal.claim_executor("owner", now=NOW, lease_seconds=60)
                 adapter = StubAdapter()
                 trade_intent, permit = journal_bound_order(journal)
@@ -931,7 +961,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             with self.subTest(reason=reason):
                 tempdir = tempfile.TemporaryDirectory()
                 self.addCleanup(tempdir.cleanup)
-                journal = ExecutionJournal(Path(tempdir.name) / "journal.sqlite")
+                journal = ExecutionJournal(
+                    Path(tempdir.name) / "journal.sqlite",
+                    clock_provider=lambda: NOW,
+                )
                 fence = journal.claim_executor("owner", now=NOW, lease_seconds=60)
                 adapter = StubAdapter()
                 if reason == "kill":
@@ -972,7 +1005,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             with self.subTest(reason=reason):
                 tempdir = tempfile.TemporaryDirectory()
                 self.addCleanup(tempdir.cleanup)
-                journal = ExecutionJournal(Path(tempdir.name) / "journal.sqlite")
+                journal = ExecutionJournal(
+                    Path(tempdir.name) / "journal.sqlite",
+                    clock_provider=lambda: NOW,
+                )
                 owner = f"owner-{reason}"
                 fence = journal.claim_executor(owner, now=NOW, lease_seconds=60)
                 adapter = StubAdapter()

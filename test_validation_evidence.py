@@ -4,6 +4,7 @@ import json
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -266,6 +267,18 @@ class ValidationEvidenceTests(unittest.TestCase):
                 "broker_legal_name": "Example Broker Ltd",
                 "broker_server": "Example-Live-1",
                 "environment": "LIVE_READ_ONLY",
+                "account_identity_sha256": hashlib.sha256(
+                    b"example-account-hmac-fixture"
+                ).hexdigest(),
+                "account_identity_scheme": (
+                    "HMAC-SHA256-AI_SCALPER-MT5-ACCOUNT-V2"
+                ),
+                "account_identity_key_id": "local-key-01",
+                "account_currency": "USD",
+                "account_trade_allowed": False,
+                "account_trade_expert": False,
+                "terminal_trade_allowed": False,
+                "terminal_tradeapi_disabled": True,
                 "canonical_symbol": symbol,
                 "broker_symbol": broker_symbols[symbol],
                 "source_instance_id": "terminal-readonly-01",
@@ -380,40 +393,56 @@ class ValidationEvidenceTests(unittest.TestCase):
     @staticmethod
     def _paired_metadata(symbol, source, instrument_spec, bar_start):
         binding = {
-            "account_identity_sha256": hashlib.sha256(
-                f"{source['broker_legal_name']}:{source['broker_server']}:123456".encode()
-            ).hexdigest(),
-            "account_alias_sha256": hashlib.sha256(b"validation-read-only").hexdigest(),
+            "account_identity_sha256": source["account_identity_sha256"],
+            "account_identity_scheme": source["account_identity_scheme"],
+            "account_identity_key_id": source["account_identity_key_id"],
+            "account_alias_sha256": canonical_evidence_payload_sha256(
+                {"account_alias": source["source_instance_id"]}
+            ),
             "broker_legal_name": source["broker_legal_name"],
             "server": source["broker_server"],
             "environment": source["environment"],
-            "account_currency": "USD",
+            "account_currency": source["account_currency"],
+            "account_trade_allowed": source["account_trade_allowed"],
+            "account_trade_expert": source["account_trade_expert"],
+            "terminal_trade_allowed": source["terminal_trade_allowed"],
+            "terminal_tradeapi_disabled": source[
+                "terminal_tradeapi_disabled"
+            ],
             "canonical_symbol": symbol,
             "broker_symbol": source["broker_symbol"],
             "instrument_spec": copy.deepcopy(instrument_spec),
-            "expected_login_verified_at_runtime": True,
+            "account_identity_verified_at_runtime": True,
         }
         binding_hash = canonical_evidence_payload_sha256(binding)
         start = pd.Timestamp(bar_start)
         observed_facts = {
             "account_identity_sha256": binding["account_identity_sha256"],
+            "account_identity_scheme": binding["account_identity_scheme"],
+            "account_identity_key_id": binding["account_identity_key_id"],
             "account_alias_sha256": binding["account_alias_sha256"],
             "broker_legal_name": binding["broker_legal_name"],
             "server": binding["server"],
             "environment": binding["environment"],
             "account_currency": binding["account_currency"],
+            "account_trade_allowed": binding["account_trade_allowed"],
+            "account_trade_expert": binding["account_trade_expert"],
+            "terminal_trade_allowed": binding["terminal_trade_allowed"],
+            "terminal_tradeapi_disabled": binding[
+                "terminal_tradeapi_disabled"
+            ],
             "canonical_symbol": binding["canonical_symbol"],
             "broker_symbol": binding["broker_symbol"],
             "instrument_spec_sha256": canonical_evidence_payload_sha256(
                 binding["instrument_spec"]
             ),
-            "login_match": True,
+            "account_identity_match": True,
         }
         observed_facts_sha256 = canonical_evidence_payload_sha256(observed_facts)
         pre_checked_at = start + pd.to_timedelta(1801, unit="s")
         post_checked_at = pre_checked_at + pd.to_timedelta(1, unit="ms")
         coverage = {
-            "schema_version": "broker-export-coverage-v2",
+            "schema_version": "broker-export-coverage-v3",
             "broker_binding_sha256": binding_hash,
             "observed_facts_sha256": observed_facts_sha256,
             "broker_binding_pre_observed_facts_sha256": observed_facts_sha256,
@@ -423,9 +452,21 @@ class ValidationEvidenceTests(unittest.TestCase):
             "broker_binding_post_checked_at_utc": _utc_z(post_checked_at),
             "coverage_boundary_proven": True,
             "coverage_continuity_proven": True,
+            "left_boundary_mode": "BRACKETED",
+            "right_boundary_mode": "BRACKETED",
+            "boundary_tolerance_seconds": 10,
+            "observed_left_boundary_at_utc": _utc_z(
+                start - pd.to_timedelta(1, unit="s")
+            ),
+            "observed_right_boundary_at_utc": _utc_z(
+                start + pd.to_timedelta(30 * 60 + 1, unit="s")
+            ),
             "archived_tick_rows": 8,
             "finalized_bar_rows": 2,
             "requested_start_at_utc": _utc_z(start),
+            "requested_end_at_utc": _utc_z(
+                start + timedelta(minutes=30)
+            ),
             "finalized_through_at_utc": _utc_z(start + timedelta(minutes=30)),
         }
         return {
@@ -618,7 +659,7 @@ class ValidationEvidenceTests(unittest.TestCase):
                 build_identity_provider=_build_identity,
             )
 
-    def test_forward_contract_checks_clock_before_slow_dependency_validation(self):
+    def test_forward_contract_remints_registration_time_after_slow_validation(self):
         snapshot = self._create_snapshot(snapshot_id="clock-entry-snapshot")
         sources = self._broker_sources()
         calendars = self._session_calendars(broker_sources=sources)
@@ -645,7 +686,10 @@ class ValidationEvidenceTests(unittest.TestCase):
             signing_key=TEST_SIGNING_KEY,
         )
 
-        self.assertEqual("2026-01-01T12:00:00Z", contract["registered_at_utc"])
+        self.assertEqual(
+            "2026-01-01T12:00:02.314425Z",
+            contract["registered_at_utc"],
+        )
 
     def test_forward_contract_binds_rules_profiles_sources_and_specs(self):
         contract = self._register_contract()
@@ -1509,6 +1553,96 @@ class ValidationEvidenceTests(unittest.TestCase):
             verified["failures"],
         )
 
+    def test_contract_rejects_self_consistent_account_identity_substitution(self):
+        contract = self._register_contract(contract_id="contract-account-identity")
+        sources = self._broker_sources()
+        specs = contract["instrument_specs"]
+        metadata = self._paired_metadata(
+            "XAUUSD",
+            sources["XAUUSD"],
+            specs["XAUUSD"],
+            "2026-01-02T00:00:00Z",
+        )
+        binding = copy.deepcopy(metadata["broker_binding"])
+        binding["account_identity_sha256"] = "f" * 64
+        coverage = copy.deepcopy(metadata["coverage_metadata"])
+        observed = copy.deepcopy(coverage["broker_binding_observed_facts"])
+        observed["account_identity_sha256"] = "f" * 64
+        observed_hash = canonical_evidence_payload_sha256(observed)
+        coverage["broker_binding_observed_facts"] = observed
+        coverage["observed_facts_sha256"] = observed_hash
+        coverage["broker_binding_pre_observed_facts_sha256"] = observed_hash
+        coverage["broker_binding_post_observed_facts_sha256"] = observed_hash
+        binding_hash = canonical_evidence_payload_sha256(binding)
+        coverage["broker_binding_sha256"] = binding_hash
+
+        with self.assertRaisesRegex(
+            EvidenceValidationError,
+            "PAIRED_COMMIT_BROKER_METADATA_BINDING_MISMATCH",
+        ):
+            append_paired_forward_evidence(
+                self.root,
+                contract["contract_id"],
+                "XAUUSD",
+                self._raw_tick_frame(),
+                self._segment_frame(),
+                sources["XAUUSD"],
+                specs["XAUUSD"],
+                export_id="paired-export-account-substitution",
+                broker_binding=binding,
+                broker_binding_sha256=binding_hash,
+                coverage_metadata=coverage,
+                coverage_metadata_sha256=canonical_evidence_payload_sha256(
+                    coverage
+                ),
+                exported_at="2026-01-02T00:45:00Z",
+            )
+
+    def test_contract_rejects_self_consistent_account_alias_substitution(self):
+        contract = self._register_contract(contract_id="contract-account-alias")
+        sources = self._broker_sources()
+        specs = contract["instrument_specs"]
+        metadata = self._paired_metadata(
+            "XAUUSD",
+            sources["XAUUSD"],
+            specs["XAUUSD"],
+            "2026-01-02T00:00:00Z",
+        )
+        binding = copy.deepcopy(metadata["broker_binding"])
+        binding["account_alias_sha256"] = "f" * 64
+        coverage = copy.deepcopy(metadata["coverage_metadata"])
+        observed = copy.deepcopy(coverage["broker_binding_observed_facts"])
+        observed["account_alias_sha256"] = "f" * 64
+        observed_hash = canonical_evidence_payload_sha256(observed)
+        coverage["broker_binding_observed_facts"] = observed
+        coverage["observed_facts_sha256"] = observed_hash
+        coverage["broker_binding_pre_observed_facts_sha256"] = observed_hash
+        coverage["broker_binding_post_observed_facts_sha256"] = observed_hash
+        binding_hash = canonical_evidence_payload_sha256(binding)
+        coverage["broker_binding_sha256"] = binding_hash
+
+        with self.assertRaisesRegex(
+            EvidenceValidationError,
+            "PAIRED_COMMIT_BROKER_METADATA_BINDING_MISMATCH",
+        ):
+            append_paired_forward_evidence(
+                self.root,
+                contract["contract_id"],
+                "XAUUSD",
+                self._raw_tick_frame(),
+                self._segment_frame(),
+                sources["XAUUSD"],
+                specs["XAUUSD"],
+                export_id="paired-export-account-alias-substitution",
+                broker_binding=binding,
+                broker_binding_sha256=binding_hash,
+                coverage_metadata=coverage,
+                coverage_metadata_sha256=canonical_evidence_payload_sha256(
+                    coverage
+                ),
+                exported_at="2026-01-02T00:45:00Z",
+            )
+
     def test_unpaired_append_after_paired_history_fails_closed(self):
         contract = self._register_contract(contract_id="contract-paired-fail-closed")
         sources = self._broker_sources()
@@ -1561,7 +1695,7 @@ class ValidationEvidenceTests(unittest.TestCase):
                 exported_at="2026-01-02T01:15:00Z",
             )
 
-    def test_interrupted_first_paired_append_leaves_signed_fail_closed_marker(self):
+    def test_invalid_paired_input_is_rejected_before_pending_marker(self):
         contract = self._register_contract(contract_id="contract-paired-interrupted")
         sources = self._broker_sources()
         specs = contract["instrument_specs"]
@@ -1580,6 +1714,50 @@ class ValidationEvidenceTests(unittest.TestCase):
                 "USDJPY",
                 self._raw_tick_frame(),
                 invalid_bars,
+                sources["USDJPY"],
+                specs["USDJPY"],
+                export_id="paired-export-interrupted",
+                **metadata,
+                exported_at="2026-01-02T00:45:00Z",
+            )
+
+        verified = verify_forward_evidence(self.root, contract["contract_id"])
+        self.assertTrue(verified["valid"], verified["failures"])
+        marker = (
+            self.root
+            / "forward"
+            / contract["contract_id"]
+            / "paired_pending"
+            / "USDJPY.json"
+        )
+        self.assertFalse(marker.exists())
+
+    def test_interrupted_after_pending_marker_fails_closed(self):
+        contract = self._register_contract(contract_id="contract-paired-interrupted")
+        sources = self._broker_sources()
+        specs = contract["instrument_specs"]
+        metadata = self._paired_metadata(
+            "USDJPY",
+            sources["USDJPY"],
+            specs["USDJPY"],
+            "2026-01-02T00:00:00Z",
+        )
+        with (
+            patch(
+                "validation_evidence.secure_core._append_raw_tick_partition_unlocked",
+                side_effect=EvidenceValidationError("INJECTED_INTERRUPTION"),
+            ),
+            self.assertRaisesRegex(
+                EvidenceValidationError,
+                "INJECTED_INTERRUPTION",
+            ),
+        ):
+            append_paired_forward_evidence(
+                self.root,
+                contract["contract_id"],
+                "USDJPY",
+                self._raw_tick_frame(),
+                self._segment_frame(),
                 sources["USDJPY"],
                 specs["USDJPY"],
                 export_id="paired-export-interrupted",
@@ -1771,6 +1949,40 @@ class ValidationEvidenceTests(unittest.TestCase):
             snapshot_verification["failures"],
         )
 
+    def test_windows_atomic_publish_uses_write_through_move(self):
+        import validation_evidence.secure_core as secure_core
+
+        target = self.root / "windows-write-through.bin"
+        calls = []
+
+        def publish(source, destination, *, replace):
+            calls.append((Path(destination), replace))
+            if replace:
+                Path(source).replace(destination)
+            else:
+                Path(source).rename(destination)
+
+        with (
+            patch.object(
+                secure_core,
+                "_windows_commit_enabled",
+                return_value=True,
+            ),
+            patch.object(
+                secure_core,
+                "_windows_move_write_through",
+                side_effect=publish,
+            ),
+        ):
+            secure_core._atomic_exclusive_write(target, b"first")
+            secure_core._atomic_replace(target, b"second")
+
+        self.assertEqual(b"second", target.read_bytes())
+        self.assertEqual(
+            [(target, False), (target, True)],
+            calls,
+        )
+
     def test_recursive_secret_and_symlinked_artifact_path_are_rejected(self):
         snapshot = self._create_snapshot()
         sources = self._broker_sources()
@@ -1877,6 +2089,181 @@ class ValidationEvidenceTests(unittest.TestCase):
                 signing_key=TEST_SIGNING_KEY,
                 build_identity_provider=lambda: drifted,
             )
+
+    def test_append_rechecks_clock_after_slow_build_identity_validation(self):
+        contract = self._register_contract(contract_id="contract-clock-entry-append")
+        sources = self._broker_sources()
+        specs = self._instrument_specs()
+        current_clock = {"value": pd.Timestamp("2026-01-02T00:46:00Z")}
+
+        def delayed_identity():
+            current_clock["value"] += pd.to_timedelta(2.314425, unit="s")
+            return _build_identity()
+
+        with self.assertRaisesRegex(
+            EvidenceValidationError,
+            "ARTIFACT_CLOCK_CLAIM_MISMATCH",
+        ):
+            _append_forward_segment(
+                self.root,
+                contract["contract_id"],
+                "XAUUSD",
+                self._segment_frame(),
+                sources["XAUUSD"],
+                specs["XAUUSD"],
+                exported_at="2026-01-02T00:46:00Z",
+                clock_provider=lambda: current_clock["value"],
+                signing_key=TEST_SIGNING_KEY,
+                build_identity_provider=delayed_identity,
+            )
+
+        segment_directory = (
+            self.root
+            / "forward"
+            / contract["contract_id"]
+            / "segments"
+            / "XAUUSD"
+        )
+        self.assertEqual([], list(segment_directory.glob("*.csv")))
+        self.assertEqual([], list(segment_directory.glob("*.manifest.json")))
+
+    def test_append_mints_commit_timestamp_after_validation(self):
+        contract = self._register_contract(contract_id="contract-clock-remint")
+        sources = self._broker_sources()
+        specs = self._instrument_specs()
+        current_clock = {"value": pd.Timestamp("2026-01-02T00:45:30Z")}
+        delayed = {"done": False}
+
+        def delayed_identity():
+            if not delayed["done"]:
+                current_clock["value"] += pd.to_timedelta(0.4, unit="s")
+                delayed["done"] = True
+            return _build_identity()
+
+        segment = _append_forward_segment(
+            self.root,
+            contract["contract_id"],
+            "XAUUSD",
+            self._segment_frame(),
+            sources["XAUUSD"],
+            specs["XAUUSD"],
+            exported_at="2026-01-02T00:45:30Z",
+            clock_provider=lambda: current_clock["value"],
+            signing_key=TEST_SIGNING_KEY,
+            build_identity_provider=delayed_identity,
+        )
+
+        self.assertEqual(
+            "2026-01-02T00:45:30.400000Z",
+            segment["exported_at_utc"],
+        )
+
+    def test_paired_append_rechecks_clock_before_pending_marker(self):
+        contract = self._register_contract(contract_id="contract-clock-paired-append")
+        sources = self._broker_sources()
+        specs = contract["instrument_specs"]
+        metadata = self._paired_metadata(
+            "XAUUSD",
+            sources["XAUUSD"],
+            specs["XAUUSD"],
+            "2026-01-02T00:00:00Z",
+        )
+        current_clock = {"value": pd.Timestamp("2026-01-02T00:45:00Z")}
+
+        def delayed_identity():
+            current_clock["value"] += pd.to_timedelta(2.314425, unit="s")
+            return _build_identity()
+
+        with self.assertRaisesRegex(
+            EvidenceValidationError,
+            "ARTIFACT_CLOCK_CLAIM_MISMATCH",
+        ):
+            _append_paired_forward_evidence(
+                self.root,
+                contract["contract_id"],
+                "XAUUSD",
+                self._raw_tick_frame(),
+                self._segment_frame(),
+                sources["XAUUSD"],
+                specs["XAUUSD"],
+                export_id="paired-clock-recheck",
+                **metadata,
+                exported_at="2026-01-02T00:45:00Z",
+                clock_provider=lambda: current_clock["value"],
+                signing_key=TEST_SIGNING_KEY,
+                build_identity_provider=delayed_identity,
+            )
+
+        contract_directory = self.root / "forward" / contract["contract_id"]
+        self.assertFalse(
+            (contract_directory / "paired_pending" / "XAUUSD.json").exists()
+        )
+        self.assertEqual(
+            [],
+            list((contract_directory / "segments" / "XAUUSD").glob("*.csv")),
+        )
+        self.assertEqual(
+            [],
+            list((contract_directory / "raw_ticks" / "XAUUSD").glob("*.csv")),
+        )
+
+    def test_paired_append_keeps_pending_marker_if_commit_crosses_deadline(self):
+        contract = self._register_contract(contract_id="contract-clock-paired-deadline")
+        sources = self._broker_sources()
+        specs = contract["instrument_specs"]
+        metadata = self._paired_metadata(
+            "XAUUSD",
+            sources["XAUUSD"],
+            specs["XAUUSD"],
+            "2026-01-02T00:00:00Z",
+        )
+        current_clock = {"value": pd.Timestamp("2026-01-02T00:45:30Z")}
+
+        from validation_evidence import secure_core
+
+        original_write = secure_core._write_paired_commit
+
+        def delayed_commit(*args, **kwargs):
+            result = original_write(*args, **kwargs)
+            current_clock["value"] = pd.Timestamp("2026-01-02T00:46:01Z")
+            return result
+
+        with patch(
+            "validation_evidence.secure_core._write_paired_commit",
+            side_effect=delayed_commit,
+        ):
+            with self.assertRaisesRegex(
+                EvidenceValidationError,
+                "PAIRED_APPEND_LATE",
+            ):
+                _append_paired_forward_evidence(
+                    self.root,
+                    contract["contract_id"],
+                    "XAUUSD",
+                    self._raw_tick_frame(),
+                    self._segment_frame(),
+                    sources["XAUUSD"],
+                    specs["XAUUSD"],
+                    export_id="paired-clock-deadline",
+                    **metadata,
+                    exported_at="2026-01-02T00:45:30Z",
+                    clock_provider=lambda: current_clock["value"],
+                    signing_key=TEST_SIGNING_KEY,
+                    build_identity_provider=_build_identity,
+                )
+
+        contract_directory = self.root / "forward" / contract["contract_id"]
+        self.assertTrue(
+            (contract_directory / "paired_pending" / "XAUUSD.json").exists()
+        )
+        verified = _verify_forward_evidence(
+            self.root,
+            contract["contract_id"],
+            signing_key=TEST_SIGNING_KEY,
+            build_identity_provider=_build_identity,
+        )
+        self.assertFalse(verified["valid"])
+        self.assertTrue(verified["failures"])
 
     def test_receipt_mutation_is_detected_and_receipt_binds_chain_heads(self):
         contract = self._register_contract()

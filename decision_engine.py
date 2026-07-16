@@ -75,7 +75,10 @@ ENABLE_MARKET_REGIME_GUARD = True
 # =========================
 # PHASE 5A ADAPTIVE SCORE ENGINE
 # =========================
-ENABLE_PHASE5A_ADAPTIVE_SCORE_ENGINE = True
+# Reason text is presentation data, not independent market evidence.  Keep the
+# legacy Phase 5A diagnostics visible, but never let keywords mutate the score
+# produced by strategy.strategy_selector.
+ENABLE_PHASE5A_ADAPTIVE_SCORE_ENGINE = False
 PHASE5A_ADAPTIVE_MAX_BOOST = 1
 PHASE5A_MIN_VOL_FOR_BOOST = MIN_VOLATILITY_PERCENT
 PHASE5A_MIN_POSITIVE_REASON_MATCHES = 2
@@ -703,12 +706,12 @@ PHASE5O_NEAR_READY_STATUS = "NEAR_READY_CRYPTO_WEEKEND"
 
 
 # =========================
-# PHASE 5P CONTROLLED PHASE5A SCORE COMMIT
+# PHASE 5P RETIRED SCORE COMMIT COMPATIBILITY STUB
 # =========================
-# Paper-only controlled commit. Tidak membuka live trading.
-# Fungsinya mengizinkan preview score Phase5A benar-benar dipakai hanya untuk BTCUSD weekend near-ready.
-ENABLE_PHASE5P_CONTROLLED_SCORE_COMMIT = True
-PHASE5P_MODE = "COMMIT_PHASE5A_ONLY_FOR_CRYPTO_WEEKEND_NEAR_READY"
+# Keyword-derived score commits double-count selector evidence.  Keep the
+# public payload/function shape for historical reports, but never mutate score.
+ENABLE_PHASE5P_CONTROLLED_SCORE_COMMIT = False
+PHASE5P_MODE = "RETIRED_KEYWORD_SCORE_COMMIT"
 PHASE5P_ALLOWED_SYMBOLS = {"BTCUSD"}
 PHASE5P_REQUIRED_NEAR_READY_STATUS = PHASE5O_NEAR_READY_STATUS
 PHASE5P_MAX_SCORE_BOOST = 1
@@ -733,12 +736,12 @@ PHASE5Q_PREVIEW_STATUS_NO_SETUP = "CRYPTO_NO_SETUP_WAIT"
 
 
 # =========================
-# PHASE 5R CONTROLLED CRYPTO STRATEGY ASSIGNMENT
+# PHASE 5R RETIRED CRYPTO ASSIGNMENT COMPATIBILITY STUB
 # =========================
-# Paper-only controlled assignment. Tidak membuka live trading.
-# Fungsinya mengubah preview Phase5Q menjadi strategi kandidat hanya untuk BTCUSD weekend paper-test.
-ENABLE_PHASE5R_CONTROLLED_STRATEGY_ASSIGNMENT = True
-PHASE5R_MODE = "ASSIGN_STRATEGY_FROM_CRYPTO_NO_STRATEGY_PREVIEW"
+# A diagnostic preview cannot synthesize canonical strategy, score, or action.
+# Keep the public payload/function shape for historical report compatibility.
+ENABLE_PHASE5R_CONTROLLED_STRATEGY_ASSIGNMENT = False
+PHASE5R_MODE = "RETIRED_SYNTHETIC_CRYPTO_STRATEGY_ASSIGNMENT"
 PHASE5R_ALLOWED_SYMBOLS = {"BTCUSD"}
 PHASE5R_ALLOWED_PREVIEW_STATUSES = {PHASE5Q_PREVIEW_STATUS_MICRO_MOMENTUM}
 PHASE5R_ASSIGNED_STRATEGY = "MOMENTUM_PULLBACK"
@@ -1114,7 +1117,9 @@ PHASE4F_RECOVERY_MIN_VOLATILITY_PERCENT = MIN_VOLATILITY_PERCENT
 PHASE4F_RECOVERY_MAX_LOT = 0.01
 PHASE4F_RECOVERY_TAG = "PHASE4F_RECOVERY_SAMPLE"
 
-ENABLE_GUARDED_SCORE_BOOST = True
+# Disabled fail-closed: this legacy path counted words such as EMA/ADX/ATR that
+# merely restated evidence already included in the selector score.
+ENABLE_GUARDED_SCORE_BOOST = False
 GUARDED_SCORE_BOOST_FROM = 3
 GUARDED_SCORE_BOOST_TO = 4
 GUARDED_SCORE_BOOST_MIN_REASON_MATCHES = 2
@@ -1135,7 +1140,6 @@ GUARDED_SCORE_BOOST_POSITIVE_KEYWORDS = [
 
 GUARDED_SCORE_BOOST_NEGATIVE_KEYWORDS = [
     "sideways",
-    "range",
     "low volatility",
     "weak",
     "choppy",
@@ -9868,6 +9872,7 @@ def build_phase5h_strategy_score_explainability(
     strategy_reasons,
     volatility_percent,
     phase5g_pre_score_diagnostics=None,
+    strategy_score_components=None,
 ):
     symbol = str(symbol or "UNKNOWN").upper()
     selected_strategy = str(selected_strategy or "UNKNOWN").upper()
@@ -9893,46 +9898,70 @@ def build_phase5h_strategy_score_explainability(
     missing_components = []
     present_components = []
 
-    for component_name, keywords in PHASE5H_STRONG_COMPONENT_KEYWORDS.items():
-        matched_keywords = [keyword for keyword in keywords if keyword in reason_text]
-        is_present = len(matched_keywords) > 0
-        detection_source = "strategy_reason_keywords" if is_present else "missing"
+    if isinstance(strategy_score_components, dict):
+        evidence_source = "structured_score_components"
+        for component_name, raw_component in strategy_score_components.items():
+            component = raw_component if isinstance(raw_component, dict) else {}
+            is_present = bool(component.get("passed", False))
+            points = int(component.get("points", 0) or 0)
+            component_status[str(component_name)] = {
+                "present": is_present,
+                "points": points,
+                "detection_source": evidence_source,
+            }
+            if is_present:
+                present_components.append(str(component_name))
+            else:
+                missing_components.append(str(component_name))
+        positive_matches = len(present_components)
+        negative_matches = len(missing_components)
+    else:
+        # Backward-compatible diagnostics for historical callers only.  The
+        # active scanner always supplies a structured component dictionary.
+        evidence_source = "legacy_reason_keywords"
+        for component_name, keywords in PHASE5H_STRONG_COMPONENT_KEYWORDS.items():
+            matched_keywords = [keyword for keyword in keywords if keyword in reason_text]
+            is_present = len(matched_keywords) > 0
+            detection_source = "legacy_reason_keywords" if is_present else "missing"
 
-        if component_name == "volatility_quality" and not is_present:
-            required_volatility_percent = float(
-                PHASE5F_MIN_VOL_BY_STRATEGY.get(
-                    selected_strategy,
-                    MIN_VOLATILITY_PERCENT,
+            if component_name == "volatility_quality" and not is_present:
+                required_volatility_percent = float(
+                    PHASE5F_MIN_VOL_BY_STRATEGY.get(
+                        selected_strategy,
+                        MIN_VOLATILITY_PERCENT,
+                    )
+                    or MIN_VOLATILITY_PERCENT
                 )
-                or MIN_VOLATILITY_PERCENT
-            )
-            volatility_gap_percent = max(0.0, required_volatility_percent - volatility_percent)
+                volatility_gap_percent = max(
+                    0.0,
+                    required_volatility_percent - volatility_percent,
+                )
 
-            if volatility_gap_percent <= 0:
-                is_present = True
-                detection_source = "volatility_threshold"
-                matched_keywords = ["phase5g_volatility_threshold"]
+                if volatility_gap_percent <= 0:
+                    is_present = True
+                    detection_source = "volatility_threshold"
+                    matched_keywords = ["phase5g_volatility_threshold"]
 
-        component_status[component_name] = {
-            "present": is_present,
-            "matched_keywords": matched_keywords,
-            "expected_keywords": keywords,
-            "detection_source": detection_source,
-        }
+            component_status[component_name] = {
+                "present": is_present,
+                "matched_keywords": matched_keywords,
+                "expected_keywords": keywords,
+                "detection_source": detection_source,
+            }
 
-        if is_present:
-            present_components.append(component_name)
-        else:
-            missing_components.append(component_name)
+            if is_present:
+                present_components.append(component_name)
+            else:
+                missing_components.append(component_name)
 
-    positive_matches = count_keyword_matches(
-        reason_text,
-        GUARDED_SCORE_BOOST_POSITIVE_KEYWORDS,
-    )
-    negative_matches = count_keyword_matches(
-        reason_text,
-        GUARDED_SCORE_BOOST_NEGATIVE_KEYWORDS,
-    )
+        positive_matches = count_keyword_matches(
+            reason_text,
+            GUARDED_SCORE_BOOST_POSITIVE_KEYWORDS,
+        )
+        negative_matches = count_keyword_matches(
+            reason_text,
+            GUARDED_SCORE_BOOST_NEGATIVE_KEYWORDS,
+        )
 
     if not ENABLE_PHASE5H_STRATEGY_SCORE_EXPLAINABILITY:
         return {
@@ -9974,6 +10003,7 @@ def build_phase5h_strategy_score_explainability(
         "volatility_percent": round(volatility_percent, 6),
         "positive_matches": positive_matches,
         "negative_matches": negative_matches,
+        "evidence_source": evidence_source,
         "present_components": present_components,
         "missing_components": missing_components,
         "component_status": component_status,
@@ -10021,18 +10051,10 @@ def build_phase5g_pre_score_diagnostics(
     score_gap = max(0, required_score - original_strategy_score)
     volatility_gap = max(0.0, required_volatility - volatility_percent)
 
-    phase5a_preview_can_boost = (
-        ENABLE_PHASE5A_ADAPTIVE_SCORE_ENGINE
-        and original_strategy_score > 0
-        and bool(replay_allowed)
-        and volatility_percent >= PHASE5A_MIN_VOL_FOR_BOOST
-        and positive_matches >= PHASE5A_MIN_POSITIVE_REASON_MATCHES
-        and not (PHASE5A_BLOCK_BOOST_NEGATIVE_KEYWORDS and negative_matches > 0)
-    )
-
-    preview_score_after_phase5a = original_strategy_score + (
-        min(PHASE5A_ADAPTIVE_MAX_BOOST, 1) if phase5a_preview_can_boost else 0
-    )
+    # Keyword-derived score mutation is permanently retired.  Keep the fields
+    # for report compatibility, but never advertise a hypothetical boost.
+    phase5a_preview_can_boost = False
+    preview_score_after_phase5a = original_strategy_score
 
     if not ENABLE_PHASE5G_PRE_SCORE_DIAGNOSTICS:
         return {
@@ -10457,8 +10479,11 @@ def apply_phase5p_controlled_score_commit(
     phase5f_strategy_selection_guard = phase5f_strategy_selection_guard or {}
 
     payload = {
-        "enabled": ENABLE_PHASE5P_CONTROLLED_SCORE_COMMIT,
-        "status": "NOT_APPLICABLE",
+        "enabled": False,
+        "configured_flag_ignored": bool(ENABLE_PHASE5P_CONTROLLED_SCORE_COMMIT),
+        "retired": True,
+        "applied": False,
+        "status": "RETIRED_AUTHORITATIVE_SELECTOR_SCORE",
         "mode": PHASE5P_MODE,
         "symbol": symbol,
         "strategy": selected_strategy,
@@ -10466,112 +10491,15 @@ def apply_phase5p_controlled_score_commit(
         "committed_score": current_score,
         "score_boost": 0,
         "tag": PHASE5P_TAG,
-        "reason": "Phase 5P only applies to BTCUSD crypto weekend near-ready diagnostics.",
+        "reason": (
+            "Phase 5P keyword-derived score commit is retired; selector score "
+            "is authoritative."
+        ),
     }
 
-    if not ENABLE_PHASE5P_CONTROLLED_SCORE_COMMIT:
-        payload["status"] = "DISABLED"
-        payload["reason"] = "Phase 5P controlled score commit is disabled."
-        return current_score, payload
-
-    if symbol not in PHASE5P_ALLOWED_SYMBOLS:
-        return current_score, payload
-
-    phase5o_status = str(phase5o_crypto_weekend_near_ready.get("status", "UNKNOWN")).upper()
-    phase5j_status = str(phase5j_market_session_guard.get("status", "UNKNOWN")).upper()
-    phase5k_status = str(phase5k_market_reopen_warmup_guard.get("status", "UNKNOWN")).upper()
-
-    preview_score = int(
-        phase5g_pre_score_diagnostics.get(
-            "preview_score_after_phase5a",
-            current_score,
-        )
-        or current_score
-    )
-
-    phase5a_preview_can_boost = bool(
-        phase5g_pre_score_diagnostics.get("phase5a_preview_can_boost", False)
-    )
-
-    required_score = int(
-        phase5f_strategy_selection_guard.get(
-            "required_score",
-            PHASE5F_MIN_SCORE_BY_STRATEGY.get(
-                selected_strategy,
-                MIN_STRATEGY_SCORE_TO_TRADE,
-            ),
-        )
-        or MIN_STRATEGY_SCORE_TO_TRADE
-    )
-
-    max_committed_score = current_score + PHASE5P_MAX_SCORE_BOOST
-    committed_score = min(preview_score, max_committed_score)
-    score_boost = max(0, committed_score - current_score)
-
-
-    payload.update(
-        {
-            "phase5o_status": phase5o_status,
-            "phase5j_status": phase5j_status,
-            "phase5k_status": phase5k_status,
-            "phase5a_preview_can_boost": phase5a_preview_can_boost,
-            "preview_score_after_phase5a": preview_score,
-            "required_score": required_score,
-            "max_score_boost": PHASE5P_MAX_SCORE_BOOST,
-            "candidate_committed_score": committed_score,
-            "candidate_score_boost": score_boost,
-        }
-    )
-
-    if phase5o_status != PHASE5P_REQUIRED_NEAR_READY_STATUS:
-        payload["status"] = "WAIT_NEAR_READY"
-        payload["reason"] = (
-            f"Phase 5P waits because Phase5O status is {phase5o_status}, "
-            f"not {PHASE5P_REQUIRED_NEAR_READY_STATUS}."
-        )
-        return current_score, payload
-
-    if phase5j_status not in PHASE5J_CRYPTO_DIAGNOSTIC_SESSION_STATUSES:
-        payload["status"] = "BLOCKED_PHASE5J"
-        payload["reason"] = (
-            f"Phase 5P blocked because Phase5J status is {phase5j_status}. "
-            f"Allowed statuses={sorted(PHASE5J_CRYPTO_DIAGNOSTIC_SESSION_STATUSES)}."
-        )
-        return current_score, payload
-
-    if phase5k_status != "PASSED":
-        payload["status"] = "BLOCKED_PHASE5K"
-        payload["reason"] = f"Phase 5P blocked because Phase5K status is {phase5k_status}."
-        return current_score, payload
-
-    if not phase5a_preview_can_boost:
-        payload["status"] = "NO_PHASE5A_BOOST_AVAILABLE"
-        payload["reason"] = "Phase 5P blocked because Phase5A preview cannot boost this setup."
-        return current_score, payload
-
-    if committed_score <= current_score or score_boost <= 0:
-        payload["status"] = "NO_SCORE_IMPROVEMENT"
-        payload["reason"] = "Phase 5P found no safe score improvement to commit."
-        return current_score, payload
-
-    if committed_score < required_score:
-        payload["status"] = "COMMITTED_SCORE_STILL_LOW"
-        payload["committed_score"] = committed_score
-        payload["score_boost"] = score_boost
-        payload["reason"] = (
-            f"Phase 5P preview commit would raise score to {committed_score}, "
-            f"but required score is {required_score}."
-        )
-        return current_score, payload
-
-    payload["status"] = "COMMITTED"
-    payload["committed_score"] = committed_score
-    payload["score_boost"] = score_boost
-    payload["reason"] = (
-        f"Phase 5P committed controlled Phase5A score boost for {symbol}: "
-        f"{current_score} -> {committed_score}. Paper-only; no live trading is unlocked."
-    )
-    return committed_score, payload
+    # Historical payloads may still contain a Phase5A preview.  Never trust
+    # that preview as score evidence, even if a legacy flag is toggled.
+    return current_score, payload
 
 
 def build_phase5q_crypto_no_strategy_preview_classifier(
@@ -10821,8 +10749,13 @@ def apply_phase5r_controlled_crypto_strategy_assignment(
         updated_reasons = []
 
     payload = {
-        "enabled": ENABLE_PHASE5R_CONTROLLED_STRATEGY_ASSIGNMENT,
-        "status": "NOT_APPLICABLE",
+        "enabled": False,
+        "configured_flag_ignored": bool(
+            ENABLE_PHASE5R_CONTROLLED_STRATEGY_ASSIGNMENT
+        ),
+        "retired": True,
+        "applied": False,
+        "status": "RETIRED_AUTHORITATIVE_SELECTOR_OUTPUT",
         "mode": PHASE5R_MODE,
         "symbol": symbol,
         "original_strategy": selected_strategy,
@@ -10834,96 +10767,13 @@ def apply_phase5r_controlled_crypto_strategy_assignment(
         "original_decision": decision,
         "assigned_decision": decision,
         "tag": PHASE5R_TAG,
-        "reason": "Phase 5R only applies to BTCUSD crypto weekend NO_STRATEGY preview assignment.",
+        "reason": (
+            "Phase 5R synthetic assignment is retired; selector strategy, "
+            "score, signal, and decision remain authoritative."
+        ),
     }
 
-    if not ENABLE_PHASE5R_CONTROLLED_STRATEGY_ASSIGNMENT:
-        payload["status"] = "DISABLED"
-        payload["reason"] = "Phase 5R controlled strategy assignment is disabled."
-        return selected_strategy, strategy_score, signal, decision, updated_reasons, payload
-
-    if symbol not in PHASE5R_ALLOWED_SYMBOLS:
-        return selected_strategy, strategy_score, signal, decision, updated_reasons, payload
-
-    phase5q_status = str(phase5q_crypto_no_strategy_preview.get("status", "UNKNOWN")).upper()
-    phase5j_status = str(phase5j_market_session_guard.get("status", "UNKNOWN")).upper()
-    phase5k_status = str(phase5k_market_reopen_warmup_guard.get("status", "UNKNOWN")).upper()
-    direction_preview = str(phase5q_crypto_no_strategy_preview.get("direction_preview", "WAIT")).upper()
-    confidence = str(phase5q_crypto_no_strategy_preview.get("confidence", "UNKNOWN")).upper()
-
-    payload.update(
-        {
-            "phase5q_status": phase5q_status,
-            "phase5j_status": phase5j_status,
-            "phase5k_status": phase5k_status,
-            "direction_preview": direction_preview,
-            "confidence": confidence,
-            "allowed_preview_statuses": sorted(PHASE5R_ALLOWED_PREVIEW_STATUSES),
-            "target_strategy": PHASE5R_ASSIGNED_STRATEGY,
-            "target_score": PHASE5R_ASSIGNED_SCORE,
-        }
-    )
-
-    if selected_strategy != "NO_STRATEGY":
-        payload["status"] = "NOT_NEEDED"
-        payload["reason"] = f"Phase 5R is not needed because strategy is already {selected_strategy}."
-        return selected_strategy, strategy_score, signal, decision, updated_reasons, payload
-
-    if phase5j_status not in PHASE5J_CRYPTO_DIAGNOSTIC_SESSION_STATUSES:
-        payload["status"] = "BLOCKED_PHASE5J"
-        payload["reason"] = (
-            f"Phase 5R blocked because Phase5J status is {phase5j_status}. "
-            f"Allowed statuses={sorted(PHASE5J_CRYPTO_DIAGNOSTIC_SESSION_STATUSES)}."
-        )
-        return selected_strategy, strategy_score, signal, decision, updated_reasons, payload
-
-    if phase5k_status != "PASSED":
-        payload["status"] = "BLOCKED_PHASE5K"
-        payload["reason"] = f"Phase 5R blocked because Phase5K status is {phase5k_status}."
-        return selected_strategy, strategy_score, signal, decision, updated_reasons, payload
-
-    if phase5q_status not in PHASE5R_ALLOWED_PREVIEW_STATUSES:
-        payload["status"] = "WAIT_PREVIEW"
-        payload["reason"] = (
-            f"Phase 5R waits because Phase5Q status is {phase5q_status}; "
-            f"allowed={sorted(PHASE5R_ALLOWED_PREVIEW_STATUSES)}."
-        )
-        return selected_strategy, strategy_score, signal, decision, updated_reasons, payload
-
-    if direction_preview not in {"BUY", "SELL"}:
-        payload["status"] = "WAIT_DIRECTION"
-        payload["reason"] = f"Phase 5R waits because direction preview is {direction_preview}."
-        return selected_strategy, strategy_score, signal, decision, updated_reasons, payload
-
-    assigned_strategy = PHASE5R_ASSIGNED_STRATEGY
-    assigned_score = max(strategy_score, PHASE5R_ASSIGNED_SCORE)
-    assigned_signal = direction_preview
-    assigned_decision = direction_preview
-
-    updated_reasons.extend(
-        [
-            "phase5q crypto no-strategy preview",
-            f"phase5r assigned {assigned_strategy}",
-            f"direction preview {direction_preview}",
-            "BTCUSD paper-only weekend strategy assignment",
-            "volatility passed crypto weekend threshold",
-            "market session and reopen guards passed",
-        ]
-    )
-
-    payload["status"] = "ASSIGNED"
-    payload["assigned_strategy"] = assigned_strategy
-    payload["assigned_score"] = assigned_score
-    payload["assigned_signal"] = assigned_signal
-    payload["assigned_decision"] = assigned_decision
-    payload["score_boost"] = max(0, assigned_score - strategy_score)
-    payload["reason"] = (
-        f"Phase 5R assigned {assigned_strategy} for {symbol} from Phase5Q {phase5q_status}: "
-        f"direction={direction_preview}, score {strategy_score} -> {assigned_score}. "
-        "Paper-only; no live trading is unlocked."
-    )
-
-    return assigned_strategy, assigned_score, assigned_signal, assigned_decision, updated_reasons, payload
+    return selected_strategy, strategy_score, signal, decision, updated_reasons, payload
 
 
 # =========================
@@ -11338,44 +11188,24 @@ def build_weekend_crypto_fallback_item(symbol):
     close = float(latest.get("Close", 0.0) or 0.0)
     high_low_range = (recent["High"] - recent["Low"]).abs()
     atr = float(high_low_range.rolling(14, min_periods=1).mean().iloc[-1])
-    avg_close = float(recent["Close"].mean())
     volatility_percent = float((atr / close) * 100) if close > 0 else 0.0
-
-    if close >= avg_close:
-        decision = "BUY"
-        signal = "BUY"
-        strategy_reasons = [
-            "crypto weekend fallback",
-            "price above recent average",
-            "BTCUSD paper-only test setup",
-            "momentum pullback crypto test",
-            "volatility atr crypto fallback",
-            "replay approved weekend test",
-        ]
-    else:
-        decision = "SELL"
-        signal = "SELL"
-        strategy_reasons = [
-            "crypto weekend fallback",
-            "price below recent average",
-            "BTCUSD paper-only test setup",
-            "momentum pullback crypto test",
-            "volatility atr crypto fallback",
-            "replay approved weekend test",
-        ]
 
     return {
         "symbol": symbol,
-        "signal": signal,
-        "decision": decision,
-        "market_status": "CRYPTO_WEEKEND_TEST",
+        "signal": "WAIT",
+        "decision": "WAIT",
+        "market_status": "CRYPTO_WEEKEND_DIAGNOSTIC_ONLY",
         "price": close,
         "atr": atr,
         "volatility_percent": volatility_percent,
-        "selected_strategy": "MOMENTUM_PULLBACK",
-        "strategy_score": 5,
-        "strategy_regime": "CRYPTO_WEEKEND_FALLBACK",
-        "strategy_reasons": strategy_reasons,
+        "selected_strategy": "NO_STRATEGY",
+        "strategy_score": 0,
+        "strategy_score_components": {},
+        "strategy_regime": "NO_SELECTOR_RESULT",
+        "strategy_reasons": [
+            "scanner returned no BTCUSD selector result",
+            "weekend fallback is diagnostic-only and cannot synthesize a trade",
+        ],
         "source_path": source_path,
         "load_status": load_status,
     }
@@ -11601,62 +11431,20 @@ def maybe_apply_guarded_score_boost(
     reason_text = normalize_reason_text(strategy_reasons)
 
     boost_info = {
-        "enabled": ENABLE_GUARDED_SCORE_BOOST,
+        "enabled": False,
+        "configured_flag_ignored": bool(ENABLE_GUARDED_SCORE_BOOST),
+        "retired": True,
         "applied": False,
         "original_score": original_score,
         "boosted_score": original_score,
-        "reason": "Guarded score boost not applied.",
+        "reason": (
+            "Keyword-based guarded score mutation is retired; selector score "
+            "is authoritative."
+        ),
         "positive_matches": 0,
         "negative_matches": 0,
     }
-
-    if not ENABLE_GUARDED_SCORE_BOOST:
-        boost_info["reason"] = "Guarded score boost is disabled."
-        return original_score, boost_info
-
-    if original_score != GUARDED_SCORE_BOOST_FROM:
-        boost_info["reason"] = f"Score {original_score} is not eligible for guarded boost."
-        return original_score, boost_info
-
-    if not replay_allowed:
-        boost_info["reason"] = "Replay filter did not approve this symbol."
-        return original_score, boost_info
-
-    if replay_filter is not None:
-        approved_symbols = replay_filter.get("approved_symbols", set())
-        if approved_symbols and symbol not in approved_symbols:
-            boost_info["reason"] = f"{symbol} is not in approved replay symbols."
-            return original_score, boost_info
-
-    if volatility_percent < MIN_VOLATILITY_PERCENT:
-        boost_info["reason"] = "Volatility is below minimum threshold, so score boost is blocked."
-        return original_score, boost_info
-
-    positive_matches = count_keyword_matches(reason_text, GUARDED_SCORE_BOOST_POSITIVE_KEYWORDS)
-    negative_matches = count_keyword_matches(reason_text, GUARDED_SCORE_BOOST_NEGATIVE_KEYWORDS)
-
-    boost_info["positive_matches"] = positive_matches
-    boost_info["negative_matches"] = negative_matches
-
-    if negative_matches > 0:
-        boost_info["reason"] = "Negative market-quality keyword found in strategy reasons."
-        return original_score, boost_info
-
-    if positive_matches < GUARDED_SCORE_BOOST_MIN_REASON_MATCHES:
-        boost_info["reason"] = (
-            f"Only {positive_matches} positive reason match(es); "
-            f"need at least {GUARDED_SCORE_BOOST_MIN_REASON_MATCHES}."
-        )
-        return original_score, boost_info
-
-    boost_info["applied"] = True
-    boost_info["boosted_score"] = GUARDED_SCORE_BOOST_TO
-    boost_info["reason"] = (
-        f"Guarded score boost applied for {symbol} {selected_strategy}: "
-        f"replay approved, volatility passed, and {positive_matches} positive reason match(es)."
-    )
-
-    return GUARDED_SCORE_BOOST_TO, boost_info
+    return original_score, boost_info
 
 
 def apply_phase5a_adaptive_score_engine(
@@ -11674,7 +11462,9 @@ def apply_phase5a_adaptive_score_engine(
     reason_text = normalize_reason_text(strategy_reasons)
 
     adaptive_info = {
-        "enabled": ENABLE_PHASE5A_ADAPTIVE_SCORE_ENGINE,
+        "enabled": False,
+        "configured_flag_ignored": bool(ENABLE_PHASE5A_ADAPTIVE_SCORE_ENGINE),
+        "retired": True,
         "applied": False,
         "symbol": symbol,
         "strategy": selected_strategy,
@@ -11685,57 +11475,12 @@ def apply_phase5a_adaptive_score_engine(
         "negative_matches": 0,
         "volatility_percent": round(volatility_percent, 6),
         "min_volatility_percent": round(PHASE5A_MIN_VOL_FOR_BOOST, 6),
-        "reason": "Phase 5A adaptive score engine not applied.",
+        "reason": (
+            "Keyword-based Phase 5A score mutation is retired; selector score "
+            "is authoritative."
+        ),
     }
-
-    if not ENABLE_PHASE5A_ADAPTIVE_SCORE_ENGINE:
-        adaptive_info["reason"] = "Phase 5A adaptive score engine is disabled."
-        return original_score, adaptive_info
-
-    if original_score <= 0:
-        adaptive_info["reason"] = "Original score is zero or invalid."
-        return original_score, adaptive_info
-
-    if not replay_allowed:
-        adaptive_info["reason"] = "Replay filter did not approve symbol, so adaptive boost is blocked."
-        return original_score, adaptive_info
-
-    if volatility_percent < PHASE5A_MIN_VOL_FOR_BOOST:
-        adaptive_info["reason"] = (
-            f"Volatility {volatility_percent:.6f}% is below Phase 5A minimum "
-            f"{PHASE5A_MIN_VOL_FOR_BOOST:.6f}%."
-        )
-        return original_score, adaptive_info
-
-    positive_matches = count_keyword_matches(reason_text, GUARDED_SCORE_BOOST_POSITIVE_KEYWORDS)
-    negative_matches = count_keyword_matches(reason_text, GUARDED_SCORE_BOOST_NEGATIVE_KEYWORDS)
-
-    adaptive_info["positive_matches"] = positive_matches
-    adaptive_info["negative_matches"] = negative_matches
-
-    if PHASE5A_BLOCK_BOOST_NEGATIVE_KEYWORDS and negative_matches > 0:
-        adaptive_info["reason"] = "Negative market-quality keyword found; adaptive boost blocked."
-        return original_score, adaptive_info
-
-    if positive_matches < PHASE5A_MIN_POSITIVE_REASON_MATCHES:
-        adaptive_info["reason"] = (
-            f"Only {positive_matches} positive reason match(es); "
-            f"need {PHASE5A_MIN_POSITIVE_REASON_MATCHES}."
-        )
-        return original_score, adaptive_info
-
-    boost = min(PHASE5A_ADAPTIVE_MAX_BOOST, 1)
-    adaptive_score = original_score + boost
-
-    adaptive_info["applied"] = True
-    adaptive_info["boost"] = boost
-    adaptive_info["adaptive_score"] = adaptive_score
-    adaptive_info["reason"] = (
-        f"Phase 5A adaptive score boost +{boost} applied for {symbol} {selected_strategy}: "
-        f"volatility passed and {positive_matches} positive reason match(es) found."
-    )
-
-    return adaptive_score, adaptive_info
+    return original_score, adaptive_info
 
 
 def extract_required_score_from_action(action_text, default_score=4):
@@ -12760,6 +12505,10 @@ def build_trade_decision(
     volatility_percent = item.get("volatility_percent", 0)
     selected_strategy = item.get("selected_strategy", "UNKNOWN")
     strategy_score = item.get("strategy_score", 0)
+    # ``None`` preserves legacy diagnostic compatibility for historical input
+    # that predates structured evidence.  Active scanner payloads send a dict
+    # explicitly; an explicit empty dict remains fail-closed.
+    strategy_score_components = item.get("strategy_score_components")
     strategy_regime = item.get("strategy_regime", "UNKNOWN")
     strategy_reasons = item.get("strategy_reasons", [])
 
@@ -12814,6 +12563,7 @@ def build_trade_decision(
         strategy_reasons,
         volatility_percent,
         phase5g_pre_score_diagnostics,
+        strategy_score_components,
     )
 
     phase5i_no_strategy_market_state = classify_phase5i_no_strategy_market_state(
@@ -12856,37 +12606,6 @@ def build_trade_decision(
         phase5j_market_session_guard,
         phase5k_market_reopen_warmup_guard,
     )
-
-    if phase5r_controlled_strategy_assignment.get("status") == "ASSIGNED":
-        original_strategy_score = int(strategy_score or 0)
-        volatility_debug = build_volatility_debug(volatility_percent, symbol, selected_strategy)
-
-        phase5f_strategy_selection_allowed, phase5f_strategy_selection_guard = evaluate_phase5f_adaptive_strategy_selection_guard(
-            symbol,
-            selected_strategy,
-            strategy_score,
-            volatility_percent,
-            phase4_quality_rules,
-        )
-
-        phase5g_pre_score_diagnostics = build_phase5g_pre_score_diagnostics(
-            symbol,
-            selected_strategy,
-            original_strategy_score,
-            strategy_reasons,
-            volatility_percent,
-            True,
-            phase5f_strategy_selection_guard,
-        )
-
-        phase5h_strategy_score_explainability = build_phase5h_strategy_score_explainability(
-            symbol,
-            selected_strategy,
-            original_strategy_score,
-            strategy_reasons,
-            volatility_percent,
-            phase5g_pre_score_diagnostics,
-        )
 
     phase5l_market_open_readiness = build_phase5l_market_open_readiness_score(
         symbol,
@@ -13125,6 +12844,7 @@ def build_trade_decision(
             "final_strategy_sanitizer": final_strategy_sanitizer,
             "strategy_score": strategy_score,
             "strategy_original_score": original_strategy_score,
+            "strategy_score_components": strategy_score_components,
             "score_boost": score_boost_info,
             "phase5a_adaptive_score": phase5a_adaptive_score_info,
             "strategy_regime": strategy_regime,
@@ -13258,6 +12978,7 @@ def build_trade_decision(
         strategy_reasons,
         volatility_percent,
         phase5g_pre_score_diagnostics,
+        strategy_score_components,
     )
 
     strategy_score, score_boost_info = maybe_apply_guarded_score_boost(
@@ -13541,6 +13262,7 @@ def build_trade_decision(
         "final_strategy_sanitizer": final_strategy_sanitizer,
         "strategy_score": strategy_score,
         "strategy_original_score": original_strategy_score,
+        "strategy_score_components": strategy_score_components,
         "score_boost": score_boost_info,
         "phase5a_adaptive_score": phase5a_adaptive_score_info,
         "phase5b_adaptive_risk": phase5b_adaptive_risk,

@@ -1,0 +1,455 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "pkg:pypi/jaraco-classes@3.4.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f662826b6bed8cace05e7ff873ce0f9283b5c924470fe664fff1c2f00f581790"
+        }
+      ],
+      "name": "jaraco-classes",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "jaraco.classes-3.4.0-py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "6777"
+        }
+      ],
+      "purl": "pkg:pypi/jaraco-classes@3.4.0",
+      "scope": "required",
+      "type": "library",
+      "version": "3.4.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/jaraco-context@6.1.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "bf8150b79a2d5d91ae48629d8b427a8f7ba0e1097dd6202a9059f29a36379535"
+        }
+      ],
+      "name": "jaraco-context",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "jaraco_context-6.1.2-py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "7871"
+        }
+      ],
+      "purl": "pkg:pypi/jaraco-context@6.1.2",
+      "scope": "required",
+      "type": "library",
+      "version": "6.1.2"
+    },
+    {
+      "bom-ref": "pkg:pypi/jaraco-functools@4.6.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "99e3dc0060c5cbe8fcd1cdb36258e2a65ca40f1566b2033b12abb1bb44dd3c30"
+        }
+      ],
+      "name": "jaraco-functools",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "jaraco_functools-4.6.0-py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "11677"
+        }
+      ],
+      "purl": "pkg:pypi/jaraco-functools@4.6.0",
+      "scope": "required",
+      "type": "library",
+      "version": "4.6.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/keyring@25.7.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "be4a0b195f149690c166e850609a477c532ddbfbaed96a404d4e43f8d5e2689f"
+        }
+      ],
+      "name": "keyring",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "keyring-25.7.0-py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "39160"
+        }
+      ],
+      "purl": "pkg:pypi/keyring@25.7.0",
+      "scope": "required",
+      "type": "library",
+      "version": "25.7.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/metatrader5@5.0.5735",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f6e8584e48f2c3f5de818f17ee65f0f5adfa1e4af29cd5f4bf3f72b91ff06e10"
+        }
+      ],
+      "name": "metatrader5",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "metatrader5-5.0.5735-cp312-cp312-win_amd64.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "48062"
+        }
+      ],
+      "purl": "pkg:pypi/metatrader5@5.0.5735",
+      "scope": "required",
+      "type": "library",
+      "version": "5.0.5735"
+    },
+    {
+      "bom-ref": "pkg:pypi/more-itertools@11.1.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4b65538ae22f6fed0ce4874efd317463a7489796a0939fa66824dd542125a192"
+        }
+      ],
+      "name": "more-itertools",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "more_itertools-11.1.0-py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "72226"
+        }
+      ],
+      "purl": "pkg:pypi/more-itertools@11.1.0",
+      "scope": "required",
+      "type": "library",
+      "version": "11.1.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/numpy@2.5.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f7d60026c0bdb1380e83bfa7a0419c4577ee4b9a08880afcb6dadeb74c649fa2"
+        }
+      ],
+      "name": "numpy",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "numpy-2.5.1-cp312-cp312-win_amd64.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "12430966"
+        }
+      ],
+      "purl": "pkg:pypi/numpy@2.5.1",
+      "scope": "required",
+      "type": "library",
+      "version": "2.5.1"
+    },
+    {
+      "bom-ref": "pkg:pypi/pandas@2.3.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a16dcec078a01eeef8ee61bf64074b4e524a2a3f4b3be9326420cabe59c4778b"
+        }
+      ],
+      "name": "pandas",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "pandas-2.3.3-cp312-cp312-win_amd64.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "10992722"
+        }
+      ],
+      "purl": "pkg:pypi/pandas@2.3.3",
+      "scope": "required",
+      "type": "library",
+      "version": "2.3.3"
+    },
+    {
+      "bom-ref": "pkg:pypi/pip@26.1.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab"
+        }
+      ],
+      "name": "pip",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "bootstrap"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "pip-26.1.2-py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "1813144"
+        }
+      ],
+      "purl": "pkg:pypi/pip@26.1.2",
+      "scope": "required",
+      "type": "library",
+      "version": "26.1.2"
+    },
+    {
+      "bom-ref": "pkg:pypi/python-dateutil@2.9.0.post0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427"
+        }
+      ],
+      "name": "python-dateutil",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "229892"
+        }
+      ],
+      "purl": "pkg:pypi/python-dateutil@2.9.0.post0",
+      "scope": "required",
+      "type": "library",
+      "version": "2.9.0.post0"
+    },
+    {
+      "bom-ref": "pkg:pypi/pytz@2026.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "04156e608bee23d3792fd45c94ae47fae1036688e75032eea2e3bf0323d1f126"
+        }
+      ],
+      "name": "pytz",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "pytz-2026.2-py2.py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "510141"
+        }
+      ],
+      "purl": "pkg:pypi/pytz@2026.2",
+      "scope": "required",
+      "type": "library",
+      "version": "2026.2"
+    },
+    {
+      "bom-ref": "pkg:pypi/pywin32-ctypes@0.2.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8"
+        }
+      ],
+      "name": "pywin32-ctypes",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "pywin32_ctypes-0.2.3-py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "30756"
+        }
+      ],
+      "purl": "pkg:pypi/pywin32-ctypes@0.2.3",
+      "scope": "required",
+      "type": "library",
+      "version": "0.2.3"
+    },
+    {
+      "bom-ref": "pkg:pypi/six@1.17.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274"
+        }
+      ],
+      "name": "six",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "six-1.17.0-py2.py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "11050"
+        }
+      ],
+      "purl": "pkg:pypi/six@1.17.0",
+      "scope": "required",
+      "type": "library",
+      "version": "1.17.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/ta@0.11.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "acd933756f0badbe6b1cc28d5db42dc0d9b0ac5877956f5cf8f304ece3f50b0d"
+        }
+      ],
+      "name": "ta",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "ta-0.11.0-py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "29480"
+        }
+      ],
+      "purl": "pkg:pypi/ta@0.11.0",
+      "scope": "required",
+      "type": "library",
+      "version": "0.11.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/tzdata@2026.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "dc096730c87af6cab1b171c9d532be840741ff5d459015e7f6947bd7d7e54931"
+        }
+      ],
+      "name": "tzdata",
+      "properties": [
+        {
+          "name": "ai_scalper:dependency-role",
+          "value": "runtime"
+        },
+        {
+          "name": "ai_scalper:wheel-filename",
+          "value": "tzdata-2026.3-py2.py3-none-any.whl"
+        },
+        {
+          "name": "ai_scalper:wheel-size",
+          "value": "348168"
+        }
+      ],
+      "purl": "pkg:pypi/tzdata@2026.3",
+      "scope": "required",
+      "type": "library",
+      "version": "2026.3"
+    }
+  ],
+  "metadata": {
+    "properties": [
+      {
+        "name": "ai_scalper:bootstrap-package-count",
+        "value": "1"
+      },
+      {
+        "name": "ai_scalper:runtime-package-count",
+        "value": "14"
+      },
+      {
+        "name": "ai_scalper:target-architecture",
+        "value": "x86_64"
+      },
+      {
+        "name": "ai_scalper:target-implementation",
+        "value": "CPython"
+      },
+      {
+        "name": "ai_scalper:target-platform",
+        "value": "win_amd64"
+      },
+      {
+        "name": "ai_scalper:target-python",
+        "value": "3.12"
+      }
+    ]
+  },
+  "specVersion": "1.6",
+  "version": 1
+}

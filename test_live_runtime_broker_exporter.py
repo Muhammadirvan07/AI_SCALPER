@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
+from live_runtime.account_identity import (
+    ACCOUNT_IDENTITY_SCHEME,
+    account_identity_sha256,
+)
 from live_runtime.broker_exporter import (
     BrokerExportBinding,
     BrokerExportBindingError,
@@ -21,6 +25,7 @@ from live_runtime.broker_exporter import (
     paired_append_recovery_status,
 )
 from live_runtime.contracts import BrokerSpec
+from live_runtime.evidence_credentials import signing_key_fingerprint
 from validation_evidence import (
     EvidenceValidationError,
     canonical_evidence_payload_sha256,
@@ -28,6 +33,7 @@ from validation_evidence import (
 
 
 UTC = timezone.utc
+TEST_KEY = b"broker-exporter-test-signing-key-32bytes"
 
 
 class FakeMT5:
@@ -38,10 +44,11 @@ class FakeMT5:
     ACCOUNT_MARGIN_MODE_EXCHANGE = 1
     ACCOUNT_MARGIN_MODE_RETAIL_HEDGING = 2
 
-    def __init__(self, rows, *, account=None, symbol=None):
+    def __init__(self, rows, *, account=None, terminal=None, symbol=None):
         self.rows = rows
         self.calls = []
         self.account = account or {}
+        self.terminal = terminal or {}
         self.symbol = symbol or {}
 
     def copy_ticks_range(self, symbol, start, end, mode):
@@ -57,6 +64,9 @@ class FakeMT5:
     def account_info(self):
         return self.account
 
+    def terminal_info(self):
+        return self.terminal
+
     def symbol_info(self, symbol):
         return self.symbol
 
@@ -65,16 +75,24 @@ class BrokerExporterTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tempdir.cleanup)
+        for kind in ("segments", "raw_ticks"):
+            head = (
+                Path(self.tempdir.name)
+                / "forward"
+                / "contract-1"
+                / "heads"
+                / kind
+                / "XAUUSD.json"
+            )
+            head.parent.mkdir(parents=True, exist_ok=True)
+            head.write_text('{"sequence":0}\n', encoding="utf-8")
         self.start = datetime(2026, 1, 2, 0, 0, tzinfo=UTC)
         self.end = datetime(2026, 1, 2, 0, 30, tzinfo=UTC)
-        timestamps = (
-            "2026-01-02T00:00:01Z",
-            "2026-01-02T00:00:02Z",
-            "2026-01-02T00:15:01Z",
-            "2026-01-02T00:15:02Z",
-        )
         self.rows = []
-        for index, value in enumerate(timestamps):
+        for index in range(30):
+            value = (
+                self.start + timedelta(minutes=index, seconds=1)
+            ).isoformat().replace("+00:00", "Z")
             milliseconds = int(
                 datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
                 * 1000
@@ -82,8 +100,8 @@ class BrokerExporterTests(unittest.TestCase):
             self.rows.append(
                 {
                     "time_msc": milliseconds,
-                    "bid": 100.0 + index * 0.01,
-                    "ask": 100.02 + index * 0.01,
+                    "bid": round(100.0 + index * 0.001, 3),
+                    "ask": round(100.02 + index * 0.001, 3),
                     "last": 0.0,
                     "volume": 1.0,
                     "volume_real": 0.0,
@@ -132,6 +150,12 @@ class BrokerExporterTests(unittest.TestCase):
             "trade_mode": FakeMT5.ACCOUNT_TRADE_MODE_DEMO,
             "currency": "USD",
             "margin_mode": FakeMT5.ACCOUNT_MARGIN_MODE_RETAIL_HEDGING,
+            "trade_allowed": False,
+            "trade_expert": False,
+        }
+        self.terminal = {
+            "trade_allowed": False,
+            "tradeapi_disabled": True,
         }
         self.symbol = {
             "digits": 2,
@@ -149,7 +173,14 @@ class BrokerExporterTests(unittest.TestCase):
         }
         self.binding = broker_export_binding_from_spec(
             self.broker_spec,
-            expected_login=123456,
+            expected_account_identity_sha256=account_identity_sha256(
+                self.account,
+                TEST_KEY,
+                environment="DEMO",
+            ),
+            account_identity_key_id=(
+                "wincred-" + signing_key_fingerprint(TEST_KEY)
+            ),
             evidence_identity=self.evidence_identity,
         )
         self.instrument_spec = dict(self.binding.instrument_spec)
@@ -169,18 +200,20 @@ class BrokerExporterTests(unittest.TestCase):
             "flags": 6,
         }
 
-    def fake(self, rows=None, *, account=None, symbol=None):
+    def fake(self, rows=None, *, account=None, terminal=None, symbol=None):
         return FakeMT5(
             self.broker_rows if rows is None else rows,
             account=self.account if account is None else account,
+            terminal=self.terminal if terminal is None else terminal,
             symbol=self.symbol if symbol is None else symbol,
         )
 
-    def exporter(self, fake=None, *, binding=None, max_gap=900):
+    def exporter(self, fake=None, *, binding=None, max_gap=120):
         return MT5EvidenceExporter(
             fake or self.fake(),
             binding=binding or self.binding,
             max_observed_tick_gap_seconds=max_gap,
+            signing_key=TEST_KEY,
         )
 
     def test_broker_spec_bridge_matches_real_evidence_schema(self) -> None:
@@ -236,6 +269,7 @@ class BrokerExporterTests(unittest.TestCase):
             self.broker_spec.session_calendar_sha256,
             self.binding.instrument_spec["session_calendar_sha256"],
         )
+        self.assertNotIn("123456", str(dict(self.binding.public_binding_payload)))
 
         fake = self.fake()
         ticks = self.exporter(fake).collect(
@@ -275,14 +309,18 @@ class BrokerExporterTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     broker_export_binding_from_spec(
                         broker_spec,
-                        expected_login=123456,
+                        expected_account_identity_sha256=(
+                            self.binding.expected_account_identity_sha256
+                        ),
+                        account_identity_key_id=self.binding.account_identity_key_id,
                         evidence_identity=evidence_identity,
                     )
 
         with self.assertRaises(ValueError):
             broker_export_binding_from_spec(
                 self.broker_spec,
-                expected_login=0,
+                expected_account_identity_sha256="not-a-hash",
+                account_identity_key_id=self.binding.account_identity_key_id,
                 evidence_identity=self.evidence_identity,
             )
 
@@ -314,7 +352,10 @@ class BrokerExporterTests(unittest.TestCase):
                 )
                 binding = broker_export_binding_from_spec(
                     broker_spec,
-                    expected_login=123456,
+                    expected_account_identity_sha256=(
+                        self.binding.expected_account_identity_sha256
+                    ),
+                    account_identity_key_id=self.binding.account_identity_key_id,
                     evidence_identity=evidence_identity,
                 )
                 self.assertEqual(symbol, binding.canonical_symbol)
@@ -326,6 +367,16 @@ class BrokerExporterTests(unittest.TestCase):
             "broker_legal_name": "Regulated Broker Ltd",
             "broker_server": "Broker-Demo",
             "environment": "DEMO",
+            "account_identity_sha256": (
+                self.binding.expected_account_identity_sha256
+            ),
+            "account_identity_scheme": ACCOUNT_IDENTITY_SCHEME,
+            "account_identity_key_id": self.binding.account_identity_key_id,
+            "account_currency": "USD",
+            "account_trade_allowed": False,
+            "account_trade_expert": False,
+            "terminal_trade_allowed": False,
+            "terminal_tradeapi_disabled": True,
             "canonical_symbol": "XAUUSD",
             "broker_symbol": "GOLD.a",
             "source_instance_id": "exporter-1",
@@ -344,7 +395,7 @@ class BrokerExporterTests(unittest.TestCase):
         )
         self.assertEqual(2, len(bars))
         self.assertEqual(100.0, bars.iloc[0]["bid_open"])
-        self.assertEqual(100.03, bars.iloc[1]["bid_close"])
+        self.assertEqual(self.rows[-1]["bid"], bars.iloc[1]["bid_close"])
         self.assertTrue(bars["is_final"].all())
         self.assertEqual(1, len(fake.calls))
 
@@ -360,8 +411,10 @@ class BrokerExporterTests(unittest.TestCase):
 
     def test_partial_window_cannot_be_misrepresented_as_a_final_m15_bar(self) -> None:
         rows = [
-            *self.broker_rows,
+            self.broker_rows[0],
             self.tick("2026-01-02T00:04:59Z", bid=100.0, ask=100.02),
+            *self.rows[5:],
+            self.broker_rows[-1],
         ]
         ticks = self.exporter(self.fake(rows)).collect(
             "GOLD.a",
@@ -383,7 +436,7 @@ class BrokerExporterTests(unittest.TestCase):
 
     def test_collect_rejects_account_server_environment_and_spec_drift(self) -> None:
         drift_cases = (
-            (dict(self.account, login=999999), self.symbol, "ACCOUNT_LOGIN"),
+            (dict(self.account, login=999999), self.symbol, "ACCOUNT_IDENTITY"),
             (dict(self.account, server="Wrong-Demo"), self.symbol, "ACCOUNT_SERVER"),
             (
                 dict(self.account, trade_mode=FakeMT5.ACCOUNT_TRADE_MODE_REAL),
@@ -402,7 +455,25 @@ class BrokerExporterTests(unittest.TestCase):
                     )
                 self.assertEqual([], fake.calls)
 
-        other_login_binding = replace(self.binding, expected_login=999999)
+        for terminal, reason in (
+            (dict(self.terminal, trade_allowed=True), "TERMINAL_TRADE_ALLOWED"),
+            (
+                dict(self.terminal, tradeapi_disabled=False),
+                "TERMINAL_TRADEAPI_ENABLED",
+            ),
+        ):
+            with self.subTest(reason=reason):
+                fake = self.fake(terminal=terminal)
+                with self.assertRaisesRegex(BrokerExportBindingError, reason):
+                    self.exporter(fake).collect(
+                        "GOLD.a", start_utc=self.start, end_utc=self.end
+                    )
+                self.assertEqual([], fake.calls)
+
+        other_login_binding = replace(
+            self.binding,
+            expected_account_identity_sha256="f" * 64,
+        )
         self.assertNotEqual(
             self.binding.public_binding_sha256,
             other_login_binding.public_binding_sha256,
@@ -418,13 +489,21 @@ class BrokerExporterTests(unittest.TestCase):
             return rows
 
         fake.copy_ticks_range = copy_then_switch_account
-        with self.assertRaisesRegex(BrokerExportBindingError, "ACCOUNT_LOGIN"):
+        with self.assertRaisesRegex(BrokerExportBindingError, "ACCOUNT_IDENTITY"):
             self.exporter(fake).collect(
                 "GOLD.a",
                 start_utc=self.start,
                 end_utc=self.end,
             )
         self.assertEqual(1, len(fake.calls))
+
+    def test_exporter_rejects_a_key_outside_the_contract_identity(self) -> None:
+        with self.assertRaisesRegex(ValueError, "key"):
+            MT5EvidenceExporter(
+                self.fake(),
+                binding=self.binding,
+                signing_key=b"different-exporter-signing-key-32bytes",
+            )
 
     def test_dynamic_account_currency_tick_value_is_not_identity_drift(self) -> None:
         dynamic = dict(self.symbol, trade_tick_value=1.234567)
@@ -457,6 +536,56 @@ class BrokerExporterTests(unittest.TestCase):
                 "GOLD.a", start_utc=self.start, end_utc=self.end
             )
 
+    def test_signed_session_boundaries_accept_only_timely_first_and_last_ticks(
+        self,
+    ) -> None:
+        close_near = self.tick(
+            "2026-01-02T00:14:59Z",
+            bid=100.014,
+            ask=100.034,
+        )
+        rows = [*self.rows[:15], close_near]
+        with self.assertRaisesRegex(ValueError, "left/right boundary"):
+            self.exporter(self.fake(rows)).collect(
+                "GOLD.a",
+                start_utc=self.start,
+                end_utc=datetime(2026, 1, 2, 0, 15, tzinfo=UTC),
+            )
+        ticks = self.exporter(self.fake(rows)).collect(
+            "GOLD.a",
+            start_utc=self.start,
+            end_utc=datetime(2026, 1, 2, 0, 15, tzinfo=UTC),
+            session_open_boundary=True,
+            session_close_boundary=True,
+        )
+        self.assertEqual(
+            "SESSION_OPEN_FIRST_TICK",
+            ticks.attrs["left_boundary_mode"],
+        )
+        self.assertEqual(
+            "SESSION_CLOSE_LAST_TICK",
+            ticks.attrs["right_boundary_mode"],
+        )
+        self.assertEqual(10, ticks.attrs["boundary_tolerance_seconds"])
+
+        late_open = [
+            self.tick(
+                "2026-01-02T00:00:11Z",
+                bid=100.0,
+                ask=100.02,
+            ),
+            *self.rows[1:15],
+            close_near,
+        ]
+        with self.assertRaisesRegex(ValueError, "session-open"):
+            self.exporter(self.fake(late_open)).collect(
+                "GOLD.a",
+                start_utc=self.start,
+                end_utc=datetime(2026, 1, 2, 0, 15, tzinfo=UTC),
+                session_open_boundary=True,
+                session_close_boundary=True,
+            )
+
     def test_aggregation_rejects_self_attested_requested_range(self) -> None:
         ticks = normalize_mt5_ticks(self.rows)
         ticks.attrs["coverage_start_at_utc"] = self.start
@@ -476,15 +605,15 @@ class BrokerExporterTests(unittest.TestCase):
             exported_at=datetime(2026, 1, 2, 0, 31, tzinfo=UTC),
         )
         self.assertEqual(1, len(result.finalized_bars))
-        self.assertEqual(2, len(result.evidence_ticks))
-        self.assertEqual(2, len(result.tail_ticks))
+        self.assertEqual(15, len(result.evidence_ticks))
+        self.assertEqual(15, len(result.tail_ticks))
         self.assertEqual(
             datetime(2026, 1, 2, 0, 15, tzinfo=UTC),
             result.tail_requery_from_at,
         )
         metadata = result.coverage_metadata()
-        self.assertEqual(2, metadata["archived_tick_rows"])
-        self.assertEqual(2, metadata["tail_tick_rows"])
+        self.assertEqual(15, metadata["archived_tick_rows"])
+        self.assertEqual(15, metadata["tail_tick_rows"])
         self.assertEqual(1, len(metadata["bar_tick_ranges"]))
 
     def test_tick_schema_rejects_quote_time_and_integer_corruption(self) -> None:
@@ -501,6 +630,47 @@ class BrokerExporterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "flags must contain integers"):
             normalize_mt5_ticks([fractional_flags])
 
+    def test_tick_schema_preserves_broker_order_for_same_millisecond_ticks(
+        self,
+    ) -> None:
+        first = dict(
+            self.rows[0],
+            bid=100.00,
+            ask=100.02,
+            last=0.0,
+            volume=1.0,
+            volume_real=0.0,
+            flags=4,
+        )
+        second = dict(first, flags=6)
+        third = dict(first, bid=100.01, ask=100.03, flags=2)
+
+        forward = normalize_mt5_ticks([third, first, second])
+        reverse = normalize_mt5_ticks([second, first, third])
+
+        self.assertNotEqual(forward.to_dict("records"), reverse.to_dict("records"))
+        self.assertEqual(
+            [
+                (100.01, 100.03, 2),
+                (100.00, 100.02, 4),
+                (100.00, 100.02, 6),
+            ],
+            list(
+                forward.loc[:, ["bid", "ask", "flags"]].itertuples(
+                    index=False,
+                    name=None,
+                )
+            ),
+        )
+
+    def test_tick_schema_rejects_exact_duplicate_tick_records(self) -> None:
+        duplicate = dict(self.rows[0])
+        with self.assertRaisesRegex(
+            ValueError,
+            "indistinguishable duplicate broker tick records",
+        ):
+            normalize_mt5_ticks([duplicate, dict(duplicate)])
+
     @patch("live_runtime.broker_exporter.append_paired_forward_evidence")
     def test_export_archives_raw_ticks_and_bars(
         self,
@@ -510,7 +680,7 @@ class BrokerExporterTests(unittest.TestCase):
             "raw_tick_partition": {
                 "contract_id": "contract-1",
                 "symbol": "XAUUSD",
-                "rows": 4,
+                "rows": len(self.rows),
                 "partition_payload_sha256": "a" * 64,
             },
             "forward_segment": {
@@ -546,8 +716,8 @@ class BrokerExporterTests(unittest.TestCase):
         exporter = MT5EvidenceExporter(
             self.fake(),
             binding=self.binding,
-            max_observed_tick_gap_seconds=900,
-            signing_key=b"exporter-injected-test-key-32bytes-minimum",
+            max_observed_tick_gap_seconds=120,
+            signing_key=TEST_KEY,
             build_identity_provider=identity_provider,
             clock_provider=clock_provider,
         )
@@ -599,7 +769,7 @@ class BrokerExporterTests(unittest.TestCase):
         )
         append_pair.assert_called_once()
         self.assertEqual(
-            b"exporter-injected-test-key-32bytes-minimum",
+            TEST_KEY,
             append_pair.call_args.kwargs["signing_key"],
         )
         self.assertIs(
@@ -607,11 +777,88 @@ class BrokerExporterTests(unittest.TestCase):
             append_pair.call_args.kwargs["build_identity_provider"],
         )
         self.assertIs(clock_provider, append_pair.call_args.kwargs["clock_provider"])
+        self.assertEqual(1, append_pair.call_args.kwargs["expected_sequence"])
         with self.assertRaisesRegex(
             PairedAppendRecoveryRequired, "duplicate append is blocked"
         ):
             exporter.export(**arguments)
         self.assertEqual(2, append_pair.call_count)
+
+    @patch("live_runtime.broker_exporter.append_paired_forward_evidence")
+    def test_export_mints_clock_claim_after_delayed_tick_collection(
+        self,
+        append_pair,
+    ) -> None:
+        current_clock = {
+            "value": datetime(2026, 1, 2, 0, 46, tzinfo=UTC)
+        }
+        collection_delay = timedelta(seconds=2.314425)
+        fake = self.fake()
+        original_copy = fake.copy_ticks_range
+
+        def delayed_copy(symbol, start, end, mode):
+            rows = original_copy(symbol, start, end, mode)
+            current_clock["value"] += collection_delay
+            return rows
+
+        fake.copy_ticks_range = delayed_copy
+
+        def paired_result(*args, **kwargs):
+            return {
+                "raw_tick_partition": {
+                    "contract_id": "contract-1",
+                    "symbol": "XAUUSD",
+                    "rows": len(self.rows),
+                    "partition_payload_sha256": "a" * 64,
+                },
+                "forward_segment": {
+                    "contract_id": "contract-1",
+                    "symbol": "XAUUSD",
+                    "rows": 2,
+                    "segment_payload_sha256": "b" * 64,
+                },
+                "paired_commit": {
+                    "export_id": kwargs["export_id"],
+                    "sequence": kwargs["expected_sequence"],
+                    "broker_binding_sha256": kwargs["broker_binding_sha256"],
+                    "coverage_metadata_sha256": kwargs[
+                        "coverage_metadata_sha256"
+                    ],
+                    "raw_partition_payload_sha256": "a" * 64,
+                    "bar_segment_payload_sha256": "b" * 64,
+                    "paired_commit_payload_sha256": "c" * 64,
+                    "paired_commit_hmac_sha256": "d" * 64,
+                },
+            }
+
+        append_pair.side_effect = paired_result
+        exporter = MT5EvidenceExporter(
+            fake,
+            binding=self.binding,
+            max_observed_tick_gap_seconds=120,
+            signing_key=TEST_KEY,
+            build_identity_provider=lambda: {"test": "identity"},
+            clock_provider=lambda: current_clock["value"],
+        )
+        result = exporter.export(
+            artifact_root=self.tempdir.name,
+            contract_id="contract-1",
+            canonical_symbol="XAUUSD",
+            broker_symbol="GOLD.a",
+            source=self.source(),
+            instrument_spec=self.instrument_spec,
+            start_utc=self.start,
+            end_utc=self.end,
+        )
+
+        expected = datetime(2026, 1, 2, 0, 46, tzinfo=UTC) + collection_delay
+        self.assertEqual(expected, append_pair.call_args.kwargs["exported_at"])
+        self.assertEqual(expected, result.exported_at)
+        self.assertEqual(1, append_pair.call_args.kwargs["expected_sequence"])
+        self.assertNotEqual(
+            datetime(2026, 1, 2, 0, 46, tzinfo=UTC),
+            append_pair.call_args.kwargs["exported_at"],
+        )
 
     @patch("live_runtime.broker_exporter.append_paired_forward_evidence")
     def test_interrupted_paired_append_blocks_subsequent_evidence(
@@ -674,7 +921,7 @@ class BrokerExporterTests(unittest.TestCase):
                 "raw_tick_partition": {
                     "contract_id": "contract-1",
                     "symbol": "XAUUSD",
-                    "rows": 4,
+                    "rows": len(self.rows),
                     "partition_payload_sha256": "a" * 64,
                 },
                 "forward_segment": {
@@ -739,7 +986,7 @@ class BrokerExporterTests(unittest.TestCase):
                 "raw_tick_partition": {
                     "contract_id": "contract-1",
                     "symbol": "XAUUSD",
-                    "rows": 2,
+                    "rows": 15,
                     "partition_payload_sha256": "a" * 64,
                 },
                 "forward_segment": {
@@ -776,9 +1023,9 @@ class BrokerExporterTests(unittest.TestCase):
         )
         raw_frame = append_pair.call_args.args[3]
         bar_frame = append_pair.call_args.args[4]
-        self.assertEqual(2, len(raw_frame))
+        self.assertEqual(15, len(raw_frame))
         self.assertEqual(1, len(bar_frame))
-        self.assertEqual(2, result.coverage_metadata["tail_tick_rows"])
+        self.assertEqual(15, result.coverage_metadata["tail_tick_rows"])
         self.assertEqual(
             datetime(2026, 1, 2, 0, 15, tzinfo=UTC),
             result.coverage_metadata["tail_requery_from_at_utc"],
@@ -796,7 +1043,7 @@ class BrokerExporterTests(unittest.TestCase):
     ) -> None:
         rows = [
             self.broker_rows[0],
-            *self.rows[:2],
+            *self.rows[:15],
             self.tick("2026-01-02T00:15:00Z", bid=100.02, ask=100.04),
         ]
         result = self.exporter(self.fake(rows)).export(
@@ -813,7 +1060,7 @@ class BrokerExporterTests(unittest.TestCase):
         self.assertEqual("TAIL_RETAINED_NO_FINALIZED_BAR", result.status)
         self.assertIsNone(result.raw_tick_partition)
         self.assertIsNone(result.finalized_bar_segment)
-        self.assertEqual(2, result.coverage_metadata["tail_tick_rows"])
+        self.assertEqual(15, result.coverage_metadata["tail_tick_rows"])
         self.assertEqual(self.start, result.coverage_metadata["tail_requery_from_at_utc"])
         append_pair.assert_not_called()
 

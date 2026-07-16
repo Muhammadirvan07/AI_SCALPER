@@ -25,6 +25,7 @@ from live_runtime.mt5_adapter import (
     RuntimeAuthorization,
     SubmissionUncertainError,
     _mint_execution_gate_capability,
+    _mint_mt5_submission_guard,
     build_runtime_authorization,
 )
 from live_runtime.health import RuntimeHealthFacts, evaluate_runtime_health
@@ -242,7 +243,10 @@ def intent(mode="DEMO", symbol="EURUSD"):
 @contextmanager
 def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
     with tempfile.TemporaryDirectory() as directory:
-        journal = ExecutionJournal(Path(directory) / "journal.sqlite")
+        journal = ExecutionJournal(
+            Path(directory) / "journal.sqlite",
+            clock_provider=lambda: NOW,
+        )
         permit = promotion_permit(
             trade_intent.mode,
             trade_intent.symbol,
@@ -367,13 +371,17 @@ def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
             ),
             checked_at=NOW,
         )
-        guard = {
-            "account_equity": 100.0,
-            "active_order_count": 0,
-            "active_position_count": 0,
-            "broker_spec_sha256": spec.content_sha256,
-            "checked_at_utc": NOW,
-        }
+        guard = _mint_mt5_submission_guard(
+            intent_id=bound_intent.intent_id,
+            account_id=bound_intent.account_id,
+            server=bound_intent.server,
+            symbol=bound_intent.symbol,
+            account_equity=100.0,
+            active_order_count=0,
+            active_position_count=0,
+            broker_spec_sha256=spec.content_sha256,
+            checked_at_utc=NOW,
+        )
         owner = "adapter-test"
         token = journal.claim_executor(owner, now=NOW, lease_seconds=30)
         journal.create_intent(
@@ -388,32 +396,29 @@ def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
         )
         journal.transition(bound_intent.intent_id, "RISK_APPROVED", occurred_at=NOW)
         journal.transition(bound_intent.intent_id, "PREFLIGHT_PASSED", occurred_at=NOW)
-        journal.append_receipt(
+        journal.record_risk_decision(
             bound_intent.intent_id,
-            "RISK_DECISION",
-            risk.to_canonical_dict(),
-            NOW,
+            risk,
+            occurred_at=NOW,
         )
-        journal.append_receipt(
+        journal.record_mt5_preflight(
             bound_intent.intent_id,
-            "MT5_PREFLIGHT",
-            {"passed": True, "intent_id": bound_intent.intent_id},
-            NOW,
+            preflight,
+            occurred_at=NOW,
         )
-        journal.append_receipt(
+        submission_evidence = journal.authorize_submission_evidence(
             bound_intent.intent_id,
-            "SUBMISSION_GUARD",
-            {
-                "active_order_count": 0,
-                "active_position_count": 0,
-                "broker_spec_sha256": spec.content_sha256,
-            },
-            NOW,
+            risk_decision=risk,
+            preflight=preflight,
+            submission_guard=guard,
+            broker_spec=spec,
+            occurred_at=NOW,
         )
         reservation = journal.reserve_submission(
             bound_intent.intent_id,
             owner_id=owner,
             fence_token=token,
+            submission_evidence=submission_evidence,
             occurred_at=NOW,
         )
         gate_capability = _mint_execution_gate_capability(

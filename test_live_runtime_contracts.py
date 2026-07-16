@@ -10,6 +10,7 @@ from live_runtime.contracts import (
     ExecutionReceipt,
     TradeIntent,
     _mint_decision_snapshot,
+    _mint_execution_receipt,
 )
 
 
@@ -150,9 +151,11 @@ class ContractTests(unittest.TestCase):
             "broker_retcode": "10009",
             "message": "ok",
         }
+        with self.assertRaises(TypeError):
+            ExecutionReceipt(state="ACKNOWLEDGED", filled_volume=0.0, **common)
         with self.assertRaises(ValueError):
-            ExecutionReceipt(state="FILLED", filled_volume=0.0, **common)
-        partial = ExecutionReceipt(
+            _mint_execution_receipt(state="FILLED", filled_volume=0.0, **common)
+        partial = _mint_execution_receipt(
             state="PARTIAL",
             filled_volume=0.001,
             fill_price=1.10001,
@@ -160,7 +163,7 @@ class ContractTests(unittest.TestCase):
             **common,
         )
         self.assertEqual(partial.state, "PARTIAL")
-        acknowledged = ExecutionReceipt(
+        acknowledged = _mint_execution_receipt(
             state="ACKNOWLEDGED",
             filled_volume=0.0,
             order_ticket="42",
@@ -168,7 +171,11 @@ class ContractTests(unittest.TestCase):
         )
         self.assertTrue(acknowledged.receipt_id.startswith("receipt_"))
         for state in ("PREFLIGHT_PASSED", "UNCERTAIN", "CLOSED"):
-            receipt = ExecutionReceipt(state=state, filled_volume=0.0, **common)
+            receipt = _mint_execution_receipt(
+                state=state,
+                filled_volume=0.0,
+                **common,
+            )
             self.assertEqual(receipt.state, state)
 
 

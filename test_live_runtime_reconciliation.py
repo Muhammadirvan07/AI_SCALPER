@@ -16,7 +16,10 @@ class ReconciliationTests(unittest.TestCase):
     def setUp(self):
         tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(tempdir.cleanup)
-        self.journal = ExecutionJournal(Path(tempdir.name) / "journal.sqlite")
+        self.journal = ExecutionJournal(
+            Path(tempdir.name) / "journal.sqlite",
+            clock_provider=lambda: NOW,
+        )
 
     def create_submitting(self, comment="AIS:abc"):
         self.journal.create_intent(
@@ -39,8 +42,48 @@ class ReconciliationTests(unittest.TestCase):
             },
             created_at=NOW,
         )
-        for state in ("RISK_APPROVED", "PREFLIGHT_PASSED", "SUBMITTING"):
-            self.journal.transition("intent-1", state, occurred_at=NOW)
+        self.seed_state("SUBMITTING")
+
+    def seed_state(
+        self,
+        state,
+        *,
+        broker_order_ticket=None,
+        broker_position_ticket=None,
+        filled_volume=0.0,
+        protective_sl_tp_confirmed=False,
+    ):
+        """Simulate a restart fixture after a previously trusted journal write."""
+
+        with self.journal._transaction() as connection:
+            previous = connection.execute(
+                "SELECT state FROM intents WHERE intent_id='intent-1'"
+            ).fetchone()["state"]
+            connection.execute(
+                """
+                UPDATE intents
+                SET state=?, broker_order_ticket=?, broker_position_ticket=?,
+                    filled_volume=?, protective_sl_tp_confirmed=?,
+                    updated_at_utc=?
+                WHERE intent_id='intent-1'
+                """,
+                (
+                    state,
+                    broker_order_ticket,
+                    broker_position_ticket,
+                    filled_volume,
+                    int(protective_sl_tp_confirmed),
+                    NOW.isoformat(),
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO transitions(
+                    intent_id, from_state, to_state, occurred_at_utc, details_json
+                ) VALUES('intent-1', ?, ?, ?, '{"fixture":"trusted_restart"}')
+                """,
+                (previous, state, NOW.isoformat()),
+            )
 
     def test_restart_after_submit_recovers_position_by_comment(self):
         self.create_submitting()
@@ -134,13 +177,11 @@ class ReconciliationTests(unittest.TestCase):
 
     def test_external_close_is_reconciled_from_exit_deal(self):
         self.create_submitting()
-        self.journal.transition(
-            "intent-1",
+        self.seed_state(
             "FILLED",
             broker_position_ticket="42",
             filled_volume=0.01,
             protective_sl_tp_confirmed=True,
-            occurred_at=NOW,
         )
         result = reconcile_broker_state(
             self.journal,
@@ -166,13 +207,11 @@ class ReconciliationTests(unittest.TestCase):
 
     def test_exit_deal_with_wrong_side_or_incomplete_volume_never_closes(self):
         self.create_submitting()
-        self.journal.transition(
-            "intent-1",
+        self.seed_state(
             "FILLED",
             broker_position_ticket="42",
             filled_volume=0.01,
             protective_sl_tp_confirmed=True,
-            occurred_at=NOW,
         )
         result = reconcile_broker_state(
             self.journal,
@@ -215,13 +254,11 @@ class ReconciliationTests(unittest.TestCase):
 
     def test_missing_position_and_delayed_history_moves_filled_to_uncertain(self):
         self.create_submitting()
-        self.journal.transition(
-            "intent-1",
+        self.seed_state(
             "FILLED",
             broker_position_ticket="42",
             filled_volume=0.01,
             protective_sl_tp_confirmed=True,
-            occurred_at=NOW,
         )
         result = reconcile_broker_state(
             self.journal,
@@ -357,7 +394,7 @@ class ReconciliationTests(unittest.TestCase):
 
     def test_acknowledged_active_order_does_not_oscillate_to_uncertain(self):
         self.create_submitting()
-        self.journal.transition("intent-1", "ACKNOWLEDGED", occurred_at=NOW)
+        self.seed_state("ACKNOWLEDGED", broker_order_ticket="77")
         result = reconcile_broker_state(
             self.journal,
             broker_orders=[

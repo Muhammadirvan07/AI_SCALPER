@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import hmac
 import json
 from pathlib import Path
 import subprocess
@@ -21,19 +22,58 @@ from validation_evidence import (
 )
 
 from .contracts import canonical_sha256
+from .account_identity import (
+    ACCOUNT_IDENTITY_SCHEME,
+    DISCOVERY_RECEIPT_DOMAIN,
+    payload_hmac_sha256,
+    require_account_identity_sha256,
+)
+from .dependency_lock import (
+    BOOTSTRAP_REQUIREMENTS_FILE,
+    DEPENDENCY_SBOM,
+    DependencyLockError,
+    INSTALL_MANIFEST,
+    LOCK_FILE_NAME,
+    PIP_VENDOR_WHEEL,
+    RUNTIME_REQUIREMENTS_FILE,
+    TA_VENDOR_WHEEL,
+    validate_windows_dependency_lock,
+)
 from .evidence_credentials import signing_key_fingerprint
+from .mt5_discovery import DISCOVERY_SCHEMA_VERSION
+from .session_calendar import SessionCalendarError, build_calendar_bundle
+from .xm_window_plan import (
+    XMWindowPlanError,
+    verify_candidate_legal_binding,
+    verify_prepared_xm_calendar_plan,
+)
 
 
-SNAPSHOT_ID = "xm-dev-pre-window-01-v2"
-CONTRACT_ID = "xm-window-01-diagnostic-v2"
-KEY_NAME = "xm-window-01-v2"
-EXPORTER_VERSION = "mt5-evidence-exporter-v2"
+SNAPSHOT_ID = "xm-dev-pre-window-02-v3"
+CONTRACT_ID = "xm-window-02-diagnostic-v3"
+KEY_NAME = "xm-window-02-v3"
+EXPORTER_VERSION = "mt5-evidence-exporter-v3"
 DATA_FILES = {symbol: f"data/{symbol.lower()}.csv" for symbol in REQUIRED_SYMBOLS}
 CONFIG_FILES = (
     "config/broker_candidates.phase3.json",
-    "config/xm_calendar_window_01.json",
+    "config/xm_calendar_window_02.template.json",
 )
-DEPENDENCY_FILES = ("requirements.txt", "requirements-live-windows.txt")
+DEPENDENCY_FILES = (
+    "requirements-live-windows.txt",
+    BOOTSTRAP_REQUIREMENTS_FILE,
+    RUNTIME_REQUIREMENTS_FILE,
+    LOCK_FILE_NAME,
+    PIP_VENDOR_WHEEL,
+    TA_VENDOR_WHEEL,
+    INSTALL_MANIFEST,
+    DEPENDENCY_SBOM,
+    "live_runtime/dependency_lock.py",
+    "bootstrap_windows_dependencies.py",
+    "build_windows_dependency_sbom.py",
+    "build_windows_wheel_manifest.py",
+    "seal_windows_release_environment.py",
+    "verify_windows_dependency_lock.py",
+)
 PROFILE_FILES = (
     "strategy/strategy_profiles.py",
     "strategy/strategy_selector.py",
@@ -97,6 +137,10 @@ def _git_identity(repo_root: Path) -> dict[str, object]:
 
 def build_ruleset(repo_root: str | Path) -> dict[str, object]:
     root = Path(repo_root).resolve()
+    try:
+        validate_windows_dependency_lock(root / LOCK_FILE_NAME)
+    except DependencyLockError as exc:
+        raise EvidenceBootstrapError("Windows dependency lock validation failed") from exc
     profile_files_sha256 = _file_set_sha256(root, PROFILE_FILES)
     return {
         "config_sha256": _file_set_sha256(root, CONFIG_FILES),
@@ -127,10 +171,47 @@ def build_current_identity(repo_root: str | Path) -> dict[str, object]:
     }
 
 
-def verify_discovery_receipt(payload: Mapping[str, object]) -> None:
-    body = {key: value for key, value in payload.items() if key != "payload_sha256"}
+def verify_discovery_receipt(
+    payload: Mapping[str, object],
+    signing_key: bytes,
+) -> None:
+    expected_fields = {
+        "schema_version",
+        "candidate_id",
+        "captured_at_utc",
+        "account",
+        "terminal",
+        "symbols",
+        "session_calendar_status",
+        "execution_enabled",
+        "live_allowed",
+        "safe_to_demo_auto_order",
+        "max_lot",
+        "payload_sha256",
+        "receipt_hmac_sha256",
+    }
+    if set(payload) != expected_fields:
+        raise EvidenceBootstrapError("discovery receipt fields are invalid")
+    if payload.get("schema_version") != DISCOVERY_SCHEMA_VERSION:
+        raise EvidenceBootstrapError("unsupported discovery receipt schema")
+    body = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"payload_sha256", "receipt_hmac_sha256"}
+    }
     if canonical_sha256(body) != payload.get("payload_sha256"):
         raise EvidenceBootstrapError("discovery receipt SHA-256 mismatch")
+    signed_receipt = {**body, "payload_sha256": payload["payload_sha256"]}
+    expected_hmac = payload_hmac_sha256(
+        signed_receipt,
+        signing_key,
+        domain=DISCOVERY_RECEIPT_DOMAIN,
+    )
+    if not hmac.compare_digest(
+        expected_hmac,
+        str(payload.get("receipt_hmac_sha256") or ""),
+    ):
+        raise EvidenceBootstrapError("discovery receipt HMAC mismatch")
     if (
         payload.get("execution_enabled") is not False
         or payload.get("live_allowed") is not False
@@ -138,6 +219,75 @@ def verify_discovery_receipt(payload: Mapping[str, object]) -> None:
         or payload.get("max_lot") != 0.01
     ):
         raise EvidenceBootstrapError("discovery receipt is not read-only")
+    account = payload.get("account")
+    required_account_fields = {
+        "company",
+        "server",
+        "environment",
+        "currency",
+        "leverage",
+        "margin_mode",
+        "trade_allowed",
+        "trade_expert",
+        "account_identity_sha256",
+        "account_identity_scheme",
+        "account_identity_key_id",
+        "login_stored",
+        "name_stored",
+        "balance_stored",
+    }
+    if not isinstance(account, Mapping) or set(account) != required_account_fields:
+        raise EvidenceBootstrapError("discovery account identity is incomplete")
+    if (
+        account.get("environment") != "DEMO"
+        or account.get("trade_allowed") is not False
+        or account.get("trade_expert") is not False
+        or account.get("login_stored") is not False
+        or account.get("name_stored") is not False
+        or account.get("balance_stored") is not False
+        or account.get("account_identity_scheme") != ACCOUNT_IDENTITY_SCHEME
+        or account.get("account_identity_key_id")
+        != "wincred-" + signing_key_fingerprint(signing_key)
+    ):
+        raise EvidenceBootstrapError("discovery account identity binding mismatch")
+    try:
+        require_account_identity_sha256(account.get("account_identity_sha256"))
+    except ValueError as exc:
+        raise EvidenceBootstrapError("discovery account identity is invalid") from exc
+    terminal = payload.get("terminal")
+    if (
+        not isinstance(terminal, Mapping)
+        or set(terminal) != {"trade_allowed", "tradeapi_disabled"}
+        or terminal.get("trade_allowed") is not False
+        or terminal.get("tradeapi_disabled") is not True
+    ):
+        raise EvidenceBootstrapError(
+            "discovery terminal is not locked against Python order execution"
+        )
+    symbols = payload.get("symbols")
+    if not isinstance(symbols, Mapping) or set(symbols) != set(REQUIRED_SYMBOLS):
+        raise EvidenceBootstrapError("discovery symbol set is incomplete")
+
+    def contains_raw_account_field(value: object) -> bool:
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                normalized = str(key).lower()
+                if normalized in {
+                    "login",
+                    "account_number",
+                    "password",
+                    "balance",
+                    "equity",
+                }:
+                    return True
+                if contains_raw_account_field(item):
+                    return True
+        elif isinstance(value, (list, tuple)):
+            return any(contains_raw_account_field(item) for item in value)
+        return False
+
+    if contains_raw_account_field(payload):
+        raise EvidenceBootstrapError("discovery receipt contains raw account data")
 
 
 def verify_calendar_bundle(payload: Mapping[str, object]) -> None:
@@ -214,9 +364,23 @@ def _validate_xm_inputs(
     plan: Mapping[str, object],
     discovery: Mapping[str, object],
     calendar: Mapping[str, object],
+    *,
+    signing_key: bytes,
 ) -> None:
-    verify_discovery_receipt(discovery)
+    verify_discovery_receipt(discovery, signing_key)
     verify_calendar_bundle(calendar)
+    try:
+        expected_calendar = build_calendar_bundle(plan)
+    except SessionCalendarError as exc:
+        raise EvidenceBootstrapError(
+            "prepared plan cannot produce a valid calendar"
+        ) from exc
+    if canonical_evidence_payload_sha256(
+        calendar
+    ) != canonical_evidence_payload_sha256(expected_calendar):
+        raise EvidenceBootstrapError(
+            "calendar does not exactly match the prepared plan"
+        )
     if plan.get("candidate_id") != discovery.get("candidate_id"):
         raise EvidenceBootstrapError("candidate binding mismatch")
     if plan.get("candidate_id") != calendar.get("candidate_id"):
@@ -225,6 +389,8 @@ def _validate_xm_inputs(
         raise EvidenceBootstrapError("plan does not bind the discovery receipt")
     if calendar.get("discovery_receipt_sha256") != discovery.get("payload_sha256"):
         raise EvidenceBootstrapError("calendar does not bind the discovery receipt")
+    if calendar.get("plan_payload_sha256") != plan.get("plan_payload_sha256"):
+        raise EvidenceBootstrapError("calendar does not bind the prepared plan")
     account = discovery.get("account")
     if not isinstance(account, Mapping):
         raise EvidenceBootstrapError("discovery account facts are missing")
@@ -243,17 +409,29 @@ def _validate_xm_inputs(
 
 def _broker_sources(
     plan: Mapping[str, object],
+    discovery: Mapping[str, object],
     calendar: Mapping[str, object],
     *,
     key_id: str,
 ) -> dict[str, dict[str, object]]:
     calendars = calendar["calendars"]
+    account = discovery["account"]
+    if account["account_identity_key_id"] != key_id:
+        raise EvidenceBootstrapError("discovery identity key does not match contract key")
     return {
         symbol: {
             "provider_kind": "BROKER_EXPORT",
             "broker_legal_name": plan["broker_legal_name"],
             "broker_server": plan["broker_server"],
             "environment": "DEMO",
+            "account_identity_sha256": account["account_identity_sha256"],
+            "account_identity_scheme": account["account_identity_scheme"],
+            "account_identity_key_id": account["account_identity_key_id"],
+            "account_currency": account["currency"],
+            "account_trade_allowed": False,
+            "account_trade_expert": False,
+            "terminal_trade_allowed": False,
+            "terminal_tradeapi_disabled": True,
             "canonical_symbol": symbol,
             "broker_symbol": calendars[symbol]["metadata"]["broker_symbol"],
             "source_instance_id": plan["source_instance_id"],
@@ -316,34 +494,67 @@ def register_xm_diagnostic_contract(
     calendar_path: str | Path,
     signing_key: bytes,
     *,
+    plan_path: str | Path,
     now_provider: Callable[[], datetime] = utc_now,
     git_state_provider: Callable[[], Mapping[str, object]] | None = None,
     clock_provider: Callable[[], object] | None = None,
+    regulatory_approval_key_provider: (
+        Callable[[str], bytes | None] | None
+    ) = None,
 ) -> dict[str, object]:
     root = Path(repo_root).resolve()
-    plan = _read_json(root / "config/xm_calendar_window_01.json")
+    template = _read_json(root / "config/xm_calendar_window_02.template.json")
+    plan = _read_json(Path(plan_path))
+    candidate_config = _read_json(root / "config/broker_candidates.phase3.json")
+    try:
+        verify_prepared_xm_calendar_plan(plan, template=template)
+        verify_candidate_legal_binding(
+            plan,
+            candidate_config,
+            now_provider=now_provider,
+            regulatory_approval_key_provider=(
+                regulatory_approval_key_provider
+            ),
+        )
+    except XMWindowPlanError as exc:
+        raise EvidenceBootstrapError("prepared XM calendar plan is invalid") from exc
     discovery = _read_json(Path(discovery_path))
     calendar = _read_json(Path(calendar_path))
-    _validate_xm_inputs(plan, discovery, calendar)
+    _validate_xm_inputs(
+        plan,
+        discovery,
+        calendar,
+        signing_key=signing_key,
+    )
     snapshot = ensure_frozen_snapshot(
         root,
         artifact_root,
         created_at=now_provider(),
     )
     key_id = "wincred-" + signing_key_fingerprint(signing_key)
+    ruleset = build_ruleset(root)
+    broker_sources = _broker_sources(
+        plan,
+        discovery,
+        calendar,
+        key_id=key_id,
+    )
+    instrument_specs = _instrument_specs(discovery, calendar)
+    # Mint the registration claim only after all local hashing and
+    # normalization work that precedes the evidence-core clock check.
     registered_at = now_provider()
     return register_forward_contract(
         artifact_root,
         snapshot,
-        build_ruleset(root),
-        _broker_sources(plan, calendar, key_id=key_id),
-        _instrument_specs(discovery, calendar),
+        ruleset,
+        broker_sources,
+        instrument_specs,
         session_calendars=calendar["calendars"],
         contract_id=CONTRACT_ID,
         registered_at=registered_at,
         observation_start_at=plan["observation_start_at_utc"],
         blind_until=plan["blind_until_utc"],
-        validation_profile="DIAGNOSTIC",
+        validation_profile=str(plan["validation_profile"]),
         git_state_provider=git_state_provider,
         clock_provider=clock_provider,
         signing_key=signing_key,

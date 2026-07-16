@@ -15,6 +15,8 @@ from validation_evidence import REQUIRED_SYMBOLS, verify_forward_evidence
 from .broker_exporter import BrokerExportBinding, BrokerExportResult, MT5EvidenceExporter
 from .contracts import canonical_json, canonical_sha256, require_text, require_utc
 from .evidence_bootstrap import CONTRACT_ID, build_current_identity
+from .mt5_readonly import ReadOnlyMT5Facade
+from .shadow_fence import ShadowCycleAlreadyRunning, ShadowCycleFence
 
 
 SHADOW_CYCLE_SCHEMA_VERSION = "xm-shadow-cycle-v1"
@@ -22,6 +24,7 @@ LIVE_ALLOWED = False
 SAFE_TO_DEMO_AUTO_ORDER = False
 PROMOTION_ELIGIBLE = False
 MAX_LOT = 0.01
+StageReporter = Callable[[str, str, str], None]
 
 
 class ShadowCollectorError(RuntimeError):
@@ -53,34 +56,6 @@ class ShadowCycleReceipt:
     max_lot: float = MAX_LOT
 
 
-class ReadOnlyMT5Facade:
-    """Capability-reduced view of MetaTrader5; order methods are absent."""
-
-    def __init__(self, mt5_module: Any):
-        for name in ("account_info", "symbol_info", "copy_ticks_range"):
-            if not callable(getattr(mt5_module, name, None)):
-                raise ShadowCollectorError(f"MT5 read-only capability missing: {name}")
-        self._mt5 = mt5_module
-        for constant in (
-            "COPY_TICKS_ALL",
-            "ACCOUNT_TRADE_MODE_DEMO",
-            "ACCOUNT_TRADE_MODE_REAL",
-            "ACCOUNT_MARGIN_MODE_RETAIL_NETTING",
-            "ACCOUNT_MARGIN_MODE_EXCHANGE",
-            "ACCOUNT_MARGIN_MODE_RETAIL_HEDGING",
-        ):
-            object.__setattr__(self, constant, getattr(mt5_module, constant))
-
-    def account_info(self):
-        return self._mt5.account_info()
-
-    def symbol_info(self, symbol):
-        return self._mt5.symbol_info(symbol)
-
-    def copy_ticks_range(self, symbol, start, end, flags):
-        return self._mt5.copy_ticks_range(symbol, start, end, flags)
-
-
 class ShadowCycleStore:
     """SQLite WAL receipt ledger; no trading state and no broker credentials."""
 
@@ -88,6 +63,7 @@ class ShadowCycleStore:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(str(self.path))
+        self.connection.execute("PRAGMA busy_timeout=5000")
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=FULL")
         self.connection.execute(
@@ -98,6 +74,20 @@ class ShadowCycleStore:
                 payload_json TEXT NOT NULL,
                 payload_sha256 TEXT NOT NULL
             )"""
+        )
+        self.connection.execute(
+            """CREATE TRIGGER IF NOT EXISTS shadow_cycles_no_update
+            BEFORE UPDATE ON shadow_cycles
+            BEGIN
+                SELECT RAISE(ABORT, 'shadow_cycles is append-only');
+            END"""
+        )
+        self.connection.execute(
+            """CREATE TRIGGER IF NOT EXISTS shadow_cycles_no_delete
+            BEFORE DELETE ON shadow_cycles
+            BEGIN
+                SELECT RAISE(ABORT, 'shadow_cycles is append-only');
+            END"""
         )
         self.connection.commit()
 
@@ -169,7 +159,9 @@ class ShadowCycleStore:
                 "INSERT INTO shadow_cycles VALUES (?, ?, ?, ?, ?)",
                 (
                     normalized_cycle,
-                    observed_at.isoformat(),
+                    observed_at.isoformat(
+                        timespec="microseconds"
+                    ).replace("+00:00", "Z"),
                     status,
                     payload_json,
                     payload_hash,
@@ -201,6 +193,32 @@ def expected_bar_opens(calendar: Mapping[str, object]) -> tuple[datetime, ...]:
             values.append(cursor)
             cursor += timedelta(minutes=15)
     return tuple(values)
+
+
+def session_boundary_flags(
+    calendar: Mapping[str, object],
+    *,
+    open_at: datetime,
+    close_at: datetime,
+) -> tuple[bool, bool]:
+    """Prove whether one finalized bar is an exact registered session edge."""
+
+    require_utc("open_at", open_at)
+    require_utc("close_at", close_at)
+    if close_at <= open_at:
+        raise ShadowCollectorError("bar close must be after bar open")
+    matching_intervals = []
+    for interval in calendar["market_open_intervals"]:
+        interval_open = _parse_utc(interval["open_at_utc"])
+        interval_close = _parse_utc(interval["close_at_utc"])
+        if interval_open <= open_at and close_at <= interval_close:
+            matching_intervals.append((interval_open, interval_close))
+    if len(matching_intervals) != 1:
+        raise ShadowCollectorError(
+            "bar does not belong to exactly one registered market-open interval"
+        )
+    interval_open, interval_close = matching_intervals[0]
+    return open_at == interval_open, close_at == interval_close
 
 
 def plan_next_bar(
@@ -258,7 +276,7 @@ def _last_open_at(artifact_root: Path, symbol: str) -> datetime | None:
     return None if value is None else _parse_utc(value)
 
 
-def run_shadow_cycle(
+def _run_shadow_cycle_locked(
     mt5_module: Any,
     *,
     repo_root: str | Path,
@@ -266,28 +284,53 @@ def run_shadow_cycle(
     signing_key: bytes,
     store: ShadowCycleStore,
     now_provider: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    stage_reporter: StageReporter | None = None,
+    pre_evidence_mutation_check: Callable[[], None] | None = None,
 ) -> ShadowCycleReceipt:
     repo = Path(repo_root).resolve()
     artifacts = Path(artifact_root)
     identity_provider = lambda: build_current_identity(repo)
-    verification = verify_forward_evidence(
-        artifacts,
-        CONTRACT_ID,
-        signing_key=signing_key,
-        build_identity_provider=identity_provider,
-    )
+    if stage_reporter is not None:
+        stage_reporter(
+            "CONTRACT_VERIFICATION",
+            "STARTED",
+            "CONTRACT_VERIFICATION_STARTED",
+        )
+    try:
+        verification = verify_forward_evidence(
+            artifacts,
+            CONTRACT_ID,
+            signing_key=signing_key,
+            build_identity_provider=identity_provider,
+        )
+    except Exception as exc:
+        if stage_reporter is not None:
+            stage_reporter(
+                "CONTRACT_VERIFICATION",
+                "HOLD",
+                f"CONTRACT_VERIFICATION_EXCEPTION_{type(exc).__name__.upper()}",
+            )
+        raise
     if not verification["valid"]:
+        if stage_reporter is not None:
+            stage_reporter(
+                "CONTRACT_VERIFICATION",
+                "HOLD",
+                "CONTRACT_EVIDENCE_INVALID",
+            )
         raise ShadowCollectorError(
             "forward evidence verification failed: "
             + ",".join(verification["failures"][:3])
+    )
+    if stage_reporter is not None:
+        stage_reporter(
+            "CONTRACT_VERIFICATION",
+            "PASS",
+            "CONTRACT_EVIDENCE_VERIFIED",
         )
     contract_path = artifacts / "forward" / CONTRACT_ID / "contract.json"
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
     facade = ReadOnlyMT5Facade(mt5_module)
-    account = _mapping(facade.account_info())
-    expected_login = int(account.get("login") or 0)
-    if expected_login <= 0:
-        raise ShadowCollectorError("connected MT5 login is unavailable")
     cycle_started = now_provider()
     require_utc("cycle_started", cycle_started)
     cycle_id = "xm-shadow-" + cycle_started.strftime("%Y%m%dT%H%M%S%fZ")
@@ -308,19 +351,37 @@ def run_shadow_cycle(
             continue
         source = contract["broker_sources"][symbol]
         spec = contract["instrument_specs"][symbol]
+        session_open_boundary, session_close_boundary = session_boundary_flags(
+            contract["session_calendars"][symbol],
+            open_at=plan.open_at,
+            close_at=plan.close_at,
+        )
         binding = BrokerExportBinding(
-            expected_login=expected_login,
-            account_alias="xm-demo-primary-window-01",
+            expected_account_identity_sha256=source[
+                "account_identity_sha256"
+            ],
+            account_identity_scheme=source["account_identity_scheme"],
+            account_identity_key_id=source["account_identity_key_id"],
+            account_alias=source["source_instance_id"],
             broker_legal_name=source["broker_legal_name"],
             server=source["broker_server"],
             environment=source["environment"],
-            account_currency=str(account.get("currency") or ""),
+            account_currency=source["account_currency"],
             canonical_symbol=symbol,
             broker_symbol=source["broker_symbol"],
             instrument_spec=spec,
         )
+        if pre_evidence_mutation_check is not None:
+            try:
+                pre_evidence_mutation_check()
+            except Exception as exc:
+                statuses[symbol] = "HOLD"
+                failures.append(
+                    "PRE_EVIDENCE_MUTATION_GUARD_FAILED:"
+                    f"{symbol}:{type(exc).__name__}"
+                )
+                continue
         try:
-            exported_at = now_provider()
             result = MT5EvidenceExporter(
                 facade,
                 binding=binding,
@@ -336,7 +397,8 @@ def run_shadow_cycle(
                 instrument_spec=spec,
                 start_utc=plan.open_at,
                 end_utc=plan.close_at,
-                exported_at=exported_at,
+                session_open_boundary=session_open_boundary,
+                session_close_boundary=session_close_boundary,
             )
         except Exception as exc:
             statuses[symbol] = "HOLD"
@@ -353,13 +415,42 @@ def run_shadow_cycle(
     )
 
 
+def run_shadow_cycle(
+    mt5_module: Any,
+    *,
+    repo_root: str | Path,
+    artifact_root: str | Path,
+    signing_key: bytes,
+    store: ShadowCycleStore,
+    now_provider: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    stage_reporter: StageReporter | None = None,
+    pre_evidence_mutation_check: Callable[[], None] | None = None,
+) -> ShadowCycleReceipt:
+    """Run one whole evidence cycle while holding the contract singleton fence."""
+
+    artifacts = Path(artifact_root)
+    with ShadowCycleFence(artifacts, CONTRACT_ID):
+        return _run_shadow_cycle_locked(
+            mt5_module,
+            repo_root=repo_root,
+            artifact_root=artifacts,
+            signing_key=signing_key,
+            store=store,
+            now_provider=now_provider,
+            stage_reporter=stage_reporter,
+            pre_evidence_mutation_check=pre_evidence_mutation_check,
+        )
+
+
 __all__ = [
     "BarPlan",
     "ReadOnlyMT5Facade",
+    "ShadowCycleAlreadyRunning",
     "ShadowCollectorError",
     "ShadowCycleReceipt",
     "ShadowCycleStore",
     "expected_bar_opens",
     "plan_next_bar",
     "run_shadow_cycle",
+    "session_boundary_flags",
 ]

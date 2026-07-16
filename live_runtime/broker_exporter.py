@@ -31,6 +31,11 @@ from validation_evidence.secure_core import (
     _validate_instrument_spec as _validate_evidence_instrument_spec,
 )
 
+from .account_identity import (
+    ACCOUNT_IDENTITY_SCHEME,
+    account_identity_sha256,
+    require_account_identity_sha256,
+)
 from .contracts import (
     SCHEMA_VERSION as CONTRACT_SCHEMA_VERSION,
     BrokerSpec,
@@ -40,16 +45,26 @@ from .contracts import (
     require_text,
     require_utc,
 )
+from .evidence_credentials import signing_key_fingerprint
 
 
 TIMEFRAME_SECONDS = 900
 FINALIZATION_LAG_SECONDS = 900
-EXPORT_COVERAGE_SCHEMA_VERSION = "broker-export-coverage-v2"
+EXPORT_COVERAGE_SCHEMA_VERSION = "broker-export-coverage-v3"
 PAIRED_APPEND_SCHEMA_VERSION = "broker-paired-append-receipt-v2"
-BOUNDARY_PROBE_SECONDS = 60
-MAX_OBSERVED_TICK_GAP_SECONDS = 900
+BOUNDARY_PROBE_SECONDS = 10
+MAX_OBSERVED_TICK_GAP_SECONDS = 120
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_CANONICAL_TICK_PAYLOAD_COLUMNS = (
+    "time_msc",
+    "bid",
+    "ask",
+    "last",
+    "volume",
+    "volume_real",
+    "flags",
+)
 
 
 class BrokerExportBindingError(RuntimeError):
@@ -58,6 +73,37 @@ class BrokerExportBindingError(RuntimeError):
 
 class PairedAppendRecoveryRequired(RuntimeError):
     """Raised when paired raw/bar append state requires manual recovery."""
+
+
+def _paired_expected_sequence(
+    artifact_root: str | Path,
+    contract_id: str,
+    canonical_symbol: str,
+) -> int:
+    """Read the paired high-water mark used as an optimistic append fence."""
+
+    root = Path(artifact_root)
+    contract = _safe_id(contract_id, "contract_id")
+    symbol = _safe_id(canonical_symbol.upper(), "canonical_symbol")
+    contract_directory = root / "forward" / contract
+    if contract_directory.is_symlink() or not contract_directory.is_dir():
+        raise PairedAppendRecoveryRequired("forward contract directory is unavailable")
+    sequences: list[int] = []
+    for kind in ("segments", "raw_ticks"):
+        path = contract_directory / "heads" / kind / f"{symbol}.json"
+        if path.is_symlink() or not path.is_file():
+            raise PairedAppendRecoveryRequired("paired evidence head is unavailable")
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            sequence = payload["sequence"]
+        except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise PairedAppendRecoveryRequired("paired evidence head is invalid") from exc
+        if type(sequence) is not int or sequence < 0:
+            raise PairedAppendRecoveryRequired("paired evidence head is invalid")
+        sequences.append(sequence)
+    if len(set(sequences)) != 1:
+        raise PairedAppendRecoveryRequired("paired evidence high-water marks disagree")
+    return sequences[0] + 1
 
 
 def _as_mapping(value: Any) -> dict[str, Any]:
@@ -163,7 +209,9 @@ class EvidenceInstrumentIdentity(CanonicalContract):
 class BrokerExportBinding(CanonicalContract):
     """Exact read-only account, server, symbol, and instrument binding."""
 
-    expected_login: int
+    expected_account_identity_sha256: str
+    account_identity_scheme: str
+    account_identity_key_id: str
     account_alias: str
     broker_legal_name: str
     server: str
@@ -172,11 +220,28 @@ class BrokerExportBinding(CanonicalContract):
     canonical_symbol: str
     broker_symbol: str
     instrument_spec: Mapping[str, object]
+    account_trade_allowed: bool = False
+    account_trade_expert: bool = False
+    terminal_trade_allowed: bool = False
+    terminal_tradeapi_disabled: bool = True
 
     def __post_init__(self) -> None:
-        if type(self.expected_login) is not int or self.expected_login <= 0:
-            raise ValueError("expected_login must be a positive integer")
-        for field in ("account_alias", "broker_legal_name", "server", "broker_symbol"):
+        object.__setattr__(
+            self,
+            "expected_account_identity_sha256",
+            require_account_identity_sha256(
+                self.expected_account_identity_sha256
+            ),
+        )
+        if self.account_identity_scheme != ACCOUNT_IDENTITY_SCHEME:
+            raise ValueError("account_identity_scheme is unsupported")
+        for field in (
+            "account_identity_key_id",
+            "account_alias",
+            "broker_legal_name",
+            "server",
+            "broker_symbol",
+        ):
             object.__setattr__(self, field, require_text(field, getattr(self, field)))
         environment = require_text("environment", self.environment, upper=True)
         if environment not in {"DEMO", "LIVE_READ_ONLY"}:
@@ -193,6 +258,13 @@ class BrokerExportBinding(CanonicalContract):
             "instrument_spec",
             _normalize_instrument_spec(self.instrument_spec, canonical),
         )
+        if (
+            self.account_trade_allowed is not False
+            or self.account_trade_expert is not False
+            or self.terminal_trade_allowed is not False
+            or self.terminal_tradeapi_disabled is not True
+        ):
+            raise ValueError("broker export binding must be strictly read-only")
 
     @property
     def public_binding_payload(self) -> Mapping[str, object]:
@@ -201,13 +273,9 @@ class BrokerExportBinding(CanonicalContract):
         return MappingProxyType(
             _evidence_payload(
                 {
-                "account_identity_sha256": canonical_sha256(
-                    {
-                        "broker_legal_name": self.broker_legal_name,
-                        "server": self.server,
-                        "expected_login": self.expected_login,
-                    }
-                ),
+                "account_identity_sha256": self.expected_account_identity_sha256,
+                "account_identity_scheme": self.account_identity_scheme,
+                "account_identity_key_id": self.account_identity_key_id,
                 "account_alias_sha256": canonical_sha256(
                     {"account_alias": self.account_alias}
                 ),
@@ -215,10 +283,14 @@ class BrokerExportBinding(CanonicalContract):
                 "server": self.server,
                 "environment": self.environment,
                 "account_currency": self.account_currency,
+                "account_trade_allowed": False,
+                "account_trade_expert": False,
+                "terminal_trade_allowed": False,
+                "terminal_tradeapi_disabled": True,
                 "canonical_symbol": self.canonical_symbol,
                 "broker_symbol": self.broker_symbol,
                 "instrument_spec": self.instrument_spec,
-                "expected_login_verified_at_runtime": True,
+                "account_identity_verified_at_runtime": True,
                 }
             )
         )
@@ -233,15 +305,17 @@ class BrokerExportBinding(CanonicalContract):
 def broker_export_binding_from_spec(
     broker_spec: BrokerSpec,
     *,
-    expected_login: int,
+    expected_account_identity_sha256: str,
+    account_identity_key_id: str,
     evidence_identity: EvidenceInstrumentIdentity,
+    account_identity_scheme: str = ACCOUNT_IDENTITY_SCHEME,
 ) -> BrokerExportBinding:
     """Bridge one validated runtime spec into the exact evidence schema.
 
     Every overlapping field is derived from ``BrokerSpec``.  Callers provide
-    only the evidence identity fields and the non-public MT5 login that do not
-    exist in the runtime contract, so they cannot handwrite a second numeric
-    broker specification that silently drifts.
+    only the evidence identity fields and the contract-bound keyed account
+    identity that do not exist in the runtime contract, so they cannot
+    handwrite a second numeric broker specification that silently drifts.
     """
 
     if type(broker_spec) is not BrokerSpec:
@@ -271,7 +345,9 @@ def broker_export_binding_from_spec(
         "session_calendar_sha256": broker_spec.session_calendar_sha256,
     }
     return BrokerExportBinding(
-        expected_login=expected_login,
+        expected_account_identity_sha256=expected_account_identity_sha256,
+        account_identity_scheme=account_identity_scheme,
+        account_identity_key_id=account_identity_key_id,
         account_alias=broker_spec.account_id,
         broker_legal_name=broker_spec.broker_legal_name,
         server=broker_spec.server,
@@ -465,10 +541,37 @@ class BrokerExportResult(CanonicalContract):
         ):
             raise ValueError("tail re-query boundary is outside requested coverage")
         if not (
-            metadata["observed_left_boundary_at_utc"] <= coverage_start
-            and metadata["observed_right_boundary_at_utc"] >= coverage_end
+            metadata.get("boundary_tolerance_seconds") == BOUNDARY_PROBE_SECONDS
         ):
-            raise ValueError("observed broker ticks do not bracket requested coverage")
+            raise ValueError("coverage boundary tolerance is invalid")
+        left_mode = metadata.get("left_boundary_mode")
+        right_mode = metadata.get("right_boundary_mode")
+        left_at = metadata["observed_left_boundary_at_utc"]
+        right_at = metadata["observed_right_boundary_at_utc"]
+        if left_mode == "BRACKETED":
+            left_valid = left_at <= coverage_start
+        elif left_mode == "SESSION_OPEN_FIRST_TICK":
+            left_valid = (
+                coverage_start
+                <= left_at
+                <= coverage_start
+                + timedelta(seconds=BOUNDARY_PROBE_SECONDS)
+            )
+        else:
+            left_valid = False
+        if right_mode == "BRACKETED":
+            right_valid = right_at >= coverage_end
+        elif right_mode == "SESSION_CLOSE_LAST_TICK":
+            right_valid = (
+                coverage_end
+                - timedelta(seconds=BOUNDARY_PROBE_SECONDS)
+                <= right_at
+                < coverage_end
+            )
+        else:
+            right_valid = False
+        if not left_valid or not right_valid:
+            raise ValueError("observed broker boundary mode is invalid")
 
         counts = {
             field: _exact_nonnegative_int(metadata.get(field), field)
@@ -707,8 +810,6 @@ def normalize_mt5_ticks(raw_ticks: object) -> pd.DataFrame:
         raise ValueError("broker tick time_msc must contain nonnegative integers")
     frame["time_msc"] = time_msc.astype("int64")
     has_source_sequence = "source_sequence" in frame
-    if frame["time_msc"].duplicated().any() and not has_source_sequence:
-        raise ValueError("broker ticks contain duplicate time_msc values")
     computed_time_utc = pd.to_datetime(frame["time_msc"], unit="ms", utc=True)
     if "time_utc" in frame:
         provided_time_utc = pd.to_datetime(frame["time_utc"], errors="raise", utc=True)
@@ -738,18 +839,32 @@ def normalize_mt5_ticks(raw_ticks: object) -> pd.DataFrame:
     if bool((frame["flags"] % 1 != 0).any()):
         raise ValueError("broker tick flags must contain integers")
     frame["flags"] = frame["flags"].astype("int64")
-    sort_columns = ["time_msc"]
     if has_source_sequence:
         sequence = pd.to_numeric(frame["source_sequence"], errors="raise")
         if bool((sequence % 1 != 0).any()):
             raise ValueError("broker source_sequence must contain integers")
         frame["source_sequence"] = sequence.astype("int64")
-        sort_columns.append("source_sequence")
-    frame = frame.sort_values(sort_columns, kind="mergesort").reset_index(drop=True)
-    if has_source_sequence and bool(
-        (frame["source_sequence"].diff().dropna() != 1).any()
-    ):
-        raise ValueError("broker source_sequence is not contiguous")
+    identity_columns = list(_CANONICAL_TICK_PAYLOAD_COLUMNS)
+    if has_source_sequence:
+        identity_columns.append("source_sequence")
+    if bool(frame.duplicated(subset=identity_columns, keep=False).any()):
+        raise ValueError(
+            "broker ticks contain indistinguishable duplicate broker tick records"
+        )
+    if has_source_sequence:
+        frame = frame.sort_values("source_sequence", kind="mergesort").reset_index(
+            drop=True
+        )
+        if bool((frame["source_sequence"].diff().dropna() != 1).any()):
+            raise ValueError("broker source_sequence is not contiguous")
+    else:
+        # Ordinary MT5 copy_ticks_range results expose no authenticated sequence.
+        # Preserve the broker-return order for ticks sharing one millisecond;
+        # lexicographic reordering would invent an OHLC open/close sequence that
+        # the broker never returned.
+        frame = frame.reset_index(drop=True)
+    if not frame["time_msc"].is_monotonic_increasing:
+        raise ValueError("broker ticks are out of chronological order")
     columns = [
         "time_utc",
         "time_msc",
@@ -810,8 +925,36 @@ def _validated_coverage_proof(
     )
     if pre_checked_at > post_checked_at:
         raise ValueError("broker binding post-check precedes its pre-check")
-    if left > coverage_start or right < coverage_end:
-        raise ValueError("observed MT5 ticks do not bracket requested coverage")
+    try:
+        boundary_tolerance = int(attrs.get("boundary_tolerance_seconds"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("coverage boundary tolerance is invalid") from exc
+    if boundary_tolerance != BOUNDARY_PROBE_SECONDS:
+        raise ValueError("coverage boundary tolerance is invalid")
+    left_mode = attrs.get("left_boundary_mode")
+    right_mode = attrs.get("right_boundary_mode")
+    if left_mode == "BRACKETED":
+        left_valid = left <= coverage_start
+    elif left_mode == "SESSION_OPEN_FIRST_TICK":
+        left_valid = (
+            coverage_start
+            <= left
+            <= coverage_start + timedelta(seconds=boundary_tolerance)
+        )
+    else:
+        left_valid = False
+    if right_mode == "BRACKETED":
+        right_valid = right >= coverage_end
+    elif right_mode == "SESSION_CLOSE_LAST_TICK":
+        right_valid = (
+            coverage_end - timedelta(seconds=boundary_tolerance)
+            <= right
+            < coverage_end
+        )
+    else:
+        right_valid = False
+    if not left_valid or not right_valid:
+        raise ValueError("observed MT5 boundary mode is invalid")
     try:
         observed_gap = float(attrs.get("max_observed_tick_gap_seconds"))
         allowed_gap = float(attrs.get("maximum_allowed_tick_gap_seconds"))
@@ -856,6 +999,9 @@ def _validated_coverage_proof(
             "coverage_continuity_proven": True,
             "observed_left_boundary_at_utc": left,
             "observed_right_boundary_at_utc": right,
+            "left_boundary_mode": left_mode,
+            "right_boundary_mode": right_mode,
+            "boundary_tolerance_seconds": boundary_tolerance,
             "max_observed_tick_gap_seconds": observed_gap,
             "maximum_allowed_tick_gap_seconds": allowed_gap,
             "broker_binding_sha256": binding_hash,
@@ -1064,13 +1210,19 @@ class MT5EvidenceExporter:
         build_identity_provider: Callable[[], Mapping[str, object]] | None = None,
         clock_provider: Callable[[], object] | None = None,
     ):
-        required_methods = ("copy_ticks_range", "account_info", "symbol_info")
+        required_methods = (
+            "copy_ticks_range",
+            "account_info",
+            "terminal_info",
+            "symbol_info",
+        )
         if mt5_module is None or any(
             not callable(getattr(mt5_module, method, None))
             for method in required_methods
         ):
             raise TypeError(
-                "mt5_module must expose read-only copy_ticks_range/account_info/symbol_info"
+                "mt5_module must expose read-only "
+                "copy_ticks_range/account_info/terminal_info/symbol_info"
             )
         if type(binding) is not BrokerExportBinding:
             raise TypeError("binding must be BrokerExportBinding")
@@ -1082,9 +1234,22 @@ class MT5EvidenceExporter:
         self.mt5 = mt5_module
         self.binding = binding
         self.max_observed_tick_gap_seconds = max_observed_tick_gap_seconds
+        if not isinstance(signing_key, bytes) or len(signing_key) < 32:
+            raise ValueError("bound broker evidence requires a 256-bit signing key")
+        expected_key_id = "wincred-" + signing_key_fingerprint(signing_key)
+        if binding.account_identity_key_id != expected_key_id:
+            raise ValueError("account identity key does not match exporter signing key")
         self.signing_key = signing_key
         self.build_identity_provider = build_identity_provider
         self.clock_provider = clock_provider
+
+    def _trusted_utc_now(self) -> datetime:
+        value = (
+            self.clock_provider()
+            if self.clock_provider is not None
+            else datetime.now(timezone.utc)
+        )
+        return require_utc("trusted clock", value)
 
     def _margin_mode_name(self, raw_value: object) -> str:
         try:
@@ -1102,11 +1267,13 @@ class MT5EvidenceExporter:
 
     def _assert_broker_binding(self) -> Mapping[str, object]:
         account = _as_mapping(self.mt5.account_info())
+        terminal = _as_mapping(self.mt5.terminal_info())
         symbol = _as_mapping(self.mt5.symbol_info(self.binding.broker_symbol))
-        if not account or not symbol:
-            raise BrokerExportBindingError("MT5 account or symbol facts are unavailable")
+        if not account or not terminal or not symbol:
+            raise BrokerExportBindingError(
+                "MT5 account, terminal, or symbol facts are unavailable"
+            )
         try:
-            actual_login = int(account["login"])
             actual_trade_mode = int(account["trade_mode"])
         except (KeyError, TypeError, ValueError) as exc:
             raise BrokerExportBindingError("MT5 account identity is incomplete") from exc
@@ -1116,8 +1283,16 @@ class MT5EvidenceExporter:
             demo_mode if self.binding.environment == "DEMO" else real_mode
         )
         failures: list[str] = []
-        if actual_login != self.binding.expected_login:
-            failures.append("ACCOUNT_LOGIN")
+        try:
+            actual_identity = account_identity_sha256(
+                account,
+                self.signing_key,
+                environment=self.binding.environment,
+            )
+        except ValueError as exc:
+            raise BrokerExportBindingError("MT5 account identity is incomplete") from exc
+        if actual_identity != self.binding.expected_account_identity_sha256:
+            failures.append("ACCOUNT_IDENTITY")
         if str(account.get("company", "") or "") != self.binding.broker_legal_name:
             failures.append("ACCOUNT_BROKER")
         if str(account.get("server", "") or "") != self.binding.server:
@@ -1126,6 +1301,14 @@ class MT5EvidenceExporter:
             failures.append("ACCOUNT_ENVIRONMENT")
         if str(account.get("currency", "") or "").upper() != self.binding.account_currency:
             failures.append("ACCOUNT_CURRENCY")
+        if account.get("trade_allowed") is not False:
+            failures.append("ACCOUNT_TRADE_ALLOWED")
+        if account.get("trade_expert") is not False:
+            failures.append("ACCOUNT_TRADE_EXPERT")
+        if terminal.get("trade_allowed") is not False:
+            failures.append("TERMINAL_TRADE_ALLOWED")
+        if terminal.get("tradeapi_disabled") is not True:
+            failures.append("TERMINAL_TRADEAPI_ENABLED")
         spec = self.binding.instrument_spec
         exact_integer_fields = {
             "digits": "digits",
@@ -1175,11 +1358,11 @@ class MT5EvidenceExporter:
             raise BrokerExportBindingError(
                 "MT5 read-only binding drifted: " + ",".join(sorted(set(failures)))
             )
-        checked_at = datetime.now(timezone.utc)
+        checked_at = self._trusted_utc_now()
         observed_facts = {
-            "account_identity_sha256": self.binding.public_binding_payload[
-                "account_identity_sha256"
-            ],
+            "account_identity_sha256": actual_identity,
+            "account_identity_scheme": self.binding.account_identity_scheme,
+            "account_identity_key_id": self.binding.account_identity_key_id,
             "account_alias_sha256": self.binding.public_binding_payload[
                 "account_alias_sha256"
             ],
@@ -1187,10 +1370,14 @@ class MT5EvidenceExporter:
             "server": self.binding.server,
             "environment": self.binding.environment,
             "account_currency": self.binding.account_currency,
+            "account_trade_allowed": False,
+            "account_trade_expert": False,
+            "terminal_trade_allowed": False,
+            "terminal_tradeapi_disabled": True,
             "canonical_symbol": self.binding.canonical_symbol,
             "broker_symbol": self.binding.broker_symbol,
             "instrument_spec_sha256": canonical_evidence_payload_sha256(spec),
-            "login_match": True,
+            "account_identity_match": True,
         }
         return MappingProxyType(
             {
@@ -1221,6 +1408,16 @@ class MT5EvidenceExporter:
             "broker_legal_name": self.binding.broker_legal_name,
             "broker_server": self.binding.server,
             "environment": self.binding.environment,
+            "account_identity_sha256": (
+                self.binding.expected_account_identity_sha256
+            ),
+            "account_identity_scheme": self.binding.account_identity_scheme,
+            "account_identity_key_id": self.binding.account_identity_key_id,
+            "account_currency": self.binding.account_currency,
+            "account_trade_allowed": False,
+            "account_trade_expert": False,
+            "terminal_trade_allowed": False,
+            "terminal_tradeapi_disabled": True,
             "canonical_symbol": self.binding.canonical_symbol,
             "broker_symbol": self.binding.broker_symbol,
         }
@@ -1243,11 +1440,18 @@ class MT5EvidenceExporter:
         *,
         start_utc: datetime,
         end_utc: datetime,
+        session_open_boundary: bool = False,
+        session_close_boundary: bool = False,
     ) -> pd.DataFrame:
         require_utc("start_utc", start_utc)
         require_utc("end_utc", end_utc)
         if end_utc <= start_utc:
             raise ValueError("end_utc must be after start_utc")
+        if (
+            type(session_open_boundary) is not bool
+            or type(session_close_boundary) is not bool
+        ):
+            raise TypeError("session boundary flags must be booleans")
         if broker_symbol != self.binding.broker_symbol:
             raise BrokerExportBindingError("broker symbol does not match exporter binding")
         pre_binding_receipt = self._assert_broker_binding()
@@ -1280,10 +1484,50 @@ class MT5EvidenceExporter:
         end_ts = pd.Timestamp(end_utc)
         left = observed.loc[observed["time_utc"] <= start_ts]
         right = observed.loc[observed["time_utc"] >= end_ts]
-        if left.empty or right.empty:
-            raise ValueError("broker range lacks observed left/right boundary ticks")
-        left_at = left["time_utc"].iloc[-1]
-        right_at = right["time_utc"].iloc[0]
+        if left.empty:
+            if not session_open_boundary:
+                raise ValueError(
+                    "broker range lacks observed left/right boundary ticks"
+                )
+            first = observed.loc[
+                (observed["time_utc"] >= start_ts)
+                & (
+                    observed["time_utc"]
+                    <= start_ts
+                    + pd.to_timedelta(BOUNDARY_PROBE_SECONDS, unit="s")
+                )
+            ]
+            if first.empty:
+                raise ValueError(
+                    "broker range lacks a timely session-open first tick"
+                )
+            left_at = first["time_utc"].iloc[0]
+            left_mode = "SESSION_OPEN_FIRST_TICK"
+        else:
+            left_at = left["time_utc"].iloc[-1]
+            left_mode = "BRACKETED"
+        if right.empty:
+            if not session_close_boundary:
+                raise ValueError(
+                    "broker range lacks observed left/right boundary ticks"
+                )
+            last = observed.loc[
+                (observed["time_utc"] < end_ts)
+                & (
+                    observed["time_utc"]
+                    >= end_ts
+                    - pd.to_timedelta(BOUNDARY_PROBE_SECONDS, unit="s")
+                )
+            ]
+            if last.empty:
+                raise ValueError(
+                    "broker range lacks a timely session-close last tick"
+                )
+            right_at = last["time_utc"].iloc[-1]
+            right_mode = "SESSION_CLOSE_LAST_TICK"
+        else:
+            right_at = right["time_utc"].iloc[0]
+            right_mode = "BRACKETED"
         proof_window = observed.loc[
             (observed["time_utc"] >= left_at)
             & (observed["time_utc"] <= right_at)
@@ -1307,6 +1551,9 @@ class MT5EvidenceExporter:
         ticks.attrs["coverage_continuity_proven"] = True
         ticks.attrs["observed_left_boundary_at_utc"] = left_at.to_pydatetime()
         ticks.attrs["observed_right_boundary_at_utc"] = right_at.to_pydatetime()
+        ticks.attrs["left_boundary_mode"] = left_mode
+        ticks.attrs["right_boundary_mode"] = right_mode
+        ticks.attrs["boundary_tolerance_seconds"] = BOUNDARY_PROBE_SECONDS
         ticks.attrs["max_observed_tick_gap_seconds"] = max_gap
         ticks.attrs[
             "maximum_allowed_tick_gap_seconds"
@@ -1351,9 +1598,12 @@ class MT5EvidenceExporter:
         instrument_spec: Mapping[str, object],
         start_utc: datetime,
         end_utc: datetime,
-        exported_at: datetime,
+        exported_at: datetime | None = None,
+        session_open_boundary: bool = False,
+        session_close_boundary: bool = False,
     ) -> BrokerExportResult:
-        require_utc("exported_at", exported_at)
+        if exported_at is not None:
+            require_utc("exported_at", exported_at)
         self._assert_export_contract_binding(
             canonical_symbol=canonical_symbol,
             broker_symbol=broker_symbol,
@@ -1364,10 +1614,15 @@ class MT5EvidenceExporter:
             broker_symbol,
             start_utc=start_utc,
             end_utc=end_utc,
+            session_open_boundary=session_open_boundary,
+            session_close_boundary=session_close_boundary,
+        )
+        aggregation_at = (
+            exported_at if exported_at is not None else self._trusted_utc_now()
         )
         aggregation = aggregate_m15_bid_ask_bars(
             ticks,
-            exported_at=exported_at,
+            exported_at=aggregation_at,
             coverage_start_at=start_utc,
             coverage_end_at=end_utc,
         )
@@ -1384,7 +1639,7 @@ class MT5EvidenceExporter:
                 symbol=canonical_symbol,
                 raw_tick_partition=None,
                 finalized_bar_segment=None,
-                exported_at=exported_at,
+                exported_at=aggregation_at,
                 coverage_metadata=coverage_metadata,
                 broker_binding_sha256=binding_hash,
                 status="TAIL_RETAINED_NO_FINALIZED_BAR",
@@ -1398,13 +1653,24 @@ class MT5EvidenceExporter:
             raise PairedAppendRecoveryRequired(
                 "prior paired append is incomplete; evidence export remains blocked"
             )
+        expected_sequence = _paired_expected_sequence(
+            artifact_root,
+            contract_id,
+            canonical_symbol,
+        )
+        committed_at = (
+            exported_at if exported_at is not None else self._trusted_utc_now()
+        )
+        if committed_at < aggregation_at:
+            raise ValueError("trusted clock moved backwards during broker export")
         export_id = "export_" + canonical_sha256(
             {
                 "contract_id": contract_id,
                 "symbol": canonical_symbol.upper(),
                 "start_utc": start_utc,
                 "end_utc": end_utc,
-                "exported_at": exported_at,
+                "exported_at": committed_at,
+                "expected_sequence": expected_sequence,
                 "broker_binding_sha256": binding_hash,
             }
         )[:32]
@@ -1422,7 +1688,8 @@ class MT5EvidenceExporter:
                 coverage_metadata=coverage_evidence_payload,
                 broker_binding_sha256=binding_hash,
                 coverage_metadata_sha256=coverage_metadata_hash,
-                exported_at=exported_at,
+                exported_at=committed_at,
+                expected_sequence=expected_sequence,
                 signing_key=self.signing_key,
                 build_identity_provider=self.build_identity_provider,
                 clock_provider=self.clock_provider,
@@ -1470,7 +1737,7 @@ class MT5EvidenceExporter:
                     evidence_commit,
                     "paired_commit_hmac_sha256",
                 ),
-                committed_at=exported_at,
+                committed_at=committed_at,
             )
         except Exception as exc:
             if (
@@ -1494,7 +1761,7 @@ class MT5EvidenceExporter:
             symbol=canonical_symbol,
             raw_tick_partition=raw_receipt,
             finalized_bar_segment=bar_receipt,
-            exported_at=exported_at,
+            exported_at=committed_at,
             coverage_metadata=coverage_metadata,
             broker_binding_sha256=binding_hash,
             status="FINALIZED_EVIDENCE_APPENDED",

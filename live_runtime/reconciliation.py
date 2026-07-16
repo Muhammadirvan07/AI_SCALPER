@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass
 from datetime import datetime, timezone
 import math
 from typing import Any, Iterable, Mapping
 
 from live_runtime.contracts import require_utc
-from live_runtime.journal import ExecutionJournal, IntentRecord, InvalidTransitionError
+from live_runtime.journal import (
+    ALLOWED_TRANSITIONS,
+    EXECUTION_STATES,
+    ExecutionJournal,
+    IntentRecord,
+    InvalidTransitionError,
+)
 
 
 UTC = timezone.utc
 DEAL_ENTRY_OUT_VALUES = frozenset({1, 3, "OUT", "OUT_BY", "DEAL_ENTRY_OUT", "DEAL_ENTRY_OUT_BY"})
+_BROKER_RECONCILIATION_EVIDENCE_SEAL = object()
 
 
 def _value(item: Mapping[str, Any], *keys: str, default: Any = None) -> Any:
@@ -52,6 +59,56 @@ class ReconciliationResult:
     volume_failures: tuple[str, ...]
     binding_failures: tuple[str, ...]
     kill_switch_latched: bool
+
+
+@dataclass(frozen=True)
+class _BrokerReconciliationEvidence:
+    """Internal typed result of validating one broker snapshot observation."""
+
+    intent_id: str
+    expected_state: str
+    target_state: str
+    observed_at: datetime
+    details: Mapping[str, Any]
+    broker_order_ticket: str | None = None
+    broker_position_ticket: str | None = None
+    filled_volume: float | None = None
+    protective_sl_tp_confirmed: bool | None = None
+    last_error: str | None = None
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _BROKER_RECONCILIATION_EVIDENCE_SEAL:
+            raise TypeError(
+                "broker reconciliation evidence is internal to the reconciler"
+            )
+        normalized_intent = str(self.intent_id or "").strip()
+        expected = str(self.expected_state or "").strip().upper()
+        target = str(self.target_state or "").strip().upper()
+        if not normalized_intent:
+            raise ValueError("reconciliation intent_id is required")
+        if expected not in EXECUTION_STATES or target not in EXECUTION_STATES:
+            raise ValueError("reconciliation state is invalid")
+        if target not in ALLOWED_TRANSITIONS[expected] and target != expected:
+            raise ValueError("reconciliation transition is invalid")
+        require_utc("reconciliation observed_at", self.observed_at)
+        if not isinstance(self.details, Mapping):
+            raise TypeError("reconciliation details must be a mapping")
+        source = str(self.details.get("source") or "").strip().upper()
+        if not source.startswith("BROKER_"):
+            raise ValueError("reconciliation evidence source must be broker-derived")
+        if self.filled_volume is not None and (
+            isinstance(self.filled_volume, bool)
+            or not math.isfinite(float(self.filled_volume))
+            or float(self.filled_volume) < 0
+        ):
+            raise ValueError(
+                "reconciliation filled_volume must be finite and nonnegative"
+            )
+        object.__setattr__(self, "intent_id", normalized_intent)
+        object.__setattr__(self, "expected_state", expected)
+        object.__setattr__(self, "target_state", target)
+        object.__setattr__(self, "details", dict(self.details))
 
 
 def _matches(record: IntentRecord, item: Mapping[str, Any]) -> bool:
@@ -262,6 +319,35 @@ def _exit_deal_failures(
     return tuple(sorted(set(failures))), max(0.0, volume)
 
 
+def _apply_broker_evidence(
+    journal: ExecutionJournal,
+    record: IntentRecord,
+    target_state: str,
+    *,
+    occurred_at: datetime,
+    details: Mapping[str, Any],
+    broker_order_ticket: str | None = None,
+    broker_position_ticket: str | None = None,
+    filled_volume: float | None = None,
+    protective_sl_tp_confirmed: bool | None = None,
+    last_error: str | None = None,
+) -> IntentRecord:
+    evidence = _BrokerReconciliationEvidence(
+        intent_id=record.intent_id,
+        expected_state=record.state,
+        target_state=target_state,
+        observed_at=occurred_at,
+        details=details,
+        broker_order_ticket=broker_order_ticket,
+        broker_position_ticket=broker_position_ticket,
+        filled_volume=filled_volume,
+        protective_sl_tp_confirmed=protective_sl_tp_confirmed,
+        last_error=last_error,
+        _seal=_BROKER_RECONCILIATION_EVIDENCE_SEAL,
+    )
+    return journal.apply_reconciliation(evidence)
+
+
 def reconcile_broker_state(
     journal: ExecutionJournal,
     *,
@@ -393,26 +479,16 @@ def reconcile_broker_state(
                     occurred_at=occurred_at,
                 )
             try:
-                if record.state == target:
-                    journal.record_reconciliation(
-                        record.intent_id,
-                        expected_state=target,
-                        broker_position_ticket=position_ticket,
-                        filled_volume=observed_filled_volume,
-                        protective_sl_tp_confirmed=protected,
-                        details={"source": "BROKER_POSITION_RECONCILIATION"},
-                        occurred_at=occurred_at,
-                    )
-                else:
-                    journal.transition(
-                        record.intent_id,
-                        target,
-                        broker_position_ticket=position_ticket,
-                        filled_volume=observed_filled_volume,
-                        protective_sl_tp_confirmed=protected,
-                        details={"source": "BROKER_POSITION_RECONCILIATION"},
-                        occurred_at=occurred_at,
-                    )
+                _apply_broker_evidence(
+                    journal,
+                    record,
+                    target,
+                    broker_position_ticket=position_ticket,
+                    filled_volume=observed_filled_volume,
+                    protective_sl_tp_confirmed=protected,
+                    details={"source": "BROKER_POSITION_RECONCILIATION"},
+                    occurred_at=occurred_at,
+                )
             except InvalidTransitionError:
                 journal.latch_kill_switch(
                     f"position exists in invalid state {record.state} for {record.intent_id}",
@@ -465,8 +541,9 @@ def reconcile_broker_state(
                     occurred_at=occurred_at,
                 )
             else:
-                journal.transition(
-                    record.intent_id,
+                _apply_broker_evidence(
+                    journal,
+                    record,
                     "CLOSED",
                     details={
                         "source": "BROKER_EXIT_DEAL_RECONCILIATION",
@@ -480,28 +557,21 @@ def reconcile_broker_state(
 
         if matched_orders and record.state in {"SUBMITTING", "ACKNOWLEDGED", "UNCERTAIN"}:
             order_ticket = _ticket(matched_orders[0], "ticket", "order", "order_id")
-            if record.state == "ACKNOWLEDGED":
-                journal.record_reconciliation(
-                    record.intent_id,
-                    expected_state="ACKNOWLEDGED",
-                    broker_order_ticket=order_ticket,
-                    details={"source": "BROKER_ORDER_RECONCILIATION"},
-                    occurred_at=occurred_at,
-                )
-            else:
-                journal.transition(
-                    record.intent_id,
-                    "ACKNOWLEDGED",
-                    broker_order_ticket=order_ticket,
-                    details={"source": "BROKER_ORDER_RECONCILIATION"},
-                    occurred_at=occurred_at,
-                )
+            _apply_broker_evidence(
+                journal,
+                record,
+                "ACKNOWLEDGED",
+                broker_order_ticket=order_ticket,
+                details={"source": "BROKER_ORDER_RECONCILIATION"},
+                occurred_at=occurred_at,
+            )
             matched.append(record.intent_id)
             continue
 
         if record.state in {"SUBMITTING", "ACKNOWLEDGED", "PARTIAL", "FILLED"}:
-            journal.transition(
-                record.intent_id,
+            _apply_broker_evidence(
+                journal,
+                record,
                 "UNCERTAIN",
                 details={
                     "source": "BROKER_OBJECT_OR_EXIT_DEAL_NOT_YET_FOUND",

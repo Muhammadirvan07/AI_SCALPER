@@ -8,9 +8,11 @@ from live_runtime.mt5_discovery import (
     discover_mt5_facts,
     write_discovery_exclusive,
 )
+from live_runtime.account_identity import ACCOUNT_IDENTITY_SCHEME
 
 
 UTC = timezone.utc
+TEST_KEY = b"mt5-discovery-test-key-material-32bytes"
 SYMBOL_MAP = {
     "XAUUSD": "GOLD.",
     "EURUSD": "EURUSD.",
@@ -34,10 +36,22 @@ class FakeMT5:
             "leverage": 500,
             "margin_mode": 2,
             "trade_mode": trade_mode,
+            "trade_allowed": False,
+            "trade_expert": False,
+        }
+        self.terminal = {
+            "trade_allowed": False,
+            "tradeapi_disabled": True,
         }
 
     def account_info(self):
         return self.account
+
+    def terminal_info(self):
+        return self.terminal
+
+    def copy_ticks_range(self, symbol, start, end, flags):
+        return []
 
     def symbol_info(self, symbol):
         digits = 2 if symbol == "GOLD." else (3 if symbol == "USDJPY." else 5)
@@ -74,6 +88,7 @@ class MT5DiscoveryTests(unittest.TestCase):
             FakeMT5(), candidate_id="xm", expected_server="XMTrading-MT5 3",
             broker_symbols=SYMBOL_MAP,
             captured_at=datetime(2026, 7, 16, 2, 0, tzinfo=UTC),
+            signing_key=TEST_KEY,
         )
         serialized = str(payload)
         self.assertNotIn("12345678", serialized)
@@ -85,17 +100,55 @@ class MT5DiscoveryTests(unittest.TestCase):
         self.assertFalse(payload["live_allowed"])
         self.assertEqual(payload["max_lot"], 0.01)
         self.assertEqual(len(payload["payload_sha256"]), 64)
+        self.assertEqual(len(payload["receipt_hmac_sha256"]), 64)
+        self.assertEqual(
+            ACCOUNT_IDENTITY_SCHEME,
+            payload["account"]["account_identity_scheme"],
+        )
+        self.assertEqual(
+            {"trade_allowed": False, "tradeapi_disabled": True},
+            payload["terminal"],
+        )
+        self.assertTrue(
+            str(payload["account"]["account_identity_key_id"]).startswith(
+                "wincred-"
+            )
+        )
+
+        switched = FakeMT5()
+        switched.account["login"] = 87654321
+        switched_payload = discover_mt5_facts(
+            switched,
+            candidate_id="xm",
+            expected_server="XMTrading-MT5 3",
+            broker_symbols=SYMBOL_MAP,
+            captured_at=datetime(2026, 7, 16, 2, 0, tzinfo=UTC),
+            signing_key=TEST_KEY,
+        )
+        self.assertNotEqual(
+            payload["account"]["account_identity_sha256"],
+            switched_payload["account"]["account_identity_sha256"],
+        )
 
     def test_wrong_server_or_non_demo_account_fails_closed(self):
         kwargs = {
             "candidate_id": "xm", "expected_server": "XMTrading-MT5 3",
             "broker_symbols": SYMBOL_MAP,
             "captured_at": datetime(2026, 7, 16, 2, 0, tzinfo=UTC),
+            "signing_key": TEST_KEY,
         }
         with self.assertRaisesRegex(MT5DiscoveryError, "server"):
             discover_mt5_facts(FakeMT5(server="Wrong"), **kwargs)
         with self.assertRaisesRegex(MT5DiscoveryError, "demo"):
             discover_mt5_facts(FakeMT5(trade_mode=2), **kwargs)
+        enabled_account = FakeMT5()
+        enabled_account.account["trade_allowed"] = True
+        with self.assertRaisesRegex(MT5DiscoveryError, "investor/read-only"):
+            discover_mt5_facts(enabled_account, **kwargs)
+        enabled_api = FakeMT5()
+        enabled_api.terminal["tradeapi_disabled"] = False
+        with self.assertRaisesRegex(MT5DiscoveryError, "Python trading API"):
+            discover_mt5_facts(enabled_api, **kwargs)
 
     def test_incomplete_symbol_map_fails_before_symbol_reads(self):
         with self.assertRaisesRegex(MT5DiscoveryError, "four required"):
@@ -103,6 +156,7 @@ class MT5DiscoveryTests(unittest.TestCase):
                 FakeMT5(), candidate_id="xm", expected_server="XMTrading-MT5 3",
                 broker_symbols={"XAUUSD": "GOLD."},
                 captured_at=datetime(2026, 7, 16, 2, 0, tzinfo=UTC),
+                signing_key=TEST_KEY,
             )
 
     def test_output_is_create_exclusive(self):

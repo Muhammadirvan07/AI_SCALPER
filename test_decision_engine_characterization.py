@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import mock_open, patch
 
 import decision_engine as engine
+import pandas as pd
 
 
 def ready_decision(symbol="EURUSD", lot=0.01):
@@ -28,6 +29,156 @@ def ready_decision(symbol="EURUSD", lot=0.01):
 
 
 class DecisionEngineCharacterizationTests(unittest.TestCase):
+    def test_reason_keywords_can_never_mutate_authoritative_strategy_score(self):
+        keyword_reasons = [
+            "replay approved trend momentum pullback EMA ADX ATR breakout volatility structure"
+        ]
+        with patch.object(
+            engine,
+            "ENABLE_GUARDED_SCORE_BOOST",
+            True,
+        ), patch.object(
+            engine,
+            "ENABLE_PHASE5A_ADAPTIVE_SCORE_ENGINE",
+            True,
+        ):
+            guarded_score, guarded_info = engine.maybe_apply_guarded_score_boost(
+                "EURUSD",
+                "BREAKOUT",
+                3,
+                keyword_reasons,
+                {"approved_symbols": {"EURUSD"}},
+                True,
+                0.10,
+            )
+            adaptive_score, adaptive_info = engine.apply_phase5a_adaptive_score_engine(
+                "EURUSD",
+                "BREAKOUT",
+                3,
+                keyword_reasons,
+                0.10,
+                True,
+            )
+
+        self.assertEqual(guarded_score, 3)
+        self.assertFalse(guarded_info["applied"])
+        self.assertEqual(adaptive_score, 3)
+        self.assertFalse(adaptive_info["applied"])
+
+    def test_phase5g_to_phase5p_cannot_reintroduce_keyword_score_mutation(self):
+        with patch.object(
+            engine,
+            "ENABLE_PHASE5A_ADAPTIVE_SCORE_ENGINE",
+            True,
+        ):
+            diagnostics = engine.build_phase5g_pre_score_diagnostics(
+                "BTCUSD",
+                "BREAKOUT",
+                3,
+                ["replay approved trend momentum EMA ADX ATR breakout"],
+                0.10,
+                replay_allowed=True,
+                phase5f_strategy_selection_guard={
+                    "required_score": 4,
+                    "required_volatility_percent": 0.05,
+                    "status": "BLOCKED_SCORE",
+                },
+            )
+
+        self.assertFalse(diagnostics["phase5a_preview_can_boost"])
+        self.assertEqual(diagnostics["preview_score_after_phase5a"], 3)
+
+        # Even a stale/tampered historical preview must not revive the retired
+        # score-commit route.
+        diagnostics["phase5a_preview_can_boost"] = True
+        diagnostics["preview_score_after_phase5a"] = 4
+        committed_score, commit_info = engine.apply_phase5p_controlled_score_commit(
+            "BTCUSD",
+            "BREAKOUT",
+            3,
+            phase5g_pre_score_diagnostics=diagnostics,
+            phase5o_crypto_weekend_near_ready={
+                "status": engine.PHASE5P_REQUIRED_NEAR_READY_STATUS,
+            },
+            phase5j_market_session_guard={
+                "status": "CRYPTO_WEEKEND_TEST_ALLOWED",
+            },
+            phase5k_market_reopen_warmup_guard={"status": "PASSED"},
+            phase5f_strategy_selection_guard={"required_score": 4},
+        )
+
+        self.assertEqual(committed_score, 3)
+        self.assertFalse(commit_info["applied"])
+
+    def test_phase5r_preview_cannot_synthesize_canonical_trade_signal(self):
+        result = engine.apply_phase5r_controlled_crypto_strategy_assignment(
+            "BTCUSD",
+            "NO_STRATEGY",
+            0,
+            "WAIT",
+            "WAIT",
+            ["selector found no strategy"],
+            phase5q_crypto_no_strategy_preview={
+                "status": engine.PHASE5Q_PREVIEW_STATUS_MICRO_MOMENTUM,
+                "direction_preview": "BUY",
+                "confidence": "WATCH",
+            },
+            phase5j_market_session_guard={
+                "status": "CRYPTO_WEEKEND_TEST_ALLOWED",
+            },
+            phase5k_market_reopen_warmup_guard={"status": "PASSED"},
+        )
+
+        strategy, score, signal, decision, reasons, payload = result
+        self.assertEqual(strategy, "NO_STRATEGY")
+        self.assertEqual(score, 0)
+        self.assertEqual(signal, "WAIT")
+        self.assertEqual(decision, "WAIT")
+        self.assertEqual(reasons, ["selector found no strategy"])
+        self.assertFalse(payload["applied"])
+
+    def test_weekend_crypto_fallback_is_wait_only_diagnostic(self):
+        frame = pd.DataFrame(
+            {
+                "Open": [100.0] * 20,
+                "High": [101.0] * 20,
+                "Low": [99.0] * 20,
+                "Close": [100.5] * 20,
+                "Volume": [1.0] * 20,
+            }
+        )
+        with patch.object(
+            engine,
+            "load_symbol_ohlcv",
+            return_value=(frame, "data/btcusd.csv", "LOADED"),
+        ):
+            item = engine.build_weekend_crypto_fallback_item("BTCUSD")
+
+        self.assertEqual(item["signal"], "WAIT")
+        self.assertEqual(item["decision"], "WAIT")
+        self.assertEqual(item["selected_strategy"], "NO_STRATEGY")
+        self.assertEqual(item["strategy_score"], 0)
+        self.assertEqual(item["strategy_score_components"], {})
+
+    def test_phase5h_counts_structured_components_not_reason_words(self):
+        payload = engine.build_phase5h_strategy_score_explainability(
+            "XAUUSD",
+            "MOMENTUM_PULLBACK",
+            4,
+            ["replay approved trend momentum pullback EMA ADX ATR volatility"],
+            0.10,
+            {"required_score": 5, "status": "SCORE_TOO_LOW"},
+            {
+                "bounded_pullback_rejection": {"passed": True, "points": 2},
+                "strong_adx": {"passed": False, "points": 0},
+            },
+        )
+
+        self.assertEqual(payload["positive_matches"], 1)
+        self.assertEqual(payload["negative_matches"], 1)
+        self.assertEqual(payload["evidence_source"], "structured_score_components")
+        self.assertEqual(payload["present_components"], ["bounded_pullback_rejection"])
+
     def test_phase5z_ignores_nested_watch_and_merge_metadata(self):
         replay_payload = {
             "approved_symbols": [

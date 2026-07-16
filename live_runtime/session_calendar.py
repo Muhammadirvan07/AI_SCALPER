@@ -47,7 +47,21 @@ def _iso(value: datetime) -> str:
 def _scheduled_state(symbol: str, local: datetime) -> tuple[bool, str, str]:
     if local.weekday() >= 5:
         return False, "WEEKEND", "XM scheduled weekend closure"
-    if symbol == "XAUUSD" and local.hour < 1:
+    # XM's published symbol specification closes the final Friday session
+    # before midnight.  A 23:45 M15 bucket therefore cannot be proven with a
+    # right-boundary tick at 00:00 and must be excluded conservatively.
+    if local.weekday() == 4 and local.hour == 23 and local.minute >= 45:
+        return (
+            False,
+            "PARTIAL_SESSION_CLOSE",
+            "XM scheduled Friday partial-session close",
+        )
+    # GOLD quotes stop shortly before midnight on ordinary trading days and
+    # resume at 01:00 server time.  Close the final partial M15 bucket rather
+    # than registering a bar the broker cannot finalize.
+    if symbol == "XAUUSD" and (
+        local.hour < 1 or (local.hour == 23 and local.minute >= 45)
+    ):
         return False, "DAILY_BREAK", "XM GOLD scheduled daily break"
     return True, "", ""
 
@@ -156,6 +170,7 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
     body = {
         "schema_version": CALENDAR_BUNDLE_SCHEMA_VERSION,
         "candidate_id": plan.get("candidate_id"),
+        "plan_payload_sha256": plan.get("plan_payload_sha256"),
         "server_timezone": timezone_name,
         "discovery_receipt_sha256": receipt_hash,
         "special_hours_review": dict(review),

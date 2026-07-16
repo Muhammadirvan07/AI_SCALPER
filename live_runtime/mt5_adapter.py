@@ -24,6 +24,7 @@ from live_runtime.contracts import (
     CanonicalContract,
     ExecutionReceipt,
     TradeIntent,
+    _mint_execution_receipt,
     canonical_sha256,
     require_utc,
 )
@@ -49,6 +50,7 @@ MAX_AUTHORIZATION_AGE_SECONDS = 1
 CLOCK_OVERRIDE_TOLERANCE_SECONDS = 0.05
 _AUTHORIZATION_SEAL = object()
 _PREFLIGHT_SEAL = object()
+_SUBMISSION_GUARD_SEAL = object()
 _EXECUTION_GATE_SEAL = object()
 
 
@@ -436,6 +438,59 @@ def _mint_mt5_preflight(**values: Any) -> MT5Preflight:
     return MT5Preflight(**values, _seal=_PREFLIGHT_SEAL)
 
 
+@dataclass(frozen=True)
+class MT5SubmissionGuard(CanonicalContract):
+    """Sealed last-moment account/exposure observation from MT5Adapter."""
+
+    intent_id: str
+    account_id: str
+    server: str
+    symbol: str
+    account_equity: float
+    active_order_count: int
+    active_position_count: int
+    broker_spec_sha256: str
+    checked_at_utc: datetime
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _SUBMISSION_GUARD_SEAL:
+            raise TypeError(
+                "MT5SubmissionGuard can only be created by MT5Adapter"
+            )
+        if not str(self.intent_id or "").strip():
+            raise ValueError("submission guard intent_id is required")
+        if not str(self.account_id or "").strip() or not str(self.server or "").strip():
+            raise ValueError("submission guard account binding is required")
+        normalized_symbol = str(self.symbol or "").strip().upper()
+        if not normalized_symbol:
+            raise ValueError("submission guard symbol is required")
+        object.__setattr__(self, "symbol", normalized_symbol)
+        object.__setattr__(
+            self,
+            "account_equity",
+            _finite(self.account_equity, "account_equity", positive=True),
+        )
+        for field in ("active_order_count", "active_position_count"):
+            value = getattr(self, field)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{field} must be a nonnegative integer")
+        normalized_hash = str(self.broker_spec_sha256 or "").lower()
+        if len(normalized_hash) != 64 or any(
+            character not in "0123456789abcdef"
+            for character in normalized_hash
+        ):
+            raise ValueError("broker_spec_sha256 must be a SHA-256 hash")
+        object.__setattr__(self, "broker_spec_sha256", normalized_hash)
+        require_utc("checked_at_utc", self.checked_at_utc)
+
+
+def _mint_mt5_submission_guard(**values: Any) -> MT5SubmissionGuard:
+    """Internal/test adapter boundary; direct guard construction is denied."""
+
+    return MT5SubmissionGuard(**values, _seal=_SUBMISSION_GUARD_SEAL)
+
+
 def _mint_execution_gate_capability(
     *,
     intent: TradeIntent,
@@ -444,7 +499,7 @@ def _mint_execution_gate_capability(
     market_guard_decision: MarketGuardDecision,
     model_binding_decision: ModelBindingDecision,
     preflight: MT5Preflight,
-    submission_guard: Mapping[str, Any],
+    submission_guard: MT5SubmissionGuard,
     broker_spec: BrokerSpec,
     reservation: IntentRecord,
     journal_sha256: str,
@@ -493,15 +548,24 @@ def _mint_execution_gate_capability(
         raise ExecutionLockedError("execution gate evidence is stale")
     if now >= model_binding_decision.valid_until:
         raise ExecutionLockedError("champion binding expired")
-    guard_checked_at = submission_guard.get("checked_at_utc")
-    if not isinstance(guard_checked_at, datetime):
-        raise ExecutionLockedError("submission guard timestamp is missing")
-    guard_age = (now - require_utc("guard checked_at_utc", guard_checked_at)).total_seconds()
+    if not isinstance(submission_guard, MT5SubmissionGuard):
+        raise ExecutionLockedError("sealed MT5 submission guard is required")
+    guard_age = (
+        now
+        - require_utc(
+            "guard checked_at_utc",
+            submission_guard.checked_at_utc,
+        )
+    ).total_seconds()
     guard_matches = (
         0 <= guard_age <= MAX_AUTHORIZATION_AGE_SECONDS
-        and submission_guard.get("active_order_count") == 0
-        and submission_guard.get("active_position_count") == 0
-        and submission_guard.get("broker_spec_sha256") == broker_spec.content_sha256
+        and submission_guard.intent_id == intent.intent_id
+        and submission_guard.account_id == intent.account_id
+        and submission_guard.server == intent.server
+        and submission_guard.symbol == intent.symbol
+        and submission_guard.active_order_count == 0
+        and submission_guard.active_position_count == 0
+        and submission_guard.broker_spec_sha256 == broker_spec.content_sha256
     )
     if (
         not guard_matches
@@ -519,7 +583,7 @@ def _mint_execution_gate_capability(
         market_guard_decision_sha256=market_guard_decision.content_sha256,
         model_binding_decision_sha256=model_binding_decision.content_sha256,
         preflight_sha256=preflight.content_sha256,
-        guard_sha256=canonical_sha256(submission_guard),
+        guard_sha256=submission_guard.content_sha256,
         broker_spec_sha256=broker_spec.content_sha256,
         checked_at_utc=now,
         _seal=_EXECUTION_GATE_SEAL,
@@ -1120,7 +1184,7 @@ class MT5Adapter:
         *,
         expected_equity: float,
         now: datetime,
-    ) -> dict[str, Any]:
+    ) -> MT5SubmissionGuard:
         """Refresh broker/account/exposure facts immediately before reservation."""
 
         now = self._trusted_now(now)
@@ -1173,13 +1237,17 @@ class MT5Adapter:
             raise PreflightRejectedError(
                 "broker specification drifted: " + ",".join(drifted)
             )
-        return {
-            "account_equity": account["equity"],
-            "active_order_count": 0,
-            "active_position_count": 0,
-            "broker_spec_sha256": broker_spec.content_sha256,
-            "checked_at_utc": now,
-        }
+        return _mint_mt5_submission_guard(
+            intent_id=intent.intent_id,
+            account_id=intent.account_id,
+            server=intent.server,
+            symbol=intent.symbol,
+            account_equity=account["equity"],
+            active_order_count=0,
+            active_position_count=0,
+            broker_spec_sha256=broker_spec.content_sha256,
+            checked_at_utc=now,
+        )
 
     def submit(
         self,
@@ -1352,7 +1420,7 @@ class MT5Adapter:
             state = "REJECTED"
         else:
             state = "UNCERTAIN"
-        return ExecutionReceipt(
+        return _mint_execution_receipt(
             intent_id=intent.intent_id,
             state=state,
             account_id=self.account_alias,

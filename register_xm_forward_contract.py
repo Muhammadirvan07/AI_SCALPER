@@ -1,4 +1,4 @@
-"""Register the immutable XM window-01 DIAGNOSTIC contract on Windows."""
+"""Register the immutable XM Window 02 v3 DIAGNOSTIC contract on Windows."""
 
 from __future__ import annotations
 
@@ -17,12 +17,19 @@ def main() -> int:
     parser.add_argument(
         "--discovery",
         type=Path,
-        default=Path("runtime_state/broker_discovery/xm-first.json"),
+        default=Path("runtime_state/broker_discovery/xm-window-02-v3.json"),
+    )
+    parser.add_argument(
+        "--plan",
+        type=Path,
+        default=Path(
+            "runtime_state/broker_discovery/xm-calendar-window-02-plan-v3.json"
+        ),
     )
     parser.add_argument(
         "--calendar",
         type=Path,
-        default=Path("runtime_state/broker_discovery/xm-calendar-window-01-v2.json"),
+        default=Path("runtime_state/broker_discovery/xm-calendar-window-02-v3.json"),
     )
     parser.add_argument(
         "--artifact-root",
@@ -37,6 +44,7 @@ def main() -> int:
         args.discovery,
         args.calendar,
         key,
+        plan_path=args.plan,
     )
     print("Forward contract registered: " + str(contract["contract_id"]))
     print("Profile: " + str(contract["validation_profile"]))

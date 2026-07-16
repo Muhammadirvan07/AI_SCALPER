@@ -6,7 +6,13 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from live_runtime.account_identity import ACCOUNT_IDENTITY_SCHEME
 from live_runtime.broker_exporter import BrokerExportResult
+from live_runtime.evidence_bootstrap import CONTRACT_ID
+from live_runtime.mt5_readonly import (
+    MT5ReadOnlyAttestationError,
+    attest_mt5_read_only,
+)
 from live_runtime.session_calendar import build_calendar_bundle
 from live_runtime.shadow_collector import (
     ReadOnlyMT5Facade,
@@ -14,6 +20,7 @@ from live_runtime.shadow_collector import (
     ShadowCycleStore,
     plan_next_bar,
     run_shadow_cycle,
+    session_boundary_flags,
 )
 import json
 
@@ -36,7 +43,7 @@ def contract_fixture():
 def export_result(symbol: str) -> BrokerExportResult:
     result = object.__new__(BrokerExportResult)
     for key, value in {
-        "contract_id": "xm-window-01-diagnostic-v2",
+        "contract_id": CONTRACT_ID,
         "symbol": symbol,
         "raw_tick_partition": {"rows": 1, "partition_payload_sha256": "a" * 64},
         "finalized_bar_segment": {"rows": 1, "segment_payload_sha256": "b" * 64},
@@ -59,7 +66,16 @@ class FakeMT5:
     ACCOUNT_MARGIN_MODE_RETAIL_HEDGING = 2
 
     def account_info(self):
-        return {}
+        return {
+            "trade_allowed": False,
+            "trade_expert": False,
+        }
+
+    def terminal_info(self):
+        return {
+            "trade_allowed": False,
+            "tradeapi_disabled": True,
+        }
 
     def symbol_info(self, symbol):
         return {}
@@ -114,10 +130,92 @@ class ShadowCollectorTests(unittest.TestCase):
         )
         self.assertEqual(first + timedelta(minutes=15), plan.open_at)
 
+    def test_session_boundary_flags_come_only_from_exact_registered_interval(self):
+        calendar = contract_fixture()["session_calendars"]["EURUSD"]
+        interval = calendar["market_open_intervals"][0]
+        interval_open = datetime.fromisoformat(
+            interval["open_at_utc"].replace("Z", "+00:00")
+        )
+        interval_close = datetime.fromisoformat(
+            interval["close_at_utc"].replace("Z", "+00:00")
+        )
+        self.assertEqual(
+            (True, False),
+            session_boundary_flags(
+                calendar,
+                open_at=interval_open,
+                close_at=interval_open + timedelta(minutes=15),
+            ),
+        )
+        self.assertEqual(
+            (False, True),
+            session_boundary_flags(
+                calendar,
+                open_at=interval_close - timedelta(minutes=15),
+                close_at=interval_close,
+            ),
+        )
+        self.assertEqual(
+            (False, False),
+            session_boundary_flags(
+                calendar,
+                open_at=interval_open + timedelta(minutes=15),
+                close_at=interval_open + timedelta(minutes=30),
+            ),
+        )
+        with self.assertRaisesRegex(
+            ShadowCollectorError,
+            "exactly one",
+        ):
+            session_boundary_flags(
+                calendar,
+                open_at=interval_open - timedelta(minutes=15),
+                close_at=interval_open,
+            )
+
     def test_facade_exposes_no_order_capability(self):
         facade = ReadOnlyMT5Facade(FakeMT5())
         self.assertFalse(hasattr(facade, "order_send"))
         self.assertFalse(hasattr(facade, "positions_get"))
+        self.assertFalse(hasattr(facade, "_mt5"))
+        self.assertFalse(hasattr(facade, "__dict__"))
+        self.assertEqual(
+            {
+                "account_trade_allowed": False,
+                "account_trade_expert": False,
+                "terminal_trade_allowed": False,
+                "terminal_tradeapi_disabled": True,
+            },
+            dict(attest_mt5_read_only(facade)),
+        )
+
+    def test_read_only_attestation_rejects_any_enabled_or_missing_flag(self):
+        for field in (
+            "account_trade_allowed",
+            "account_trade_expert",
+            "terminal_trade_allowed",
+            "terminal_tradeapi_disabled",
+        ):
+            with self.subTest(field=field):
+                class UnsafeMT5(FakeMT5):
+                    def account_info(self):
+                        facts = dict(super().account_info())
+                        if field == "account_trade_allowed":
+                            facts["trade_allowed"] = True
+                        if field == "account_trade_expert":
+                            facts["trade_expert"] = True
+                        return facts
+
+                    def terminal_info(self):
+                        facts = dict(super().terminal_info())
+                        if field == "terminal_trade_allowed":
+                            facts["trade_allowed"] = True
+                        if field == "terminal_tradeapi_disabled":
+                            facts.pop("tradeapi_disabled")
+                        return facts
+
+                with self.assertRaises(MT5ReadOnlyAttestationError):
+                    attest_mt5_read_only(ReadOnlyMT5Facade(UnsafeMT5()))
 
     def test_cycle_receipt_is_durable_and_reconciles_results(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -178,6 +276,10 @@ class ShadowCollectorTests(unittest.TestCase):
                 "broker_legal_name": "Tradexfin Limited",
                 "broker_server": "XMTrading-MT5 3",
                 "environment": "DEMO",
+                "account_identity_sha256": "e" * 64,
+                "account_identity_scheme": ACCOUNT_IDENTITY_SCHEME,
+                "account_identity_key_id": "test-key",
+                "account_currency": "JPY",
                 "canonical_symbol": symbol,
                 "broker_symbol": broker_symbol,
                 "source_instance_id": "xm-test-terminal-window-01",
@@ -212,21 +314,26 @@ class ShadowCollectorTests(unittest.TestCase):
                 return {
                     "login": 123456,
                     "currency": "JPY",
+                    "trade_allowed": False,
+                    "trade_expert": False,
                 }
 
         calls = []
+        events = []
+        guard_calls = []
 
         class FakeExporter:
             def __init__(self, mt5, *, binding, **kwargs):
                 self.binding = binding
 
             def export(self, **kwargs):
-                calls.append(kwargs["canonical_symbol"])
+                events.append("export:" + kwargs["canonical_symbol"])
+                calls.append(dict(kwargs))
                 return export_result(kwargs["canonical_symbol"])
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            forward = root / "validation_artifacts" / "forward" / "xm-window-01-diagnostic-v2"
+            forward = root / "validation_artifacts" / "forward" / CONTRACT_ID
             (forward / "heads" / "segments").mkdir(parents=True)
             (forward / "contract.json").write_text(json.dumps(contract), encoding="utf-8")
             for symbol in SYMBOLS:
@@ -254,10 +361,170 @@ class ShadowCollectorTests(unittest.TestCase):
                     signing_key=b"collector-test-signing-key-32bytes-minimum",
                     store=store,
                     now_provider=lambda: now,
+                    stage_reporter=lambda stage, outcome, reason: events.append(
+                        f"{stage}:{outcome}:{reason}"
+                    ),
+                    pre_evidence_mutation_check=lambda: (
+                        guard_calls.append("disk"),
+                        events.append("disk"),
+                    ),
                 )
             self.assertEqual("APPENDED", receipt.status)
-            self.assertEqual({"AUDUSD", "EURUSD", "USDJPY"}, set(calls))
+            self.assertEqual(
+                {"AUDUSD", "EURUSD", "USDJPY"},
+                {call["canonical_symbol"] for call in calls},
+            )
+            self.assertTrue(
+                all("exported_at" not in call for call in calls),
+                "shadow collector must let the exporter mint a post-collection timestamp",
+            )
+            self.assertTrue(
+                all(call["session_open_boundary"] is True for call in calls)
+            )
+            self.assertTrue(
+                all(call["session_close_boundary"] is False for call in calls)
+            )
             self.assertEqual("NOT_DUE", receipt.symbol_status["XAUUSD"])
+            self.assertEqual(
+                [
+                    "CONTRACT_VERIFICATION:STARTED:"
+                    "CONTRACT_VERIFICATION_STARTED",
+                    "CONTRACT_VERIFICATION:PASS:CONTRACT_EVIDENCE_VERIFIED",
+                ],
+                events[:2],
+            )
+            self.assertEqual(3, len(guard_calls))
+            for index, value in enumerate(events):
+                if value.startswith("export:"):
+                    self.assertEqual("disk", events[index - 1])
+
+    def test_contract_verification_failure_is_reported_before_raise(self):
+        events = []
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            contract = root / "artifacts" / "forward" / CONTRACT_ID
+            contract.mkdir(parents=True)
+            store = ShadowCycleStore(root / "cycles.sqlite3")
+            self.addCleanup(store.close)
+            with patch(
+                "live_runtime.shadow_collector.verify_forward_evidence",
+                return_value={"valid": False, "failures": ["SYNTHETIC"]},
+            ):
+                with self.assertRaisesRegex(
+                    ShadowCollectorError,
+                    "verification failed",
+                ):
+                    run_shadow_cycle(
+                        FakeMT5(),
+                        repo_root=root,
+                        artifact_root=root / "artifacts",
+                        signing_key=b"collector-test-signing-key-32bytes-minimum",
+                        store=store,
+                        now_provider=lambda: datetime(
+                            2026, 7, 19, 21, 30, tzinfo=UTC
+                        ),
+                        stage_reporter=lambda stage, outcome, reason: events.append(
+                            (stage, outcome, reason)
+                        ),
+                    )
+        self.assertEqual(
+            [
+                (
+                    "CONTRACT_VERIFICATION",
+                    "STARTED",
+                    "CONTRACT_VERIFICATION_STARTED",
+                ),
+                (
+                    "CONTRACT_VERIFICATION",
+                    "HOLD",
+                    "CONTRACT_EVIDENCE_INVALID",
+                ),
+            ],
+            events,
+        )
+
+    def test_pre_mutation_guard_failure_prevents_export_and_holds_cycle(self):
+        contract = contract_fixture()
+        contract["broker_sources"] = {}
+        contract["instrument_specs"] = {}
+        for symbol, broker_symbol in {
+            "XAUUSD": "GOLD.",
+            "EURUSD": "EURUSD.",
+            "USDJPY": "USDJPY.",
+            "AUDUSD": "AUDUSD.",
+        }.items():
+            contract["broker_sources"][symbol] = {
+                "broker_legal_name": "Tradexfin Limited",
+                "broker_server": "XMTrading-MT5 3",
+                "environment": "DEMO",
+                "account_identity_sha256": "e" * 64,
+                "account_identity_scheme": ACCOUNT_IDENTITY_SCHEME,
+                "account_identity_key_id": "test-key",
+                "account_currency": "JPY",
+                "broker_symbol": broker_symbol,
+                "source_instance_id": "xm-test-terminal-window-01",
+            }
+            contract["instrument_specs"][symbol] = {}
+
+        class MustNotExport:
+            def __init__(self, *args, **kwargs):
+                raise AssertionError("exporter must not be constructed")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            forward = root / "artifacts" / "forward" / CONTRACT_ID
+            (forward / "heads" / "segments").mkdir(parents=True)
+            (forward / "contract.json").write_text(
+                json.dumps(contract),
+                encoding="utf-8",
+            )
+            for symbol in SYMBOLS:
+                (forward / "heads" / "segments" / f"{symbol}.json").write_text(
+                    '{"last_at_utc":null}',
+                    encoding="utf-8",
+                )
+            store = ShadowCycleStore(root / "cycles.sqlite3")
+            self.addCleanup(store.close)
+            now = datetime(2026, 7, 19, 21, 30, tzinfo=UTC)
+            with (
+                patch(
+                    "live_runtime.shadow_collector.verify_forward_evidence",
+                    return_value={"valid": True, "failures": []},
+                ),
+                patch(
+                    "live_runtime.shadow_collector.MT5EvidenceExporter",
+                    MustNotExport,
+                ),
+                patch(
+                    "live_runtime.shadow_collector.BrokerExportBinding",
+                    return_value=object(),
+                ),
+            ):
+                receipt = run_shadow_cycle(
+                    FakeMT5(),
+                    repo_root=root,
+                    artifact_root=root / "artifacts",
+                    signing_key=b"collector-test-signing-key-32bytes-minimum",
+                    store=store,
+                    now_provider=lambda: now,
+                    pre_evidence_mutation_check=lambda: (_ for _ in ()).throw(
+                        RuntimeError("synthetic low disk")
+                    ),
+                )
+        self.assertEqual("HOLD", receipt.status)
+        self.assertEqual("NOT_DUE", receipt.symbol_status["XAUUSD"])
+        self.assertTrue(
+            all(
+                receipt.symbol_status[symbol] == "HOLD"
+                for symbol in ("AUDUSD", "EURUSD", "USDJPY")
+            )
+        )
+        self.assertTrue(
+            all(
+                failure.startswith("PRE_EVIDENCE_MUTATION_GUARD_FAILED:")
+                for failure in receipt.failures
+            )
+        )
 
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
 {
   "schema_version": "broker-candidate-plan-v1",
-  "status": "PLANNED_BINDING_REQUIRED",
+  "status": "LEGAL_BLOCKED_REDISCOVERY_REQUIRED",
   "execution_enabled": false,
   "credentials_allowed": false,
   "operational_priority": {
-    "primary_shadow_broker": "xm",
+    "primary_shadow_broker": null,
     "standby_preparation_broker": "finex",
     "deferred_benchmark_brokers": ["fbs"]
   },
@@ -22,7 +22,7 @@
     {
       "candidate_id": "xm",
       "display_name": "XM",
-      "role": "PRIMARY_READ_ONLY_SHADOW",
+      "role": "BLOCKED_CURRENT_JAPAN_JURISDICTION",
       "environment": "DEMO",
       "server": "XMTrading-MT5 3",
       "account_type": "XMZero",
@@ -31,7 +31,7 @@
       "account_currency": "JPY",
       "margin_mode_observed": 2,
       "margin_mode_normalized": "RETAIL_HEDGING",
-      "binding_status": "API_DISCOVERY_CAPTURED_PENDING_CALENDAR_LEGAL_HASH",
+      "binding_status": "LEGACY_DISCOVERY_INVALIDATED_V3_AND_LEGAL_BLOCKED",
       "observed_at": "2026-07-16T03:46:48.735819Z",
       "server_time_model": {
         "standard_utc_offset": "+02:00",
@@ -43,19 +43,35 @@
       },
       "regulatory_observation": {
         "entity": "Tradexfin Limited",
-        "authority": "Seychelles Financial Services Authority",
+        "authority": "Seychelles Financial Services Authority; Japan Financial Services Agency",
         "license": "SD010",
         "source": "https://www.xmtrading.com/regulation",
         "broker_claim_observed": true,
-        "independent_registry_verification": false,
-        "japan_residency_eligibility": "PENDING_INDEPENDENT_LEGAL_REVIEW",
+        "independent_registry_verification": true,
+        "verified_at_utc": "2026-07-16T10:51:10Z",
+        "verification_status": "VERIFIED_INELIGIBLE_CURRENT_JAPAN_JURISDICTION",
+        "independent_registry_sources": [
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/ordinary/iwagai/",
+            "result": "OVERSEAS_FX_PROVIDER_REQUIRES_JAPANESE_REGISTRATION_FOR_JAPAN_RESIDENTS"
+          },
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/ordinary/chuui/mutouroku/04.html",
+            "result": "TRADEXFIN_LIMITED_XMTRADING_LISTED_AS_UNREGISTERED_OPERATOR"
+          }
+        ],
+        "japan_residency_eligibility": "VERIFIED_INELIGIBLE",
         "indonesia_return_eligibility": "PENDING_INDEPENDENT_LEGAL_REVIEW",
-        "legal_eligible": false
+        "legal_eligible": false,
+        "decision": "BLOCK_XM_WINDOW_02_WHILE_OPERATING_FROM_JAPAN"
       },
       "discovery_receipt": {
         "schema_version": "mt5-read-only-discovery-v1",
         "payload_sha256": "a53b6c55e91c6afb63b575686c7a8de1883c02b21a913479776a46f33e51bdbb",
         "transport_hash_independently_reverified": true,
+        "status": "LEGACY_READ_ONLY_ATTESTATION_INSUFFICIENT_DO_NOT_REUSE",
         "execution_enabled": false,
         "live_allowed": false,
         "safe_to_demo_auto_order": false
@@ -161,7 +177,8 @@
       },
       "specification_missing_fields": [
         "session_calendar_hash_and_holiday_overrides",
-        "legal_and_regulatory_eligibility"
+        "v3_investor_login_and_terminal_python_api_attestation",
+        "eligible_broker_for_current_japan_operating_jurisdiction"
       ],
       "account_identifier_stored": false
     },
@@ -175,8 +192,30 @@
       "binding_status": "AWAITING_DEMO_ACCOUNT_FACTS",
       "broker_symbols_observed": null,
       "instrument_specification_status": "NOT_CAPTURED",
+      "regulatory_observation": {
+        "entity": "PT Finex Bisnis Solusi Futures",
+        "authority": "Badan Pengawas Perdagangan Berjangka Komoditi",
+        "license": "47/BAPPEBTI/SI/04/2013",
+        "spa_approval": "77/BAPPEBTI/SP/12/2014",
+        "source": "https://bappebti.go.id/pialang_berjangka/detail/133",
+        "broker_claim_observed": false,
+        "independent_registry_verification": true,
+        "verified_at_utc": "2026-07-16T10:51:10Z",
+        "verification_status": "BROKER_REGISTRATION_VERIFIED_OPERATING_ELIGIBILITY_PENDING",
+        "independent_registry_sources": [
+          {
+            "authority": "Bappebti",
+            "url": "https://bappebti.go.id/pialang_berjangka/detail/133",
+            "result": "REGISTERED_INDONESIAN_FUTURES_BROKER"
+          }
+        ],
+        "japan_residency_eligibility": "PENDING_JAPAN_REGULATORY_REVIEW",
+        "indonesia_return_eligibility": "PENDING_PERSONAL_AND_ACCOUNT_ELIGIBILITY_AFTER_RETURN",
+        "legal_eligible": false,
+        "decision": "PREPARE_ONLY_NO_CURRENT_JAPAN_OPERATION"
+      },
       "account_identifier_stored": false
     }
   ],
-  "notes": "Server, account type, broker symbol names, and contract hashes must be discovered from each demo MT5 terminal. Do not guess or store credentials here."
+  "notes": "XM is explicitly blocked while operating from Japan. Its legacy discovery is historical only and cannot register Window 02 v3. FINEX is verified as a registered Indonesian broker but remains preparation-only until exact demo binding and the user's operating/residency eligibility are established. Do not guess or store credentials here."
 }

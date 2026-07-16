@@ -71,6 +71,7 @@ PAIRED_PENDING_SCHEMA_VERSION = "paired-evidence-pending-v1"
 ANCHOR_SCHEMA_VERSION = "evidence-anchor-v1"
 SEAL_SCHEMA_VERSION = "forward-seal-v1"
 RECEIPT_SCHEMA_VERSION = "validation-receipt-v2"
+ACCOUNT_IDENTITY_SCHEME = "HMAC-SHA256-AI_SCALPER-MT5-ACCOUNT-V2"
 TIMEFRAME_SECONDS = 900
 FINALIZATION_LAG_SECONDS = 900
 # The final M15 candle closes exactly at ``blind_until_utc`` and cannot be
@@ -80,6 +81,7 @@ FINALIZATION_LAG_SECONDS = 900
 MAX_INGESTION_LAG_SECONDS = 60
 MAX_APPEND_LAG_SECONDS = 60
 MAX_PARTITION_SPAN_SECONDS = 3600
+SESSION_BOUNDARY_TOLERANCE_SECONDS = 10
 LIVE_GRADE_MIN_OBSERVATION_SECONDS = 8 * 7 * 24 * 60 * 60
 VALIDATION_PROFILES = frozenset({"LIVE_GRADE", "DIAGNOSTIC"})
 CLOCK_CLAIM_TOLERANCE_SECONDS = 1.0
@@ -130,6 +132,7 @@ SESSION_CLOSURE_REASON_CODES = frozenset(
         "WEEKEND",
         "HOLIDAY",
         "DAILY_BREAK",
+        "PARTIAL_SESSION_CLOSE",
         "ROLLOVER",
         "BROKER_MAINTENANCE",
         "OTHER_SCHEDULED_CLOSURE",
@@ -338,9 +341,9 @@ def _require_current_clock_claim(
     field: str,
     clock_provider: Callable[[], object] | None,
 ) -> pd.Timestamp:
-    observed = _utc_timestamp(
-        clock_provider() if clock_provider is not None else pd.Timestamp.now(tz="UTC"),
-        f"trusted_clock_for_{field}",
+    observed = _trusted_clock_timestamp(
+        field=field,
+        clock_provider=clock_provider,
     )
     drift_seconds = abs((claimed - observed).total_seconds())
     if drift_seconds > CLOCK_CLAIM_TOLERANCE_SECONDS:
@@ -349,6 +352,17 @@ def _require_current_clock_claim(
             f"{field}:{drift_seconds:.6f}s",
         )
     return observed
+
+
+def _trusted_clock_timestamp(
+    *,
+    field: str,
+    clock_provider: Callable[[], object] | None,
+) -> pd.Timestamp:
+    return _utc_timestamp(
+        clock_provider() if clock_provider is not None else pd.Timestamp.now(tz="UTC"),
+        f"trusted_clock_for_{field}",
+    )
 
 
 def _utc_series(values: pd.Series, field: str) -> pd.Series:
@@ -431,9 +445,16 @@ def _fsync_directory(directory: Path) -> None:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
-    except OSError:
+    except OSError as exc:
+        if not _windows_commit_enabled():
+            raise EvidenceValidationError(
+                "ARTIFACT_DIRECTORY_FSYNC_FAILED",
+                str(directory),
+            ) from exc
         # Windows does not consistently permit opening a directory handle via
-        # os.open.  File data is still fsynced before every atomic commit.
+        # os.open.  Windows commits use MoveFileExW with WRITE_THROUGH below;
+        # a leftover pending marker after an interrupted unlink remains
+        # intentionally fail-closed.
         pass
 
 
@@ -481,6 +502,44 @@ def _safe_artifact_file(directory: Path, relative_name: object) -> Path:
     return current
 
 
+def _windows_commit_enabled() -> bool:
+    return os.name == "nt"
+
+
+def _windows_move_write_through(
+    source: Path,
+    target: Path,
+    *,
+    replace: bool,
+) -> None:
+    """Atomically publish a file/directory with Windows write-through flags."""
+
+    import ctypes
+    from ctypes import wintypes
+
+    move_file_ex = ctypes.WinDLL("kernel32", use_last_error=True).MoveFileExW
+    move_file_ex.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+    )
+    move_file_ex.restype = wintypes.BOOL
+    movefile_replace_existing = 0x1
+    movefile_write_through = 0x8
+    flags = movefile_write_through
+    if replace:
+        flags |= movefile_replace_existing
+    if move_file_ex(str(source), str(target), flags):
+        return
+    error = ctypes.get_last_error()
+    if not replace and error in {80, 183}:
+        raise EvidenceValidationError("ARTIFACT_EXISTS", str(target))
+    raise EvidenceValidationError(
+        "ARTIFACT_COMMIT_FAILED",
+        f"{target}:winerror={error}",
+    )
+
+
 def _atomic_exclusive_write(path: Path, payload: bytes) -> None:
     if path.is_symlink():
         raise EvidenceValidationError("ARTIFACT_PATH_SYMLINK", str(path))
@@ -492,11 +551,14 @@ def _atomic_exclusive_write(path: Path, payload: bytes) -> None:
             output.write(payload)
             output.flush()
             os.fsync(output.fileno())
-        try:
-            os.link(temporary, path)
-        except FileExistsError as exc:
-            raise EvidenceValidationError("ARTIFACT_EXISTS", str(path)) from exc
-        _fsync_directory(path.parent)
+        if _windows_commit_enabled():
+            _windows_move_write_through(temporary, path, replace=False)
+        else:
+            try:
+                os.link(temporary, path)
+            except FileExistsError as exc:
+                raise EvidenceValidationError("ARTIFACT_EXISTS", str(path)) from exc
+            _fsync_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -512,8 +574,11 @@ def _atomic_replace(path: Path, payload: bytes) -> None:
             output.write(payload)
             output.flush()
             os.fsync(output.fileno())
-        os.replace(temporary, path)
-        _fsync_directory(path.parent)
+        if _windows_commit_enabled():
+            _windows_move_write_through(temporary, path, replace=True)
+        else:
+            os.replace(temporary, path)
+            _fsync_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -528,11 +593,14 @@ def _atomic_directory_commit(parent: Path, target: Path, files: Mapping[str, byt
             destination.parent.mkdir(parents=True, exist_ok=True)
             _atomic_exclusive_write(destination, payload)
         _fsync_directory(staging)
-        try:
-            os.rename(staging, target)
-        except FileExistsError as exc:
-            raise EvidenceValidationError("ARTIFACT_EXISTS", str(target)) from exc
-        _fsync_directory(parent)
+        if _windows_commit_enabled():
+            _windows_move_write_through(staging, target, replace=False)
+        else:
+            try:
+                os.rename(staging, target)
+            except FileExistsError as exc:
+                raise EvidenceValidationError("ARTIFACT_EXISTS", str(target)) from exc
+            _fsync_directory(parent)
     finally:
         if staging.exists():
             shutil.rmtree(staging)
@@ -791,6 +859,14 @@ def _validate_broker_source(symbol: str, source: object) -> dict:
         "broker_legal_name",
         "broker_server",
         "environment",
+        "account_identity_sha256",
+        "account_identity_scheme",
+        "account_identity_key_id",
+        "account_currency",
+        "account_trade_allowed",
+        "account_trade_expert",
+        "terminal_trade_allowed",
+        "terminal_tradeapi_disabled",
         "canonical_symbol",
         "broker_symbol",
         "source_instance_id",
@@ -802,15 +878,43 @@ def _validate_broker_source(symbol: str, source: object) -> dict:
     if set(source) - allowed:
         raise EvidenceValidationError("BROKER_SOURCE_FIELD_UNAPPROVED", symbol)
     result = copy.deepcopy(dict(source))
-    required = allowed - {"feed_grade"}
+    boolean_fields = {
+        "account_trade_allowed",
+        "account_trade_expert",
+        "terminal_trade_allowed",
+        "terminal_tradeapi_disabled",
+    }
+    required = allowed - {"feed_grade"} - boolean_fields
     if any(not str(result.get(field) or "").strip() for field in required):
         raise EvidenceValidationError("BROKER_SOURCE_REQUIRED", symbol)
+    if (
+        result.get("account_trade_allowed") is not False
+        or result.get("account_trade_expert") is not False
+        or result.get("terminal_trade_allowed") is not False
+        or result.get("terminal_tradeapi_disabled") is not True
+    ):
+        raise EvidenceValidationError("BROKER_SOURCE_NOT_READ_ONLY", symbol)
     if str(result.get("canonical_symbol")).upper() != symbol:
         raise EvidenceValidationError("BROKER_SOURCE_REQUIRED", symbol)
     if result.get("environment") not in {"LIVE_READ_ONLY", "DEMO"}:
         raise EvidenceValidationError("BROKER_SOURCE_REQUIRED", symbol)
     if result.get("quote_mode") != "FINALIZED_BID_ASK_BARS":
         raise EvidenceValidationError("BROKER_SOURCE_REQUIRED", symbol)
+    result["account_identity_sha256"] = _require_sha256(
+        result.get("account_identity_sha256"),
+        f"{symbol}.account_identity_sha256",
+    )
+    if result.get("account_identity_scheme") != ACCOUNT_IDENTITY_SCHEME:
+        raise EvidenceValidationError("BROKER_SOURCE_REQUIRED", symbol)
+    if (
+        result.get("account_identity_key_id")
+        != result.get("exporter_signing_key_id")
+    ):
+        raise EvidenceValidationError("BROKER_SOURCE_REQUIRED", symbol)
+    account_currency = str(result.get("account_currency") or "").upper()
+    if re.fullmatch(r"[A-Z]{3}", account_currency) is None:
+        raise EvidenceValidationError("BROKER_SOURCE_REQUIRED", symbol)
+    result["account_currency"] = account_currency
     if str(result.get("broker_symbol")).upper() in {
         "GC=F",
         "EURUSD=X",
@@ -1509,7 +1613,11 @@ def register_forward_contract(
     registered = _utc_timestamp(registered_at, "registered_at")
     # Validate the registration-start claim before snapshot and Git I/O can
     # consume the one-second trusted-clock tolerance.
-    _require_current_clock_claim(registered, field="registered_at", clock_provider=clock_provider)
+    registration_started_at = _require_current_clock_claim(
+        registered,
+        field="registered_at",
+        clock_provider=clock_provider,
+    )
     if not isinstance(snapshot_manifest, Mapping):
         raise EvidenceValidationError("SNAPSHOT_MANIFEST_INVALID")
     snapshot_id = _validate_id(snapshot_manifest.get("snapshot_id"), "snapshot_id")
@@ -1586,6 +1694,14 @@ def register_forward_contract(
             source["environment"],
             source["source_instance_id"],
             source["exporter_signing_key_id"],
+            source["account_identity_sha256"],
+            source["account_identity_scheme"],
+            source["account_identity_key_id"],
+            source["account_currency"],
+            source["account_trade_allowed"],
+            source["account_trade_expert"],
+            source["terminal_trade_allowed"],
+            source["terminal_tradeapi_disabled"],
         )
         for source in locked_sources.values()
     }
@@ -1610,6 +1726,16 @@ def register_forward_contract(
         for symbol in REQUIRED_SYMBOLS
     }
     build_identity_hash = _sha256_bytes(_canonical_json_bytes(locked_ruleset))
+    registered = _trusted_clock_timestamp(
+        field="registered_at_precommit",
+        clock_provider=clock_provider,
+    )
+    if registered < registration_started_at:
+        raise EvidenceValidationError("TRUSTED_CLOCK_ROLLBACK", "registered_at")
+    if not registered < observation_start < blind:
+        raise EvidenceValidationError("FORWARD_WINDOW_INVALID")
+    if snapshot_created > registered:
+        raise EvidenceValidationError("SNAPSHOT_CREATED_AFTER_CONTRACT")
     contract = _attach_payload_hash(
         {
             "schema_version": FORWARD_CONTRACT_SCHEMA_VERSION,
@@ -1949,17 +2075,17 @@ def _prepare_append(
     clock_provider: Callable[[], object] | None,
     exported_at: object,
 ) -> tuple[Path, dict, bytes, pd.Timestamp, pd.Timestamp]:
-    directory, contract, key = _load_forward_contract(root, contract_id, signing_key)
-    _require_build_identity(contract, build_identity_provider)
-    seal = _load_seal(directory, contract, key)
-    if seal["sealed"]:
-        raise EvidenceValidationError("FORWARD_CONTRACT_SEALED")
     exported = _utc_timestamp(exported_at, "exported_at")
     observed = _require_current_clock_claim(
         exported,
         field="exported_at",
         clock_provider=clock_provider,
     )
+    directory, contract, key = _load_forward_contract(root, contract_id, signing_key)
+    _require_build_identity(contract, build_identity_provider)
+    seal = _load_seal(directory, contract, key)
+    if seal["sealed"]:
+        raise EvidenceValidationError("FORWARD_CONTRACT_SEALED")
     blind = _utc_timestamp(contract["blind_until_utc"], "blind_until_utc")
     ingestion_deadline = _utc_timestamp(
         contract["ingestion_deadline_utc"],
@@ -1976,6 +2102,74 @@ def _prepare_append(
     if not verification["valid"]:
         raise EvidenceValidationError("EXISTING_EVIDENCE_INVALID", contract_id)
     return directory, contract, key, exported, blind
+
+
+def _recheck_append_clock(
+    exported: pd.Timestamp,
+    contract: Mapping[str, object],
+    *,
+    clock_provider: Callable[[], object] | None,
+    earliest_at: pd.Timestamp,
+    earliest_code: str,
+    latest_at: pd.Timestamp,
+    latest_code: str,
+    detail: str = "",
+) -> pd.Timestamp:
+    """Revalidate the trusted clock immediately before the first durable write.
+
+    Append preparation deliberately performs expensive identity and chain
+    verification.  The caller-supplied export claim can become stale during
+    that work, so it is not sufficient to check it only at function entry.
+    """
+
+    observed = _require_current_clock_claim(
+        exported,
+        field="exported_at_precommit",
+        clock_provider=clock_provider,
+    )
+    ingestion_deadline = _utc_timestamp(
+        contract["ingestion_deadline_utc"],
+        "ingestion_deadline_utc",
+    )
+    if observed > ingestion_deadline:
+        raise EvidenceValidationError("POST_BLIND_APPEND_REJECTED")
+    if observed < earliest_at:
+        raise EvidenceValidationError(earliest_code, detail)
+    if observed > latest_at:
+        raise EvidenceValidationError(latest_code, detail)
+    return observed
+
+
+def _observe_append_clock(
+    contract: Mapping[str, object],
+    *,
+    clock_provider: Callable[[], object] | None,
+    transaction_started_at: pd.Timestamp,
+    earliest_at: pd.Timestamp,
+    earliest_code: str,
+    latest_at: pd.Timestamp,
+    latest_code: str,
+    detail: str = "",
+) -> pd.Timestamp:
+    """Check the actual trusted clock without reusing a stale caller claim."""
+
+    observed = _trusted_clock_timestamp(
+        field="append_transaction",
+        clock_provider=clock_provider,
+    )
+    if observed < transaction_started_at:
+        raise EvidenceValidationError("TRUSTED_CLOCK_ROLLBACK", detail)
+    ingestion_deadline = _utc_timestamp(
+        contract["ingestion_deadline_utc"],
+        "ingestion_deadline_utc",
+    )
+    if observed > ingestion_deadline:
+        raise EvidenceValidationError("POST_BLIND_APPEND_REJECTED")
+    if observed < earliest_at:
+        raise EvidenceValidationError(earliest_code, detail)
+    if observed > latest_at:
+        raise EvidenceValidationError(latest_code, detail)
+    return observed
 
 
 def _append_forward_segment_unlocked(
@@ -2064,6 +2258,17 @@ def _append_forward_segment_unlocked(
             raise EvidenceValidationError("BAR_COVERAGE_GAP", symbol)
     csv_bytes = _canonical_csv_bytes(data)
     canonical = _normalize_segment_frame(pd.read_csv(io.BytesIO(csv_bytes)))
+    if _prepared is None:
+        exported = _recheck_append_clock(
+            exported,
+            contract,
+            clock_provider=clock_provider,
+            earliest_at=finalized_at,
+            earliest_code="BAR_NOT_FINALIZED",
+            latest_at=latest_append,
+            latest_code="SEGMENT_APPEND_LATE",
+            detail=symbol,
+        )
     filename = f"{next_sequence:06d}.csv"
     relative_file = f"segments/{symbol}/{filename}"
     segment = _attach_payload_hash(
@@ -2092,6 +2297,17 @@ def _append_forward_segment_unlocked(
         "segment_payload_sha256",
     )
     segment = _attach_hmac(segment, key, "segment_hmac_sha256")
+    if _prepared is None:
+        _recheck_append_clock(
+            exported,
+            contract,
+            clock_provider=clock_provider,
+            earliest_at=finalized_at,
+            earliest_code="BAR_NOT_FINALIZED",
+            latest_at=latest_append,
+            latest_code="SEGMENT_APPEND_LATE",
+            detail=symbol,
+        )
     symbol_directory = _safe_directory(
         directory, "segments", symbol, create=True
     )
@@ -2285,6 +2501,17 @@ def _append_raw_tick_partition_unlocked(
                 raise EvidenceValidationError("SOURCE_TICK_SEQUENCE_GAP", symbol)
     csv_bytes = _canonical_csv_bytes(data)
     canonical = _normalize_raw_tick_frame(pd.read_csv(io.BytesIO(csv_bytes)))
+    if _prepared is None:
+        exported = _recheck_append_clock(
+            exported,
+            contract,
+            clock_provider=clock_provider,
+            earliest_at=last_at,
+            earliest_code="RAW_TICK_EXPORT_BEFORE_DATA",
+            latest_at=latest_append,
+            latest_code="RAW_TICK_APPEND_LATE",
+            detail=symbol,
+        )
     filename = f"{next_sequence:06d}.csv"
     relative_file = f"raw_ticks/{symbol}/{filename}"
     partition = _attach_payload_hash(
@@ -2319,6 +2546,17 @@ def _append_raw_tick_partition_unlocked(
         "partition_payload_sha256",
     )
     partition = _attach_hmac(partition, key, "partition_hmac_sha256")
+    if _prepared is None:
+        _recheck_append_clock(
+            exported,
+            contract,
+            clock_provider=clock_provider,
+            earliest_at=last_at,
+            earliest_code="RAW_TICK_EXPORT_BEFORE_DATA",
+            latest_at=latest_append,
+            latest_code="RAW_TICK_APPEND_LATE",
+            detail=symbol,
+        )
     symbol_directory = _safe_directory(
         directory, "raw_ticks", symbol, create=True
     )
@@ -2493,10 +2731,21 @@ def _validate_paired_broker_provenance(
         "broker_legal_name": source["broker_legal_name"],
         "server": source["broker_server"],
         "environment": source["environment"],
+        "account_identity_sha256": source["account_identity_sha256"],
+        "account_identity_scheme": source["account_identity_scheme"],
+        "account_identity_key_id": source["account_identity_key_id"],
+        "account_currency": source["account_currency"],
+        "account_trade_allowed": source["account_trade_allowed"],
+        "account_trade_expert": source["account_trade_expert"],
+        "terminal_trade_allowed": source["terminal_trade_allowed"],
+        "terminal_tradeapi_disabled": source["terminal_tradeapi_disabled"],
+        "account_alias_sha256": canonical_evidence_payload_sha256(
+            {"account_alias": source["source_instance_id"]}
+        ),
         "canonical_symbol": symbol,
         "broker_symbol": source["broker_symbol"],
         "instrument_spec": contract["instrument_specs"][symbol],
-        "expected_login_verified_at_runtime": True,
+        "account_identity_verified_at_runtime": True,
     }
     if any(
         broker_binding.get(field) != expected
@@ -2506,50 +2755,118 @@ def _validate_paired_broker_provenance(
             "PAIRED_COMMIT_BROKER_METADATA_BINDING_MISMATCH",
             symbol,
         )
-    for identity_hash_field in (
-        "account_identity_sha256",
-        "account_alias_sha256",
-    ):
-        try:
-            _require_sha256(
-                broker_binding.get(identity_hash_field),
-                identity_hash_field,
-            )
-        except EvidenceValidationError as exc:
-            raise EvidenceValidationError(
-                "PAIRED_COMMIT_BROKER_IDENTITY_INVALID",
-                symbol,
-            ) from exc
-    account_currency = broker_binding.get("account_currency")
-    if not isinstance(account_currency, str) or not account_currency.strip():
-        raise EvidenceValidationError(
-            "PAIRED_COMMIT_BROKER_METADATA_BINDING_MISMATCH",
-            symbol,
-        )
+    account_currency = source["account_currency"]
 
     binding_hash = canonical_evidence_payload_sha256(broker_binding)
     if (
-        coverage_metadata.get("schema_version") != "broker-export-coverage-v2"
+        coverage_metadata.get("schema_version") != "broker-export-coverage-v3"
         or coverage_metadata.get("broker_binding_sha256") != binding_hash
     ):
         raise EvidenceValidationError(
             "PAIRED_COMMIT_COVERAGE_METADATA_BINDING_MISMATCH",
             symbol,
         )
+    try:
+        requested_start = _utc_timestamp(
+            coverage_metadata.get("requested_start_at_utc"),
+            "requested_start_at_utc",
+        )
+        requested_end = _utc_timestamp(
+            coverage_metadata.get("requested_end_at_utc"),
+            "requested_end_at_utc",
+        )
+        observed_left = _utc_timestamp(
+            coverage_metadata.get("observed_left_boundary_at_utc"),
+            "observed_left_boundary_at_utc",
+        )
+        observed_right = _utc_timestamp(
+            coverage_metadata.get("observed_right_boundary_at_utc"),
+            "observed_right_boundary_at_utc",
+        )
+    except EvidenceValidationError as exc:
+        raise EvidenceValidationError(
+            "PAIRED_COMMIT_COVERAGE_BOUNDARY_INVALID",
+            symbol,
+        ) from exc
+    if (
+        requested_end <= requested_start
+        or coverage_metadata.get("boundary_tolerance_seconds")
+        != SESSION_BOUNDARY_TOLERANCE_SECONDS
+    ):
+        raise EvidenceValidationError(
+            "PAIRED_COMMIT_COVERAGE_BOUNDARY_INVALID",
+            symbol,
+        )
+    intervals = contract["session_calendars"][symbol]["market_open_intervals"]
+    session_open = any(
+        requested_start
+        == _utc_timestamp(item["open_at_utc"], "calendar_open_at_utc")
+        for item in intervals
+    )
+    session_close = any(
+        requested_end
+        == _utc_timestamp(item["close_at_utc"], "calendar_close_at_utc")
+        for item in intervals
+    )
+    left_mode = coverage_metadata.get("left_boundary_mode")
+    right_mode = coverage_metadata.get("right_boundary_mode")
+    left_valid = (
+        observed_left <= requested_start
+        if left_mode == "BRACKETED"
+        else (
+            session_open
+            and left_mode == "SESSION_OPEN_FIRST_TICK"
+            and requested_start
+            <= observed_left
+            <= requested_start
+            + pd.to_timedelta(
+                SESSION_BOUNDARY_TOLERANCE_SECONDS,
+                unit="s",
+            )
+        )
+    )
+    right_valid = (
+        observed_right >= requested_end
+        if right_mode == "BRACKETED"
+        else (
+            session_close
+            and right_mode == "SESSION_CLOSE_LAST_TICK"
+            and requested_end
+            - pd.to_timedelta(
+                SESSION_BOUNDARY_TOLERANCE_SECONDS,
+                unit="s",
+            )
+            <= observed_right
+            < requested_end
+        )
+    )
+    if not left_valid or not right_valid:
+        raise EvidenceValidationError(
+            "PAIRED_COMMIT_COVERAGE_BOUNDARY_INVALID",
+            symbol,
+        )
 
     expected_observed_facts = {
         "account_identity_sha256": broker_binding["account_identity_sha256"],
+        "account_identity_scheme": broker_binding["account_identity_scheme"],
+        "account_identity_key_id": broker_binding["account_identity_key_id"],
         "account_alias_sha256": broker_binding["account_alias_sha256"],
         "broker_legal_name": broker_binding["broker_legal_name"],
         "server": broker_binding["server"],
         "environment": broker_binding["environment"],
         "account_currency": account_currency,
+        "account_trade_allowed": broker_binding["account_trade_allowed"],
+        "account_trade_expert": broker_binding["account_trade_expert"],
+        "terminal_trade_allowed": broker_binding["terminal_trade_allowed"],
+        "terminal_tradeapi_disabled": broker_binding[
+            "terminal_tradeapi_disabled"
+        ],
         "canonical_symbol": broker_binding["canonical_symbol"],
         "broker_symbol": broker_binding["broker_symbol"],
         "instrument_spec_sha256": canonical_evidence_payload_sha256(
             broker_binding["instrument_spec"]
         ),
-        "login_match": True,
+        "account_identity_match": True,
     }
     observed_facts = coverage_metadata.get("broker_binding_observed_facts")
     if not isinstance(observed_facts, Mapping):
@@ -2755,7 +3072,7 @@ def append_paired_forward_evidence(
         clock_provider,
         exported_at,
     )
-    directory, contract, key, exported, _ = prepared
+    directory, contract, key, exported, blind = prepared
     normalized_symbol = str(symbol or "").upper()
     if normalized_symbol not in REQUIRED_SYMBOLS:
         raise EvidenceValidationError("SYMBOL_NOT_REGISTERED", normalized_symbol)
@@ -2801,6 +3118,55 @@ def append_paired_forward_evidence(
         broker_binding,
         coverage_metadata,
     )
+    normalized_raw = _normalize_raw_tick_frame(raw_tick_frame)
+    normalized_bars = _normalize_segment_frame(bar_frame)
+    if normalized_raw.empty:
+        raise EvidenceValidationError("RAW_TICK_PARTITION_EMPTY")
+    if normalized_bars.empty:
+        raise EvidenceValidationError("SEGMENT_EMPTY")
+    paired_timeframe = pd.to_timedelta(TIMEFRAME_SECONDS, unit="s")
+    paired_finalization = pd.to_timedelta(
+        FINALIZATION_LAG_SECONDS,
+        unit="s",
+    )
+    paired_bar_finalized_at = (
+        normalized_bars["open_time_utc"].iloc[-1]
+        + paired_timeframe
+        + paired_finalization
+    )
+    paired_bar_latest_append = paired_bar_finalized_at + pd.to_timedelta(
+        int(contract["max_append_lag_seconds"]),
+        unit="s",
+    )
+    paired_capture_end = (
+        _utc_timestamp(capture_end_at, "capture_end_at")
+        if capture_end_at is not None
+        else normalized_raw["time_utc"].iloc[-1].floor("15min")
+        + paired_timeframe
+    )
+    _require_m15_alignment(paired_capture_end, "capture_end_at")
+    paired_raw_latest_append = paired_capture_end + pd.to_timedelta(
+        FINALIZATION_LAG_SECONDS + int(contract["max_append_lag_seconds"]),
+        unit="s",
+    )
+    paired_latest_append = min(
+        paired_bar_latest_append,
+        paired_raw_latest_append,
+    )
+    exported = _recheck_append_clock(
+        exported,
+        contract,
+        clock_provider=clock_provider,
+        earliest_at=max(
+            paired_bar_finalized_at,
+            normalized_raw["time_utc"].iloc[-1],
+        ),
+        earliest_code="BAR_NOT_FINALIZED",
+        latest_at=paired_latest_append,
+        latest_code="PAIRED_APPEND_LATE",
+        detail=normalized_symbol,
+    )
+    prepared = (directory, contract, key, exported, blind)
     pending_path = _write_paired_pending(
         directory,
         contract,
@@ -2842,6 +3208,19 @@ def append_paired_forward_evidence(
         build_identity_provider=build_identity_provider,
         _prepared=prepared,
     )
+    _observe_append_clock(
+        contract,
+        clock_provider=clock_provider,
+        transaction_started_at=exported,
+        earliest_at=max(
+            paired_bar_finalized_at,
+            normalized_raw["time_utc"].iloc[-1],
+        ),
+        earliest_code="BAR_NOT_FINALIZED",
+        latest_at=paired_latest_append,
+        latest_code="PAIRED_APPEND_LATE",
+        detail=normalized_symbol,
+    )
     paired_commit = _write_paired_commit(
         directory,
         contract,
@@ -2855,6 +3234,19 @@ def append_paired_forward_evidence(
         broker_binding_sha256=broker_binding_sha256,
         coverage_metadata_sha256=coverage_metadata_sha256,
         committed_at=exported,
+    )
+    _observe_append_clock(
+        contract,
+        clock_provider=clock_provider,
+        transaction_started_at=exported,
+        earliest_at=max(
+            paired_bar_finalized_at,
+            normalized_raw["time_utc"].iloc[-1],
+        ),
+        earliest_code="BAR_NOT_FINALIZED",
+        latest_at=paired_latest_append,
+        latest_code="PAIRED_APPEND_LATE",
+        detail=normalized_symbol,
     )
     try:
         pending_path.unlink()
@@ -3470,7 +3862,7 @@ def _verify_paired_commits_for_symbol(
                     coverage_provenance_valid = True
                 coverage_binding_valid = (
                     coverage_metadata.get("schema_version")
-                    == "broker-export-coverage-v2"
+                    == "broker-export-coverage-v3"
                     and coverage_metadata.get("broker_binding_sha256")
                     == commit.get("broker_binding_sha256")
                     and coverage_provenance_valid
@@ -3543,7 +3935,9 @@ def _reconcile_bars_and_ticks(
         return []
     bars = pd.concat(bar_frames, ignore_index=True).sort_values("open_time_utc")
     ticks = pd.concat(raw_frames, ignore_index=True).sort_values(
-        ["time_msc"] + (["source_sequence"] if "source_sequence" in raw_frames[0] else [])
+        ["time_msc"]
+        + (["source_sequence"] if "source_sequence" in raw_frames[0] else []),
+        kind="mergesort",
     )
     working = ticks.set_index("time_utc")
     derived = (

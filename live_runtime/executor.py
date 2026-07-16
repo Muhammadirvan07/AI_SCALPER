@@ -28,7 +28,6 @@ from .contracts import (
     CanonicalContract,
     TradeIntent,
     canonical_sha256,
-    canonicalize,
     require_utc,
 )
 from .controls import (
@@ -42,6 +41,7 @@ from .journal import (
     DuplicateIntentError,
     ExecutionJournal,
     ExecutorFenceError,
+    InvalidTransitionError,
     IntentRecord,
     KillSwitchLatchedError,
     SubmissionLimitError,
@@ -104,30 +104,6 @@ class ExecutionOutcome(CanonicalContract):
         if self.live_allowed or self.safe_to_demo_auto_order:
             raise ValueError("execution outcome cannot change hard policy locks")
         object.__setattr__(self, "reason_codes", reasons)
-
-
-def _preflight_payload(preflight: Any) -> dict[str, Any]:
-    return canonicalize(
-        {
-            "intent_id": preflight.intent_id,
-            "passed": preflight.passed,
-            "reason": preflight.reason,
-            "broker_symbol": preflight.broker_symbol,
-            "intent_sha256": preflight.intent_sha256,
-            "broker_spec_sha256": preflight.broker_spec_sha256,
-            "request": preflight.request,
-            "request_sha256": preflight.request_sha256,
-            "broker_retcode": preflight.broker_retcode,
-            "checked_at_utc": preflight.checked_at_utc,
-            "valid_until_utc": preflight.valid_until_utc,
-            "current_bid": preflight.current_bid,
-            "current_ask": preflight.current_ask,
-            "tick_time_utc": preflight.tick_time_utc,
-            "allowed_deviation_points": preflight.allowed_deviation_points,
-            "estimated_stop_risk_cash": preflight.estimated_stop_risk_cash,
-            "estimated_margin_cash": preflight.estimated_margin_cash,
-        }
-    )
 
 
 class ExecutionCoordinator:
@@ -590,11 +566,10 @@ class ExecutionCoordinator:
             )
 
         risk = evaluate_risk(intent, broker_spec, risk_context)
-        self.journal.append_receipt(
+        self.journal.record_risk_decision(
             intent.intent_id,
-            "RISK_DECISION",
-            risk.to_canonical_dict(),
-            now,
+            risk,
+            occurred_at=now,
         )
         if not risk.allowed:
             latched_reasons = {
@@ -640,11 +615,10 @@ class ExecutionCoordinator:
                 now=now,
                 risk=risk,
             )
-        self.journal.append_receipt(
+        self.journal.record_mt5_preflight(
             intent.intent_id,
-            "MT5_PREFLIGHT",
-            _preflight_payload(preflight),
-            now,
+            preflight,
+            occurred_at=now,
         )
         preflight_reasons: list[str] = []
         if not preflight.passed:
@@ -709,12 +683,6 @@ class ExecutionCoordinator:
                 broker_spec,
                 expected_equity=risk_context.equity,
                 now=now,
-            )
-            self.journal.append_receipt(
-                intent.intent_id,
-                "SUBMISSION_GUARD",
-                canonicalize(guard),
-                now,
             )
         except (
             AccountBindingError,
@@ -803,15 +771,15 @@ class ExecutionCoordinator:
             refreshed_reasons.append("PREFLIGHT_EXPIRED_AT_RESERVATION")
         if reserve_now >= model_binding.valid_until:
             refreshed_reasons.append("MODEL_BINDING_EXPIRED_AT_RESERVATION")
-        guard_checked_at = guard.get("checked_at_utc")
-        if not isinstance(guard_checked_at, datetime):
-            refreshed_reasons.append("SUBMISSION_GUARD_TIMESTAMP_MISSING")
-        else:
-            guard_age = (reserve_now - require_utc(
-                "submission guard checked_at", guard_checked_at
-            )).total_seconds()
-            if guard_age < 0 or guard_age > MAX_RUNTIME_FACT_AGE_SECONDS:
-                refreshed_reasons.append("SUBMISSION_GUARD_STALE_AT_RESERVATION")
+        guard_age = (
+            reserve_now
+            - require_utc(
+                "submission guard checked_at",
+                guard.checked_at_utc,
+            )
+        ).total_seconds()
+        if guard_age < 0 or guard_age > MAX_RUNTIME_FACT_AGE_SECONDS:
+            refreshed_reasons.append("SUBMISSION_GUARD_STALE_AT_RESERVATION")
         if refreshed_reasons:
             return self._reject(
                 record,
@@ -821,10 +789,27 @@ class ExecutionCoordinator:
             )
         permit_validation = refreshed_validation
         try:
+            submission_evidence = self.journal.authorize_submission_evidence(
+                intent.intent_id,
+                risk_decision=risk,
+                preflight=preflight,
+                submission_guard=guard,
+                broker_spec=broker_spec,
+                occurred_at=reserve_now,
+            )
+        except (InvalidTransitionError, TypeError, ValueError):
+            return self._reject(
+                record,
+                ("SUBMISSION_EVIDENCE_BINDING_FAILED",),
+                now=reserve_now,
+                risk=risk,
+            )
+        try:
             record = self.journal.reserve_submission(
                 intent.intent_id,
                 owner_id=owner_id,
                 fence_token=fence_token,
+                submission_evidence=submission_evidence,
                 details={"fence_token": fence_token, "owner_id": owner_id},
                 occurred_at=reserve_now,
             )
@@ -875,11 +860,23 @@ class ExecutionCoordinator:
                 manual_demo_approval_validation=refreshed_manual_validation,
                 now=reserve_now,
             )
-        except (ExecutionLockedError, TypeError, ValueError):
-            return self._reject(
-                record,
-                ("EXECUTION_CAPABILITY_BINDING_FAILED",),
-                now=reserve_now,
+        except (ExecutionLockedError, TypeError, ValueError) as exc:
+            uncertain = self.journal.transition(
+                intent.intent_id,
+                "UNCERTAIN",
+                expected_state="SUBMITTING",
+                details={
+                    "reason_codes": ["EXECUTION_CAPABILITY_BINDING_FAILED"],
+                    "error": type(exc).__name__,
+                    "retry_allowed": False,
+                },
+                occurred_at=reserve_now,
+                last_error="EXECUTION_CAPABILITY_BINDING_FAILED",
+            )
+            return self._outcome(
+                uncertain,
+                status="SUBMISSION_HELD_BEFORE_SEND",
+                reasons=("EXECUTION_CAPABILITY_BINDING_FAILED",),
                 risk=risk,
             )
         submission_now = self._trusted_now()
@@ -888,17 +885,20 @@ class ExecutionCoordinator:
             or submission_now >= preflight.valid_until_utc
             or submission_now >= intent.expires_at
         ):
-            rejected = self.journal.transition(
+            uncertain = self.journal.transition(
                 intent.intent_id,
-                "REJECTED",
+                "UNCERTAIN",
                 expected_state="SUBMITTING",
-                details={"reason_codes": ["EXECUTION_EVIDENCE_EXPIRED_BEFORE_SEND"]},
+                details={
+                    "reason_codes": ["EXECUTION_EVIDENCE_EXPIRED_BEFORE_SEND"],
+                    "retry_allowed": False,
+                },
                 occurred_at=submission_now,
                 last_error="EXECUTION_EVIDENCE_EXPIRED_BEFORE_SEND",
             )
             return self._outcome(
-                rejected,
-                status="SUBMISSION_REJECTED_BEFORE_SEND",
+                uncertain,
+                status="SUBMISSION_HELD_BEFORE_SEND",
                 reasons=("EXECUTION_EVIDENCE_EXPIRED_BEFORE_SEND",),
                 risk=risk,
             )
@@ -919,17 +919,20 @@ class ExecutionCoordinator:
                     now=submission_now,
                 )
         except KillSwitchLatchedError as exc:
-            rejected = self.journal.transition(
+            uncertain = self.journal.transition(
                 intent.intent_id,
-                "REJECTED",
+                "UNCERTAIN",
                 expected_state="SUBMITTING",
-                details={"error": type(exc).__name__},
+                details={
+                    "error": type(exc).__name__,
+                    "retry_allowed": False,
+                },
                 occurred_at=submission_now,
                 last_error=str(exc),
             )
             return self._outcome(
-                rejected,
-                status="FINAL_SUBMISSION_GUARD_REJECTED",
+                uncertain,
+                status="FINAL_SUBMISSION_GUARD_HOLD",
                 reasons=("KILL_SWITCH_LATCHED_AT_FINAL_GUARD",),
                 risk=risk,
             )
@@ -961,17 +964,20 @@ class ExecutionCoordinator:
                 risk=risk,
             )
         except (ExecutionLockedError, PreflightRejectedError, AccountBindingError) as exc:
-            rejected = self.journal.transition(
+            uncertain = self.journal.transition(
                 intent.intent_id,
-                "REJECTED",
+                "UNCERTAIN",
                 expected_state="SUBMITTING",
-                details={"error": type(exc).__name__},
+                details={
+                    "error": type(exc).__name__,
+                    "retry_allowed": False,
+                },
                 occurred_at=submission_now,
                 last_error=str(exc),
             )
             return self._outcome(
-                rejected,
-                status="SUBMISSION_REJECTED_BEFORE_SEND",
+                uncertain,
+                status="SUBMISSION_HELD_BEFORE_SEND",
                 reasons=(type(exc).__name__.upper(),),
                 risk=risk,
             )
@@ -992,25 +998,11 @@ class ExecutionCoordinator:
                 risk=risk,
             )
 
-        self.journal.append_receipt(
-            intent.intent_id,
-            "EXECUTION_RECEIPT",
-            receipt.to_canonical_dict(),
-            submission_now,
-        )
-        next_state = receipt.state
-        if next_state not in {"ACKNOWLEDGED", "PARTIAL", "FILLED", "REJECTED"}:
-            next_state = "UNCERTAIN"
-        updated = self.journal.transition(
-            intent.intent_id,
-            next_state,
-            expected_state="SUBMITTING",
-            details={"receipt_id": receipt.receipt_id},
+        updated = self.journal.record_execution_receipt(
+            receipt,
             occurred_at=submission_now,
-            broker_order_ticket=receipt.order_ticket,
-            filled_volume=receipt.filled_volume,
-            protective_sl_tp_confirmed=False,
         )
+        next_state = updated.state
         realized_slippage_points = (
             max(0.0, float(receipt.slippage_price or 0.0)) / broker_spec.point
         )

@@ -21,6 +21,7 @@ SCHEMA_VERSION = "1.0"
 ENTRY_WINDOW_SECONDS = 10
 _HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
 _DECISION_SNAPSHOT_SEAL = object()
+_EXECUTION_RECEIPT_SEAL = object()
 _M15_SECONDS = 15 * 60
 
 
@@ -516,8 +517,13 @@ class ExecutionReceipt(CanonicalContract):
     take_profit: float | None = None
     actual_risk_cash: float | None = None
     schema_version: str = SCHEMA_VERSION
+    _seal: InitVar[object | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _EXECUTION_RECEIPT_SEAL:
+            raise TypeError(
+                "ExecutionReceipt can only be created by the broker adapter"
+            )
         object.__setattr__(self, "intent_id", require_text("intent_id", self.intent_id))
         state = require_text("state", self.state, upper=True)
         allowed_states = {
@@ -595,6 +601,12 @@ class ExecutionReceipt(CanonicalContract):
     @property
     def receipt_id(self) -> str:
         return f"receipt_{self.content_sha256[:32]}"
+
+
+def _mint_execution_receipt(**values: Any) -> ExecutionReceipt:
+    """Internal broker-adapter boundary; direct receipt construction is denied."""
+
+    return ExecutionReceipt(**values, _seal=_EXECUTION_RECEIPT_SEAL)
 
 
 __all__ = [

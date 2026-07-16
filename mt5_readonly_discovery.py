@@ -6,12 +6,15 @@ import argparse
 import json
 from pathlib import Path
 
+from live_runtime.evidence_bootstrap import KEY_NAME
+from live_runtime.evidence_credentials import WindowsEvidenceKeyStore
 from live_runtime.mt5_discovery import (
     MT5DiscoveryError,
     discover_mt5_facts,
     utc_now,
     write_discovery_exclusive,
 )
+from live_runtime.mt5_readonly import ReadOnlyMT5Facade
 
 
 def _candidate(path: Path, candidate_id: str) -> dict[str, object]:
@@ -37,6 +40,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     candidate = _candidate(args.config, args.candidate)
+    signing_key = WindowsEvidenceKeyStore().load(KEY_NAME)
 
     import MetaTrader5 as mt5  # Windows-only dependency, intentionally late
 
@@ -44,11 +48,12 @@ def main() -> int:
         raise MT5DiscoveryError(f"MT5 initialize failed: {mt5.last_error()}")
     try:
         receipt = discover_mt5_facts(
-            mt5,
+            ReadOnlyMT5Facade(mt5),
             candidate_id=args.candidate,
             expected_server=str(candidate["server"]),
             broker_symbols=candidate["broker_symbols_observed"],
             captured_at=utc_now(),
+            signing_key=signing_key,
         )
         destination = write_discovery_exclusive(args.output, receipt)
         print(f"Read-only discovery written: {destination}")

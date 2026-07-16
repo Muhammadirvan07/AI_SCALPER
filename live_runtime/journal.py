@@ -15,7 +15,7 @@ import secrets
 import sqlite3
 import threading
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping
@@ -31,6 +31,7 @@ UTC = timezone.utc
 JOURNAL_SCHEMA_VERSION = 3
 MAX_DAILY_SUBMISSIONS = 4
 _SUBMISSION_LEASE_SEAL = object()
+_SUBMISSION_EVIDENCE_SEAL = object()
 
 # States that may represent broker exposure or an order whose broker outcome is
 # not yet conclusively known.  The check is repeated inside the same IMMEDIATE
@@ -74,6 +75,24 @@ ALLOWED_TRANSITIONS = {
     "CLOSED": set(),
 }
 
+# State changes with additional transactional safety invariants must never be
+# reachable through the generic state-machine API.  ``SUBMITTING`` is reserved
+# atomically by ``reserve_submission()``, which also verifies the executor
+# fence, latched kill switch, global exposure, daily limit, and bound receipts.
+RESERVE_ONLY_TRANSITION_TARGETS = frozenset({"SUBMITTING"})
+BROKER_CONCLUSIVE_TRANSITION_TARGETS = frozenset(
+    {"ACKNOWLEDGED", "PARTIAL", "FILLED", "CLOSED"}
+)
+PRIVILEGED_RECEIPT_TYPES = frozenset(
+    {
+        "RISK_DECISION",
+        "MT5_PREFLIGHT",
+        "SUBMISSION_GUARD",
+        "EXECUTION_RECEIPT",
+        "RECONCILIATION_RECEIPT",
+    }
+)
+
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
@@ -112,6 +131,46 @@ class IntentRecord:
     created_at_utc: datetime
     updated_at_utc: datetime
     last_error: str | None
+
+
+@dataclass(frozen=True)
+class SubmissionEvidenceCapability:
+    """Short-lived capability joining typed risk, broker preflight, and guard."""
+
+    journal_sha256: str
+    intent_id: str
+    risk_decision_sha256: str
+    preflight_sha256: str
+    submission_guard_sha256: str
+    broker_spec_sha256: str
+    issued_at: datetime
+    valid_until: datetime
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _SUBMISSION_EVIDENCE_SEAL:
+            raise TypeError(
+                "SubmissionEvidenceCapability can only be minted by ExecutionJournal"
+            )
+        require_aware_utc(self.issued_at, "submission evidence issued_at")
+        require_aware_utc(self.valid_until, "submission evidence valid_until")
+        if self.valid_until <= self.issued_at:
+            raise ValueError("submission evidence validity window is empty")
+        for field in (
+            "journal_sha256",
+            "risk_decision_sha256",
+            "preflight_sha256",
+            "submission_guard_sha256",
+            "broker_spec_sha256",
+        ):
+            value = str(getattr(self, field) or "").lower()
+            if len(value) != 64 or any(
+                character not in "0123456789abcdef" for character in value
+            ):
+                raise ValueError(f"{field} must be a lowercase SHA-256 hash")
+            object.__setattr__(self, field, value)
+        if not str(self.intent_id or "").strip():
+            raise ValueError("submission evidence intent_id is required")
 
 
 class JournalError(RuntimeError):
@@ -218,7 +277,7 @@ class ExecutionJournal:
             drift = abs((asserted - trusted).total_seconds())
             if drift > RESET_CLOCK_ASSERTION_TOLERANCE_SECONDS:
                 raise ValueError(
-                    "caller reset timestamp disagrees with trusted journal clock"
+                    "caller timestamp disagrees with trusted journal clock"
                 )
         return trusted
 
@@ -458,6 +517,77 @@ class ExecutionJournal:
             ).fetchone()
         return self._row_to_record(row)
 
+    @staticmethod
+    def _transition_locked(
+        connection: sqlite3.Connection,
+        row: sqlite3.Row,
+        to_state: str,
+        *,
+        timestamp: str,
+        details: Mapping[str, Any] | None = None,
+        broker_order_ticket: str | None = None,
+        broker_position_ticket: str | None = None,
+        filled_volume: float | None = None,
+        protective_sl_tp_confirmed: bool | None = None,
+        last_error: str | None = None,
+    ) -> sqlite3.Row:
+        intent_id = str(row["intent_id"])
+        from_state = str(row["state"])
+        if to_state == from_state:
+            return row
+        if to_state not in ALLOWED_TRANSITIONS[from_state]:
+            raise InvalidTransitionError(f"cannot transition {from_state} -> {to_state}")
+
+        next_order = broker_order_ticket or row["broker_order_ticket"]
+        next_position = broker_position_ticket or row["broker_position_ticket"]
+        current_filled = float(row["filled_volume"])
+        if filled_volume is None:
+            next_filled = current_filled
+        else:
+            if (
+                isinstance(filled_volume, bool)
+                or not math.isfinite(float(filled_volume))
+                or float(filled_volume) < 0
+            ):
+                raise ValueError("filled_volume must be finite and nonnegative")
+            next_filled = max(current_filled, float(filled_volume))
+        next_protection = (
+            int(protective_sl_tp_confirmed)
+            if protective_sl_tp_confirmed is not None
+            else row["protective_sl_tp_confirmed"]
+        )
+        connection.execute(
+            """
+            UPDATE intents
+            SET state = ?, updated_at_utc = ?, broker_order_ticket = ?,
+                broker_position_ticket = ?, filled_volume = ?,
+                protective_sl_tp_confirmed = ?,
+                last_error = ?
+            WHERE intent_id = ?
+            """,
+            (
+                to_state,
+                timestamp,
+                next_order,
+                next_position,
+                next_filled,
+                next_protection,
+                last_error,
+                intent_id,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO transitions(
+                intent_id, from_state, to_state, occurred_at_utc, details_json
+            ) VALUES(?, ?, ?, ?, ?)
+            """,
+            (intent_id, from_state, to_state, timestamp, _canonical_json(details)),
+        )
+        return connection.execute(
+            "SELECT * FROM intents WHERE intent_id = ?", (intent_id,)
+        ).fetchone()
+
     def transition(
         self,
         intent_id: str,
@@ -475,6 +605,26 @@ class ExecutionJournal:
         to_state = str(to_state).upper()
         if to_state not in EXECUTION_STATES:
             raise InvalidTransitionError(f"unknown execution state: {to_state}")
+        if to_state in RESERVE_ONLY_TRANSITION_TARGETS:
+            raise InvalidTransitionError(
+                f"{to_state} is reserve-only; use reserve_submission()"
+            )
+        if to_state in BROKER_CONCLUSIVE_TRANSITION_TARGETS:
+            raise InvalidTransitionError(
+                f"{to_state} requires typed broker execution or reconciliation evidence"
+            )
+        if any(
+            value is not None
+            for value in (
+                broker_order_ticket,
+                broker_position_ticket,
+                filled_volume,
+                protective_sl_tp_confirmed,
+            )
+        ):
+            raise InvalidTransitionError(
+                "broker facts require typed execution or reconciliation evidence"
+            )
         timestamp = _iso(occurred_at)
 
         with self._transaction() as connection:
@@ -483,65 +633,23 @@ class ExecutionJournal:
             ).fetchone()
             if row is None:
                 raise KeyError(intent_id)
-            from_state = row["state"]
+            from_state = str(row["state"])
             if expected_state is not None and from_state != expected_state:
                 raise InvalidTransitionError(
                     f"expected {expected_state}, found {from_state} for {intent_id}"
                 )
-            if to_state == from_state:
-                return self._row_to_record(row)
-            if to_state not in ALLOWED_TRANSITIONS[from_state]:
-                raise InvalidTransitionError(f"cannot transition {from_state} -> {to_state}")
-
-            next_order = broker_order_ticket or row["broker_order_ticket"]
-            next_position = broker_position_ticket or row["broker_position_ticket"]
-            current_filled = float(row["filled_volume"])
-            if filled_volume is None:
-                next_filled = current_filled
-            else:
-                if (
-                    isinstance(filled_volume, bool)
-                    or not math.isfinite(float(filled_volume))
-                    or float(filled_volume) < 0
-                ):
-                    raise ValueError("filled_volume must be finite and nonnegative")
-                next_filled = max(current_filled, float(filled_volume))
-            next_protection = (
-                int(protective_sl_tp_confirmed)
-                if protective_sl_tp_confirmed is not None
-                else row["protective_sl_tp_confirmed"]
+            if to_state == "REJECTED" and from_state in GLOBAL_EXPOSURE_STATES:
+                raise InvalidTransitionError(
+                    "broker-exposed intent cannot be released without typed broker evidence"
+                )
+            updated = self._transition_locked(
+                connection,
+                row,
+                to_state,
+                timestamp=timestamp,
+                details=details,
+                last_error=last_error,
             )
-            connection.execute(
-                """
-                UPDATE intents
-                SET state = ?, updated_at_utc = ?, broker_order_ticket = ?,
-                    broker_position_ticket = ?, filled_volume = ?,
-                    protective_sl_tp_confirmed = ?,
-                    last_error = ?
-                WHERE intent_id = ?
-                """,
-                (
-                    to_state,
-                    timestamp,
-                    next_order,
-                    next_position,
-                    next_filled,
-                    next_protection,
-                    last_error,
-                    intent_id,
-                ),
-            )
-            connection.execute(
-                """
-                INSERT INTO transitions(
-                    intent_id, from_state, to_state, occurred_at_utc, details_json
-                ) VALUES(?, ?, ?, ?, ?)
-                """,
-                (intent_id, from_state, to_state, timestamp, _canonical_json(details)),
-            )
-            updated = connection.execute(
-                "SELECT * FROM intents WHERE intent_id = ?", (intent_id,)
-            ).fetchone()
         return self._row_to_record(updated)
 
     def _assert_final_submission_state(
@@ -630,7 +738,7 @@ class ExecutionJournal:
         roll back the one-use authorization record.
         """
 
-        now = require_aware_utc(occurred_at)
+        now = self._trusted_now(occurred_at)
         for field, value in (
             ("execution_gate_sha256", execution_gate_sha256),
             ("authorization_sha256", authorization_sha256),
@@ -700,12 +808,13 @@ class ExecutionJournal:
         )
         try:
             with self._transaction() as connection:
+                final_now = self._trusted_now()
                 self._assert_final_submission_state(
                     connection,
                     intent_id=intent_id,
                     owner_id=owner_id,
                     fence_token=fence_token,
-                    now=now,
+                    now=final_now,
                 )
                 consumption = connection.execute(
                     """
@@ -729,84 +838,484 @@ class ExecutionJournal:
         finally:
             submission_lease._deactivate()
 
-    def record_reconciliation(
+    @staticmethod
+    def _store_privileged_receipt_locked(
+        connection: sqlite3.Connection,
+        *,
+        intent_id: str,
+        receipt_type: str,
+        occurred_at_utc: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        payload_json = _canonical_json(payload)
+        prior = connection.execute(
+            """
+            SELECT payload_json FROM receipts
+            WHERE intent_id=? AND receipt_type=?
+            ORDER BY receipt_id DESC LIMIT 1
+            """,
+            (intent_id, receipt_type),
+        ).fetchone()
+        if prior is not None:
+            if prior["payload_json"] != payload_json:
+                raise InvalidTransitionError(
+                    f"{receipt_type} already exists with different evidence"
+                )
+            return
+        connection.execute(
+            """
+            INSERT INTO receipts(
+                intent_id, receipt_type, occurred_at_utc, payload_json
+            ) VALUES(?, ?, ?, ?)
+            """,
+            (
+                intent_id,
+                receipt_type,
+                occurred_at_utc,
+                payload_json,
+            ),
+        )
+
+    def record_risk_decision(
         self,
         intent_id: str,
+        decision: object,
         *,
-        expected_state: str,
-        details: Mapping[str, Any],
         occurred_at: datetime | None = None,
-        broker_order_ticket: str | None = None,
-        broker_position_ticket: str | None = None,
-        filled_volume: float | None = None,
-        protective_sl_tp_confirmed: bool | None = None,
-        last_error: str | None = None,
-    ) -> IntentRecord:
-        """Atomically attach broker evidence without inventing a state change."""
+    ) -> None:
+        """Persist only a sealed output from the independent risk governor."""
 
-        timestamp = _iso(occurred_at)
+        from .risk import RiskDecision
+
+        if type(decision) is not RiskDecision:
+            raise TypeError("sealed RiskDecision is required")
+        trusted_now = self._trusted_now(occurred_at or decision.evaluated_at)
+        if abs((decision.evaluated_at - trusted_now).total_seconds()) > (
+            RESET_CLOCK_ASSERTION_TOLERANCE_SECONDS
+        ):
+            raise ValueError("risk decision timestamp disagrees with trusted clock")
         with self._transaction() as connection:
             row = connection.execute(
-                "SELECT * FROM intents WHERE intent_id = ?", (intent_id,)
+                "SELECT * FROM intents WHERE intent_id=?", (intent_id,)
             ).fetchone()
             if row is None:
                 raise KeyError(intent_id)
-            if row["state"] != expected_state:
+            if decision.symbol != row["symbol"]:
                 raise InvalidTransitionError(
-                    f"expected {expected_state}, found {row['state']} for {intent_id}"
+                    "risk decision does not bind the journal symbol"
                 )
-            next_order = broker_order_ticket or row["broker_order_ticket"]
-            next_position = broker_position_ticket or row["broker_position_ticket"]
-            current_filled = float(row["filled_volume"])
-            if filled_volume is None:
-                next_filled = current_filled
-            else:
-                if (
-                    isinstance(filled_volume, bool)
-                    or not math.isfinite(float(filled_volume))
-                    or float(filled_volume) < 0
-                ):
-                    raise ValueError("filled_volume must be finite and nonnegative")
-                next_filled = max(current_filled, float(filled_volume))
-            next_protection = (
-                int(protective_sl_tp_confirmed)
-                if protective_sl_tp_confirmed is not None
-                else row["protective_sl_tp_confirmed"]
+            intent_payload = json.loads(row["payload_json"]).get("intent")
+            if not isinstance(intent_payload, Mapping):
+                raise InvalidTransitionError(
+                    "risk decision cannot bind a journal intent payload"
+                )
+            if decision.allowed and abs(
+                float(decision.normalized_lot)
+                - float(intent_payload.get("requested_lot"))
+            ) > 1e-12:
+                raise InvalidTransitionError(
+                    "approved risk decision lot does not bind the immutable intent"
+                )
+            self._store_privileged_receipt_locked(
+                connection,
+                intent_id=intent_id,
+                receipt_type="RISK_DECISION",
+                occurred_at_utc=_iso(trusted_now),
+                payload=decision.to_canonical_dict(),
             )
-            connection.execute(
-                """
-                UPDATE intents
-                SET updated_at_utc=?, broker_order_ticket=?, broker_position_ticket=?,
-                    filled_volume=?, protective_sl_tp_confirmed=?, last_error=?
-                WHERE intent_id=?
-                """,
-                (
-                    timestamp,
-                    next_order,
-                    next_position,
-                    next_filled,
-                    next_protection,
-                    last_error,
-                    intent_id,
-                ),
-            )
-            connection.execute(
-                """
-                INSERT INTO transitions(
-                    intent_id, from_state, to_state, occurred_at_utc, details_json
-                ) VALUES(?, ?, ?, ?, ?)
-                """,
-                (
-                    intent_id,
-                    expected_state,
-                    expected_state,
-                    timestamp,
-                    _canonical_json(details),
-                ),
-            )
-            updated = connection.execute(
-                "SELECT * FROM intents WHERE intent_id = ?", (intent_id,)
+
+    def record_mt5_preflight(
+        self,
+        intent_id: str,
+        preflight: object,
+        *,
+        occurred_at: datetime | None = None,
+    ) -> None:
+        """Persist only the sealed result returned by MT5Adapter.preflight."""
+
+        from .mt5_adapter import MT5Preflight
+
+        if type(preflight) is not MT5Preflight:
+            raise TypeError("sealed MT5Preflight is required")
+        trusted_now = self._trusted_now(occurred_at or preflight.checked_at_utc)
+        if abs((preflight.checked_at_utc - trusted_now).total_seconds()) > (
+            RESET_CLOCK_ASSERTION_TOLERANCE_SECONDS
+        ):
+            raise ValueError("preflight timestamp disagrees with trusted clock")
+        with self._transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM intents WHERE intent_id=?", (intent_id,)
             ).fetchone()
+            if row is None:
+                raise KeyError(intent_id)
+            immutable_payload = json.loads(row["payload_json"])
+            if (
+                preflight.intent_id != intent_id
+                or preflight.broker_spec_sha256
+                != immutable_payload.get("broker_spec_sha256")
+            ):
+                raise InvalidTransitionError(
+                    "MT5 preflight does not bind the immutable intent"
+                )
+            self._store_privileged_receipt_locked(
+                connection,
+                intent_id=intent_id,
+                receipt_type="MT5_PREFLIGHT",
+                occurred_at_utc=_iso(trusted_now),
+                payload=preflight.to_canonical_dict(),
+            )
+
+    def authorize_submission_evidence(
+        self,
+        intent_id: str,
+        *,
+        risk_decision: object,
+        preflight: object,
+        submission_guard: object,
+        broker_spec: object,
+        occurred_at: datetime | None = None,
+    ) -> SubmissionEvidenceCapability:
+        """Mint a short-lived reservation capability from sealed gate outputs."""
+
+        from .contracts import BrokerSpec, canonical_sha256
+        from .mt5_adapter import MT5Preflight, MT5SubmissionGuard
+        from .risk import RiskDecision
+
+        if type(risk_decision) is not RiskDecision or not risk_decision.allowed:
+            raise TypeError("sealed approved RiskDecision is required")
+        if type(preflight) is not MT5Preflight or not preflight.passed:
+            raise TypeError("sealed passed MT5Preflight is required")
+        if type(submission_guard) is not MT5SubmissionGuard:
+            raise TypeError("sealed MT5SubmissionGuard is required")
+        if type(broker_spec) is not BrokerSpec:
+            raise TypeError("validated BrokerSpec is required")
+        trusted_now = self._trusted_now(occurred_at)
+        facts = (
+            risk_decision.evaluated_at,
+            preflight.checked_at_utc,
+            submission_guard.checked_at_utc,
+            broker_spec.captured_at,
+        )
+        ages = tuple((trusted_now - item).total_seconds() for item in facts)
+        if any(age < 0 or age > 1.0 for age in ages):
+            raise InvalidTransitionError(
+                "submission evidence is stale or future-dated"
+            )
+        if trusted_now >= preflight.valid_until_utc:
+            raise InvalidTransitionError("MT5 preflight expired before reservation")
+        with self._transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM intents WHERE intent_id=?", (intent_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(intent_id)
+            if row["state"] != "PREFLIGHT_PASSED":
+                raise InvalidTransitionError(
+                    f"expected PREFLIGHT_PASSED, found {row['state']} for {intent_id}"
+                )
+            immutable_payload = json.loads(row["payload_json"])
+            intent_payload = immutable_payload.get("intent")
+            expected_spec_sha256 = immutable_payload.get("broker_spec_sha256")
+            if not isinstance(intent_payload, Mapping):
+                raise InvalidTransitionError(
+                    "submission evidence cannot bind a journal intent payload"
+                )
+            bindings_match = (
+                risk_decision.symbol == row["symbol"]
+                and abs(
+                    float(risk_decision.normalized_lot)
+                    - float(intent_payload.get("requested_lot"))
+                )
+                <= 1e-12
+                and preflight.intent_id == intent_id
+                and preflight.broker_spec_sha256 == expected_spec_sha256
+                and submission_guard.intent_id == intent_id
+                and submission_guard.account_id == intent_payload.get("account_id")
+                and submission_guard.server == intent_payload.get("server")
+                and submission_guard.symbol == row["symbol"]
+                and submission_guard.active_order_count == 0
+                and submission_guard.active_position_count == 0
+                and submission_guard.broker_spec_sha256 == expected_spec_sha256
+                and broker_spec.content_sha256 == expected_spec_sha256
+            )
+            if not bindings_match:
+                raise InvalidTransitionError(
+                    "submission evidence does not bind the immutable intent"
+                )
+            expected_receipts = {
+                "RISK_DECISION": risk_decision.to_canonical_dict(),
+                "MT5_PREFLIGHT": preflight.to_canonical_dict(),
+            }
+            for receipt_type, expected_payload in expected_receipts.items():
+                prior = connection.execute(
+                    """
+                    SELECT payload_json FROM receipts
+                    WHERE intent_id=? AND receipt_type=?
+                    ORDER BY receipt_id DESC LIMIT 1
+                    """,
+                    (intent_id, receipt_type),
+                ).fetchone()
+                if (
+                    prior is None
+                    or canonical_sha256(json.loads(prior["payload_json"]))
+                    != canonical_sha256(expected_payload)
+                ):
+                    raise InvalidTransitionError(
+                        f"trusted {receipt_type} is missing or mismatched"
+                    )
+            self._store_privileged_receipt_locked(
+                connection,
+                intent_id=intent_id,
+                receipt_type="SUBMISSION_GUARD",
+                occurred_at_utc=_iso(trusted_now),
+                payload=submission_guard.to_canonical_dict(),
+            )
+        return SubmissionEvidenceCapability(
+            journal_sha256=self.journal_sha256,
+            intent_id=intent_id,
+            risk_decision_sha256=risk_decision.content_sha256,
+            preflight_sha256=preflight.content_sha256,
+            submission_guard_sha256=submission_guard.content_sha256,
+            broker_spec_sha256=broker_spec.content_sha256,
+            issued_at=trusted_now,
+            valid_until=min(
+                preflight.valid_until_utc,
+                trusted_now + timedelta(seconds=1),
+            ),
+            _seal=_SUBMISSION_EVIDENCE_SEAL,
+        )
+
+    def record_execution_receipt(
+        self,
+        receipt: object,
+        *,
+        occurred_at: datetime | None = None,
+    ) -> IntentRecord:
+        """Atomically persist one sealed adapter receipt and its broker outcome."""
+
+        from .contracts import ExecutionReceipt  # Avoid an import cycle at module load.
+
+        if type(receipt) is not ExecutionReceipt:
+            raise TypeError("sealed ExecutionReceipt is required")
+        trusted_now = self._trusted_now(occurred_at or receipt.received_at)
+        if abs((receipt.received_at - trusted_now).total_seconds()) > (
+            RESET_CLOCK_ASSERTION_TOLERANCE_SECONDS
+        ):
+            raise ValueError("execution receipt timestamp disagrees with trusted clock")
+        target = str(receipt.state).upper()
+        if target not in {
+            "ACKNOWLEDGED",
+            "PARTIAL",
+            "FILLED",
+            "REJECTED",
+            "UNCERTAIN",
+        }:
+            raise InvalidTransitionError(
+                "execution receipt does not describe a journal broker outcome"
+            )
+        timestamp = _iso(trusted_now)
+        with self._transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM intents WHERE intent_id = ?", (receipt.intent_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(receipt.intent_id)
+            if row["state"] != "SUBMITTING":
+                raise InvalidTransitionError(
+                    f"expected SUBMITTING, found {row['state']} for {receipt.intent_id}"
+                )
+            immutable_payload = json.loads(row["payload_json"])
+            intent_payload = immutable_payload.get("intent")
+            if not isinstance(intent_payload, Mapping):
+                raise InvalidTransitionError(
+                    "execution receipt cannot bind a journal intent payload"
+                )
+            receipt_matches = (
+                receipt.account_id == intent_payload.get("account_id")
+                and receipt.server == intent_payload.get("server")
+                and receipt.symbol == row["symbol"]
+                and receipt.symbol == intent_payload.get("symbol")
+                and abs(
+                    float(receipt.requested_volume)
+                    - float(intent_payload.get("requested_lot"))
+                )
+                <= 1e-12
+            )
+            if not receipt_matches:
+                raise InvalidTransitionError(
+                    "execution receipt does not bind the immutable intent"
+                )
+            payload = receipt.to_canonical_dict()
+            connection.execute(
+                """
+                INSERT INTO receipts(
+                    intent_id, receipt_type, occurred_at_utc, payload_json
+                ) VALUES(?, 'EXECUTION_RECEIPT', ?, ?)
+                """,
+                (
+                    receipt.intent_id,
+                    timestamp,
+                    _canonical_json(payload),
+                ),
+            )
+            updated = self._transition_locked(
+                connection,
+                row,
+                target,
+                timestamp=timestamp,
+                details={"receipt_id": receipt.receipt_id},
+                broker_order_ticket=receipt.order_ticket,
+                filled_volume=receipt.filled_volume,
+                protective_sl_tp_confirmed=False,
+            )
+        return self._row_to_record(updated)
+
+    def apply_reconciliation(
+        self,
+        evidence: object,
+    ) -> IntentRecord:
+        """Apply sealed, validated broker reconciliation evidence atomically."""
+
+        from .reconciliation import _BrokerReconciliationEvidence
+
+        if type(evidence) is not _BrokerReconciliationEvidence:
+            raise TypeError("sealed BrokerReconciliationEvidence is required")
+        trusted_now = self._trusted_now(evidence.observed_at)
+        timestamp = _iso(trusted_now)
+        with self._transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM intents WHERE intent_id = ?", (evidence.intent_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(evidence.intent_id)
+            if row["state"] != evidence.expected_state:
+                raise InvalidTransitionError(
+                    f"expected {evidence.expected_state}, found "
+                    f"{row['state']} for {evidence.intent_id}"
+                )
+            target = evidence.target_state
+            if target in {"PARTIAL", "FILLED"} and (
+                not evidence.broker_position_ticket
+                or evidence.filled_volume is None
+                or float(evidence.filled_volume) <= 0
+            ):
+                raise InvalidTransitionError(
+                    "position reconciliation requires ticket and positive volume"
+                )
+            if target == "ACKNOWLEDGED" and not evidence.broker_order_ticket:
+                raise InvalidTransitionError(
+                    "order reconciliation requires a broker order ticket"
+                )
+            if target == "CLOSED":
+                closed_volume = evidence.details.get("closed_volume")
+                if (
+                    evidence.details.get("source")
+                    != "BROKER_EXIT_DEAL_RECONCILIATION"
+                    or isinstance(closed_volume, bool)
+                    or not math.isfinite(float(closed_volume))
+                    or abs(float(closed_volume) - float(row["filled_volume"])) > 1e-12
+                    or float(row["filled_volume"]) <= 0
+                ):
+                    raise InvalidTransitionError(
+                        "close reconciliation must bind the observed filled volume"
+                    )
+            receipt_payload = {
+                "intent_id": evidence.intent_id,
+                "expected_state": evidence.expected_state,
+                "target_state": target,
+                "observed_at_utc": timestamp,
+                "details": dict(evidence.details),
+                "broker_order_ticket": evidence.broker_order_ticket,
+                "broker_position_ticket": evidence.broker_position_ticket,
+                "filled_volume": evidence.filled_volume,
+                "protective_sl_tp_confirmed": (
+                    evidence.protective_sl_tp_confirmed
+                ),
+                "last_error": evidence.last_error,
+            }
+            connection.execute(
+                """
+                INSERT INTO receipts(
+                    intent_id, receipt_type, occurred_at_utc, payload_json
+                ) VALUES(?, 'RECONCILIATION_RECEIPT', ?, ?)
+                """,
+                (
+                    evidence.intent_id,
+                    timestamp,
+                    _canonical_json(receipt_payload),
+                ),
+            )
+            if target == evidence.expected_state:
+                next_order = (
+                    evidence.broker_order_ticket or row["broker_order_ticket"]
+                )
+                next_position = (
+                    evidence.broker_position_ticket
+                    or row["broker_position_ticket"]
+                )
+                next_filled = float(row["filled_volume"])
+                if evidence.filled_volume is not None:
+                    next_filled = max(
+                        next_filled,
+                        float(evidence.filled_volume),
+                    )
+                next_protection = (
+                    int(evidence.protective_sl_tp_confirmed)
+                    if evidence.protective_sl_tp_confirmed is not None
+                    else row["protective_sl_tp_confirmed"]
+                )
+                connection.execute(
+                    """
+                    UPDATE intents
+                    SET updated_at_utc=?, broker_order_ticket=?,
+                        broker_position_ticket=?, filled_volume=?,
+                        protective_sl_tp_confirmed=?, last_error=?
+                    WHERE intent_id=?
+                    """,
+                    (
+                        timestamp,
+                        next_order,
+                        next_position,
+                        next_filled,
+                        next_protection,
+                        evidence.last_error,
+                        evidence.intent_id,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO transitions(
+                        intent_id, from_state, to_state,
+                        occurred_at_utc, details_json
+                    ) VALUES(?, ?, ?, ?, ?)
+                    """,
+                    (
+                        evidence.intent_id,
+                        target,
+                        target,
+                        timestamp,
+                        _canonical_json(evidence.details),
+                    ),
+                )
+                updated = connection.execute(
+                    "SELECT * FROM intents WHERE intent_id = ?",
+                    (evidence.intent_id,),
+                ).fetchone()
+            else:
+                updated = self._transition_locked(
+                    connection,
+                    row,
+                    target,
+                    timestamp=timestamp,
+                    details=evidence.details,
+                    broker_order_ticket=evidence.broker_order_ticket,
+                    broker_position_ticket=evidence.broker_position_ticket,
+                    filled_volume=evidence.filled_volume,
+                    protective_sl_tp_confirmed=(
+                        evidence.protective_sl_tp_confirmed
+                    ),
+                    last_error=evidence.last_error,
+                )
         return self._row_to_record(updated)
 
     def reserve_submission(
@@ -815,12 +1324,24 @@ class ExecutionJournal:
         *,
         owner_id: str,
         fence_token: int,
+        submission_evidence: SubmissionEvidenceCapability,
         occurred_at: datetime | None = None,
         details: Mapping[str, Any] | None = None,
     ) -> IntentRecord:
         """Check fence + kill switch and reserve SUBMITTING in one transaction."""
 
-        now = require_aware_utc(occurred_at or utc_now())
+        if type(submission_evidence) is not SubmissionEvidenceCapability:
+            raise TypeError("sealed SubmissionEvidenceCapability is required")
+        now = self._trusted_now(occurred_at)
+        if (
+            submission_evidence.journal_sha256 != self.journal_sha256
+            or submission_evidence.intent_id != intent_id
+            or not submission_evidence.issued_at <= now
+            < submission_evidence.valid_until
+        ):
+            raise InvalidTransitionError(
+                "submission evidence capability is stale or mismatched"
+            )
         timestamp = _iso(now)
         with self._transaction() as connection:
             lease = connection.execute(
@@ -896,6 +1417,8 @@ class ExecutionJournal:
                 raise InvalidTransitionError(
                     "submission reservation lacks risk, preflight, or guard receipt"
                 )
+            from .contracts import canonical_sha256
+
             risk_receipt = latest_receipts["RISK_DECISION"]
             preflight_receipt = latest_receipts["MT5_PREFLIGHT"]
             guard_receipt = latest_receipts["SUBMISSION_GUARD"]
@@ -908,6 +1431,14 @@ class ExecutionJournal:
                 and guard_receipt.get("active_order_count") == 0
                 and guard_receipt.get("active_position_count") == 0
                 and guard_receipt.get("broker_spec_sha256")
+                == immutable_payload.get("broker_spec_sha256")
+                and canonical_sha256(risk_receipt)
+                == submission_evidence.risk_decision_sha256
+                and canonical_sha256(preflight_receipt)
+                == submission_evidence.preflight_sha256
+                and canonical_sha256(guard_receipt)
+                == submission_evidence.submission_guard_sha256
+                and submission_evidence.broker_spec_sha256
                 == immutable_payload.get("broker_spec_sha256")
             )
             if not receipt_contract_valid:
@@ -938,6 +1469,13 @@ class ExecutionJournal:
         payload: Mapping[str, Any],
         occurred_at: datetime | None = None,
     ) -> None:
+        normalized_type = str(receipt_type or "").strip().upper()
+        if normalized_type in PRIVILEGED_RECEIPT_TYPES:
+            raise PermissionError(
+                f"{normalized_type} requires the typed journal receipt API"
+            )
+        if not normalized_type:
+            raise ValueError("receipt_type is required")
         with self._transaction() as connection:
             exists = connection.execute(
                 "SELECT 1 FROM intents WHERE intent_id = ?", (intent_id,)
@@ -951,7 +1489,7 @@ class ExecutionJournal:
                 """,
                 (
                     intent_id,
-                    receipt_type.strip().upper(),
+                    normalized_type,
                     _iso(occurred_at),
                     _canonical_json(payload),
                 ),
@@ -1012,7 +1550,7 @@ class ExecutionJournal:
     ) -> int:
         if not owner_id.strip() or lease_seconds <= 0:
             raise ValueError("owner_id and positive lease_seconds are required")
-        now = require_aware_utc(now or utc_now())
+        now = self._trusted_now(now)
         expires = now + timedelta(seconds=lease_seconds)
         with self._transaction() as connection:
             row = connection.execute(
@@ -1051,7 +1589,7 @@ class ExecutionJournal:
         *,
         now: datetime | None = None,
     ) -> None:
-        now = require_aware_utc(now or utc_now())
+        now = self._trusted_now(now)
         with self._reader() as connection:
             row = connection.execute(
                 "SELECT * FROM executor_lease WHERE singleton = 1"
