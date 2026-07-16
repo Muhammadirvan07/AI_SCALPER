@@ -20,6 +20,7 @@ from live_runtime.realtime_diagnostic import (
     DiagnosticIdentity,
     DiagnosticJournal,
     REQUIRED_SYMBOLS,
+    fetch_finalized_m15_bars,
     run_diagnostic_cycle,
 )
 
@@ -119,8 +120,8 @@ class FakeMT5:
         return {"name": symbol}
 
     def copy_rates_from_pos(self, symbol, timeframe, start_pos, count):
-        if timeframe != self.TIMEFRAME_M15 or start_pos != 1:
-            raise AssertionError("diagnostic must request finalized M15 bars")
+        if timeframe != self.TIMEFRAME_M15 or start_pos != 0:
+            raise AssertionError("diagnostic must request M15 bars from current")
         return self.rates[symbol][-count:]
 
     def copy_ticks_range(self, symbol, start, end, flags):
@@ -153,7 +154,7 @@ class RealtimeDiagnosticTests(unittest.TestCase):
         self.assertFalse(hasattr(facade, "order_send"))
         self.assertEqual(
             ROWS,
-            len(facade.copy_rates_from_pos("GOLD.", facade.TIMEFRAME_M15, 1, ROWS)),
+            len(facade.copy_rates_from_pos("GOLD.", facade.TIMEFRAME_M15, 0, ROWS)),
         )
 
         fake = FakeMT5()
@@ -163,7 +164,7 @@ class RealtimeDiagnosticTests(unittest.TestCase):
             MT5ReadOnlyCapabilityError,
             "copy_rates_from_pos",
         ):
-            no_rates.copy_rates_from_pos("GOLD.", no_rates.TIMEFRAME_M15, 1, ROWS)
+            no_rates.copy_rates_from_pos("GOLD.", no_rates.TIMEFRAME_M15, 0, ROWS)
 
     def test_attestation_reports_exact_safe_boolean_mismatches(self) -> None:
         fake = FakeMT5()
@@ -276,6 +277,37 @@ class RealtimeDiagnosticTests(unittest.TestCase):
                 self.assertEqual(4, summary["wins"])
                 self.assertEqual(100.0, summary["win_rate_percent"])
                 self.assertTrue(summary["journal_sha256_chain_valid"])
+
+    def test_active_bar_is_filtered_and_registered_broker_offset_is_bounded(
+        self,
+    ) -> None:
+        fake = FakeMT5()
+        broker_symbol = BROKER_SYMBOLS["XAUUSD"]
+        closed_at = START + timedelta(minutes=15 * ROWS)
+        current = dict(fake.rates[broker_symbol][-1])
+        current["time"] = int(closed_at.timestamp())
+        fake.rates[broker_symbol].append(current)
+        frame, latest_close = fetch_finalized_m15_bars(
+            ReadOnlyMT5Facade(fake),
+            broker_symbol=broker_symbol,
+            count=ROWS,
+            observed_at=closed_at + timedelta(seconds=5),
+        )
+        self.assertEqual(ROWS, len(frame))
+        self.assertEqual(closed_at, latest_close)
+
+        for rows in fake.rates.values():
+            for row in rows:
+                row["time"] = int(row["time"]) + 3 * 60 * 60
+        shifted_frame, shifted_close = fetch_finalized_m15_bars(
+            ReadOnlyMT5Facade(fake),
+            broker_symbol=broker_symbol,
+            count=ROWS,
+            observed_at=closed_at + timedelta(seconds=5),
+            broker_time_offset_seconds=3 * 60 * 60,
+        )
+        self.assertEqual(ROWS, len(shifted_frame))
+        self.assertEqual(closed_at, shifted_close)
 
     def test_journal_is_append_only_and_chain_detects_tampering(self) -> None:
         fake = FakeMT5()

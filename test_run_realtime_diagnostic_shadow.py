@@ -37,6 +37,31 @@ def candidate_config(path: Path) -> None:
 
 
 class RealtimeDiagnosticCLITests(unittest.TestCase):
+    def test_registered_xm_dst_offset_is_selected_by_utc_date(self) -> None:
+        candidate = {
+            "server_time_model": {
+                "standard_utc_offset": "+02:00",
+                "daylight_saving_utc_offset": "+03:00",
+                "daylight_saving_rule": (
+                    "LAST_SUNDAY_MARCH_TO_LAST_SUNDAY_OCTOBER"
+                ),
+            }
+        }
+        self.assertEqual(
+            3 * 60 * 60,
+            cli._broker_time_offset_seconds(
+                candidate,
+                cli.datetime(2026, 7, 16, tzinfo=cli.timezone.utc),
+            ),
+        )
+        self.assertEqual(
+            2 * 60 * 60,
+            cli._broker_time_offset_seconds(
+                candidate,
+                cli.datetime(2026, 1, 16, tzinfo=cli.timezone.utc),
+            ),
+        )
+
     def test_acknowledgement_and_windows_are_mandatory(self) -> None:
         with self.assertRaisesRegex(
             RealtimeDiagnosticError,

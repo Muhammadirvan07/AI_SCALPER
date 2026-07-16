@@ -199,7 +199,12 @@ def _finite_positive(value: object, field: str) -> float:
     return parsed
 
 
-def _epoch_utc(record: Mapping[str, object], field: str) -> datetime:
+def _epoch_utc(
+    record: Mapping[str, object],
+    field: str,
+    *,
+    wall_clock_offset_seconds: int = 0,
+) -> datetime:
     if record.get("time_msc") is not None:
         raw_seconds = float(record["time_msc"]) / 1000.0
     elif record.get("time") is not None:
@@ -207,7 +212,10 @@ def _epoch_utc(record: Mapping[str, object], field: str) -> datetime:
     else:
         raise RealtimeDiagnosticError(f"{field} timestamp is unavailable")
     try:
-        return datetime.fromtimestamp(raw_seconds, tz=UTC)
+        return datetime.fromtimestamp(
+            raw_seconds - wall_clock_offset_seconds,
+            tz=UTC,
+        )
     except (OverflowError, OSError, ValueError) as exc:
         raise RealtimeDiagnosticError(f"{field} timestamp is invalid") from exc
 
@@ -693,6 +701,7 @@ def fetch_finalized_m15_bars(
     broker_symbol: str,
     count: int,
     observed_at: datetime,
+    broker_time_offset_seconds: int = 0,
 ) -> tuple[pd.DataFrame, datetime]:
     if type(facade) is not ReadOnlyMT5Facade:
         raise RealtimeDiagnosticError(
@@ -707,18 +716,61 @@ def fetch_finalized_m15_bars(
         raise RealtimeDiagnosticError(
             f"bar count must be between {MIN_REQUIRED_ROWS} and 5000"
         )
+    if (
+        isinstance(broker_time_offset_seconds, bool)
+        or not isinstance(broker_time_offset_seconds, int)
+        or not 0 <= broker_time_offset_seconds <= 14 * 60 * 60
+    ):
+        raise RealtimeDiagnosticError(
+            "broker time offset must be an integer from 0 to 14 hours"
+        )
+    request_count = min(count + 16, 5000)
     raw = facade.copy_rates_from_pos(
         require_text("broker_symbol", broker_symbol),
         facade.TIMEFRAME_M15,
-        1,
-        count,
+        0,
+        request_count,
     )
     rows = _records(raw, "MT5 M15 rates")
+    raw_open_times = [_epoch_utc(row, "M15 rate") for row in rows]
+    if not raw_open_times:
+        raise RealtimeDiagnosticError("MT5 returned no M15 rates")
+    current_boundary = datetime.fromtimestamp(
+        int(observed_at.timestamp()) // M15_SECONDS * M15_SECONDS,
+        tz=UTC,
+    )
+    effective_offset = 0
+    latest_raw_open = max(raw_open_times)
+    if latest_raw_open > current_boundary:
+        if broker_time_offset_seconds <= 0:
+            raise RealtimeDiagnosticError(
+                "MT5 bar time is ahead of trusted UTC and no registered "
+                f"broker offset is available: latest_open={_utc_text(latest_raw_open)}, "
+                f"current_boundary={_utc_text(current_boundary)}"
+            )
+        shifted_latest = latest_raw_open - timedelta(
+            seconds=broker_time_offset_seconds
+        )
+        if shifted_latest > current_boundary:
+            raise RealtimeDiagnosticError(
+                "MT5 bar time remains ahead of trusted UTC after registered "
+                f"broker offset: latest_open={_utc_text(latest_raw_open)}, "
+                f"shifted_open={_utc_text(shifted_latest)}, "
+                f"current_boundary={_utc_text(current_boundary)}"
+            )
+        effective_offset = broker_time_offset_seconds
+
     normalized: list[dict[str, object]] = []
     for row in rows:
-        opened_at = _epoch_utc(row, "M15 rate")
+        opened_at = _epoch_utc(
+            row,
+            "M15 rate",
+            wall_clock_offset_seconds=effective_offset,
+        )
         if int(opened_at.timestamp()) % M15_SECONDS:
             raise RealtimeDiagnosticError("M15 rate is not boundary-aligned UTC")
+        if opened_at + timedelta(seconds=M15_SECONDS) > observed_at:
+            continue
         normalized.append(
             {
                 "open_time_utc": opened_at,
@@ -737,6 +789,7 @@ def fetch_finalized_m15_bars(
         raise RealtimeDiagnosticError(
             f"not enough finalized M15 bars: {len(frame)}/{MIN_REQUIRED_ROWS}"
         )
+    frame = frame.iloc[-min(count, len(frame)):].reset_index(drop=True)
     if not (
         (frame["Low"] <= frame[["Open", "Close"]].min(axis=1))
         & (frame["High"] >= frame[["Open", "Close"]].max(axis=1))
@@ -747,8 +800,6 @@ def fetch_finalized_m15_bars(
         pd.Timestamp(frame.iloc[-1]["open_time_utc"]).to_pydatetime()
         + timedelta(seconds=M15_SECONDS)
     )
-    if bar_closed_at > observed_at:
-        raise RealtimeDiagnosticError("MT5 returned a candle that is not finalized")
     return frame, bar_closed_at
 
 
@@ -757,6 +808,7 @@ def first_eligible_quote(
     *,
     broker_symbol: str,
     bar_closed_at: datetime,
+    broker_time_offset_seconds: int = 0,
 ) -> EligibleQuote | None:
     require_utc("bar_closed_at", bar_closed_at)
     end = bar_closed_at + timedelta(seconds=ENTRY_WINDOW_SECONDS)
@@ -772,6 +824,15 @@ def first_eligible_quote(
     candidates: list[EligibleQuote] = []
     for row in rows:
         observed_at = _epoch_utc(row, "entry tick")
+        if (
+            not bar_closed_at < observed_at <= end
+            and broker_time_offset_seconds > 0
+        ):
+            observed_at = _epoch_utc(
+                row,
+                "entry tick",
+                wall_clock_offset_seconds=broker_time_offset_seconds,
+            )
         if not bar_closed_at < observed_at <= end:
             continue
         bid = _finite_positive(row.get("bid"), "bid")
@@ -827,6 +888,7 @@ def _position_exit(
     facade: ReadOnlyMT5Facade,
     position: OpenPaperPosition,
     observed_at: datetime,
+    broker_time_offset_seconds: int,
 ) -> tuple[datetime, float, str, float] | None:
     if observed_at <= position.opened_at:
         return None
@@ -842,6 +904,15 @@ def _position_exit(
     ordered: list[tuple[datetime, float, float]] = []
     for row in rows:
         tick_at = _epoch_utc(row, "position tick")
+        if (
+            not position.opened_at < tick_at <= observed_at
+            and broker_time_offset_seconds > 0
+        ):
+            tick_at = _epoch_utc(
+                row,
+                "position tick",
+                wall_clock_offset_seconds=broker_time_offset_seconds,
+            )
         if tick_at <= position.opened_at or tick_at > observed_at:
             continue
         bid = _finite_positive(row.get("bid"), "bid")
@@ -884,10 +955,16 @@ def _close_positions(
     facade: ReadOnlyMT5Facade,
     journal: DiagnosticJournal,
     observed_at: datetime,
+    broker_time_offset_seconds: int,
 ) -> list[str]:
     closed: list[str] = []
     for position in journal.open_positions():
-        result = _position_exit(facade, position, observed_at)
+        result = _position_exit(
+            facade,
+            position,
+            observed_at,
+            broker_time_offset_seconds,
+        )
         if result is None:
             continue
         closed_at, exit_price, outcome, r_multiple = result
@@ -915,6 +992,7 @@ def run_diagnostic_cycle(
     observed_at: datetime,
     bar_count: int = 300,
     max_bar_age_seconds: int = 30 * 60,
+    broker_time_offset_seconds: int = 0,
 ) -> DiagnosticCycleReceipt:
     """Run one fail-closed real-market diagnostic cycle for all four lanes."""
 
@@ -947,7 +1025,12 @@ def run_diagnostic_cycle(
         expected_server,
         expected_account_identity_sha256,
     )
-    closed_positions = _close_positions(facade, journal, observed_at)
+    closed_positions = _close_positions(
+        facade,
+        journal,
+        observed_at,
+        broker_time_offset_seconds,
+    )
     symbol_status: dict[str, str] = {}
     failures: dict[str, str] = {}
 
@@ -959,6 +1042,7 @@ def run_diagnostic_cycle(
                 broker_symbol=broker_symbol,
                 count=bar_count,
                 observed_at=observed_at,
+                broker_time_offset_seconds=broker_time_offset_seconds,
             )
             decision_key = f"{symbol}:{_utc_text(bar_closed_at)}"
             if journal.has_decision_key(decision_key):
@@ -982,6 +1066,7 @@ def run_diagnostic_cycle(
                 facade,
                 broker_symbol=broker_symbol,
                 bar_closed_at=bar_closed_at,
+                broker_time_offset_seconds=broker_time_offset_seconds,
             )
             if quote is None:
                 if observed_at <= bar_closed_at + timedelta(
@@ -1051,7 +1136,14 @@ def run_diagnostic_cycle(
             symbol_status[symbol] = f"HOLD:{type(exc).__name__}"
             failures[symbol] = f"{type(exc).__name__}:{exc}"
 
-    closed_positions.extend(_close_positions(facade, journal, observed_at))
+    closed_positions.extend(
+        _close_positions(
+            facade,
+            journal,
+            observed_at,
+            broker_time_offset_seconds,
+        )
+    )
     cycle_hash = journal.record_cycle(
         cycle_id=cycle_id,
         observed_at=observed_at,

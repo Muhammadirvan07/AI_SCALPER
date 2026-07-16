@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -150,6 +150,52 @@ def _account_mapping(value: object) -> dict[str, object]:
     if callable(asdict):
         return dict(asdict())
     raise RealtimeDiagnosticError("MT5 account identity is unavailable")
+
+
+def _last_sunday(year: int, month: int) -> datetime:
+    if month == 12:
+        next_month = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        next_month = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+    cursor = next_month - timedelta(days=1)
+    return cursor - timedelta(days=(cursor.weekday() + 1) % 7)
+
+
+def _parse_utc_offset(value: object) -> int:
+    text = str(value or "").strip()
+    if len(text) != 6 or text[0] not in {"+", "-"} or text[3] != ":":
+        raise RealtimeDiagnosticError("candidate broker UTC offset is invalid")
+    try:
+        hours = int(text[1:3])
+        minutes = int(text[4:6])
+    except ValueError as exc:
+        raise RealtimeDiagnosticError("candidate broker UTC offset is invalid") from exc
+    if hours > 14 or minutes > 59:
+        raise RealtimeDiagnosticError("candidate broker UTC offset is invalid")
+    seconds = (hours * 60 + minutes) * 60
+    return seconds if text[0] == "+" else -seconds
+
+
+def _broker_time_offset_seconds(
+    candidate: Mapping[str, object],
+    observed_at: datetime,
+) -> int:
+    model = candidate.get("server_time_model")
+    if not isinstance(model, Mapping):
+        return 0
+    standard = _parse_utc_offset(model.get("standard_utc_offset"))
+    daylight = _parse_utc_offset(model.get("daylight_saving_utc_offset"))
+    rule = str(model.get("daylight_saving_rule") or "").strip()
+    if rule != "LAST_SUNDAY_MARCH_TO_LAST_SUNDAY_OCTOBER":
+        raise RealtimeDiagnosticError("candidate broker DST rule is unsupported")
+    start = _last_sunday(observed_at.year, 3).replace(hour=1)
+    end = _last_sunday(observed_at.year, 10).replace(hour=1)
+    selected = daylight if start <= observed_at < end else standard
+    if selected < 0:
+        raise RealtimeDiagnosticError(
+            "diagnostic broker time offset must be nonnegative"
+        )
+    return selected
 
 
 def _write_summary(path: Path, summary: Mapping[str, object]) -> None:
@@ -299,6 +345,10 @@ def main(
                     observed_at=observed_at,
                     bar_count=args.bar_count,
                     max_bar_age_seconds=args.max_bar_age_seconds,
+                    broker_time_offset_seconds=_broker_time_offset_seconds(
+                        candidate,
+                        observed_at,
+                    ),
                 )
                 summary = journal.summary()
                 summary["latest_cycle"] = {
