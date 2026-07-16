@@ -37,7 +37,9 @@ class ReadOnlyMT5Facade:
         "__terminal_info_call",
         "__symbol_info_call",
         "__copy_ticks_range_call",
+        "__copy_rates_from_pos_call",
         "COPY_TICKS_ALL",
+        "TIMEFRAME_M15",
         "ACCOUNT_TRADE_MODE_DEMO",
         "ACCOUNT_TRADE_MODE_REAL",
         "ACCOUNT_MARGIN_MODE_RETAIL_NETTING",
@@ -79,8 +81,15 @@ class ReadOnlyMT5Facade:
             "_ReadOnlyMT5Facade__copy_ticks_range_call",
             methods["copy_ticks_range"],
         )
+        copy_rates_from_pos = getattr(mt5_module, "copy_rates_from_pos", None)
+        object.__setattr__(
+            self,
+            "_ReadOnlyMT5Facade__copy_rates_from_pos_call",
+            copy_rates_from_pos if callable(copy_rates_from_pos) else None,
+        )
         for constant, default in (
             ("COPY_TICKS_ALL", 15),
+            ("TIMEFRAME_M15", 15),
             ("ACCOUNT_TRADE_MODE_DEMO", 0),
             ("ACCOUNT_TRADE_MODE_REAL", 2),
             ("ACCOUNT_MARGIN_MODE_RETAIL_NETTING", 0),
@@ -100,6 +109,13 @@ class ReadOnlyMT5Facade:
 
     def copy_ticks_range(self, symbol, start, end, flags):
         return self.__copy_ticks_range_call(symbol, start, end, flags)
+
+    def copy_rates_from_pos(self, symbol, timeframe, start_pos, count):
+        if self.__copy_rates_from_pos_call is None:
+            raise MT5ReadOnlyCapabilityError(
+                "MT5 read-only capability missing: copy_rates_from_pos"
+            )
+        return self.__copy_rates_from_pos_call(symbol, timeframe, start_pos, count)
 
 
 def attest_mt5_read_only(

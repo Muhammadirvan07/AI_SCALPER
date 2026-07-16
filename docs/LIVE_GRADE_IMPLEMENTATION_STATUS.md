@@ -13,7 +13,7 @@ membuka demo-auto maupun live.
 |---|---|---|
 | 1. Baseline terkunci | Sebagian | Seluruh safety lock terjaga, tetapi worktree telah berisi perubahan user/runtime sebelum implementasi sehingga clean baseline commit terisolasi belum dibuat. |
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v3, signed session calendar per simbol, append chains/heads, seal, blinded receipt, dan strict UTC/build/source/spec/grid verification tersedia. |
-| 3. Broker read-only shadow | Software hardened; XM blocked in Japan; evidence not started | Discovery lama hanya historis. Receipt v3 sekarang mewajibkan investor login serta terminal Python-order lock, tetapi Japan FSA legal gate menandai XM/Tradexfin `VERIFIED_INELIGIBLE` untuk operating jurisdiction saat ini. Window 02 tidak boleh diregistrasi. FINEX telah diverifikasi sebagai broker terdaftar Bappebti, namun exact demo binding dan eligibility operasi dari Jepang tetap pending. |
+| 3. Broker read-only shadow | Diagnostic loop implemented; XM evidence blocked in Japan; evidence not started | Runner `BROKER_REALTIME_DIAGNOSTIC_ONLY` dapat membaca finalized M15 dan broker tick, menjalankan shared decision core, serta mencatat paper outcome append-only. Seluruh output permanen non-promotional dan bukan validation evidence. Japan FSA legal gate tetap menandai XM/Tradexfin `VERIFIED_INELIGIBLE` untuk operating jurisdiction saat ini, sehingga Window 02 tidak boleh diregistrasi. FINEX telah diverifikasi sebagai broker terdaftar Bappebti, namun exact demo binding dan eligibility operasi dari Jepang tetap pending. |
 | 4. Manual demo | Component foundation ready, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-wide fence, risk governor, fenced journal, one-shot runtime composition, MT5 preflight/executor/reconciliation, dan dual-control kill-switch reset tersedia. Sepuluh order demo belum dilakukan. |
 | 5. Demo-auto soak | Not started | Policy tetap locked; belum ada 30 hari, 50 fill, minimal 20 XAU, atau clean incident record. |
 | 6. XAUUSD live canary | Not started | XAUUSD belum execution-approved dan belum memiliki promotion evidence/permit/soak maupun 50 closed live trades. |
@@ -64,6 +64,13 @@ membuka demo-auto maupun live.
   sama. Golden fixtures empat lane mengikat finalized M15, structured score,
   first eligible bid/ask tick, entry reference, SL, dan TP. Legacy proxy data
   tanpa first-tick broker evidence ditolak sebagai runtime-parity proof.
+- Runner real-time diagnostic terpisah membaca bar M15 closed dari posisi MT5
+  `1`, mencari first eligible tick maksimum 10 detik sesudah close, dan
+  mencatat decision serta paper outcome berbasis tick ke SQLite WAL
+  hash-chained append-only. BUY dievaluasi pada bid dan SELL pada ask. Satu
+  paper position per lane mencegah overlap, tetapi output selalu
+  `validation_evidence=false`, `promotion_eligible=false`, dan
+  `legal_gate_bypassed=false`.
 - Executor dan MT5 adapter membaca waktu dari injected trusted-clock provider;
   timestamp caller hanya assertion dan mismatch ditolak. Runtime facts/model
   binding harus berumur paling lama satu detik, sedangkan health gate menolak
@@ -200,12 +207,14 @@ BTCUSD = shadow-only
     issuer production yang membuka, menghitung ulang, dan memverifikasi trade
     ledger, bootstrap, fold, evidence-store receipt, serta parity corpus belum
     tersedia.
-11. One-shot shadow runner kini memiliki durable per-stage receipt,
+11. One-shot evidence shadow runner kini memiliki durable per-stage receipt,
     hash-chained operational journal, singleton fence, disk floor, heartbeat
     projection, status-only watchdog, dan verified create-exclusive audit
-    export. Namun broker-tick loop produksi, periodic reconciliation
-    supervisor, durable soak/demotion reset tracker, actual off-host alert/WORM
-    delivery, serta restore drill belum dipasang atau diuji pada Windows VPS.
+    export. Loop broker-tick diagnostic non-promotional juga sudah tersedia,
+    tetapi belum dibuktikan pada exact Windows/XM host dan bukan collector
+    evidence. Periodic broker reconciliation supervisor, durable soak/demotion
+    reset tracker, actual off-host alert/WORM delivery, serta restore drill
+    belum dipasang atau diuji pada Windows VPS.
 12. Supply-chain workflow, SBOM, OSV receipt verifier, dan deterministic
     release builder sudah tersedia lokal, tetapi actual OSV collection,
     independent signing-key custody, clean committed release identity, dan

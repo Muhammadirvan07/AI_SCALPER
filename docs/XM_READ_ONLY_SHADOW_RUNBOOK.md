@@ -29,6 +29,11 @@ boleh dimulai setelah exact broker dan yurisdiksi operasi dinyatakan eligible
 melalui sumber regulator independen dan konfigurasi baru direview. Jangan
 mengubah flag legal hanya agar plan lolos.
 
+Untuk observasi teknis market XM yang tidak membuat evidence dan tidak
+melewati legal gate, gunakan runner terpisah pada
+`docs/REALTIME_DIAGNOSTIC_SHADOW.md`. Runner tersebut hanya membaca finalized
+M15/tick, menjalankan decision core, dan mencatat posisi paper virtual.
+
 ## Prasyarat
 
 - Windows x86-64, CPython 3.12, dan MT5 XM sudah terbuka serta login ke akun
