@@ -32,7 +32,11 @@ dimasukkan ke gate promosi broker-forward.
 - Empat simbol tersedia: `GOLD.`, `EURUSD.`, `USDJPY.`, `AUDUSD.`.
 
 Runtime memeriksa ulang bahwa account dan terminal tidak memiliki kemampuan
-trading. Jika salah satu flag read-only hilang atau aktif, proses berhenti.
+trading. Pada investor authorization, MT5 dapat melaporkan
+`account.trade_expert=true` karena Expert Advisor masih boleh dipakai untuk
+analisis. Diagnostic runner tetap mensyaratkan `account.trade_allowed=false`,
+`terminal.trade_allowed=false`, dan `terminal.tradeapi_disabled=true`. Jika
+salah satu gate transaksi tersebut hilang atau aktif, proses berhenti.
 
 ## Sinkronisasi source
 

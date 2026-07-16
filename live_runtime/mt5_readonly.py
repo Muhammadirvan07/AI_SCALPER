@@ -129,13 +129,23 @@ class ReadOnlyMT5Facade:
 
 def attest_mt5_read_only(
     facade: ReadOnlyMT5Facade,
+    *,
+    require_account_expert_disabled: bool = True,
 ) -> Mapping[str, bool]:
-    """Fail closed unless account and terminal both attest mutation is disabled."""
+    """Fail closed unless the selected read-only policy is satisfied.
+
+    The stricter evidence policy requires account-level Expert Advisor trading
+    to be disabled. Investor diagnostic observation may opt out because MT5
+    investor authorization can legitimately report ``trade_expert=True`` while
+    ``trade_allowed=False`` still forbids account trading.
+    """
 
     if type(facade) is not ReadOnlyMT5Facade:
         raise MT5ReadOnlyAttestationError(
             "read-only attestation requires the capability-reduced facade"
         )
+    if type(require_account_expert_disabled) is not bool:
+        raise TypeError("require_account_expert_disabled must be bool")
     account = _as_mapping(facade.account_info(), "MT5 account")
     terminal = _as_mapping(facade.terminal_info(), "MT5 terminal")
     facts = {
@@ -146,10 +156,11 @@ def attest_mt5_read_only(
     }
     expected = {
         "account_trade_allowed": False,
-        "account_trade_expert": False,
         "terminal_trade_allowed": False,
         "terminal_tradeapi_disabled": True,
     }
+    if require_account_expert_disabled:
+        expected["account_trade_expert"] = False
     mismatches = {
         field: (facts[field], expected_value)
         for field, expected_value in expected.items()
@@ -164,7 +175,9 @@ def attest_mt5_read_only(
             f"MT5_READ_ONLY_ATTESTATION_FAILED: {detail}",
             mismatches=mismatches,
         )
-    return MappingProxyType(expected)
+    attested = dict(expected)
+    attested["account_trade_expert"] = facts["account_trade_expert"]
+    return MappingProxyType(attested)
 
 
 __all__ = [

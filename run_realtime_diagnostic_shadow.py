@@ -163,10 +163,7 @@ def _write_summary(path: Path, summary: Mapping[str, object]) -> None:
 def _read_only_remediation(error: MT5ReadOnlyAttestationError) -> str:
     actions: list[str] = []
     mismatches = error.mismatches
-    if {
-        "account_trade_allowed",
-        "account_trade_expert",
-    } & set(mismatches):
+    if "account_trade_allowed" in mismatches:
         actions.append(
             "login ulang ke akun demo memakai investor/read-only password"
         )
@@ -270,7 +267,10 @@ def main(
 
     try:
         facade = ReadOnlyMT5Facade(mt5_module)
-        attest_mt5_read_only(facade)
+        attest_mt5_read_only(
+            facade,
+            require_account_expert_disabled=False,
+        )
         account = _account_mapping(facade.account_info())
         runtime_identity = account_runtime_identity(
             account.get("login"),

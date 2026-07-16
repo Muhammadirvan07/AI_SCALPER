@@ -51,6 +51,11 @@ class RealtimeDiagnosticCLITests(unittest.TestCase):
 
     def test_one_cycle_writes_non_promotional_summary_and_shuts_down(self) -> None:
         fake = FakeMT5()
+        original_account_info = fake.account_info
+        fake.account_info = lambda: {
+            **original_account_info(),
+            "trade_expert": True,
+        }
         fake.initialize = lambda: True
         fake.shutdown_called = False
 

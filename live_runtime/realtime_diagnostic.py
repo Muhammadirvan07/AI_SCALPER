@@ -938,7 +938,10 @@ def run_diagnostic_cycle(
             "diagnostic cycle requires the exact four-symbol map"
         )
 
-    attest_mt5_read_only(facade)
+    attest_mt5_read_only(
+        facade,
+        require_account_expert_disabled=False,
+    )
     _account_binding(
         facade,
         expected_server,

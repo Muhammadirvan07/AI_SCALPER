@@ -196,6 +196,30 @@ class RealtimeDiagnosticTests(unittest.TestCase):
             message,
         )
 
+    def test_investor_diagnostic_allows_expert_analysis_but_not_trading(self) -> None:
+        fake = FakeMT5()
+        fake.account_info = lambda: {
+            "login": 123456,
+            "server": "XMTrading-MT5 3",
+            "trade_mode": fake.ACCOUNT_TRADE_MODE_DEMO,
+            "trade_allowed": False,
+            "trade_expert": True,
+        }
+        attested = attest_mt5_read_only(
+            ReadOnlyMT5Facade(fake),
+            require_account_expert_disabled=False,
+        )
+        self.assertFalse(attested["account_trade_allowed"])
+        self.assertTrue(attested["account_trade_expert"])
+        self.assertFalse(attested["terminal_trade_allowed"])
+        self.assertTrue(attested["terminal_tradeapi_disabled"])
+
+        with self.assertRaisesRegex(
+            MT5ReadOnlyAttestationError,
+            "account_trade_expert=True",
+        ):
+            attest_mt5_read_only(ReadOnlyMT5Facade(fake))
+
     def test_cycle_opens_and_closes_four_tick_semantic_paper_positions(self) -> None:
         fake = FakeMT5()
         facade = ReadOnlyMT5Facade(fake)
