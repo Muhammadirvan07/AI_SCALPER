@@ -739,6 +739,7 @@ def fetch_finalized_m15_bars(
         int(observed_at.timestamp()) // M15_SECONDS * M15_SECONDS,
         tz=UTC,
     )
+    next_boundary = current_boundary + timedelta(seconds=M15_SECONDS)
     effective_offset = 0
     latest_raw_open = max(raw_open_times)
     if latest_raw_open > current_boundary:
@@ -751,12 +752,15 @@ def fetch_finalized_m15_bars(
         shifted_latest = latest_raw_open - timedelta(
             seconds=broker_time_offset_seconds
         )
-        if shifted_latest > current_boundary:
+        # Some MT5 servers expose the next M15 slot shortly before its UTC
+        # boundary. It remains an active/prepublished bar and is filtered below;
+        # only timestamps beyond the immediately next slot indicate real drift.
+        if shifted_latest > next_boundary:
             raise RealtimeDiagnosticError(
                 "MT5 bar time remains ahead of trusted UTC after registered "
                 f"broker offset: latest_open={_utc_text(latest_raw_open)}, "
                 f"shifted_open={_utc_text(shifted_latest)}, "
-                f"current_boundary={_utc_text(current_boundary)}"
+                f"next_boundary={_utc_text(next_boundary)}"
             )
         effective_offset = broker_time_offset_seconds
 

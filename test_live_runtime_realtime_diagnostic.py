@@ -309,6 +309,30 @@ class RealtimeDiagnosticTests(unittest.TestCase):
         self.assertEqual(ROWS, len(shifted_frame))
         self.assertEqual(closed_at, shifted_close)
 
+    def test_next_slot_prepublished_before_boundary_is_filtered_not_held(
+        self,
+    ) -> None:
+        fake = FakeMT5()
+        broker_symbol = BROKER_SYMBOLS["XAUUSD"]
+        closed_at = START + timedelta(minutes=15 * ROWS)
+        prepublished = dict(fake.rates[broker_symbol][-1])
+        prepublished["time"] = int(
+            (closed_at + timedelta(minutes=15, hours=3)).timestamp()
+        )
+        fake.rates[broker_symbol].append(prepublished)
+        for row in fake.rates[broker_symbol][:-1]:
+            row["time"] = int(row["time"]) + 3 * 60 * 60
+
+        frame, latest_close = fetch_finalized_m15_bars(
+            ReadOnlyMT5Facade(fake),
+            broker_symbol=broker_symbol,
+            count=ROWS,
+            observed_at=closed_at + timedelta(minutes=14, seconds=58),
+            broker_time_offset_seconds=3 * 60 * 60,
+        )
+        self.assertEqual(ROWS, len(frame))
+        self.assertEqual(closed_at, latest_close)
+
     def test_journal_is_append_only_and_chain_detects_tampering(self) -> None:
         fake = FakeMT5()
         closed_at = START + timedelta(minutes=15 * ROWS)
