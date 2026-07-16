@@ -11,8 +11,10 @@ import numpy as np
 
 from live_runtime.account_fence import account_runtime_identity
 from live_runtime.mt5_readonly import (
+    MT5ReadOnlyAttestationError,
     MT5ReadOnlyCapabilityError,
     ReadOnlyMT5Facade,
+    attest_mt5_read_only,
 )
 from live_runtime.realtime_diagnostic import (
     DiagnosticIdentity,
@@ -162,6 +164,37 @@ class RealtimeDiagnosticTests(unittest.TestCase):
             "copy_rates_from_pos",
         ):
             no_rates.copy_rates_from_pos("GOLD.", no_rates.TIMEFRAME_M15, 1, ROWS)
+
+    def test_attestation_reports_exact_safe_boolean_mismatches(self) -> None:
+        fake = FakeMT5()
+        fake.account_info = lambda: {
+            "login": 123456,
+            "server": "XMTrading-MT5 3",
+            "trade_mode": fake.ACCOUNT_TRADE_MODE_DEMO,
+            "trade_allowed": True,
+            "trade_expert": True,
+        }
+        fake.terminal_info = lambda: {
+            "trade_allowed": False,
+            "tradeapi_disabled": False,
+        }
+        with self.assertRaises(MT5ReadOnlyAttestationError) as caught:
+            attest_mt5_read_only(ReadOnlyMT5Facade(fake))
+        self.assertEqual(
+            {
+                "account_trade_allowed": (True, False),
+                "account_trade_expert": (True, False),
+                "terminal_tradeapi_disabled": (False, True),
+            },
+            dict(caught.exception.mismatches),
+        )
+        message = str(caught.exception)
+        self.assertIn("MT5_READ_ONLY_ATTESTATION_FAILED", message)
+        self.assertIn("account_trade_allowed=True (expected False)", message)
+        self.assertIn(
+            "terminal_tradeapi_disabled=False (expected True)",
+            message,
+        )
 
     def test_cycle_opens_and_closes_four_tick_semantic_paper_positions(self) -> None:
         fake = FakeMT5()

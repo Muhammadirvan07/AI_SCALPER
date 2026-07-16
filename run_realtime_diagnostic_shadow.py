@@ -16,6 +16,7 @@ from typing import Mapping, Sequence
 
 from live_runtime.account_fence import (
     AccountRuntimeFence,
+    AccountRuntimeFenceError,
     account_runtime_identity,
 )
 from live_runtime.realtime_diagnostic import (
@@ -26,7 +27,12 @@ from live_runtime.realtime_diagnostic import (
     RealtimeDiagnosticError,
     run_diagnostic_cycle,
 )
-from live_runtime.mt5_readonly import ReadOnlyMT5Facade, attest_mt5_read_only
+from live_runtime.mt5_readonly import (
+    MT5ReadOnlyAttestationError,
+    MT5ReadOnlyCapabilityError,
+    ReadOnlyMT5Facade,
+    attest_mt5_read_only,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -154,6 +160,56 @@ def _write_summary(path: Path, summary: Mapping[str, object]) -> None:
     os.replace(temporary, path)
 
 
+def _read_only_remediation(error: MT5ReadOnlyAttestationError) -> str:
+    actions: list[str] = []
+    mismatches = error.mismatches
+    if {
+        "account_trade_allowed",
+        "account_trade_expert",
+    } & set(mismatches):
+        actions.append(
+            "login ulang ke akun demo memakai investor/read-only password"
+        )
+    if "terminal_trade_allowed" in mismatches:
+        actions.append("matikan tombol Algo Trading/AutoTrading di MT5")
+    if "terminal_tradeapi_disabled" in mismatches:
+        actions.append(
+            "aktifkan Tools > Options > Expert Advisors > "
+            "Disable automated trading through the external Python API"
+        )
+    if not actions:
+        actions.append(
+            "pastikan MT5 terbuka, terhubung, dan menyediakan seluruh flag read-only"
+        )
+    return "; ".join(actions)
+
+
+def cli_entrypoint(argv: Sequence[str] | None = None) -> int:
+    """Translate expected operator/configuration rejection into concise output."""
+
+    try:
+        return main(argv)
+    except MT5ReadOnlyAttestationError as exc:
+        print(str(exc), file=sys.stderr)
+        print(f"Required action: {_read_only_remediation(exc)}.", file=sys.stderr)
+        print(
+            "Safety lock remains active; no broker order was submitted.",
+            file=sys.stderr,
+        )
+        return 2
+    except (
+        AccountRuntimeFenceError,
+        MT5ReadOnlyCapabilityError,
+        RealtimeDiagnosticError,
+    ) as exc:
+        print(f"DIAGNOSTIC_SHADOW_REJECTED: {exc}", file=sys.stderr)
+        print(
+            "Safety lock remains active; no broker order was submitted.",
+            file=sys.stderr,
+        )
+        return 2
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -275,4 +331,4 @@ def main(
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli_entrypoint())

@@ -19,6 +19,15 @@ class MT5ReadOnlyCapabilityError(RuntimeError):
 class MT5ReadOnlyAttestationError(RuntimeError):
     """Raised when the connected account or terminal can mutate broker state."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        mismatches: Mapping[str, tuple[object, bool]] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.mismatches = MappingProxyType(dict(mismatches or {}))
+
 
 def _as_mapping(value: object, field: str) -> dict[str, object]:
     if isinstance(value, Mapping):
@@ -141,9 +150,19 @@ def attest_mt5_read_only(
         "terminal_trade_allowed": False,
         "terminal_tradeapi_disabled": True,
     }
-    if any(facts[field] is not value for field, value in expected.items()):
+    mismatches = {
+        field: (facts[field], expected_value)
+        for field, expected_value in expected.items()
+        if facts[field] is not expected_value
+    }
+    if mismatches:
+        detail = ", ".join(
+            f"{field}={actual!r} (expected {expected_value!r})"
+            for field, (actual, expected_value) in sorted(mismatches.items())
+        )
         raise MT5ReadOnlyAttestationError(
-            "MT5 account or terminal mutation capability is enabled or unavailable"
+            f"MT5_READ_ONLY_ATTESTATION_FAILED: {detail}",
+            mismatches=mismatches,
         )
     return MappingProxyType(expected)
 

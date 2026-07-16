@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import io
 from pathlib import Path
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from unittest.mock import patch
 
+from live_runtime.mt5_readonly import MT5ReadOnlyAttestationError
 from live_runtime.realtime_diagnostic import (
     DiagnosticIdentity,
     RealtimeDiagnosticError,
@@ -91,6 +94,25 @@ class RealtimeDiagnosticCLITests(unittest.TestCase):
             )
             self.assertFalse(payload["safety"]["promotion_eligible"])
             self.assertEqual("DISABLED", payload["safety"]["order_capability"])
+
+    def test_entrypoint_formats_expected_attestation_rejection_without_traceback(
+        self,
+    ) -> None:
+        error = MT5ReadOnlyAttestationError(
+            "MT5_READ_ONLY_ATTESTATION_FAILED: "
+            "terminal_tradeapi_disabled=False (expected True)",
+            mismatches={
+                "terminal_tradeapi_disabled": (False, True),
+            },
+        )
+        stderr = io.StringIO()
+        with patch.object(cli, "main", side_effect=error), redirect_stderr(stderr):
+            result = cli.cli_entrypoint([])
+        output = stderr.getvalue()
+        self.assertEqual(2, result)
+        self.assertIn("Disable automated trading through the external Python API", output)
+        self.assertIn("no broker order was submitted", output)
+        self.assertNotIn("Traceback", output)
 
 
 if __name__ == "__main__":
