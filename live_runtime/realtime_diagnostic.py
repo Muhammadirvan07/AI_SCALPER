@@ -19,6 +19,7 @@ from typing import Any, Mapping, Sequence
 
 import pandas as pd
 
+from strategy.strategy_profiles import get_strategy_profile
 from strategy.strategy_selector import MIN_REQUIRED_ROWS
 
 from .account_fence import account_runtime_identity
@@ -110,7 +111,9 @@ class OpenPaperPosition:
     entry_price: float
     stop_loss: float
     take_profit: float
+    bar_closed_at: datetime
     opened_at: datetime
+    max_holding_bars: int
 
 
 @dataclass(frozen=True)
@@ -201,6 +204,16 @@ def _finite_positive(value: object, field: str) -> float:
     if not math.isfinite(parsed) or parsed <= 0:
         raise RealtimeDiagnosticError(f"{field} must be finite and positive")
     return parsed
+
+
+def _position_max_holding_bars(value: object, symbol: object) -> int:
+    """Read the immutable opening horizon, with legacy-journal compatibility."""
+
+    if value is None:
+        return get_strategy_profile(symbol).max_holding_bars
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise RealtimeDiagnosticError("max_holding_bars must be a positive integer")
+    return value
 
 
 def _epoch_utc(
@@ -465,6 +478,11 @@ class DiagnosticJournal:
             "snapshot": snapshot_payload,
             "snapshot_sha256": snapshot.content_sha256 if snapshot else None,
             "decision_explanation": explanation_payload,
+            "max_holding_bars": (
+                get_strategy_profile(canonical_symbol).max_holding_bars
+                if paper_opened
+                else None
+            ),
             "outcome_quality": "BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
         }
         event_id = "bar_" + canonical_sha256(
@@ -488,6 +506,7 @@ class DiagnosticJournal:
         exit_price: float,
         outcome: str,
         r_multiple: float,
+        exit_reason: str,
     ) -> str:
         require_utc("closed_at", closed_at)
         require_utc("recorded_at", recorded_at)
@@ -496,6 +515,13 @@ class DiagnosticJournal:
         normalized_outcome = require_text("outcome", outcome, upper=True)
         if normalized_outcome not in {"WIN", "LOSS"}:
             raise RealtimeDiagnosticError("paper outcome must be WIN or LOSS")
+        normalized_exit_reason = require_text(
+            "exit_reason",
+            exit_reason,
+            upper=True,
+        )
+        if normalized_exit_reason not in {"STOP_LOSS", "TAKE_PROFIT", "TIMEOUT"}:
+            raise RealtimeDiagnosticError("paper exit reason is invalid")
         if not math.isfinite(float(r_multiple)):
             raise RealtimeDiagnosticError("paper R multiple must be finite")
         payload = {
@@ -510,6 +536,7 @@ class DiagnosticJournal:
             "recorded_at_utc": recorded_at,
             "exit_price": _finite_positive(exit_price, "exit_price"),
             "outcome": normalized_outcome,
+            "exit_reason": normalized_exit_reason,
             "r_multiple": float(r_multiple),
             "outcome_quality": "BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
         }
@@ -627,7 +654,15 @@ class DiagnosticJournal:
                         snapshot.get("take_profit"),
                         "take_profit",
                     ),
+                    bar_closed_at=_parse_utc(
+                        payload.get("bar_closed_at_utc"),
+                        "bar_closed_at_utc",
+                    ),
                     opened_at=_parse_utc(snapshot.get("created_at"), "created_at"),
+                    max_holding_bars=_position_max_holding_bars(
+                        payload.get("max_holding_bars"),
+                        snapshot.get("symbol"),
+                    ),
                 )
             elif envelope["event_type"] == "PAPER_CLOSE":
                 closed.add(require_text("decision_id", payload.get("decision_id")))
@@ -656,6 +691,7 @@ class DiagnosticJournal:
                 "closed": 0,
                 "wins": 0,
                 "losses": 0,
+                "timeouts": 0,
                 "wait_reason_counts": {},
                 "market_regime_counts": {},
                 "candidate_filter_counts": {},
@@ -719,6 +755,7 @@ class DiagnosticJournal:
                         matching_symbol = str(snapshot["symbol"])
                     break
             outcome = str(item["outcome"])
+            exit_reason = str(item.get("exit_reason", "LEGACY_UNSPECIFIED"))
             r_multiple = float(item["r_multiple"])
             if outcome == "WIN":
                 gross_win_r += max(r_multiple, 0.0)
@@ -728,6 +765,8 @@ class DiagnosticJournal:
                 per_symbol[matching_symbol]["closed"] += 1
                 key = "wins" if outcome == "WIN" else "losses"
                 per_symbol[matching_symbol][key] += 1
+                if exit_reason == "TIMEOUT":
+                    per_symbol[matching_symbol]["timeouts"] += 1
         wins = sum(1 for item in closes if item["outcome"] == "WIN")
         losses = sum(1 for item in closes if item["outcome"] == "LOSS")
         closed_count = wins + losses
@@ -763,6 +802,9 @@ class DiagnosticJournal:
             "paper_closed": closed_count,
             "wins": wins,
             "losses": losses,
+            "timeouts": sum(
+                1 for item in closes if item.get("exit_reason") == "TIMEOUT"
+            ),
             "win_rate_percent": (
                 round(wins / closed_count * 100.0, 6) if closed_count else None
             ),
@@ -977,7 +1019,7 @@ def _position_exit(
     position: OpenPaperPosition,
     observed_at: datetime,
     broker_time_offset_seconds: int,
-) -> tuple[datetime, float, str, float] | None:
+) -> tuple[datetime, float, str, float, str] | None:
     if observed_at <= position.opened_at:
         return None
     rows = _records(
@@ -1012,14 +1054,29 @@ def _position_exit(
     risk_distance = abs(position.entry_price - position.stop_loss)
     if risk_distance <= 0:
         raise RealtimeDiagnosticError("paper position has invalid stop distance")
+    timeout_at = position.bar_closed_at + timedelta(
+        seconds=position.max_holding_bars * M15_SECONDS
+    )
+    latest_pre_timeout: tuple[datetime, float, float] | None = None
+    first_post_timeout: tuple[datetime, float, float] | None = None
     for tick_at, bid, ask in ordered:
+        if tick_at <= timeout_at:
+            latest_pre_timeout = (tick_at, bid, ask)
+        elif first_post_timeout is None:
+            first_post_timeout = (tick_at, bid, ask)
+        else:
+            continue
+        if tick_at > timeout_at:
+            continue
         if position.side == "BUY":
             if bid <= position.stop_loss:
                 exit_price = bid
                 outcome = "LOSS"
+                exit_reason = "STOP_LOSS"
             elif bid >= position.take_profit:
                 exit_price = bid
                 outcome = "WIN"
+                exit_reason = "TAKE_PROFIT"
             else:
                 continue
             r_multiple = (exit_price - position.entry_price) / risk_distance
@@ -1027,16 +1084,34 @@ def _position_exit(
             if ask >= position.stop_loss:
                 exit_price = ask
                 outcome = "LOSS"
+                exit_reason = "STOP_LOSS"
             elif ask <= position.take_profit:
                 exit_price = ask
                 outcome = "WIN"
+                exit_reason = "TAKE_PROFIT"
             else:
                 continue
             r_multiple = (position.entry_price - exit_price) / risk_distance
         else:
             raise RealtimeDiagnosticError("paper position side is invalid")
-        return tick_at, exit_price, outcome, r_multiple
-    return None
+        return tick_at, exit_price, outcome, r_multiple, exit_reason
+    if observed_at < timeout_at:
+        return None
+    timeout_quote = latest_pre_timeout or first_post_timeout
+    if timeout_quote is None:
+        return None
+    quote_at, bid, ask = timeout_quote
+    if position.side == "BUY":
+        exit_price = bid
+        r_multiple = (exit_price - position.entry_price) / risk_distance
+    elif position.side == "SELL":
+        exit_price = ask
+        r_multiple = (position.entry_price - exit_price) / risk_distance
+    else:
+        raise RealtimeDiagnosticError("paper position side is invalid")
+    outcome = "WIN" if r_multiple > 0 else "LOSS"
+    closed_at = timeout_at if latest_pre_timeout is not None else quote_at
+    return closed_at, exit_price, outcome, r_multiple, "TIMEOUT"
 
 
 def _close_positions(
@@ -1055,7 +1130,7 @@ def _close_positions(
         )
         if result is None:
             continue
-        closed_at, exit_price, outcome, r_multiple = result
+        closed_at, exit_price, outcome, r_multiple, exit_reason = result
         journal.record_close(
             position=position,
             closed_at=closed_at,
@@ -1063,6 +1138,7 @@ def _close_positions(
             exit_price=exit_price,
             outcome=outcome,
             r_multiple=r_multiple,
+            exit_reason=exit_reason,
         )
         closed.append(position.decision_id)
     return closed

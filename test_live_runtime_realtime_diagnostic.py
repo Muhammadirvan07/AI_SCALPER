@@ -275,8 +275,15 @@ class RealtimeDiagnosticTests(unittest.TestCase):
                 self.assertEqual(4, summary["paper_opened"])
                 self.assertEqual(4, summary["paper_closed"])
                 self.assertEqual(4, summary["wins"])
+                self.assertEqual(0, summary["timeouts"])
                 self.assertEqual(100.0, summary["win_rate_percent"])
                 self.assertTrue(summary["journal_sha256_chain_valid"])
+                close_reasons = {
+                    envelope["payload"]["exit_reason"]
+                    for envelope in journal._event_envelopes()
+                    if envelope["event_type"] == "PAPER_CLOSE"
+                }
+                self.assertEqual({"TAKE_PROFIT"}, close_reasons)
                 diagnostics = summary["decision_diagnostics"]
                 self.assertEqual(4, diagnostics["explained_decisions"])
                 self.assertEqual(0, diagnostics["unexplained_decisions"])
@@ -286,6 +293,138 @@ class RealtimeDiagnosticTests(unittest.TestCase):
                         {"TREND": 1},
                         summary["per_symbol"][symbol]["market_regime_counts"],
                     )
+
+    def test_positions_timeout_at_profile_horizon_and_survive_restart(self) -> None:
+        fake = FakeMT5()
+        facade = ReadOnlyMT5Facade(fake)
+        bar_closed_at = START + timedelta(minutes=15 * ROWS)
+        with tempfile.TemporaryDirectory() as directory:
+            journal_path = Path(directory) / "diagnostic.sqlite3"
+            with DiagnosticJournal(journal_path) as journal:
+                run_diagnostic_cycle(
+                    facade,
+                    journal,
+                    cycle_id="cycle-open",
+                    expected_server="XMTrading-MT5 3",
+                    expected_account_identity_sha256=ACCOUNT_IDENTITY,
+                    broker_symbols=BROKER_SYMBOLS,
+                    identity=identity(),
+                    observed_at=bar_closed_at + timedelta(seconds=5),
+                )
+                positions = journal.open_positions()
+                self.assertEqual(4, len(positions))
+                self.assertEqual({32}, {item.max_holding_bars for item in positions})
+                self.assertEqual(
+                    {bar_closed_at},
+                    {item.bar_closed_at for item in positions},
+                )
+                for position in positions:
+                    risk = abs(position.entry_price - position.stop_loss)
+                    spread = CASES[position.symbol]["spread"]
+                    tick_at = bar_closed_at + timedelta(
+                        minutes=15 * position.max_holding_bars,
+                        seconds=-1,
+                    )
+                    if position.side == "BUY":
+                        bid = position.entry_price + 0.25 * risk
+                        ask = bid + spread
+                    else:
+                        ask = position.entry_price - 0.25 * risk
+                        bid = ask - spread
+                    fake.ticks[position.broker_symbol].append(
+                        {
+                            "time_msc": int(tick_at.timestamp() * 1000),
+                            "bid": bid,
+                            "ask": ask,
+                        }
+                    )
+
+            timeout_at = bar_closed_at + timedelta(minutes=15 * 32)
+            with DiagnosticJournal(journal_path) as journal:
+                before = run_diagnostic_cycle(
+                    facade,
+                    journal,
+                    cycle_id="cycle-before-timeout",
+                    expected_server="XMTrading-MT5 3",
+                    expected_account_identity_sha256=ACCOUNT_IDENTITY,
+                    broker_symbols=BROKER_SYMBOLS,
+                    identity=identity(),
+                    observed_at=timeout_at - timedelta(seconds=1),
+                )
+                self.assertEqual((), before.closed_positions)
+                self.assertEqual(4, len(journal.open_positions()))
+
+                expired = run_diagnostic_cycle(
+                    facade,
+                    journal,
+                    cycle_id="cycle-timeout",
+                    expected_server="XMTrading-MT5 3",
+                    expected_account_identity_sha256=ACCOUNT_IDENTITY,
+                    broker_symbols=BROKER_SYMBOLS,
+                    identity=identity(),
+                    observed_at=timeout_at + timedelta(seconds=1),
+                )
+                self.assertEqual(4, len(expired.closed_positions))
+                self.assertEqual((), journal.open_positions())
+                summary = journal.summary()
+                self.assertEqual(4, summary["paper_closed"])
+                self.assertEqual(4, summary["timeouts"])
+                self.assertEqual(4, summary["wins"])
+                for symbol in REQUIRED_SYMBOLS:
+                    self.assertEqual(1, summary["per_symbol"][symbol]["timeouts"])
+                closes = [
+                    envelope["payload"]
+                    for envelope in journal._event_envelopes()
+                    if envelope["event_type"] == "PAPER_CLOSE"
+                ]
+                self.assertEqual({"TIMEOUT"}, {item["exit_reason"] for item in closes})
+                self.assertEqual(
+                    {timeout_at.isoformat(timespec="microseconds").replace("+00:00", "Z")},
+                    {item["closed_at_utc"] for item in closes},
+                )
+                self.assertTrue(journal.verify_chain())
+
+    def test_legacy_open_event_derives_missing_holding_horizon(self) -> None:
+        fake = FakeMT5()
+        bar_closed_at = START + timedelta(minutes=15 * ROWS)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with DiagnosticJournal(root / "source.sqlite3") as source:
+                run_diagnostic_cycle(
+                    ReadOnlyMT5Facade(fake),
+                    source,
+                    cycle_id="cycle-source",
+                    expected_server="XMTrading-MT5 3",
+                    expected_account_identity_sha256=ACCOUNT_IDENTITY,
+                    broker_symbols=BROKER_SYMBOLS,
+                    identity=identity(),
+                    observed_at=bar_closed_at + timedelta(seconds=5),
+                )
+                original = next(
+                    envelope
+                    for envelope in source._event_envelopes()
+                    if envelope["event_type"] == "BAR_DECISION"
+                    and envelope["payload"]["paper_opened"]
+                )
+
+            legacy_payload = dict(original["payload"])
+            legacy_payload.pop("max_holding_bars")
+            with DiagnosticJournal(root / "legacy.sqlite3") as legacy:
+                legacy._append(
+                    event_id="legacy-open",
+                    event_type="BAR_DECISION",
+                    observed_at=datetime.fromisoformat(
+                        original["observed_at_utc"].replace("Z", "+00:00")
+                    ),
+                    payload=legacy_payload,
+                    decision_key=original["decision_key"],
+                    symbol=original["symbol"],
+                )
+                positions = legacy.open_positions()
+                self.assertEqual(1, len(positions))
+                self.assertEqual(32, positions[0].max_holding_bars)
+                self.assertEqual(bar_closed_at, positions[0].bar_closed_at)
+                self.assertTrue(legacy.verify_chain())
 
     def test_wait_summary_explains_each_failed_strategy_filter(self) -> None:
         fake = FakeMT5()
