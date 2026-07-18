@@ -129,7 +129,12 @@ def _safe_identity(account: Mapping[str, object]) -> tuple[str, str, int, int]:
 
 def _attest_safety(facade: ReadOnlyMT5Facade) -> dict[str, bool]:
     try:
-        return dict(attest_mt5_read_only(facade))
+        return dict(
+            attest_mt5_read_only(
+                facade,
+                require_account_expert_disabled=False,
+            )
+        )
     except MT5ReadOnlyAttestationError as exc:
         if exc.mismatches:
             detail = ", ".join(

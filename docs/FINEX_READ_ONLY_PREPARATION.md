@@ -76,8 +76,11 @@ four-symbol map sudah lengkap.
 ## Preflight read-only
 
 Preflight hanya memeriksa bahwa terminal yang sedang terbuka cocok dengan
-binding FINEX dan seluruh jalur trading dimatikan. Perintah ini tidak menerima
-login/password, tidak membuat evidence, dan tidak membuka discovery:
+binding FINEX, account trading tidak diizinkan, terminal Algo Trading nonaktif,
+dan external Python API trading diblokir. Flag `account_trade_expert` hanya
+dicatat karena login investor dapat melaporkannya aktif walaupun account
+trading tetap tidak tersedia. Perintah ini tidak menerima login/password,
+tidak membuat evidence, dan tidak membuka discovery:
 
 ```powershell
 cd C:\AI_SCALPER

@@ -107,7 +107,6 @@ class MT5CandidatePreflightTests(unittest.TestCase):
     def test_any_safety_capability_fails_closed(self) -> None:
         for source, field, unsafe in (
             ("account", "trade_allowed", True),
-            ("account", "trade_expert", True),
             ("terminal", "trade_allowed", True),
             ("terminal", "tradeapi_disabled", False),
         ):
@@ -123,6 +122,19 @@ class MT5CandidatePreflightTests(unittest.TestCase):
                         candidate_id="finex",
                         candidate=self.candidate,
                     )
+
+    def test_investor_login_may_report_expert_flag_without_trade_capability(self) -> None:
+        mt5 = FakeMT5()
+        mt5.account["trade_expert"] = True
+        result = attest_candidate_read_only(
+            ReadOnlyMT5Facade(mt5),
+            candidate_id="finex",
+            candidate=self.candidate,
+        )
+        self.assertFalse(result["safety"]["account_trade_allowed"])
+        self.assertTrue(result["safety"]["account_trade_expert"])
+        self.assertFalse(result["safety"]["terminal_trade_allowed"])
+        self.assertTrue(result["safety"]["terminal_tradeapi_disabled"])
 
     def test_identity_and_symbol_drift_fail_closed(self) -> None:
         mutations = (
