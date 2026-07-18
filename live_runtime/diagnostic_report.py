@@ -209,7 +209,11 @@ def _read_verified_events(
     return events, previous_hash
 
 
-def _trade_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]:
+def _trade_metrics(
+    trades: Sequence[Mapping[str, object]],
+    *,
+    holding_horizon_key: str,
+) -> dict[str, object]:
     ordered = sorted(
         trades,
         key=lambda item: (str(item["closed_at_utc"]), str(item["decision_id"])),
@@ -236,7 +240,7 @@ def _trade_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]:
         else:
             loss_streak = 0
     holding_seconds = [float(item["holding_seconds"]) for item in ordered]
-    holding_bars = [float(item["holding_horizon_m15_bars"]) for item in ordered]
+    holding_bars = [float(item[holding_horizon_key]) for item in ordered]
     return {
         "closed_trades": len(ordered),
         "wins": wins,
@@ -261,7 +265,7 @@ def _trade_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]:
         )
         if holding_seconds
         else None,
-        "average_holding_horizon_m15_bars": _round(
+        f"average_{holding_horizon_key}": _round(
             sum(holding_bars) / len(holding_bars)
         )
         if holding_bars
@@ -319,6 +323,8 @@ def _build_diagnostic_report(
     report_schema_version: str,
     report_type: str,
     limitations: Sequence[str],
+    timeframe: str = "M15",
+    bar_seconds: int = 15 * 60,
     generated_at: datetime | None = None,
 ) -> dict[str, object]:
     """Build a verified, non-promotional report without mutating SQLite."""
@@ -327,6 +333,15 @@ def _build_diagnostic_report(
     if generated.tzinfo is None or generated.utcoffset() != UTC.utcoffset(generated):
         raise DiagnosticReportError("generated_at must be timezone-aware UTC")
     generated = generated.astimezone(UTC)
+    normalized_timeframe = str(timeframe or "").strip().upper()
+    if normalized_timeframe not in {"M5", "M15"}:
+        raise DiagnosticReportError("report timeframe must be M5 or M15")
+    expected_bar_seconds = 5 * 60 if normalized_timeframe == "M5" else 15 * 60
+    if bar_seconds != expected_bar_seconds:
+        raise DiagnosticReportError("report timeframe seconds are inconsistent")
+    holding_horizon_key = (
+        f"holding_horizon_{normalized_timeframe.lower()}_bars"
+    )
     database_path = Path(database)
     events, chain_head = _read_verified_events(
         database_path,
@@ -449,8 +464,8 @@ def _build_diagnostic_report(
             "outcome": outcome,
             "r_multiple": _round(r_multiple),
             "holding_seconds": _round((closed_at - opened_at).total_seconds()),
-            "holding_horizon_m15_bars": _round(
-                (closed_at - bar_closed_at).total_seconds() / (15 * 60)
+            holding_horizon_key: _round(
+                (closed_at - bar_closed_at).total_seconds() / bar_seconds
             ),
             "configured_max_holding_bars": decision["max_holding_bars"],
         }
@@ -475,7 +490,8 @@ def _build_diagnostic_report(
     per_symbol: dict[str, dict[str, object]] = {}
     for symbol in required_symbols:
         metrics = _trade_metrics(
-            [trade for trade in trades if trade["symbol"] == symbol]
+            [trade for trade in trades if trade["symbol"] == symbol],
+            holding_horizon_key=holding_horizon_key,
         )
         metrics.update(
             {
@@ -492,10 +508,14 @@ def _build_diagnostic_report(
         )
         per_symbol[symbol] = metrics
 
-    overall = _trade_metrics(trades)
+    overall = _trade_metrics(
+        trades,
+        holding_horizon_key=holding_horizon_key,
+    )
     report: dict[str, object] = {
         "schema_version": report_schema_version,
         "report_type": report_type,
+        "timeframe": normalized_timeframe,
         "generated_at_utc": _utc_text(generated),
         "source": {
             "database_name": database_path.name,
@@ -557,6 +577,8 @@ def build_diagnostic_report(
             "diagnostic journal is not broker-forward promotion evidence",
             "confidence intervals and cost stress are not calculated",
         ),
+        timeframe="M15",
+        bar_seconds=15 * 60,
         generated_at=generated_at,
     )
 
@@ -583,6 +605,37 @@ def build_crypto_diagnostic_report(
             "diagnostic journal is not broker-forward promotion evidence",
             "confidence intervals and cost stress are not calculated",
         ),
+        timeframe="M15",
+        bar_seconds=15 * 60,
+        generated_at=generated_at,
+    )
+
+
+def build_crypto_m5_challenger_report(
+    database: str | Path,
+    *,
+    generated_at: datetime | None = None,
+) -> dict[str, object]:
+    """Build the isolated BTC/ETH M5 public-market challenger report."""
+
+    return _build_diagnostic_report(
+        database,
+        required_symbols=("BTCUSD", "ETHUSD"),
+        expected_schema_version="crypto-m5-challenger-diagnostic-v1",
+        expected_profile="CRYPTO_M5_CHALLENGER_DIAGNOSTIC_ONLY",
+        report_schema_version="CRYPTO_M5_CHALLENGER_PERFORMANCE_V1",
+        report_type="CRYPTO_M5_PUBLIC_MARKET_CHALLENGER_PERFORMANCE",
+        limitations=(
+            "M5 challenger R-multiple sampled-quote paper outcomes only",
+            "M5 results are isolated from the M15 champion",
+            "Binance USDT spot is not a broker BTCUSD or ETHUSD CFD",
+            "Coinbase is a validation feed and not an execution venue",
+            "fees, funding, slippage, and broker contract economics are excluded",
+            "diagnostic journal is not broker-forward promotion evidence",
+            "confidence intervals and cost stress are not calculated",
+        ),
+        timeframe="M5",
+        bar_seconds=5 * 60,
         generated_at=generated_at,
     )
 
@@ -591,5 +644,6 @@ __all__ = [
     "DiagnosticReportError",
     "REPORT_SCHEMA_VERSION",
     "build_crypto_diagnostic_report",
+    "build_crypto_m5_challenger_report",
     "build_diagnostic_report",
 ]

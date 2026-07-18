@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -15,10 +16,12 @@ from typing import Mapping, Sequence
 
 from live_runtime.account_fence import AccountRuntimeFence, AccountRuntimeFenceError
 from live_runtime.crypto_diagnostic import (
-    CRYPTO_DIAGNOSTIC_PROFILE,
+    CRYPTO_M15_RUNTIME,
+    CRYPTO_M5_RUNTIME,
     CRYPTO_REQUIRED_SYMBOLS,
-    CRYPTO_SOURCE_BINDING_SHA256,
+    CryptoDiagnosticRuntime,
     crypto_diagnostic_journal,
+    crypto_m5_diagnostic_journal,
     run_crypto_diagnostic_cycle,
 )
 from live_runtime.crypto_shadow import (
@@ -39,9 +42,17 @@ DEFAULT_JOURNAL = (
 DEFAULT_SUMMARY = (
     REPO_ROOT / "runtime_state" / "diagnostic" / "crypto-weekend-summary.json"
 )
+DEFAULT_M5_CONFIG = REPO_ROOT / "config" / "crypto_m5_challenger.json"
+DEFAULT_M5_JOURNAL = (
+    REPO_ROOT / "runtime_state" / "diagnostic" / "crypto-m5-challenger.sqlite3"
+)
+DEFAULT_M5_SUMMARY = (
+    REPO_ROOT / "runtime_state" / "diagnostic" / "crypto-m5-challenger-summary.json"
+)
 MODEL_SOURCE_PATHS = (
     "agents/market_status.py",
     "agents/supervisor_agent.py",
+    "live_runtime/contracts.py",
     "live_runtime/crypto_diagnostic.py",
     "live_runtime/crypto_shadow.py",
     "live_runtime/decision_core.py",
@@ -53,20 +64,60 @@ MODEL_SOURCE_PATHS = (
 )
 
 
+@dataclass(frozen=True)
+class CryptoRunnerProfile:
+    runtime: CryptoDiagnosticRuntime
+    config_schema_version: str
+    default_config: Path
+    default_journal: Path
+    default_summary: Path
+    role: str
+
+
+M15_RUNNER_PROFILE = CryptoRunnerProfile(
+    runtime=CRYPTO_M15_RUNTIME,
+    config_schema_version="crypto-weekend-shadow-config-v1",
+    default_config=DEFAULT_CONFIG,
+    default_journal=DEFAULT_JOURNAL,
+    default_summary=DEFAULT_SUMMARY,
+    role="CHAMPION",
+)
+M5_RUNNER_PROFILE = CryptoRunnerProfile(
+    runtime=CRYPTO_M5_RUNTIME,
+    config_schema_version="crypto-m5-challenger-config-v1",
+    default_config=DEFAULT_M5_CONFIG,
+    default_journal=DEFAULT_M5_JOURNAL,
+    default_summary=DEFAULT_M5_SUMMARY,
+    role="CHALLENGER",
+)
+
+
 def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def _parser() -> argparse.ArgumentParser:
+def _parser(runner_profile: CryptoRunnerProfile) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Observe Binance spot with Coinbase cross-feed validation and "
             "simulate BTC/ETH decisions without credentials or orders"
         )
     )
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--journal", type=Path, default=DEFAULT_JOURNAL)
-    parser.add_argument("--summary", type=Path, default=DEFAULT_SUMMARY)
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=runner_profile.default_config,
+    )
+    parser.add_argument(
+        "--journal",
+        type=Path,
+        default=runner_profile.default_journal,
+    )
+    parser.add_argument(
+        "--summary",
+        type=Path,
+        default=runner_profile.default_summary,
+    )
     parser.add_argument("--cycles", type=int, default=1)
     parser.add_argument("--continuous", action="store_true")
     parser.add_argument("--poll-seconds", type=float, default=2.0)
@@ -83,7 +134,10 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load_config(path: Path) -> dict[str, object]:
+def _load_config(
+    path: Path,
+    runner_profile: CryptoRunnerProfile,
+) -> dict[str, object]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -92,11 +146,14 @@ def _load_config(path: Path) -> dict[str, object]:
         raise RealtimeDiagnosticError("crypto shadow config must be an object")
     config = dict(payload)
     if (
-        config.get("schema_version") != "crypto-weekend-shadow-config-v1"
-        or config.get("profile") != CRYPTO_DIAGNOSTIC_PROFILE
+        config.get("schema_version") != runner_profile.config_schema_version
+        or config.get("profile") != runner_profile.runtime.profile
         or config.get("enabled") is not True
+        or config.get("role") != runner_profile.role
         or config.get("primary_source") != "BINANCE_SPOT_PUBLIC"
         or config.get("validator_source") != "COINBASE_SPOT_PUBLIC"
+        or str(config.get("timeframe", "M15")).upper()
+        != runner_profile.runtime.timeframe
     ):
         raise RealtimeDiagnosticError("crypto shadow config identity is invalid")
     symbols = config.get("symbols")
@@ -181,17 +238,20 @@ def _model_sha256() -> str:
     return digest.hexdigest()
 
 
-def _identity(config_path: Path) -> DiagnosticIdentity:
+def _identity(
+    config_path: Path,
+    runtime: CryptoDiagnosticRuntime,
+) -> DiagnosticIdentity:
     try:
         config_hash = hashlib.sha256(config_path.read_bytes()).hexdigest()
     except OSError as exc:
         raise RealtimeDiagnosticError("crypto config cannot be hashed") from exc
     return DiagnosticIdentity(
         commit_sha=_git_commit(),
-        model_version="rule-core-crypto-shadow-locked-v1",
+        model_version=runtime.model_version,
         model_artifact_sha256=_model_sha256(),
         config_sha256=config_hash,
-        source_name="binance-primary-coinbase-validator-diagnostic-only",
+        source_name=runtime.source_name,
     )
 
 
@@ -211,23 +271,26 @@ def main(
     *,
     client: CryptoPublicMarketClient | None = None,
     clock_provider=utc_now,
+    runner_profile: CryptoRunnerProfile = M15_RUNNER_PROFILE,
 ) -> int:
-    args = _parser().parse_args(argv)
+    if type(runner_profile) is not CryptoRunnerProfile:
+        raise TypeError("runner_profile must be CryptoRunnerProfile")
+    args = _parser(runner_profile).parse_args(argv)
     if not args.acknowledge_diagnostic_only:
         raise RealtimeDiagnosticError("--acknowledge-diagnostic-only is required")
     if args.cycles < 1:
         raise RealtimeDiagnosticError("--cycles must be at least 1")
     if not 1.0 <= args.poll_seconds <= 300.0:
         raise RealtimeDiagnosticError("--poll-seconds must be between 1 and 300")
-    config = _load_config(args.config)
+    config = _load_config(args.config, runner_profile)
     current = clock_provider()
     if not args.allow_weekday_diagnostic and not crypto_weekend_focus_active(current):
-        print(f"Profile: {CRYPTO_DIAGNOSTIC_PROFILE}")
+        print(f"Profile: {runner_profile.runtime.profile}")
         print("Status: INACTIVE_OUTSIDE_FOREX_WEEKEND_FOCUS_WINDOW")
         print("Order capability: DISABLED")
         return 0
     market_client = client or CryptoPublicMarketClient(clock_provider=clock_provider)
-    identity = _identity(args.config)
+    identity = _identity(args.config, runner_profile.runtime)
     bar_count = int(_number(config, "bar_count", minimum=250, maximum=1000))
     max_bar_age = int(
         _number(config, "max_bar_age_seconds", minimum=10, maximum=3600)
@@ -258,12 +321,19 @@ def main(
             maximum=5,
         ),
     }
-    with AccountRuntimeFence(CRYPTO_SOURCE_BINDING_SHA256), crypto_diagnostic_journal(
-        args.journal
-    ) as journal:
+    journal_factory = (
+        crypto_m5_diagnostic_journal
+        if runner_profile.runtime.timeframe == "M5"
+        else crypto_diagnostic_journal
+    )
+    with AccountRuntimeFence(
+        runner_profile.runtime.source_binding_sha256
+    ), journal_factory(args.journal) as journal:
         nonce = clock_provider().strftime("%Y%m%dT%H%M%S%fZ")
         cycle_number = 0
-        print(f"Profile: {CRYPTO_DIAGNOSTIC_PROFILE}")
+        print(f"Profile: {runner_profile.runtime.profile}")
+        print(f"Timeframe: {runner_profile.runtime.timeframe}")
+        print(f"Role: {runner_profile.role}")
         print("Primary feed: BINANCE_SPOT_PUBLIC")
         print("Validation feed: COINBASE_SPOT_PUBLIC")
         print("Credentials: DISALLOWED")
@@ -279,6 +349,7 @@ def main(
                 observed_at=clock_provider(),
                 bar_count=bar_count,
                 max_bar_age_seconds=max_bar_age,
+                runtime=runner_profile.runtime,
                 **settings,
             )
             summary = journal.summary()
@@ -293,7 +364,9 @@ def main(
                 "closed_positions": list(receipt.closed_positions),
                 "payload_sha256": receipt.payload_sha256,
             }
-            summary["source_binding_sha256"] = CRYPTO_SOURCE_BINDING_SHA256
+            summary["source_binding_sha256"] = (
+                runner_profile.runtime.source_binding_sha256
+            )
             summary["config_sha256"] = identity.config_sha256
             summary["runtime_identity"] = {
                 "commit_sha": identity.commit_sha,
@@ -314,9 +387,13 @@ def main(
     return 0
 
 
-def cli_entrypoint(argv: Sequence[str] | None = None) -> int:
+def cli_entrypoint(
+    argv: Sequence[str] | None = None,
+    *,
+    runner_profile: CryptoRunnerProfile = M15_RUNNER_PROFILE,
+) -> int:
     try:
-        return main(argv)
+        return main(argv, runner_profile=runner_profile)
     except KeyboardInterrupt:
         print("Crypto weekend shadow stopped by operator.")
         return 130

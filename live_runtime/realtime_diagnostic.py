@@ -28,6 +28,7 @@ from .contracts import (
     canonical_json,
     canonical_sha256,
     require_hash,
+    require_decision_timeframe,
     require_text,
     require_utc,
 )
@@ -265,6 +266,7 @@ class DiagnosticJournal:
         profile: str = DIAGNOSTIC_PROFILE,
         schema_version: str = DIAGNOSTIC_SCHEMA_VERSION,
         outcome_quality: str = "BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+        timeframe: str = "M15",
     ):
         self.path = Path(path)
         normalized_symbols = tuple(
@@ -280,6 +282,7 @@ class DiagnosticJournal:
         self.required_symbols = normalized_symbols
         self.profile = require_text("profile", profile, upper=True)
         self.schema_version = require_text("schema_version", schema_version)
+        self.timeframe = require_decision_timeframe("timeframe", timeframe)
         self.outcome_quality = require_text(
             "outcome_quality",
             outcome_quality,
@@ -496,7 +499,11 @@ class DiagnosticJournal:
         if type(paper_opened) is not bool:
             raise TypeError("paper_opened must be bool")
         normalized_status = require_text("status", status, upper=True)
-        decision_key = f"{canonical_symbol}:{_utc_text(bar_closed_at)}"
+        decision_key = (
+            f"{canonical_symbol}:{_utc_text(bar_closed_at)}"
+            if self.timeframe == "M15"
+            else f"{canonical_symbol}:{self.timeframe}:{_utc_text(bar_closed_at)}"
+        )
         snapshot_payload = None
         decision_id = None
         if snapshot is not None:
@@ -504,6 +511,8 @@ class DiagnosticJournal:
                 raise TypeError("snapshot must be DecisionSnapshot")
             if snapshot.symbol != canonical_symbol:
                 raise RealtimeDiagnosticError("snapshot symbol mismatch")
+            if snapshot.timeframe != self.timeframe:
+                raise RealtimeDiagnosticError("snapshot timeframe mismatch")
             snapshot_payload = snapshot.to_canonical_dict()
             decision_id = snapshot.snapshot_id
         if paper_opened and (
@@ -546,10 +555,14 @@ class DiagnosticJournal:
             "snapshot_sha256": snapshot.content_sha256 if snapshot else None,
             "decision_explanation": explanation_payload,
             "max_holding_bars": (
-                get_strategy_profile(canonical_symbol).max_holding_bars
+                get_strategy_profile(
+                    canonical_symbol,
+                    timeframe=self.timeframe,
+                ).max_holding_bars
                 if paper_opened
                 else None
             ),
+            "timeframe": self.timeframe,
             "outcome_quality": self.outcome_quality,
         }
         event_id = "bar_" + canonical_sha256(
@@ -855,6 +868,7 @@ class DiagnosticJournal:
         return {
             "schema_version": self.schema_version,
             "profile": self.profile,
+            "timeframe": self.timeframe,
             "safety": _safety_payload(),
             "journal_sha256_chain_valid": self.verify_chain(),
             "decisions": len(decisions),

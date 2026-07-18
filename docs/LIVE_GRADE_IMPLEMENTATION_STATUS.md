@@ -79,6 +79,12 @@ membuka demo-auto maupun live.
   spread, atau deviasi cross-feed menghasilkan fail-closed `HOLD`. BTCUSD dan
   ETHUSD tetap shadow-only dan output ini bukan parity atau broker-forward
   evidence.
+- M5 crypto challenger berjalan sebagai domain terpisah dari champion M15:
+  config, profile, schema, source binding, decision key, SQLite journal,
+  summary, dan report tidak dapat dicampur. M5 mempertahankan horizon enam jam
+  melalui 72 bar, tetapi memakai indikator M5 dan tetap uncalibrated
+  diagnostic-only. Snapshot M5 ditolak oleh `TradeIntent`, sehingga perluasan
+  pure decision core tidak membuka jalur execution baru.
 - Executor dan MT5 adapter membaca waktu dari injected trusted-clock provider;
   timestamp caller hanya assertion dan mismatch ditolak. Runtime facts/model
   binding harus berumur paling lama satu detik, sedangkan health gate menolak

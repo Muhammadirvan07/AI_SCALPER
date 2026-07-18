@@ -58,10 +58,15 @@ def _normalize_ohlc(df: pd.DataFrame) -> pd.DataFrame:
     return data.reset_index(drop=True)
 
 
-def get_market_context(df: pd.DataFrame, symbol: str = "UNKNOWN") -> dict:
+def get_market_context(
+    df: pd.DataFrame,
+    symbol: str = "UNKNOWN",
+    *,
+    timeframe: str = "M15",
+) -> dict:
     data = _normalize_ohlc(df)
     symbol = normalize_symbol(symbol)
-    profile = get_strategy_profile(symbol)
+    profile = get_strategy_profile(symbol, timeframe=timeframe)
 
     close = data["Close"]
     high = data["High"]
@@ -423,10 +428,12 @@ def momentum_pullback_strategy(df: pd.DataFrame, context: dict, profile) -> dict
 def evaluate_strategies(
     df: pd.DataFrame,
     symbol: str = "UNKNOWN",
+    *,
+    timeframe: str = "M15",
 ) -> tuple[list[dict], dict]:
     symbol = normalize_symbol(symbol)
-    context = get_market_context(df, symbol=symbol)
-    profile = get_strategy_profile(symbol)
+    context = get_market_context(df, symbol=symbol, timeframe=timeframe)
+    profile = get_strategy_profile(symbol, timeframe=timeframe)
 
     strategy_results = [
         trend_following_strategy(df, context, symbol=symbol),
@@ -470,12 +477,21 @@ def _decision_context(context: dict) -> dict:
     return {key: context.get(key) for key in keys}
 
 
-def select_best_strategy(df: pd.DataFrame, symbol: str = "UNKNOWN") -> dict:
+def select_best_strategy(
+    df: pd.DataFrame,
+    symbol: str = "UNKNOWN",
+    *,
+    timeframe: str = "M15",
+) -> dict:
     symbol = normalize_symbol(symbol)
-    profile = get_strategy_profile(symbol)
+    profile = get_strategy_profile(symbol, timeframe=timeframe)
 
     try:
-        strategy_results, context = evaluate_strategies(df, symbol=symbol)
+        strategy_results, context = evaluate_strategies(
+            df,
+            symbol=symbol,
+            timeframe=timeframe,
+        )
     except (TypeError, ValueError, KeyError, IndexError) as exc:
         return _no_strategy_result(f"strategy input rejected: {exc}")
 

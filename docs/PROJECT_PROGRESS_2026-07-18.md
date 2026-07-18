@@ -21,13 +21,22 @@
 - Runtime journal domain binding so broker and crypto journals cannot be mixed.
 - Startup verification of existing journal hash chain and SQL row/envelope
   binding before any append.
+- Isolated M5 crypto challenger with dedicated config, runtime identity,
+  source-binding hash, journal, summary, and read-only report.
+- Timeframe-aware pure decision snapshots that preserve existing M15 golden
+  hashes while making M5 snapshots ineligible for `TradeIntent`.
+- Six-hour challenger horizon represented by 72 M5 bars; M15 remains the
+  24-bar champion.
 
 ## Verification
 
-- Full regression suite: `472/472` passed.
+- Full regression suite: `482/482` passed.
 - Public endpoint smoke test succeeded without credentials or orders.
 - Live smoke result during an already-open M15 candle:
   `BTCUSD=ENTRY_WINDOW_MISSED, ETHUSD=ENTRY_WINDOW_MISSED`.
+- Public M5 challenger smoke test also reached both feeds and returned
+  `BTCUSD=ENTRY_WINDOW_MISSED, ETHUSD=ENTRY_WINDOW_MISSED` from an already-open
+  M5 candle.
 - `ENTRY_WINDOW_MISSED` is expected for a one-shot process started more than ten
   seconds after candle close; continuous mode is required to observe the next
   eligible boundary.

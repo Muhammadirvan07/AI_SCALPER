@@ -25,6 +25,7 @@ from strategy.strategy_selector import MIN_REQUIRED_ROWS
 
 
 UTC = timezone.utc
+M5_SECONDS = 5 * 60
 M15_SECONDS = 15 * 60
 DEFAULT_MAX_CROSS_FEED_DEVIATION_BPS = 50.0
 DEFAULT_MAX_TICKER_AGE_SECONDS = 30.0
@@ -78,6 +79,21 @@ class CryptoInstrument:
     validator_symbol: str
 
 
+@dataclass(frozen=True)
+class CryptoTimeframe:
+    name: str
+    binance_interval: str
+    seconds: int
+
+
+CRYPTO_TIMEFRAMES: Mapping[str, CryptoTimeframe] = MappingProxyType(
+    {
+        "M5": CryptoTimeframe("M5", "5m", M5_SECONDS),
+        "M15": CryptoTimeframe("M15", "15m", M15_SECONDS),
+    }
+)
+
+
 CRYPTO_SYMBOLS: Mapping[str, CryptoInstrument] = MappingProxyType(
     {
         "BTCUSD": CryptoInstrument("BTCUSD", "BTCUSDT", "BTC-USD"),
@@ -102,6 +118,8 @@ class CryptoMarketSnapshot:
     canonical_symbol: str
     primary_symbol: str
     validator_symbol: str
+    timeframe: str
+    bar_seconds: int
     frame: pd.DataFrame
     bar_closed_at: datetime
     primary_quote: CryptoQuote
@@ -162,6 +180,14 @@ def _instrument(symbol: object) -> CryptoInstrument:
         return CRYPTO_SYMBOLS[canonical]
     except KeyError as exc:
         raise CryptoMarketDataError(f"unsupported crypto symbol: {canonical}") from exc
+
+
+def _timeframe(value: object) -> CryptoTimeframe:
+    normalized = str(value or "").strip().upper()
+    try:
+        return CRYPTO_TIMEFRAMES[normalized]
+    except KeyError as exc:
+        raise CryptoMarketDataError("crypto timeframe must be M5 or M15") from exc
 
 
 class PublicJSONTransport:
@@ -270,10 +296,18 @@ class CryptoPublicMarketClient:
             raise CryptoMarketDataError("Binance server-time payload is invalid")
         return _utc_from_milliseconds(payload.get("serverTime"), "Binance serverTime")
 
-    def klines(self, primary_symbol: str, *, limit: int) -> object:
+    def klines(
+        self,
+        primary_symbol: str,
+        *,
+        interval: str = "15m",
+        limit: int,
+    ) -> object:
+        if interval not in {item.binance_interval for item in CRYPTO_TIMEFRAMES.values()}:
+            raise CryptoMarketDataError("Binance kline interval is unsupported")
         return self._binance(
             "/api/v3/klines",
-            {"symbol": primary_symbol, "interval": "15m", "limit": limit},
+            {"symbol": primary_symbol, "interval": interval, "limit": limit},
         )
 
     def primary_quote(self, primary_symbol: str) -> CryptoQuote:
@@ -324,6 +358,7 @@ def _normalized_finalized_bars(
     *,
     observed_at: datetime,
     count: int,
+    timeframe: CryptoTimeframe,
 ) -> tuple[pd.DataFrame, datetime]:
     if not isinstance(raw, list):
         raise CryptoMarketDataError("Binance kline payload must be a list")
@@ -333,8 +368,10 @@ def _normalized_finalized_bars(
             raise CryptoMarketDataError("Binance kline row is invalid")
         opened_at = _utc_from_milliseconds(item[0], "Binance kline open time")
         closed_at = _utc_from_milliseconds(item[6], "Binance kline close time")
-        if int(opened_at.timestamp()) % M15_SECONDS:
-            raise CryptoMarketDataError("Binance M15 bar is not UTC aligned")
+        if int(opened_at.timestamp()) % timeframe.seconds:
+            raise CryptoMarketDataError(
+                f"Binance {timeframe.name} bar is not UTC aligned"
+            )
         if closed_at > observed_at:
             continue
         normalized.append(
@@ -349,24 +386,31 @@ def _normalized_finalized_bars(
         )
     if len(normalized) < count:
         raise CryptoMarketDataError(
-            f"not enough finalized Binance M15 bars: {len(normalized)}/{count}"
+            f"not enough finalized Binance {timeframe.name} bars: "
+            f"{len(normalized)}/{count}"
         )
     frame = pd.DataFrame(normalized).sort_values("open_time_utc").reset_index(drop=True)
     if frame["open_time_utc"].duplicated(keep=False).any():
-        raise CryptoMarketDataError("duplicate Binance M15 bars are forbidden")
+        raise CryptoMarketDataError(
+            f"duplicate Binance {timeframe.name} bars are forbidden"
+        )
     frame = frame.iloc[-count:].reset_index(drop=True)
     gaps = frame["open_time_utc"].diff().dropna().dt.total_seconds()
-    if not gaps.eq(M15_SECONDS).all():
-        raise CryptoMarketDataError("Binance M15 bars must be contiguous")
+    if not gaps.eq(timeframe.seconds).all():
+        raise CryptoMarketDataError(
+            f"Binance {timeframe.name} bars must be contiguous"
+        )
     if not (
         (frame["Low"] <= frame[["Open", "Close"]].min(axis=1))
         & (frame["High"] >= frame[["Open", "Close"]].max(axis=1))
         & (frame["Low"] <= frame["High"])
     ).all():
-        raise CryptoMarketDataError("Binance M15 OHLC integrity failed")
+        raise CryptoMarketDataError(
+            f"Binance {timeframe.name} OHLC integrity failed"
+        )
     bar_closed_at = (
         pd.Timestamp(frame.iloc[-1]["open_time_utc"]).to_pydatetime()
-        + timedelta(seconds=M15_SECONDS)
+        + timedelta(seconds=timeframe.seconds)
     )
     return frame, bar_closed_at
 
@@ -377,23 +421,29 @@ def build_crypto_market_snapshot(
     symbol: str,
     observed_at: datetime,
     bar_count: int = 300,
+    timeframe: str = "M15",
     max_cross_feed_deviation_bps: float = DEFAULT_MAX_CROSS_FEED_DEVIATION_BPS,
     max_ticker_age_seconds: float = DEFAULT_MAX_TICKER_AGE_SECONDS,
     max_spread_bps: float = DEFAULT_MAX_SPREAD_BPS,
     max_clock_drift_seconds: float = DEFAULT_MAX_CLOCK_DRIFT_SECONDS,
 ) -> CryptoMarketSnapshot:
-    """Build one fail-closed, cross-feed-validated finalized M15 snapshot."""
+    """Build one fail-closed, cross-feed-validated finalized crypto snapshot."""
 
     if type(client) is not CryptoPublicMarketClient:
         raise TypeError("client must be CryptoPublicMarketClient")
     observed = _utc(observed_at, "observed_at")
+    timeframe_spec = _timeframe(timeframe)
     if isinstance(bar_count, bool) or not MIN_REQUIRED_ROWS <= bar_count <= 1000:
         raise CryptoMarketDataError(
             f"bar_count must be between {MIN_REQUIRED_ROWS} and 1000"
         )
     instrument = _instrument(symbol)
     server_time = client.server_time()
-    raw = client.klines(instrument.primary_symbol, limit=min(bar_count + 2, 1000))
+    raw = client.klines(
+        instrument.primary_symbol,
+        interval=timeframe_spec.binance_interval,
+        limit=min(bar_count + 2, 1000),
+    )
     primary = client.primary_quote(instrument.primary_symbol)
     validator = client.validator_quote(instrument.validator_symbol)
     if primary.observed_at < observed:
@@ -409,6 +459,7 @@ def build_crypto_market_snapshot(
         raw,
         observed_at=primary.observed_at,
         count=bar_count,
+        timeframe=timeframe_spec,
     )
     if primary.ask < primary.bid:
         raise CryptoMarketDataError("Binance book ticker is crossed")
@@ -432,6 +483,8 @@ def build_crypto_market_snapshot(
         canonical_symbol=instrument.canonical_symbol,
         primary_symbol=instrument.primary_symbol,
         validator_symbol=instrument.validator_symbol,
+        timeframe=timeframe_spec.name,
+        bar_seconds=timeframe_spec.seconds,
         frame=frame,
         bar_closed_at=bar_closed_at,
         primary_quote=primary,
@@ -445,11 +498,15 @@ def build_crypto_market_snapshot(
 
 __all__ = [
     "CRYPTO_SYMBOLS",
+    "CRYPTO_TIMEFRAMES",
     "CryptoInstrument",
     "CryptoMarketDataError",
     "CryptoMarketSnapshot",
     "CryptoPublicMarketClient",
     "CryptoQuote",
+    "CryptoTimeframe",
+    "M5_SECONDS",
+    "M15_SECONDS",
     "PublicJSONTransport",
     "build_crypto_market_snapshot",
     "crypto_weekend_focus_active",

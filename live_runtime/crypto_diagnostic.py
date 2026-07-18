@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import MappingProxyType
@@ -12,6 +13,7 @@ from .crypto_shadow import (
     CRYPTO_SYMBOLS,
     CryptoMarketSnapshot,
     CryptoPublicMarketClient,
+    M5_SECONDS,
     M15_SECONDS,
     build_crypto_market_snapshot,
 )
@@ -51,6 +53,62 @@ CRYPTO_SOURCE_BINDING_SHA256 = canonical_sha256(
     }
 )
 
+CRYPTO_M5_DIAGNOSTIC_PROFILE = "CRYPTO_M5_CHALLENGER_DIAGNOSTIC_ONLY"
+CRYPTO_M5_DIAGNOSTIC_SCHEMA_VERSION = "crypto-m5-challenger-diagnostic-v1"
+CRYPTO_M5_OUTCOME_QUALITY = (
+    "PUBLIC_EXCHANGE_M5_CHALLENGER_SAMPLED_QUOTE_NOT_PROMOTION_EVIDENCE"
+)
+CRYPTO_M5_SOURCE_BINDING_SHA256 = canonical_sha256(
+    {
+        "primary": "https://data-api.binance.vision",
+        "validator": "https://api.exchange.coinbase.com",
+        "symbols": {
+            symbol: {
+                "primary": instrument.primary_symbol,
+                "validator": instrument.validator_symbol,
+            }
+            for symbol, instrument in CRYPTO_SYMBOLS.items()
+        },
+        "timeframe": "M5",
+        "role": "CHALLENGER",
+        "capability": "PUBLIC_GET_ONLY_NO_CREDENTIALS_NO_ORDERS",
+    }
+)
+
+
+@dataclass(frozen=True)
+class CryptoDiagnosticRuntime:
+    timeframe: str
+    bar_seconds: int
+    profile: str
+    schema_version: str
+    outcome_quality: str
+    source_binding_sha256: str
+    model_version: str
+    source_name: str
+
+
+CRYPTO_M15_RUNTIME = CryptoDiagnosticRuntime(
+    timeframe="M15",
+    bar_seconds=M15_SECONDS,
+    profile=CRYPTO_DIAGNOSTIC_PROFILE,
+    schema_version=CRYPTO_DIAGNOSTIC_SCHEMA_VERSION,
+    outcome_quality=CRYPTO_OUTCOME_QUALITY,
+    source_binding_sha256=CRYPTO_SOURCE_BINDING_SHA256,
+    model_version="rule-core-crypto-shadow-locked-v1",
+    source_name="binance-primary-coinbase-validator-diagnostic-only",
+)
+CRYPTO_M5_RUNTIME = CryptoDiagnosticRuntime(
+    timeframe="M5",
+    bar_seconds=M5_SECONDS,
+    profile=CRYPTO_M5_DIAGNOSTIC_PROFILE,
+    schema_version=CRYPTO_M5_DIAGNOSTIC_SCHEMA_VERSION,
+    outcome_quality=CRYPTO_M5_OUTCOME_QUALITY,
+    source_binding_sha256=CRYPTO_M5_SOURCE_BINDING_SHA256,
+    model_version="rule-core-crypto-m5-challenger-locked-v1",
+    source_name="binance-primary-coinbase-validator-m5-challenger-only",
+)
+
 
 def _utc_text(value: datetime) -> str:
     require_utc("timestamp", value)
@@ -64,6 +122,18 @@ def crypto_diagnostic_journal(path: str | Path) -> DiagnosticJournal:
         profile=CRYPTO_DIAGNOSTIC_PROFILE,
         schema_version=CRYPTO_DIAGNOSTIC_SCHEMA_VERSION,
         outcome_quality=CRYPTO_OUTCOME_QUALITY,
+        timeframe="M15",
+    )
+
+
+def crypto_m5_diagnostic_journal(path: str | Path) -> DiagnosticJournal:
+    return DiagnosticJournal(
+        path,
+        required_symbols=CRYPTO_REQUIRED_SYMBOLS,
+        profile=CRYPTO_M5_DIAGNOSTIC_PROFILE,
+        schema_version=CRYPTO_M5_DIAGNOSTIC_SCHEMA_VERSION,
+        outcome_quality=CRYPTO_M5_OUTCOME_QUALITY,
+        timeframe="M5",
     )
 
 
@@ -88,6 +158,7 @@ def _close_from_sampled_quote(
     position: OpenPaperPosition,
     snapshot: CryptoMarketSnapshot,
     recorded_at: datetime,
+    bar_seconds: int,
 ) -> str | None:
     quote = snapshot.primary_quote
     if quote.observed_at <= position.opened_at:
@@ -96,7 +167,7 @@ def _close_from_sampled_quote(
     if risk_distance <= 0.0:
         raise RealtimeDiagnosticError("crypto paper position has invalid stop distance")
     timeout_at = position.bar_closed_at + timedelta(
-        seconds=position.max_holding_bars * M15_SECONDS
+        seconds=position.max_holding_bars * bar_seconds
     )
     exit_price: float | None = None
     exit_reason: str | None = None
@@ -153,6 +224,7 @@ def run_crypto_diagnostic_cycle(
     max_ticker_age_seconds: float = 30.0,
     max_spread_bps: float = 25.0,
     max_clock_drift_seconds: float = 1.0,
+    runtime: CryptoDiagnosticRuntime = CRYPTO_M15_RUNTIME,
 ) -> DiagnosticCycleReceipt:
     """Run one two-lane, public-data-only crypto diagnostic cycle."""
 
@@ -160,10 +232,13 @@ def run_crypto_diagnostic_cycle(
         raise TypeError("client must be CryptoPublicMarketClient")
     if type(journal) is not DiagnosticJournal:
         raise TypeError("journal must be DiagnosticJournal")
+    if type(runtime) is not CryptoDiagnosticRuntime:
+        raise TypeError("runtime must be CryptoDiagnosticRuntime")
     if (
         journal.required_symbols != CRYPTO_REQUIRED_SYMBOLS
-        or journal.profile != CRYPTO_DIAGNOSTIC_PROFILE
-        or journal.schema_version != CRYPTO_DIAGNOSTIC_SCHEMA_VERSION
+        or journal.profile != runtime.profile
+        or journal.schema_version != runtime.schema_version
+        or journal.timeframe != runtime.timeframe
     ):
         raise RealtimeDiagnosticError(
             "crypto diagnostic cycle requires the isolated crypto journal domain"
@@ -185,6 +260,7 @@ def run_crypto_diagnostic_cycle(
                 symbol=symbol,
                 observed_at=observed_at,
                 bar_count=bar_count,
+                timeframe=runtime.timeframe,
                 max_cross_feed_deviation_bps=max_cross_feed_deviation_bps,
                 max_ticker_age_seconds=max_ticker_age_seconds,
                 max_spread_bps=max_spread_bps,
@@ -199,11 +275,16 @@ def run_crypto_diagnostic_cycle(
                     position,
                     market,
                     recorded_at,
+                    runtime.bar_seconds,
                 )
                 if closed is not None:
                     closed_positions.append(closed)
 
-            decision_key = f"{symbol}:{_utc_text(market.bar_closed_at)}"
+            decision_key = (
+                f"{symbol}:{_utc_text(market.bar_closed_at)}"
+                if runtime.timeframe == "M15"
+                else f"{symbol}:{runtime.timeframe}:{_utc_text(market.bar_closed_at)}"
+            )
             if journal.has_decision_key(decision_key):
                 symbol_status[symbol] = "ALREADY_PROCESSED"
                 continue
@@ -244,7 +325,7 @@ def run_crypto_diagnostic_cycle(
             bars_hash = _bars_sha256(market.frame)
             provenance = DecisionProvenance(
                 decision_run_id=(
-                    f"crypto-diagnostic-{symbol.lower()}-"
+                    f"crypto-{runtime.timeframe.lower()}-diagnostic-{symbol.lower()}-"
                     f"{int(market.bar_closed_at.timestamp())}-{bars_hash[:12]}"
                 ),
                 model_version=identity.model_version,
@@ -257,6 +338,7 @@ def run_crypto_diagnostic_cycle(
                 data_fresh=True,
                 bar_closed_at=market.bar_closed_at,
                 created_at=quote.observed_at,
+                timeframe=runtime.timeframe,
             )
             decision = build_runtime_decision_snapshot(
                 market.frame,
@@ -266,7 +348,11 @@ def run_crypto_diagnostic_cycle(
                 first_eligible_tick_at=quote.observed_at,
                 provenance=provenance,
             )
-            explanation = explain_decision_core(market.frame, symbol)
+            explanation = explain_decision_core(
+                market.frame,
+                symbol,
+                timeframe=runtime.timeframe,
+            )
             explanation["market_data_validation"] = {
                 "primary_source": "BINANCE_SPOT_PUBLIC",
                 "validator_source": "COINBASE_SPOT_PUBLIC",
@@ -278,7 +364,8 @@ def run_crypto_diagnostic_cycle(
                 ),
                 "primary_spread_bps": round(market.primary_spread_bps, 6),
                 "validator_spread_bps": round(market.validator_spread_bps, 6),
-                "source_binding_sha256": CRYPTO_SOURCE_BINDING_SHA256,
+                "source_binding_sha256": runtime.source_binding_sha256,
+                "timeframe": runtime.timeframe,
             }
             open_symbols = {item.symbol for item in journal.open_positions()}
             paper_opened = (
@@ -310,7 +397,7 @@ def run_crypto_diagnostic_cycle(
         cycle_id=require_text("cycle_id", cycle_id),
         observed_at=cycle_observed_at,
         expected_server="data-api.binance.vision",
-        expected_account_identity_sha256=CRYPTO_SOURCE_BINDING_SHA256,
+        expected_account_identity_sha256=runtime.source_binding_sha256,
         symbol_status=symbol_status,
         failures=failures,
         closed_positions=closed_positions,
@@ -331,12 +418,34 @@ def run_crypto_diagnostic_cycle(
     )
 
 
+def run_crypto_m5_diagnostic_cycle(
+    client: CryptoPublicMarketClient,
+    journal: DiagnosticJournal,
+    **kwargs,
+) -> DiagnosticCycleReceipt:
+    return run_crypto_diagnostic_cycle(
+        client,
+        journal,
+        runtime=CRYPTO_M5_RUNTIME,
+        **kwargs,
+    )
+
+
 __all__ = [
     "CRYPTO_DIAGNOSTIC_PROFILE",
     "CRYPTO_DIAGNOSTIC_SCHEMA_VERSION",
+    "CRYPTO_M15_RUNTIME",
+    "CRYPTO_M5_DIAGNOSTIC_PROFILE",
+    "CRYPTO_M5_DIAGNOSTIC_SCHEMA_VERSION",
+    "CRYPTO_M5_OUTCOME_QUALITY",
+    "CRYPTO_M5_RUNTIME",
+    "CRYPTO_M5_SOURCE_BINDING_SHA256",
     "CRYPTO_OUTCOME_QUALITY",
     "CRYPTO_REQUIRED_SYMBOLS",
     "CRYPTO_SOURCE_BINDING_SHA256",
+    "CryptoDiagnosticRuntime",
     "crypto_diagnostic_journal",
+    "crypto_m5_diagnostic_journal",
     "run_crypto_diagnostic_cycle",
+    "run_crypto_m5_diagnostic_cycle",
 ]

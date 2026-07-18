@@ -23,6 +23,7 @@ _HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
 _DECISION_SNAPSHOT_SEAL = object()
 _EXECUTION_RECEIPT_SEAL = object()
 _M15_SECONDS = 15 * 60
+DECISION_TIMEFRAME_SECONDS = {"M5": 5 * 60, "M15": _M15_SECONDS}
 
 
 def require_utc(name: str, value: datetime) -> datetime:
@@ -82,6 +83,13 @@ def require_text(name: str, value: object, *, upper: bool = False) -> str:
     if not normalized:
         raise ValueError(f"{name} is required")
     return normalized.upper() if upper else normalized
+
+
+def require_decision_timeframe(name: str, value: object) -> str:
+    normalized = require_text(name, value, upper=True)
+    if normalized not in DECISION_TIMEFRAME_SECONDS:
+        raise ValueError(f"{name} must be M5 or M15")
+    return normalized
 
 
 def require_hash(name: str, value: object, *, minimum_length: int = 64) -> str:
@@ -314,6 +322,7 @@ class DecisionSnapshot(CanonicalContract):
     data_fresh: bool
     bar_closed_at: datetime
     created_at: datetime
+    timeframe: str = "M15"
     schema_version: str = SCHEMA_VERSION
     _seal: InitVar[object | None] = None
 
@@ -385,11 +394,16 @@ class DecisionSnapshot(CanonicalContract):
             raise TypeError("source_aligned and data_fresh must be bool")
         require_utc("bar_closed_at", self.bar_closed_at)
         require_utc("created_at", self.created_at)
+        timeframe = require_decision_timeframe("timeframe", self.timeframe)
+        object.__setattr__(self, "timeframe", timeframe)
+        timeframe_seconds = DECISION_TIMEFRAME_SECONDS[timeframe]
         if (
             self.bar_closed_at.microsecond
-            or int(self.bar_closed_at.timestamp()) % _M15_SECONDS
+            or int(self.bar_closed_at.timestamp()) % timeframe_seconds
         ):
-            raise ValueError("bar_closed_at must align to a finalized M15 boundary")
+            raise ValueError(
+                f"bar_closed_at must align to a finalized {timeframe} boundary"
+            )
         if not self.bar_closed_at < self.created_at <= self.bar_closed_at + timedelta(
             seconds=ENTRY_WINDOW_SECONDS
         ):
@@ -399,6 +413,14 @@ class DecisionSnapshot(CanonicalContract):
             "schema_version",
             require_text("schema_version", self.schema_version),
         )
+
+    def to_canonical_dict(self) -> dict[str, Any]:
+        payload = super().to_canonical_dict()
+        # Preserve every existing M15 content hash and golden fixture. M5 is
+        # explicit in its canonical payload and is therefore a distinct domain.
+        if self.timeframe == "M15":
+            payload.pop("timeframe", None)
+        return payload
 
     @property
     def snapshot_id(self) -> str:
@@ -452,6 +474,8 @@ class TradeIntent(CanonicalContract):
             raise ValueError("expires_at must be after created_at")
         if not isinstance(self.decision, DecisionSnapshot):
             raise TypeError("decision must be a DecisionSnapshot")
+        if self.decision.timeframe != "M15":
+            raise ValueError("TradeIntent accepts only M15 decision snapshots")
         if self.symbol != self.decision.symbol or self.side != self.decision.side:
             raise ValueError("intent symbol/side must match the decision snapshot")
         if self.created_at < self.decision.created_at:
@@ -612,6 +636,7 @@ def _mint_execution_receipt(**values: Any) -> ExecutionReceipt:
 __all__ = [
     "BrokerSpec",
     "CanonicalContract",
+    "DECISION_TIMEFRAME_SECONDS",
     "DecisionSnapshot",
     "ExecutionReceipt",
     "ENTRY_WINDOW_SECONDS",
@@ -623,6 +648,7 @@ __all__ = [
     "require_finite",
     "require_hash",
     "require_int",
+    "require_decision_timeframe",
     "require_text",
     "require_utc",
 ]

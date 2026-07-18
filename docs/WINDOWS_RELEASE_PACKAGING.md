@@ -30,6 +30,9 @@ masih mengikat source tooling tersebut. Karena itu:
 Profile tooling juga membawa runner crypto weekend read-only. Runner tersebut
 hanya memakai allowlisted public GET Binance/Coinbase, tanpa credential maupun
 order API, dan tetap bukan service-runtime production.
+M15 champion dan M5 challenger dibundel sebagai entrypoint diagnostic berbeda;
+keduanya memiliki config serta journal domain terpisah dan tidak memiliki
+primitive execution.
 
 Pemisahan runtime minimal belum boleh diklaim: current shadow identity masih
 memverifikasi beberapa generator source. Refactor identity input harus selesai

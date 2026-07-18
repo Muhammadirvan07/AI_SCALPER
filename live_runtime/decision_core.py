@@ -21,6 +21,7 @@ from strategy.strategy_profiles import get_strategy_profile, normalize_symbol
 from strategy.strategy_selector import MIN_REQUIRED_ROWS, select_best_strategy
 
 from .contracts import (
+    DECISION_TIMEFRAME_SECONDS,
     ENTRY_WINDOW_SECONDS,
     CanonicalContract,
     DecisionSnapshot,
@@ -28,13 +29,13 @@ from .contracts import (
     require_finite,
     require_hash,
     require_int,
+    require_decision_timeframe,
     require_text,
     require_utc,
 )
 
 
 DECISION_CORE_VERSION = "decision-core-v1"
-M15_SECONDS = 15 * 60
 _TIMESTAMP_COLUMNS = ("Datetime", "open_time_utc")
 _OHLC_COLUMNS = ("Open", "High", "Low", "Close")
 
@@ -182,6 +183,7 @@ class DecisionProvenance(CanonicalContract):
     data_fresh: bool
     bar_closed_at: datetime
     created_at: datetime
+    timeframe: str = "M15"
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -214,8 +216,11 @@ class DecisionProvenance(CanonicalContract):
             raise TypeError("source_aligned and data_fresh must be bool")
         require_utc("bar_closed_at", self.bar_closed_at)
         require_utc("created_at", self.created_at)
-        if pd.Timestamp(self.bar_closed_at).value % (M15_SECONDS * 1_000_000_000):
-            raise ValueError("bar_closed_at must align to an M15 boundary")
+        timeframe = require_decision_timeframe("timeframe", self.timeframe)
+        object.__setattr__(self, "timeframe", timeframe)
+        seconds = DECISION_TIMEFRAME_SECONDS[timeframe]
+        if pd.Timestamp(self.bar_closed_at).value % (seconds * 1_000_000_000):
+            raise ValueError(f"bar_closed_at must align to an {timeframe} boundary")
         if not self.bar_closed_at < self.created_at <= self.bar_closed_at + timedelta(
             seconds=ENTRY_WINDOW_SECONDS
         ):
@@ -253,21 +258,30 @@ def _selector_frame(finalized_bars: pd.DataFrame) -> pd.DataFrame:
 def evaluate_decision_core(
     finalized_bars: pd.DataFrame,
     symbol: str,
+    *,
+    timeframe: str = "M15",
 ) -> DecisionCoreResult:
     """Evaluate existing selector, volatility, and supervisor semantics purely."""
 
-    core, _ = _evaluate_decision_core_selection(finalized_bars, symbol)
+    core, _ = _evaluate_decision_core_selection(
+        finalized_bars,
+        symbol,
+        timeframe=timeframe,
+    )
     return core
 
 
 def _evaluate_decision_core_selection(
     finalized_bars: pd.DataFrame,
     symbol: str,
+    *,
+    timeframe: str = "M15",
 ) -> tuple[DecisionCoreResult, Mapping[str, object]]:
     canonical_symbol = normalize_symbol(symbol)
     selection = select_best_strategy(
         _selector_frame(finalized_bars),
         symbol=canonical_symbol,
+        timeframe=timeframe,
     )
     signal = str(selection.get("signal", "SIDEWAYS") or "SIDEWAYS").upper()
     score = require_int("selector score", selection.get("score", 0), minimum=0)
@@ -312,10 +326,16 @@ def _evaluate_decision_core_selection(
 def explain_decision_core(
     finalized_bars: pd.DataFrame,
     symbol: str,
+    *,
+    timeframe: str = "M15",
 ) -> dict[str, object]:
     """Expose deterministic diagnostic context without changing the snapshot."""
 
-    core, selection = _evaluate_decision_core_selection(finalized_bars, symbol)
+    core, selection = _evaluate_decision_core_selection(
+        finalized_bars,
+        symbol,
+        timeframe=timeframe,
+    )
     raw_context = selection.get("decision_context", {})
     context = dict(raw_context) if isinstance(raw_context, Mapping) else {}
     raw_candidates = selection.get("all_strategies", ())
@@ -342,6 +362,7 @@ def explain_decision_core(
             )
     return {
         "schema_version": "decision-explanation-v1",
+        "timeframe": require_decision_timeframe("timeframe", timeframe),
         "symbol": core.symbol,
         "selector_signal": core.selector_signal,
         "action": core.action,
@@ -367,15 +388,19 @@ def explain_decision_core(
     }
 
 
-def _validated_finalized_m15_bars(
+def _validated_finalized_bars(
     finalized_bars: pd.DataFrame,
     bar_closed_at: datetime,
+    timeframe: str,
 ) -> pd.DataFrame:
+    normalized_timeframe = require_decision_timeframe("timeframe", timeframe)
+    timeframe_seconds = DECISION_TIMEFRAME_SECONDS[normalized_timeframe]
     if not isinstance(finalized_bars, pd.DataFrame):
         raise TypeError("finalized_bars must be a pandas DataFrame")
     if len(finalized_bars) < MIN_REQUIRED_ROWS:
         raise ValueError(
-            f"not enough finalized M15 bars: {len(finalized_bars)}/{MIN_REQUIRED_ROWS}"
+            f"not enough finalized {normalized_timeframe} bars: "
+            f"{len(finalized_bars)}/{MIN_REQUIRED_ROWS}"
         )
     timestamp_columns = [
         column for column in _TIMESTAMP_COLUMNS if column in finalized_bars.columns
@@ -395,17 +420,22 @@ def _validated_finalized_m15_bars(
         if timestamp.utcoffset().total_seconds() != 0:
             raise ValueError("decision bar timestamps must use UTC")
         timestamp = timestamp.tz_convert("UTC")
-        if timestamp.value % (M15_SECONDS * 1_000_000_000):
-            raise ValueError("decision bar timestamps must align to M15")
+        if timestamp.value % (timeframe_seconds * 1_000_000_000):
+            raise ValueError(
+                f"decision bar timestamps must align to {normalized_timeframe}"
+            )
         normalized_timestamps.append(timestamp)
     timestamp_index = pd.DatetimeIndex(normalized_timestamps)
     if timestamp_index.has_duplicates or not timestamp_index.is_monotonic_increasing:
         raise ValueError("decision bar timestamps must be unique and increasing")
     expected_close = timestamp_index[-1].to_pydatetime() + timedelta(
-        seconds=M15_SECONDS
+        seconds=timeframe_seconds
     )
     if expected_close != bar_closed_at:
-        raise ValueError("latest finalized M15 bar does not match bar_closed_at")
+        raise ValueError(
+            f"latest finalized {normalized_timeframe} bar does not match "
+            "bar_closed_at"
+        )
     return _selector_frame(finalized_bars)
 
 
@@ -424,17 +454,25 @@ def build_decision_snapshot(
         raise TypeError("provenance must be DecisionProvenance")
     if first_eligible_quote.observed_at != provenance.created_at:
         raise ValueError("snapshot creation must bind the first eligible quote time")
-    selector_bars = _validated_finalized_m15_bars(
+    selector_bars = _validated_finalized_bars(
         finalized_m15_bars,
         provenance.bar_closed_at,
+        provenance.timeframe,
     )
-    core = evaluate_decision_core(selector_bars, symbol)
+    core = evaluate_decision_core(
+        selector_bars,
+        symbol,
+        timeframe=provenance.timeframe,
+    )
 
     entry_reference = None
     stop_loss = None
     take_profit = None
     if core.action in {"BUY", "SELL"}:
-        profile = get_strategy_profile(core.symbol)
+        profile = get_strategy_profile(
+            core.symbol,
+            timeframe=provenance.timeframe,
+        )
         direction = 1.0 if core.action == "BUY" else -1.0
         entry_reference = (
             first_eligible_quote.ask
@@ -464,6 +502,7 @@ def build_decision_snapshot(
         data_fresh=provenance.data_fresh,
         bar_closed_at=provenance.bar_closed_at,
         created_at=provenance.created_at,
+        timeframe=provenance.timeframe,
     )
 
 

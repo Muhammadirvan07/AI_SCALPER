@@ -1,9 +1,9 @@
 {
-  "schema_version": "crypto-weekend-shadow-config-v1",
-  "profile": "CRYPTO_WEEKEND_DIAGNOSTIC_ONLY",
+  "schema_version": "crypto-m5-challenger-config-v1",
+  "profile": "CRYPTO_M5_CHALLENGER_DIAGNOSTIC_ONLY",
   "enabled": true,
-  "role": "CHAMPION",
-  "timeframe": "M15",
+  "role": "CHALLENGER",
+  "timeframe": "M5",
   "primary_source": "BINANCE_SPOT_PUBLIC",
   "validator_source": "COINBASE_SPOT_PUBLIC",
   "symbols": {
@@ -17,7 +17,7 @@
     }
   },
   "bar_count": 300,
-  "max_bar_age_seconds": 1800,
+  "max_bar_age_seconds": 600,
   "max_cross_feed_deviation_bps": 50.0,
   "max_ticker_age_seconds": 30.0,
   "max_spread_bps": 25.0,

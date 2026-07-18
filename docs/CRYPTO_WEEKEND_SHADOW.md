@@ -6,6 +6,9 @@ Lane ini menjaga AI_SCALPER tetap melakukan observasi saat forex berada dalam
 weekend closure. Lane crypto tidak menggantikan XM, tidak masuk journal XM, dan
 tidak dapat menjadi broker-forward promotion evidence.
 
+M15 dalam dokumen ini tetap champion. Challenger M5 memiliki config, runner,
+journal, summary, dan report terpisah; lihat `docs/CRYPTO_M5_CHALLENGER.md`.
+
 ## Arsitektur
 
 ```text
@@ -104,6 +107,9 @@ runtime_state\diagnostic\crypto-weekend-performance.json
 Report membuka SQLite dalam mode read-only/query-only, memverifikasi profile,
 schema, row/envelope binding dan seluruh hash chain sebelum menghitung metrik
 BTC serta ETH secara terpisah.
+
+Jangan menggunakan database M15 untuk generator M5 atau sebaliknya. Profile
+dan schema mismatch akan ditolak fail-closed.
 
 ## Interpretasi status
 

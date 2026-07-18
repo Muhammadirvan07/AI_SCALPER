@@ -68,6 +68,15 @@ CRYPTO_PROFILE = replace(
 )
 
 
+# Challenger baseline: preserve the six-hour M15 wall-clock horizon while
+# leaving ATR-normalized decision thresholds unchanged for an honest cadence
+# comparison. It is shadow-only and must be validated before any promotion.
+CRYPTO_M5_CHALLENGER_PROFILE = replace(
+    CRYPTO_PROFILE,
+    max_holding_bars=72,
+)
+
+
 SYMBOL_PROFILES = {
     "XAUUSD": replace(
         FX_PROFILE,
@@ -117,7 +126,20 @@ def normalize_symbol(symbol: object) -> str:
     return str(symbol or "UNKNOWN").strip().upper() or "UNKNOWN"
 
 
-def get_strategy_profile(symbol: object) -> StrategyProfile:
+def get_strategy_profile(
+    symbol: object,
+    *,
+    timeframe: object = "M15",
+) -> StrategyProfile:
     """Return an explicit symbol profile, falling back to normalized FX."""
 
-    return SYMBOL_PROFILES.get(normalize_symbol(symbol), FX_PROFILE)
+    canonical_symbol = normalize_symbol(symbol)
+    normalized_timeframe = str(timeframe or "").strip().upper()
+    if normalized_timeframe not in {"M5", "M15"}:
+        raise ValueError("strategy timeframe must be M5 or M15")
+    profile = SYMBOL_PROFILES.get(canonical_symbol, FX_PROFILE)
+    if normalized_timeframe == "M5":
+        if profile.asset_class != "CRYPTO":
+            raise ValueError("M5 challenger profile is restricted to crypto")
+        return CRYPTO_M5_CHALLENGER_PROFILE
+    return profile
