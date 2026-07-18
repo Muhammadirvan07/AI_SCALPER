@@ -54,3 +54,20 @@
 Crypto spot diagnostics do not prove CFD execution performance, broker parity,
 fees, funding, slippage, margin, or legal eligibility. XM XAU/FX journal and
 metrics remain separate.
+
+## FBS Broker Crypto M5 Checkpoint
+
+- Broker binding: `FBS-Demo`; canonical and broker symbols are `BTCUSD` and
+  `ETHUSD`.
+- The observed FBS server clock offset is fixed to UTC+3 for diagnostic use.
+  The offset guard passed the complete `507/507` regression suite.
+- The first post-fix cycle completed normally with `BTCUSD=WAIT` and
+  `ETHUSD=ENTRY_WINDOW_MISSED`; there was no timestamp or finalized-bar error.
+- Current journal contains 56 decisions: 28 BTCUSD and 28 ETHUSD.
+- BTCUSD has opened one paper position and that position remains open.
+- ETHUSD has not opened a paper position.
+- Closed trades, wins, losses, timeouts, and net R are all zero. Win rate,
+  expectancy, and profit factor are intentionally undefined until at least one
+  position closes.
+- Sample status remains `NO_CLOSED_TRADES`; the run is diagnostic-only and is
+  not promotion evidence.
