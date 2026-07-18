@@ -1,9 +1,10 @@
 {
   "schema_version": "broker-candidate-plan-v1",
-  "status": "LEGAL_BLOCKED_REDISCOVERY_REQUIRED",
+  "status": "FINEX_SELECTED_LEGAL_AND_BINDING_PENDING",
   "execution_enabled": false,
   "credentials_allowed": false,
   "operational_priority": {
+    "selected_target_broker": "finex",
     "primary_shadow_broker": null,
     "standby_preparation_broker": "finex",
     "deferred_benchmark_brokers": ["fbs"]
@@ -185,7 +186,7 @@
     {
       "candidate_id": "finex",
       "display_name": "FINEX",
-      "role": "STANDBY_PREPARATION",
+      "role": "SELECTED_TARGET_PREPARATION",
       "environment": "DEMO",
       "server": null,
       "account_type": null,
@@ -212,10 +213,10 @@
         "japan_residency_eligibility": "PENDING_JAPAN_REGULATORY_REVIEW",
         "indonesia_return_eligibility": "PENDING_PERSONAL_AND_ACCOUNT_ELIGIBILITY_AFTER_RETURN",
         "legal_eligible": false,
-        "decision": "PREPARE_ONLY_NO_CURRENT_JAPAN_OPERATION"
+        "decision": "SELECTED_BY_OPERATOR_PREPARE_ONLY_NO_CURRENT_JAPAN_OPERATION"
       },
       "account_identifier_stored": false
     }
   ],
-  "notes": "XM is explicitly blocked while operating from Japan. Its legacy discovery is historical only and cannot register Window 02 v3. FINEX is verified as a registered Indonesian broker but remains preparation-only until exact demo binding and the user's operating/residency eligibility are established. Do not guess or store credentials here."
+  "notes": "FINEX is the operator-selected target broker. It is verified as a registered Indonesian broker and supports MT5 demo accounts, but remains preparation-only while operating from Japan until exact demo binding and cross-jurisdiction eligibility are established. XM remains blocked and its legacy discovery is historical only. Do not guess or store credentials here."
 }

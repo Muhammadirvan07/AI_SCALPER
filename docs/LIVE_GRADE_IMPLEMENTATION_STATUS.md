@@ -13,7 +13,7 @@ membuka demo-auto maupun live.
 |---|---|---|
 | 1. Baseline terkunci | Sebagian | Seluruh safety lock terjaga, tetapi worktree telah berisi perubahan user/runtime sebelum implementasi sehingga clean baseline commit terisolasi belum dibuat. |
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v3, signed session calendar per simbol, append chains/heads, seal, blinded receipt, dan strict UTC/build/source/spec/grid verification tersedia. |
-| 3. Broker read-only shadow | Diagnostic loop implemented; XM evidence blocked in Japan; evidence not started | Runner `BROKER_REALTIME_DIAGNOSTIC_ONLY` dapat membaca finalized M15 dan broker tick, menjalankan shared decision core, serta mencatat paper outcome append-only. Seluruh output permanen non-promotional dan bukan validation evidence. Japan FSA legal gate tetap menandai XM/Tradexfin `VERIFIED_INELIGIBLE` untuk operating jurisdiction saat ini, sehingga Window 02 tidak boleh diregistrasi. FINEX telah diverifikasi sebagai broker terdaftar Bappebti, namun exact demo binding dan eligibility operasi dari Jepang tetap pending. |
+| 3. Broker read-only shadow | FINEX selected for preparation; legal/binding pending; evidence not started | Runner `BROKER_REALTIME_DIAGNOSTIC_ONLY` dapat membaca finalized M15 dan broker tick, menjalankan shared decision core, serta mencatat paper outcome append-only. FINEX adalah target pilihan operator dan terverifikasi sebagai broker terdaftar Bappebti dengan platform MT5, tetapi exact demo server/account/symbol binding serta eligibility operasi dari Jepang tetap pending. XM/Tradexfin tetap blocked dan discovery lamanya hanya historical diagnostic. Seluruh output saat ini non-promotional dan bukan validation evidence. |
 | 4. Manual demo | Component foundation ready, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-wide fence, risk governor, fenced journal, one-shot runtime composition, MT5 preflight/executor/reconciliation, dan dual-control kill-switch reset tersedia. Sepuluh order demo belum dilakukan. |
 | 5. Demo-auto soak | Not started | Policy tetap locked; belum ada 30 hari, 50 fill, minimal 20 XAU, atau clean incident record. |
 | 6. XAUUSD live canary | Not started | XAUUSD belum execution-approved dan belum memiliki promotion evidence/permit/soak maupun 50 closed live trades. |
@@ -244,11 +244,11 @@ eksternal belum terpenuhi.
 
 ## Blocker eksternal sebelum tahap berikutnya
 
-1. Jangan menjalankan XM Window 02 selama operating jurisdiction masih Jepang.
-   Pilih broker yang eligible untuk yurisdiksi saat ini, atau tunggu perubahan
-   yurisdiksi dan review legal baru. Untuk FINEX, lengkapi exact demo
-   server/account/symbol/spec serta eligibility lintas yurisdiksi sebelum
-   discovery. Setiap kandidat tetap membutuhkan minimal 20 sesi terpisah.
+1. FINEX telah dipilih sebagai target. Selama operating jurisdiction masih
+   Jepang, pertahankan status preparation-only sampai eligibility lintas
+   yurisdiksi dikonfirmasi. Lengkapi exact demo server/account/symbol/spec
+   sebelum discovery v3. XM Window 02 tetap tidak boleh dijalankan. Setiap
+   kandidat tetap membutuhkan minimal 20 sesi terpisah.
 2. Jalankan broker read-only shadow pada exact symbols; ekspor signed session
    calendars, finalized M15 bid/ask bars, raw ticks, spread/fill distributions,
    dan bukti minimal delapan minggu per lane.
