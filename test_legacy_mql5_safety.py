@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import unittest
-import zipfile
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -11,9 +10,7 @@ EA_PATHS = (
     REPO_ROOT / "mql5" / "AI_SCALPER_DemoBridgeReader.mq5",
     REPO_ROOT / "vps_package" / "AI_SCALPER_DemoBridgeReader.mq5",
 )
-VPS_ARCHIVE = REPO_ROOT / "AI_SCALPER_VPS_DEMO_PACKAGE.zip"
-VPS_ARCHIVE_EA = "vps_package/AI_SCALPER_DemoBridgeReader.mq5"
-VPS_ARCHIVE_README = "vps_package/README_SETUP_DEMO_MT5.txt"
+VPS_PACKAGE = REPO_ROOT / "vps_package"
 
 
 FORBIDDEN_ORDER_PATTERNS = {
@@ -40,27 +37,28 @@ class LegacyMql5SafetyTests(unittest.TestCase):
                 with self.subTest(path=path, primitive=label):
                     self.assertIsNone(re.search(pattern, source, flags=re.IGNORECASE))
 
-    def test_vps_archive_contains_only_the_inert_reader(self):
-        with zipfile.ZipFile(VPS_ARCHIVE) as archive:
-            members = set(archive.namelist())
-            archived_source = archive.read(VPS_ARCHIVE_EA)
-            archived_readme = archive.read(VPS_ARCHIVE_README).decode("utf-8")
+    def test_vps_package_contains_only_the_inert_reader(self):
+        members = {
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in VPS_PACKAGE.rglob("*")
+            if path.is_file()
+        }
         self.assertEqual(
             {
-                "vps_package/",
-                VPS_ARCHIVE_EA,
-                VPS_ARCHIVE_README,
+                "vps_package/AI_SCALPER_DemoBridgeReader.mq5",
+                "vps_package/README_SETUP_DEMO_MT5.txt",
             },
             members,
         )
-        self.assertFalse(any(name.casefold().endswith(".json") for name in members))
-        self.assertEqual(EA_PATHS[0].read_bytes(), archived_source)
-        source = archived_source.decode("utf-8")
+        source = EA_PATHS[1].read_text(encoding="utf-8")
         for label, pattern in FORBIDDEN_ORDER_PATTERNS.items():
-            with self.subTest(archive=VPS_ARCHIVE.name, primitive=label):
+            with self.subTest(package=VPS_PACKAGE.name, primitive=label):
                 self.assertIsNone(re.search(pattern, source, flags=re.IGNORECASE))
-        self.assertIn("Keep Algo Trading OFF.", archived_readme)
-        self.assertIn("safe_to_demo_auto_order=false", archived_readme)
+        readme = (VPS_PACKAGE / "README_SETUP_DEMO_MT5.txt").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Keep Algo Trading OFF.", readme)
+        self.assertIn("safe_to_demo_auto_order=false", readme)
 
     def test_only_non_safety_operational_inputs_remain(self):
         source = EA_PATHS[0].read_text(encoding="utf-8")

@@ -6,24 +6,25 @@ import unittest
 
 
 class RepositoryHygieneTests(unittest.TestCase):
+    @staticmethod
+    def _git_paths(root: Path, *args: str) -> set[str]:
+        output = subprocess.run(
+            ("git", *args),
+            cwd=root,
+            check=True,
+            capture_output=True,
+        ).stdout
+        return {
+            item.decode("utf-8")
+            for item in output.split(b"\0")
+            if item
+        }
+
     def test_python_bytecode_is_not_part_of_the_release_tree(self):
         root = Path(__file__).resolve().parent
-
-        def git_paths(*args: str) -> set[str]:
-            output = subprocess.run(
-                ("git", *args),
-                cwd=root,
-                check=True,
-                capture_output=True,
-            ).stdout
-            return {
-                item.decode("utf-8")
-                for item in output.split(b"\0")
-                if item
-            }
-
-        tracked = git_paths("ls-files", "-z", "--", "*.pyc")
-        pending_deletions = git_paths(
+        tracked = self._git_paths(root, "ls-files", "-z", "--", "*.pyc")
+        pending_deletions = self._git_paths(
+            root,
             "diff",
             "--name-only",
             "--diff-filter=D",
@@ -35,6 +36,32 @@ class RepositoryHygieneTests(unittest.TestCase):
             set(),
             tracked - pending_deletions,
             "tracked Python bytecode makes clean release identity unstable",
+        )
+
+    def test_generated_archives_and_editor_metadata_are_not_tracked(self):
+        root = Path(__file__).resolve().parent
+        tracked = self._git_paths(root, "ls-files", "-z")
+        pending_deletions = self._git_paths(
+            root,
+            "diff",
+            "--name-only",
+            "--diff-filter=D",
+            "-z",
+        )
+        prohibited = {
+            path
+            for path in tracked - pending_deletions
+            if path == ".DS_Store"
+            or path.endswith(".zip")
+            or ".bak_" in path
+            or ".backup_" in path
+            or path.endswith(".patch")
+            or path.startswith("AI_SCALPER_FULL_PROJECT_CONTEXT_")
+        }
+        self.assertEqual(
+            set(),
+            prohibited,
+            "generated archives, backups, or editor metadata are tracked",
         )
 
 
