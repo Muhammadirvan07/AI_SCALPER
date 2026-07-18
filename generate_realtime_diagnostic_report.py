@@ -40,7 +40,7 @@ def _parser() -> argparse.ArgumentParser:
             "realtime diagnostic journal"
         )
     )
-    parser.add_argument("--candidate", default="xm")
+    parser.add_argument("--candidate", default="fbs")
     parser.add_argument("--database", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument(

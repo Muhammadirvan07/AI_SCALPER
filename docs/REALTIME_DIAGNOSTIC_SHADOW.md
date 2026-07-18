@@ -57,7 +57,7 @@ Python harus menunjukkan versi 3.12.x.
 
 ```powershell
 python -B .\run_realtime_diagnostic_shadow.py `
-  --candidate finex `
+  --candidate fbs `
   --acknowledge-diagnostic-only `
   --cycles 1
 ```
@@ -78,7 +78,7 @@ Tidak ada transaksi broker yang dibuat.
 
 ```powershell
 python -B .\run_realtime_diagnostic_shadow.py `
-  --candidate finex `
+  --candidate fbs `
   --acknowledge-diagnostic-only `
   --continuous `
   --poll-seconds 5
@@ -92,13 +92,13 @@ sama; account-wide singleton fence akan menolak split-brain.
 Journal append-only:
 
 ```text
-runtime_state\diagnostic\finex-real-market.sqlite3
+runtime_state\diagnostic\fbs-real-market.sqlite3
 ```
 
 Ringkasan yang mudah dibaca:
 
 ```text
-runtime_state\diagnostic\finex-real-market-summary.json
+runtime_state\diagnostic\fbs-real-market-summary.json
 ```
 
 Ringkasan berisi:
@@ -121,14 +121,14 @@ journal tanpa mengubah database:
 
 ```powershell
 python -B .\generate_realtime_diagnostic_report.py `
-  --candidate finex `
+  --candidate fbs `
   --acknowledge-diagnostic-only
 ```
 
 Output default:
 
 ```text
-runtime_state\diagnostic\finex-real-market-performance.json
+runtime_state\diagnostic\fbs-real-market-performance.json
 ```
 
 Laporan memverifikasi ulang hash chain dan row/envelope binding sebelum
@@ -154,10 +154,11 @@ roadmap juga tetap bukan promotion evidence karena durasi delapan minggu,
 broker-forward contract, cost stress, confidence interval, dan parity gate
 tidak dinilai oleh laporan ini.
 
-Untuk diagnostic historis XM, ganti `--candidate finex` menjadi
-`--candidate xm`. Jangan menunjuk FINEX ke file `xm-real-market.sqlite3` atau
-sebaliknya. Runtime memverifikasi server dan hash identitas akun pada setiap
-cycle serta menolak journal lintas broker sebelum observasi baru dimulai.
+Untuk diagnostic historis XM atau FINEX, gunakan candidate eksplisit dan file
+yang sesuai. Jangan menunjuk FBS ke file `xm-real-market.sqlite3` atau
+`finex-real-market.sqlite3`. Runtime memverifikasi server dan hash identitas
+akun pada setiap cycle serta menolak journal lintas broker sebelum observasi
+baru dimulai.
 
 ## Status normal
 

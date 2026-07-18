@@ -20,7 +20,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Preparation-only MT5 read-only preflight; accepts no credentials"
     )
-    parser.add_argument("--candidate", default="finex")
+    parser.add_argument("--candidate", default="fbs")
     parser.add_argument(
         "--config",
         type=Path,

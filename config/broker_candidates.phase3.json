@@ -1,13 +1,13 @@
 {
   "schema_version": "broker-candidate-plan-v1",
-  "status": "FINEX_SELECTED_API_ATTESTATION_AND_ELIGIBILITY_PENDING",
+  "status": "FBS_SELECTED_PREFLIGHT_PENDING_AND_ELIGIBILITY_UNVERIFIED",
   "execution_enabled": false,
   "credentials_allowed": false,
   "operational_priority": {
-    "selected_target_broker": "finex",
+    "selected_target_broker": "fbs",
     "primary_shadow_broker": null,
     "standby_preparation_broker": "finex",
-    "deferred_benchmark_brokers": ["fbs"]
+    "deferred_benchmark_brokers": []
   },
   "required_symbols": ["XAUUSD", "EURUSD", "USDJPY", "AUDUSD"],
   "minimum_sessions_per_candidate": 20,
@@ -15,10 +15,42 @@
     {
       "candidate_id": "fbs",
       "display_name": "FBS",
-      "role": "DEFERRED_BENCHMARK",
-      "server": null,
-      "account_type": null,
-      "binding_status": "NOT_STARTED"
+      "role": "SELECTED_TARGET_PREPARATION",
+      "environment": "DEMO",
+      "server": "FBS-Demo",
+      "account_type": "DEMO_ACCOUNT_TYPE_UNATTESTED",
+      "leverage": "500:1",
+      "broker_legal_name_observed": "FBS Markets Inc.",
+      "account_currency": "USD",
+      "margin_mode_observed": 2,
+      "margin_mode_normalized": "RETAIL_HEDGING",
+      "read_only_discovery_allowed": false,
+      "binding_status": "SANITIZED_BINDING_PROBE_COMPLETE_PREFLIGHT_PENDING",
+      "broker_symbols_observed": {
+        "XAUUSD": "XAUUSD",
+        "EURUSD": "EURUSD",
+        "USDJPY": "USDJPY",
+        "AUDUSD": "AUDUSD"
+      },
+      "instrument_specification_status": "API_CAPTURE_PENDING",
+      "binding_probe_observation": {
+        "schema_version": "mt5-candidate-binding-probe-v1",
+        "status": "BINDING_READY",
+        "account_identifier_stored": false,
+        "account_name_stored": false,
+        "account_balance_stored": false,
+        "terminal_trade_allowed": false,
+        "terminal_tradeapi_disabled": true
+      },
+      "regulatory_observation": {
+        "entity": "FBS Markets Inc.",
+        "verification_status": "NOT_VERIFIED_FOR_CURRENT_JAPAN_OPERATING_JURISDICTION",
+        "japan_residency_eligibility": "PENDING_INDEPENDENT_REGULATORY_REVIEW",
+        "indonesia_return_eligibility": "PENDING_INDEPENDENT_REGULATORY_REVIEW",
+        "legal_eligible": false,
+        "decision": "PREPARATION_AND_DIAGNOSTIC_ONLY_NO_ORDER_OR_LIVE"
+      },
+      "account_identifier_stored": false
     },
     {
       "candidate_id": "xm",
@@ -186,7 +218,7 @@
     {
       "candidate_id": "finex",
       "display_name": "FINEX",
-      "role": "SELECTED_TARGET_PREPARATION",
+      "role": "STANDBY_PREPARATION_NO_NEW_OBSERVATION",
       "environment": "DEMO",
       "server": "FinexBisnisSolusi-Demo",
       "server_endpoint_observed": "prod-mt5-demo1.fnx.xmt.mx:443",
@@ -321,5 +353,5 @@
       "account_identifier_stored": false
     }
   ],
-  "notes": "FINEX is the operator-selected target broker. Its exact demo server, endpoint, account type, leverage, account currency, and four-symbol map are observed. Investor/read-only and terminal API attestation, API-captured instrument specs, and cross-jurisdiction eligibility remain pending. Explicit read_only_discovery_allowed stays false, so discovery and execution remain blocked. XM remains blocked and its legacy discovery is historical only. Do not guess or store credentials here."
+  "notes": "FBS is the operator-selected target broker. Its sanitized binding probe confirmed exact demo server FBS-Demo, USD account currency, 500:1 leverage, retail hedging margin mode, and canonical XAUUSD/EURUSD/USDJPY/AUDUSD names. Candidate preflight, API-captured instrument specs, session calendar, and cross-jurisdiction eligibility remain pending. Explicit read_only_discovery_allowed stays false, so evidence discovery and execution remain blocked. FINEX is retained as historical standby only and XM remains blocked. Do not guess or store credentials here."
 }

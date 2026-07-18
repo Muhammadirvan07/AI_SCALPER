@@ -267,7 +267,7 @@ def _parser() -> argparse.ArgumentParser:
             "Observe broker M15/ticks and simulate decisions without broker mutation"
         )
     )
-    parser.add_argument("--candidate", default="xm")
+    parser.add_argument("--candidate", default="fbs")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--journal", type=Path)
     parser.add_argument("--summary", type=Path)

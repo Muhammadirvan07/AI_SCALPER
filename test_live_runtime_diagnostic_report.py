@@ -213,10 +213,11 @@ def build_fixture(path: Path) -> None:
 class DiagnosticReportTests(unittest.TestCase):
     def test_report_default_artifacts_are_isolated_per_candidate(self) -> None:
         root = Path("C:/AI_SCALPER/runtime_state/diagnostic")
-        database, output = cli._diagnostic_report_paths("finex", root=root)
+        database, output = cli._diagnostic_report_paths("fbs", root=root)
 
-        self.assertEqual(root / "finex-real-market.sqlite3", database)
-        self.assertEqual(root / "finex-real-market-performance.json", output)
+        self.assertEqual(root / "fbs-real-market.sqlite3", database)
+        self.assertEqual(root / "fbs-real-market-performance.json", output)
+        self.assertEqual("fbs", cli._parser().parse_args([]).candidate)
 
     def test_report_calculates_trade_pair_and_sample_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -1,10 +1,12 @@
 # FBS Read-Only Preparation
 
-FBS adalah broker pengganti yang diminta operator. Pergantian dilakukan dua
-tahap agar exact terminal binding tidak ditebak:
+FBS adalah broker pengganti yang diminta operator. Exact terminal binding telah
+diterima melalui probe sanitasi:
 
-1. probe aman pada terminal demo FBS;
-2. review hasil, lalu binding config dan preflight kandidat.
+- server: `FBS-Demo`;
+- company: `FBS Markets Inc.`;
+- account: demo USD, leverage 500:1, retail hedging;
+- symbol map: XAUUSD, EURUSD, USDJPY, AUDUSD tanpa suffix.
 
 Probe hanya membaca company, exact server, mata uang akun, leverage, margin
 mode, dan kemungkinan nama empat simbol. Login, nama pemilik, saldo, equity,
@@ -26,10 +28,15 @@ git pull origin agent/live-grade-phase3
 python -B .\run_mt5_binding_probe.py --candidate fbs
 ```
 
-Kirim output JSON probe untuk direview. Jangan kirim login atau password.
-`binding_ready=true` hanya berarti setiap canonical symbol memiliki tepat satu
-alias yang ditemukan; itu belum mengaktifkan discovery evidence, demo order,
-atau live trading.
+Probe dapat diulang jika binding terminal berubah. Jangan kirim login atau
+password. `binding_ready=true` belum mengaktifkan discovery evidence, demo
+order, atau live trading.
 
-Sampai binding FBS dipatch dan preflight FBS lulus, jangan menjalankan realtime
-diagnostic dengan `--candidate fbs`.
+## Preflight setelah binding
+
+```powershell
+python -B .\run_mt5_readonly_preflight.py --candidate fbs
+```
+
+Realtime diagnostic baru boleh dimulai setelah output
+`MT5_READ_ONLY_PREFLIGHT_PASS`. Semua hasil tetap paper/non-promotional.

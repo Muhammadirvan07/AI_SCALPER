@@ -45,11 +45,15 @@ class RealtimeDiagnosticCLITests(unittest.TestCase):
         finex_journal, finex_summary = cli._diagnostic_artifact_paths(
             "finex", root=root
         )
+        fbs_journal, fbs_summary = cli._diagnostic_artifact_paths("fbs", root=root)
 
         self.assertEqual(root / "xm-real-market.sqlite3", xm_journal)
         self.assertEqual(root / "xm-real-market-summary.json", xm_summary)
         self.assertEqual(root / "finex-real-market.sqlite3", finex_journal)
         self.assertEqual(root / "finex-real-market-summary.json", finex_summary)
+        self.assertEqual(root / "fbs-real-market.sqlite3", fbs_journal)
+        self.assertEqual(root / "fbs-real-market-summary.json", fbs_summary)
+        self.assertEqual("fbs", cli._parser().parse_args([]).candidate)
 
     def test_existing_journal_from_another_broker_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -144,6 +148,8 @@ class RealtimeDiagnosticCLITests(unittest.TestCase):
                 result = cli.main(
                     [
                         "--acknowledge-diagnostic-only",
+                        "--candidate",
+                        "xm",
                         "--config",
                         str(config),
                         "--journal",

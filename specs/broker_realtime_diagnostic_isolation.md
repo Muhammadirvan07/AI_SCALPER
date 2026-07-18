@@ -12,6 +12,7 @@ evidence.
   normalized candidate ID.
 - `xm` retains the existing `xm-real-market-*` filenames.
 - `finex` uses `finex-real-market-*` filenames.
+- `fbs` uses `fbs-real-market-*` filenames and is the current default.
 - A journal containing a cycle for a different broker server or account
   identity is rejected before a new cycle is observed.
 - Explicit output paths are supported, but do not bypass the broker-cohort

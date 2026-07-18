@@ -1,13 +1,14 @@
 # Phase 3 — Broker Read-Only Shadow
 
-Status: **XM JAPAN LEGAL-BLOCKED / FINEX BINDING PENDING /
+Status: **FBS BINDING CONFIGURED / PREFLIGHT PENDING / XM JAPAN LEGAL-BLOCKED /
 BROKER-FORWARD DATA NOT STARTED / NOT_READY**
 
-Belum ada primary shadow broker yang boleh dijalankan. XM tetap terkonfigurasi
-sebagai referensi teknis, tetapi diblokir untuk operasi dari Jepang. FINEX
-tetap standby preparation dan harus memiliki discovery, key, contract, symbol
-specification, calendar, serta ledger terpisah. FBS deferred. Evidence
-antarbroker tidak boleh dicampur.
+Belum ada primary evidence broker yang boleh dipromosikan. FBS adalah target
+read-only diagnostic yang dipilih operator dengan binding `FBS-Demo`, akun demo
+USD 500:1 retail hedging, dan empat simbol canonical tanpa suffix. FINEX tetap
+standby historis dan XM diblokir untuk operasi dari Jepang. Setiap broker wajib
+memiliki discovery, key, contract, specification, calendar, serta ledger
+terpisah. Evidence antarbroker tidak boleh dicampur.
 
 Kontrol permanen fase ini:
 
@@ -40,8 +41,8 @@ Setiap runner broker wajib memiliki journal SQLite sendiri dengan:
   dipindahkan off-host, ditambah backup SQLite terjadwal untuk restore.
 
 Kegagalan journal, disk, heartbeat, audit export, atau backup adalah `HOLD`.
-Stdout bukan sumber audit. Jangan memakai journal, export, atau backup XM untuk
-FINEX.
+Stdout bukan sumber audit. Jangan memakai journal, export, atau backup XM atau
+FINEX untuk FBS.
 
 ## Jalur XM diblokir untuk Jepang
 
@@ -57,7 +58,20 @@ artefak Window 02 v3 berikut belum boleh dibuat:
 `xm-window-01-diagnostic-v2` dan artefak pendahulunya tetap immutable,
 read-only, dan tidak boleh ditimpa atau dilanjutkan oleh runtime v3.
 
-## FINEX standby
+## FBS target diagnostic
+
+Sebelum evidence collection, FBS masih harus melewati:
+
+- exact read-only preflight pada server `FBS-Demo`;
+- API instrument specification untuk empat simbol;
+- session timezone/calendar dan holiday overrides;
+- independent regulatory eligibility review untuk lokasi operasi;
+- discovery v3, contract, key, dan source-instance ID khusus FBS.
+
+Diagnostic paper boleh dimulai setelah preflight lulus, tetapi tidak dihitung
+sebagai promotion evidence.
+
+## FINEX historical standby
 
 Jangan menyalin binding XM ke FINEX. Sebelum menyiapkan contract FINEX,
 lengkapi:
@@ -76,8 +90,7 @@ Sampai eligibility dan data terminal FINEX tersedia, kandidat tetap
 
 ## Bukti yang masih belum ada
 
-- Minimal 20 sesi broker-forward XM yang valid.
-- Minimal 20 sesi FINEX terpisah.
+- Minimal 20 sesi FBS terpisah untuk benchmark.
 - Measured spread, uptime, cost, serta fill quality.
 - Demo manual order/reconciliation evidence.
 - Demo-auto soak 30 hari/50 fill.

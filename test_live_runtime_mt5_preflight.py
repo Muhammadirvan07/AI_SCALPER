@@ -29,7 +29,7 @@ class FakeMT5:
     def __init__(self) -> None:
         self.shutdown_called = False
         self.account = {
-            "server": "FinexBisnisSolusi-Demo",
+            "server": "FBS-Demo",
             "currency": "USD",
             "leverage": 500,
             "trade_mode": 0,
@@ -73,11 +73,11 @@ class MT5CandidatePreflightTests(unittest.TestCase):
         plan = json.loads(PLAN.read_text(encoding="utf-8"))
         self.plan = plan
         self.candidate = next(
-            item for item in plan["candidates"] if item["candidate_id"] == "finex"
+            item for item in plan["candidates"] if item["candidate_id"] == "fbs"
         )
 
     def test_config_loader_allows_preflight_without_opening_discovery(self) -> None:
-        candidate = load_preflight_candidate(PLAN, "finex")
+        candidate = load_preflight_candidate(PLAN, "fbs")
         self.assertFalse(candidate["read_only_discovery_allowed"])
         self.assertFalse(self.plan["execution_enabled"])
         self.assertFalse(self.plan["credentials_allowed"])
@@ -85,11 +85,11 @@ class MT5CandidatePreflightTests(unittest.TestCase):
     def test_pass_result_is_sanitized_and_non_promotional(self) -> None:
         result = attest_candidate_read_only(
             ReadOnlyMT5Facade(FakeMT5()),
-            candidate_id="finex",
+            candidate_id="fbs",
             candidate=self.candidate,
         )
         self.assertEqual("PASS", result["status"])
-        self.assertEqual("FinexBisnisSolusi-Demo", result["server"])
+        self.assertEqual("FBS-Demo", result["server"])
         self.assertEqual("USD", result["account_currency"])
         self.assertEqual(500, result["leverage"])
         self.assertEqual(
@@ -119,7 +119,7 @@ class MT5CandidatePreflightTests(unittest.TestCase):
                 ):
                     attest_candidate_read_only(
                         ReadOnlyMT5Facade(mt5),
-                        candidate_id="finex",
+                        candidate_id="fbs",
                         candidate=self.candidate,
                     )
 
@@ -128,7 +128,7 @@ class MT5CandidatePreflightTests(unittest.TestCase):
         mt5.account["trade_expert"] = True
         result = attest_candidate_read_only(
             ReadOnlyMT5Facade(mt5),
-            candidate_id="finex",
+            candidate_id="fbs",
             candidate=self.candidate,
         )
         self.assertFalse(result["safety"]["account_trade_allowed"])
@@ -150,7 +150,7 @@ class MT5CandidatePreflightTests(unittest.TestCase):
                 with self.assertRaises(MT5CandidatePreflightError):
                     attest_candidate_read_only(
                         ReadOnlyMT5Facade(mt5),
-                        candidate_id="finex",
+                        candidate_id="fbs",
                         candidate=self.candidate,
                     )
         mt5 = FakeMT5()
@@ -158,7 +158,7 @@ class MT5CandidatePreflightTests(unittest.TestCase):
         with self.assertRaisesRegex(MT5CandidatePreflightError, "symbol drift"):
             attest_candidate_read_only(
                 ReadOnlyMT5Facade(mt5),
-                candidate_id="finex",
+                candidate_id="fbs",
                 candidate=self.candidate,
             )
 
@@ -175,7 +175,7 @@ class MT5CandidatePreflightTests(unittest.TestCase):
                 with self.assertRaises(MT5CandidatePreflightError):
                     attest_candidate_read_only(
                         ReadOnlyMT5Facade(FakeMT5()),
-                        candidate_id="finex",
+                        candidate_id="fbs",
                         candidate=candidate,
                     )
 
@@ -187,7 +187,7 @@ class MT5CandidatePreflightTests(unittest.TestCase):
             patch.object(
                 sys,
                 "argv",
-                ["run_mt5_readonly_preflight.py", "--candidate", "finex"],
+                ["run_mt5_readonly_preflight.py", "--candidate", "fbs"],
             ),
             redirect_stdout(output),
         ):
