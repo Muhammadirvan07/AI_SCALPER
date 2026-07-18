@@ -250,10 +250,41 @@ def _safety_payload() -> dict[str, object]:
 
 
 class DiagnosticJournal:
-    """Append-only, hash-chained journal for decisions and paper outcomes."""
+    """Append-only, hash-chained journal for decisions and paper outcomes.
 
-    def __init__(self, path: str | Path):
+    The defaults preserve the XM four-lane journal.  A separate diagnostic
+    adapter may provide an explicit symbol/profile/schema domain, preventing
+    crypto observations from being mixed into the broker journal.
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        required_symbols: Sequence[str] = REQUIRED_SYMBOLS,
+        profile: str = DIAGNOSTIC_PROFILE,
+        schema_version: str = DIAGNOSTIC_SCHEMA_VERSION,
+        outcome_quality: str = "BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+    ):
         self.path = Path(path)
+        normalized_symbols = tuple(
+            require_text("required symbol", symbol, upper=True)
+            for symbol in required_symbols
+        )
+        if not normalized_symbols or len(set(normalized_symbols)) != len(
+            normalized_symbols
+        ):
+            raise RealtimeDiagnosticError(
+                "diagnostic journal symbols must be nonempty and unique"
+            )
+        self.required_symbols = normalized_symbols
+        self.profile = require_text("profile", profile, upper=True)
+        self.schema_version = require_text("schema_version", schema_version)
+        self.outcome_quality = require_text(
+            "outcome_quality",
+            outcome_quality,
+            upper=True,
+        )
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(
             str(self.path),
@@ -291,6 +322,39 @@ class DiagnosticJournal:
                 SELECT RAISE(ABORT, 'diagnostic_events is append-only');
             END"""
         )
+        try:
+            self._verify_domain_binding()
+            if not self.verify_chain():
+                raise RealtimeDiagnosticError(
+                    "diagnostic journal hash chain or row binding is invalid"
+                )
+        except Exception:
+            self.connection.close()
+            raise
+
+    def _verify_domain_binding(self) -> None:
+        rows = self.connection.execute(
+            "SELECT payload_json FROM diagnostic_events ORDER BY sequence"
+        ).fetchall()
+        for row in rows:
+            try:
+                envelope = json.loads(row["payload_json"])
+            except (json.JSONDecodeError, TypeError) as exc:
+                raise RealtimeDiagnosticError(
+                    "diagnostic journal contains invalid JSON"
+                ) from exc
+            if (
+                envelope.get("schema_version") != self.schema_version
+                or envelope.get("profile") != self.profile
+            ):
+                raise RealtimeDiagnosticError(
+                    "diagnostic journal domain does not match requested profile"
+                )
+            symbol = envelope.get("symbol")
+            if symbol is not None and symbol not in self.required_symbols:
+                raise RealtimeDiagnosticError(
+                    "diagnostic journal contains a symbol outside its domain"
+                )
 
     def close(self) -> None:
         self.connection.close()
@@ -321,7 +385,10 @@ class DiagnosticJournal:
             raise RealtimeDiagnosticError("unsupported diagnostic event type")
         require_utc("observed_at", observed_at)
         normalized_symbol = str(symbol or "").strip().upper() or None
-        if normalized_symbol is not None and normalized_symbol not in REQUIRED_SYMBOLS:
+        if (
+            normalized_symbol is not None
+            and normalized_symbol not in self.required_symbols
+        ):
             raise RealtimeDiagnosticError("unsupported diagnostic symbol")
         normalized_key = str(decision_key or "").strip() or None
 
@@ -353,8 +420,8 @@ class DiagnosticJournal:
                 else ZERO_HASH
             )
             envelope = {
-                "schema_version": DIAGNOSTIC_SCHEMA_VERSION,
-                "profile": DIAGNOSTIC_PROFILE,
+                "schema_version": self.schema_version,
+                "profile": self.profile,
                 "event_id": normalized_event_id,
                 "event_type": normalized_event_type,
                 "decision_key": normalized_key,
@@ -422,7 +489,7 @@ class DiagnosticJournal:
         decision_explanation: Mapping[str, object] | None = None,
     ) -> str:
         canonical_symbol = require_text("symbol", symbol, upper=True)
-        if canonical_symbol not in REQUIRED_SYMBOLS:
+        if canonical_symbol not in self.required_symbols:
             raise RealtimeDiagnosticError("unsupported diagnostic symbol")
         require_utc("bar_closed_at", bar_closed_at)
         require_utc("observed_at", observed_at)
@@ -483,7 +550,7 @@ class DiagnosticJournal:
                 if paper_opened
                 else None
             ),
-            "outcome_quality": "BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+            "outcome_quality": self.outcome_quality,
         }
         event_id = "bar_" + canonical_sha256(
             {"decision_key": decision_key, "payload": payload}
@@ -538,7 +605,7 @@ class DiagnosticJournal:
             "outcome": normalized_outcome,
             "exit_reason": normalized_exit_reason,
             "r_multiple": float(r_multiple),
-            "outcome_quality": "BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+            "outcome_quality": self.outcome_quality,
         }
         return self._append(
             event_id=f"close_{position.decision_id}",
@@ -563,15 +630,17 @@ class DiagnosticJournal:
             str(symbol).upper(): str(status)
             for symbol, status in symbol_status.items()
         }
-        if set(statuses) != set(REQUIRED_SYMBOLS):
+        if set(statuses) != set(self.required_symbols):
             raise RealtimeDiagnosticError(
-                "diagnostic cycle requires all four symbol statuses"
+                "diagnostic cycle requires every configured symbol status"
             )
         normalized_failures = {
             str(symbol).upper(): str(reason)
             for symbol, reason in failures.items()
         }
-        if any(symbol not in REQUIRED_SYMBOLS for symbol in normalized_failures):
+        if any(
+            symbol not in self.required_symbols for symbol in normalized_failures
+        ):
             raise RealtimeDiagnosticError("diagnostic failure symbol is invalid")
         payload = {
             "cycle_id": require_text("cycle_id", cycle_id),
@@ -594,15 +663,28 @@ class DiagnosticJournal:
     def verify_chain(self) -> bool:
         previous = ZERO_HASH
         rows = self.connection.execute(
-            """SELECT payload_json, payload_sha256, previous_sha256
+            """SELECT sequence, event_id, event_type, decision_key, symbol,
+            observed_at_utc, payload_json, payload_sha256, previous_sha256
             FROM diagnostic_events ORDER BY sequence"""
         ).fetchall()
-        for row in rows:
+        for expected_sequence, row in enumerate(rows, start=1):
+            if row["sequence"] != expected_sequence:
+                return False
             if row["previous_sha256"] != previous:
                 return False
             try:
                 payload = json.loads(row["payload_json"])
             except json.JSONDecodeError:
+                return False
+            if (
+                payload.get("schema_version") != self.schema_version
+                or payload.get("profile") != self.profile
+                or payload.get("event_id") != row["event_id"]
+                or payload.get("event_type") != row["event_type"]
+                or payload.get("decision_key") != row["decision_key"]
+                or payload.get("symbol") != row["symbol"]
+                or payload.get("observed_at_utc") != row["observed_at_utc"]
+            ):
                 return False
             if payload.get("previous_sha256") != previous:
                 return False
@@ -696,7 +778,7 @@ class DiagnosticJournal:
                 "market_regime_counts": {},
                 "candidate_filter_counts": {},
             }
-            for symbol in REQUIRED_SYMBOLS
+            for symbol in self.required_symbols
         }
         for item in decisions:
             snapshot = item.get("snapshot")
@@ -771,8 +853,8 @@ class DiagnosticJournal:
         losses = sum(1 for item in closes if item["outcome"] == "LOSS")
         closed_count = wins + losses
         return {
-            "schema_version": DIAGNOSTIC_SCHEMA_VERSION,
-            "profile": DIAGNOSTIC_PROFILE,
+            "schema_version": self.schema_version,
+            "profile": self.profile,
             "safety": _safety_payload(),
             "journal_sha256_chain_valid": self.verify_chain(),
             "decisions": len(decisions),
@@ -1166,6 +1248,14 @@ def run_diagnostic_cycle(
         )
     if type(journal) is not DiagnosticJournal:
         raise TypeError("journal must be DiagnosticJournal")
+    if (
+        journal.required_symbols != REQUIRED_SYMBOLS
+        or journal.profile != DIAGNOSTIC_PROFILE
+        or journal.schema_version != DIAGNOSTIC_SCHEMA_VERSION
+    ):
+        raise RealtimeDiagnosticError(
+            "MT5 diagnostic cycle requires the broker journal domain"
+        )
     if type(identity) is not DiagnosticIdentity:
         raise TypeError("identity must be DiagnosticIdentity")
     require_utc("observed_at", observed_at)

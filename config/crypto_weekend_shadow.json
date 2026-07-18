@@ -1,0 +1,32 @@
+{
+  "schema_version": "crypto-weekend-shadow-config-v1",
+  "profile": "CRYPTO_WEEKEND_DIAGNOSTIC_ONLY",
+  "enabled": true,
+  "primary_source": "BINANCE_SPOT_PUBLIC",
+  "validator_source": "COINBASE_SPOT_PUBLIC",
+  "symbols": {
+    "BTCUSD": {
+      "primary_symbol": "BTCUSDT",
+      "validator_symbol": "BTC-USD"
+    },
+    "ETHUSD": {
+      "primary_symbol": "ETHUSDT",
+      "validator_symbol": "ETH-USD"
+    }
+  },
+  "bar_count": 300,
+  "max_bar_age_seconds": 1800,
+  "max_cross_feed_deviation_bps": 50.0,
+  "max_ticker_age_seconds": 30.0,
+  "max_spread_bps": 25.0,
+  "max_clock_drift_seconds": 1.0,
+  "safety": {
+    "credentials_allowed": false,
+    "orders_allowed": false,
+    "live_allowed": false,
+    "safe_to_demo_auto_order": false,
+    "promotion_eligible": false,
+    "validation_evidence": false,
+    "order_capability": "DISABLED"
+  }
+}

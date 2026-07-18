@@ -168,3 +168,7 @@ tidak dinilai oleh laporan ini.
 - Komisi, swap, dan conversion account JPY belum dimasukkan ke metrik ini.
 - Output tidak menggantikan broker-forward evidence, manual demo order,
   reconciliation test, atau demo-auto soak.
+
+Observasi crypto weekend tidak masuk ke database ini. Gunakan runner dan
+journal terpisah dalam `docs/CRYPTO_WEEKEND_SHADOW.md`; hasil BTC/ETH tidak
+boleh digabung untuk menutupi hasil XAUUSD atau FX.

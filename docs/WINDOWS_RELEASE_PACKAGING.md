@@ -27,6 +27,10 @@ masih mengikat source tooling tersebut. Karena itu:
 - source tree tidak boleh langsung dijadikan Task Scheduler working directory;
 - materialisasi service-runtime minimal membutuhkan profile/allowlist terpisah.
 
+Profile tooling juga membawa runner crypto weekend read-only. Runner tersebut
+hanya memakai allowlisted public GET Binance/Coinbase, tanpa credential maupun
+order API, dan tetap bukan service-runtime production.
+
 Pemisahan runtime minimal belum boleh diklaim: current shadow identity masih
 memverifikasi beberapa generator source. Refactor identity input harus selesai
 dan diuji dahulu sebelum profile service-runtime dibuat.

@@ -118,6 +118,10 @@ def _round(value: float | None, digits: int = 6) -> float | None:
 
 def _read_verified_events(
     database: Path,
+    *,
+    expected_schema_version: str,
+    expected_profile: str,
+    required_symbols: Sequence[str],
 ) -> tuple[list[dict[str, object]], str]:
     if not database.exists():
         raise DiagnosticReportError(f"diagnostic database does not exist: {database}")
@@ -154,6 +158,13 @@ def _read_verified_events(
         if row["sequence"] != expected_sequence:
             raise DiagnosticReportError("diagnostic journal sequence is not contiguous")
         envelope = _strict_json(str(row["payload_json"]))
+        if (
+            envelope.get("schema_version") != expected_schema_version
+            or envelope.get("profile") != expected_profile
+        ):
+            raise DiagnosticReportError(
+                "diagnostic journal profile or schema is invalid"
+            )
         event_type = _text(row["event_type"], "event_type", upper=True)
         if event_type not in ALLOWED_EVENT_TYPES:
             raise DiagnosticReportError("diagnostic journal event type is invalid")
@@ -172,6 +183,8 @@ def _read_verified_events(
         }
         if any(envelope.get(key) != value for key, value in comparisons.items()):
             raise DiagnosticReportError("journal row does not match its event envelope")
+        if row["symbol"] is not None and row["symbol"] not in required_symbols:
+            raise DiagnosticReportError("journal symbol is outside the report domain")
         safety = envelope.get("safety")
         if not isinstance(safety, Mapping):
             raise DiagnosticReportError("journal safety payload is unavailable")
@@ -297,9 +310,15 @@ def _sample_assessment(closed_trades: int) -> dict[str, object]:
     }
 
 
-def build_diagnostic_report(
+def _build_diagnostic_report(
     database: str | Path,
     *,
+    required_symbols: Sequence[str],
+    expected_schema_version: str,
+    expected_profile: str,
+    report_schema_version: str,
+    report_type: str,
+    limitations: Sequence[str],
     generated_at: datetime | None = None,
 ) -> dict[str, object]:
     """Build a verified, non-promotional report without mutating SQLite."""
@@ -309,14 +328,19 @@ def build_diagnostic_report(
         raise DiagnosticReportError("generated_at must be timezone-aware UTC")
     generated = generated.astimezone(UTC)
     database_path = Path(database)
-    events, chain_head = _read_verified_events(database_path)
+    events, chain_head = _read_verified_events(
+        database_path,
+        expected_schema_version=expected_schema_version,
+        expected_profile=expected_profile,
+        required_symbols=required_symbols,
+    )
 
     decisions: dict[str, dict[str, object]] = {}
     closes: dict[str, dict[str, object]] = {}
-    decision_counts = {symbol: 0 for symbol in REQUIRED_SYMBOLS}
-    paper_opened_counts = {symbol: 0 for symbol in REQUIRED_SYMBOLS}
+    decision_counts = {symbol: 0 for symbol in required_symbols}
+    paper_opened_counts = {symbol: 0 for symbol in required_symbols}
     action_counts: dict[str, Counter[str]] = {
-        symbol: Counter() for symbol in REQUIRED_SYMBOLS
+        symbol: Counter() for symbol in required_symbols
     }
     event_times: list[datetime] = []
 
@@ -334,7 +358,7 @@ def build_diagnostic_report(
                 "decision symbol",
                 upper=True,
             )
-            if symbol not in REQUIRED_SYMBOLS:
+            if symbol not in required_symbols:
                 raise DiagnosticReportError("decision symbol is unsupported")
             decision_counts[symbol] += 1
             snapshot = payload.get("snapshot")
@@ -449,7 +473,7 @@ def build_diagnostic_report(
     ]
 
     per_symbol: dict[str, dict[str, object]] = {}
-    for symbol in REQUIRED_SYMBOLS:
+    for symbol in required_symbols:
         metrics = _trade_metrics(
             [trade for trade in trades if trade["symbol"] == symbol]
         )
@@ -470,8 +494,8 @@ def build_diagnostic_report(
 
     overall = _trade_metrics(trades)
     report: dict[str, object] = {
-        "schema_version": REPORT_SCHEMA_VERSION,
-        "report_type": "BROKER_REALTIME_DIAGNOSTIC_PERFORMANCE",
+        "schema_version": report_schema_version,
+        "report_type": report_type,
         "generated_at_utc": _utc_text(generated),
         "source": {
             "database_name": database_path.name,
@@ -507,19 +531,65 @@ def build_diagnostic_report(
         },
         "trades": trades,
         "sample_assessment": _sample_assessment(int(overall["closed_trades"])),
-        "limitations": (
-            "R-multiple paper outcomes only",
-            "commission, swap, account-currency conversion, and margin are excluded",
-            "diagnostic journal is not broker-forward promotion evidence",
-            "confidence intervals and cost stress are not calculated",
-        ),
+        "limitations": tuple(limitations),
     }
     report["report_sha256"] = canonical_sha256(report)
     return report
 
 
+def build_diagnostic_report(
+    database: str | Path,
+    *,
+    generated_at: datetime | None = None,
+) -> dict[str, object]:
+    """Build the verified XM broker diagnostic performance report."""
+
+    return _build_diagnostic_report(
+        database,
+        required_symbols=REQUIRED_SYMBOLS,
+        expected_schema_version="real-market-diagnostic-v1",
+        expected_profile="BROKER_REALTIME_DIAGNOSTIC_ONLY",
+        report_schema_version=REPORT_SCHEMA_VERSION,
+        report_type="BROKER_REALTIME_DIAGNOSTIC_PERFORMANCE",
+        limitations=(
+            "R-multiple paper outcomes only",
+            "commission, swap, account-currency conversion, and margin are excluded",
+            "diagnostic journal is not broker-forward promotion evidence",
+            "confidence intervals and cost stress are not calculated",
+        ),
+        generated_at=generated_at,
+    )
+
+
+def build_crypto_diagnostic_report(
+    database: str | Path,
+    *,
+    generated_at: datetime | None = None,
+) -> dict[str, object]:
+    """Build the isolated BTC/ETH public-market diagnostic report."""
+
+    return _build_diagnostic_report(
+        database,
+        required_symbols=("BTCUSD", "ETHUSD"),
+        expected_schema_version="crypto-weekend-diagnostic-v1",
+        expected_profile="CRYPTO_WEEKEND_DIAGNOSTIC_ONLY",
+        report_schema_version="CRYPTO_WEEKEND_DIAGNOSTIC_PERFORMANCE_V1",
+        report_type="CRYPTO_WEEKEND_PUBLIC_MARKET_DIAGNOSTIC_PERFORMANCE",
+        limitations=(
+            "R-multiple sampled-quote paper outcomes only",
+            "Binance USDT spot is not a broker BTCUSD or ETHUSD CFD",
+            "Coinbase is a validation feed and not an execution venue",
+            "fees, funding, slippage, and broker contract economics are excluded",
+            "diagnostic journal is not broker-forward promotion evidence",
+            "confidence intervals and cost stress are not calculated",
+        ),
+        generated_at=generated_at,
+    )
+
+
 __all__ = [
     "DiagnosticReportError",
     "REPORT_SCHEMA_VERSION",
+    "build_crypto_diagnostic_report",
     "build_diagnostic_report",
 ]

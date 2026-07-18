@@ -71,6 +71,14 @@ membuka demo-auto maupun live.
   paper position per lane mencegah overlap, tetapi output selalu
   `validation_evidence=false`, `promotion_eligible=false`, dan
   `legal_gate_bypassed=false`.
+- Lane weekend crypto terisolasi memakai Binance spot public sebagai primary
+  `BTCUSDT`/`ETHUSDT` dan Coinbase public `BTC-USD`/`ETH-USD` sebagai validator.
+  Ia menerima finalized UTC M15 serta sampled bid/ask melalui allowlisted GET
+  tanpa credential/order capability, memakai shared decision core, lalu menulis
+  journal dan report crypto terpisah. Feed stale, crossed, gap, clock drift,
+  spread, atau deviasi cross-feed menghasilkan fail-closed `HOLD`. BTCUSD dan
+  ETHUSD tetap shadow-only dan output ini bukan parity atau broker-forward
+  evidence.
 - Executor dan MT5 adapter membaca waktu dari injected trusted-clock provider;
   timestamp caller hanya assertion dan mismatch ditolak. Runtime facts/model
   binding harus berumur paling lama satu detik, sedangkan health gate menolak

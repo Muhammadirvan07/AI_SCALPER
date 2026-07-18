@@ -50,6 +50,24 @@ FX_PROFILE = StrategyProfile(
 )
 
 
+CRYPTO_PROFILE = replace(
+    FX_PROFILE,
+    asset_class="CRYPTO",
+    allowed_strategies=frozenset({"BREAKOUT", "MOMENTUM_PULLBACK"}),
+    preferred_strategy="BREAKOUT",
+    min_strategy_score=5,
+    breakout_buffer_atr=0.15,
+    pullback_touch_atr=0.20,
+    min_breakout_adx=22.0,
+    min_momentum_adx=22.0,
+    max_atr_ratio=1.60,
+    estimated_round_trip_cost_bps=5.00,
+    stop_atr=1.75,
+    target_atr=3.50,
+    max_holding_bars=24,
+)
+
+
 SYMBOL_PROFILES = {
     "XAUUSD": replace(
         FX_PROFILE,
@@ -90,22 +108,8 @@ SYMBOL_PROFILES = {
         max_atr_ratio=1.65,
         estimated_round_trip_cost_bps=2.00,
     ),
-    "BTCUSD": replace(
-        FX_PROFILE,
-        asset_class="CRYPTO",
-        allowed_strategies=frozenset({"BREAKOUT", "MOMENTUM_PULLBACK"}),
-        preferred_strategy="BREAKOUT",
-        min_strategy_score=5,
-        breakout_buffer_atr=0.15,
-        pullback_touch_atr=0.20,
-        min_breakout_adx=22.0,
-        min_momentum_adx=22.0,
-        max_atr_ratio=1.60,
-        estimated_round_trip_cost_bps=5.00,
-        stop_atr=1.75,
-        target_atr=3.50,
-        max_holding_bars=24,
-    ),
+    "BTCUSD": CRYPTO_PROFILE,
+    "ETHUSD": CRYPTO_PROFILE,
 }
 
 
