@@ -72,6 +72,7 @@ class CryptoRunnerProfile:
     default_journal: Path
     default_summary: Path
     role: str
+    operator_label: str
 
 
 M15_RUNNER_PROFILE = CryptoRunnerProfile(
@@ -81,6 +82,7 @@ M15_RUNNER_PROFILE = CryptoRunnerProfile(
     default_journal=DEFAULT_JOURNAL,
     default_summary=DEFAULT_SUMMARY,
     role="CHAMPION",
+    operator_label="Crypto weekend M15 shadow",
 )
 M5_RUNNER_PROFILE = CryptoRunnerProfile(
     runtime=CRYPTO_M5_RUNTIME,
@@ -89,6 +91,7 @@ M5_RUNNER_PROFILE = CryptoRunnerProfile(
     default_journal=DEFAULT_M5_JOURNAL,
     default_summary=DEFAULT_M5_SUMMARY,
     role="CHALLENGER",
+    operator_label="Crypto M5 challenger",
 )
 
 
@@ -395,7 +398,7 @@ def cli_entrypoint(
     try:
         return main(argv, runner_profile=runner_profile)
     except KeyboardInterrupt:
-        print("Crypto weekend shadow stopped by operator.")
+        print(f"{runner_profile.operator_label} stopped by operator.")
         return 130
     except (
         AccountRuntimeFenceError,

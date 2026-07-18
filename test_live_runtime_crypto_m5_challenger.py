@@ -338,6 +338,18 @@ class CryptoM5ChallengerTests(unittest.TestCase):
                     clock_provider=lambda: BOUNDARY,
                 )
 
+    def test_m5_cli_reports_the_correct_runner_when_stopped(self) -> None:
+        with patch(
+            "run_crypto_weekend_shadow.main",
+            side_effect=KeyboardInterrupt,
+        ), patch("builtins.print") as print_mock:
+            result = m5_cli.cli_entrypoint([])
+
+        self.assertEqual(130, result)
+        print_mock.assert_called_once_with(
+            "Crypto M5 challenger stopped by operator."
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
