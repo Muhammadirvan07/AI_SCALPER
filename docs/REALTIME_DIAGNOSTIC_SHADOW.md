@@ -1,7 +1,8 @@
 # Real-Time Diagnostic Shadow
 
-Runner ini dipakai untuk melihat perilaku AI_SCALPER terhadap bar dan tick XM
-yang benar-benar sedang diterima MT5. Runner tidak mengirim transaksi, tidak
+Runner ini dipakai untuk melihat perilaku AI_SCALPER terhadap bar dan tick
+broker demo yang benar-benar sedang diterima MT5. Kandidat aktif dipilih lewat
+`--candidate` dan output setiap kandidat dipisahkan. Runner tidak mengirim transaksi, tidak
 mengubah posisi broker, tidak menghasilkan validation evidence, dan tidak
 membuka gate demo-auto atau live.
 
@@ -18,18 +19,19 @@ order_capability = DISABLED
 max_lot = 0.01
 ```
 
-Jalur ini tidak mengubah keputusan legal XM untuk operasi dari Jepang. Data
+Jalur ini tidak mengubah keputusan legal broker untuk operasi dari Jepang. Data
 boleh dipakai untuk diagnosis teknis dan observasi strategi, tetapi tidak boleh
 dimasukkan ke gate promosi broker-forward.
 
 ## Prasyarat MT5
 
 - Windows, Python 3.12, dan virtual environment proyek aktif.
-- MT5 sedang terbuka dan login ke akun demo `XMTrading-MT5 3`.
+- MT5 sedang terbuka dan login ke akun demo kandidat yang dipilih.
 - Gunakan investor/read-only password.
 - Algo Trading/AutoTrading tetap OFF.
 - External Python trading API dinonaktifkan.
-- Empat simbol tersedia: `GOLD.`, `EURUSD.`, `USDJPY.`, `AUDUSD.`.
+- Empat simbol canonical tersedia: XAUUSD, EURUSD, USDJPY, dan AUDUSD;
+  mapping broker diambil dari config kandidat.
 
 Runtime memeriksa ulang bahwa account dan terminal tidak memiliki kemampuan
 trading. Pada investor authorization, MT5 dapat melaporkan
@@ -55,6 +57,7 @@ Python harus menunjukkan versi 3.12.x.
 
 ```powershell
 python -B .\run_realtime_diagnostic_shadow.py `
+  --candidate finex `
   --acknowledge-diagnostic-only `
   --cycles 1
 ```
@@ -75,6 +78,7 @@ Tidak ada transaksi broker yang dibuat.
 
 ```powershell
 python -B .\run_realtime_diagnostic_shadow.py `
+  --candidate finex `
   --acknowledge-diagnostic-only `
   --continuous `
   --poll-seconds 5
@@ -88,13 +92,13 @@ sama; account-wide singleton fence akan menolak split-brain.
 Journal append-only:
 
 ```text
-runtime_state\diagnostic\xm-real-market.sqlite3
+runtime_state\diagnostic\finex-real-market.sqlite3
 ```
 
 Ringkasan yang mudah dibaca:
 
 ```text
-runtime_state\diagnostic\xm-real-market-summary.json
+runtime_state\diagnostic\finex-real-market-summary.json
 ```
 
 Ringkasan berisi:
@@ -117,13 +121,14 @@ journal tanpa mengubah database:
 
 ```powershell
 python -B .\generate_realtime_diagnostic_report.py `
+  --candidate finex `
   --acknowledge-diagnostic-only
 ```
 
 Output default:
 
 ```text
-runtime_state\diagnostic\xm-real-market-performance.json
+runtime_state\diagnostic\finex-real-market-performance.json
 ```
 
 Laporan memverifikasi ulang hash chain dan row/envelope binding sebelum
@@ -148,6 +153,11 @@ klaim profit factor tak terbatas. Jumlah trade yang mencapai angka referensi
 roadmap juga tetap bukan promotion evidence karena durasi delapan minggu,
 broker-forward contract, cost stress, confidence interval, dan parity gate
 tidak dinilai oleh laporan ini.
+
+Untuk diagnostic historis XM, ganti `--candidate finex` menjadi
+`--candidate xm`. Jangan menunjuk FINEX ke file `xm-real-market.sqlite3` atau
+sebaliknya. Runtime memverifikasi server dan hash identitas akun pada setiap
+cycle serta menolak journal lintas broker sebelum observasi baru dimulai.
 
 ## Status normal
 

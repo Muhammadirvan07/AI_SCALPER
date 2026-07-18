@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import subprocess
 import sys
 import time
@@ -37,12 +38,7 @@ from live_runtime.mt5_readonly import (
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = REPO_ROOT / "config" / "broker_candidates.phase3.json"
-DEFAULT_JOURNAL = (
-    REPO_ROOT / "runtime_state" / "diagnostic" / "xm-real-market.sqlite3"
-)
-DEFAULT_SUMMARY = (
-    REPO_ROOT / "runtime_state" / "diagnostic" / "xm-real-market-summary.json"
-)
+DEFAULT_DIAGNOSTIC_ROOT = REPO_ROOT / "runtime_state" / "diagnostic"
 MODEL_SOURCE_PATHS = (
     "agents/market_status.py",
     "agents/supervisor_agent.py",
@@ -53,6 +49,18 @@ MODEL_SOURCE_PATHS = (
     "strategy/strategy_selector.py",
     "strategy/trend_analyzer.py",
 )
+
+
+def _diagnostic_artifact_paths(
+    candidate_id: str,
+    *,
+    root: Path = DEFAULT_DIAGNOSTIC_ROOT,
+) -> tuple[Path, Path]:
+    normalized = str(candidate_id or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", normalized):
+        raise RealtimeDiagnosticError("candidate id is invalid for artifact isolation")
+    prefix = f"{normalized}-real-market"
+    return root / f"{prefix}.sqlite3", root / f"{prefix}-summary.json"
 
 
 def utc_now() -> datetime:
@@ -261,8 +269,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--candidate", default="xm")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--journal", type=Path, default=DEFAULT_JOURNAL)
-    parser.add_argument("--summary", type=Path, default=DEFAULT_SUMMARY)
+    parser.add_argument("--journal", type=Path)
+    parser.add_argument("--summary", type=Path)
     parser.add_argument("--bar-count", type=int, default=300)
     parser.add_argument("--max-bar-age-seconds", type=int, default=1800)
     parser.add_argument("--poll-seconds", type=float, default=5.0)
@@ -299,6 +307,9 @@ def main(
         raise RealtimeDiagnosticError("--poll-seconds must be between 1 and 300")
 
     candidate = _candidate(args.config, args.candidate)
+    default_journal, default_summary = _diagnostic_artifact_paths(args.candidate)
+    journal_path = args.journal or default_journal
+    summary_path = args.summary or default_summary
     identity = _identity(args.config)
     if mt5_module is None:
         import MetaTrader5 as mt5_module
@@ -324,8 +335,12 @@ def main(
             "DEMO",
         )
         with AccountRuntimeFence(runtime_identity), DiagnosticJournal(
-            args.journal
+            journal_path
         ) as journal:
+            journal.assert_broker_cohort(
+                expected_server=str(candidate["server"]),
+                expected_account_identity_sha256=runtime_identity,
+            )
             run_nonce = utc_now().strftime("%Y%m%dT%H%M%S%fZ")
             cycle_number = 0
             print(f"Profile: {DIAGNOSTIC_PROFILE}")
@@ -351,6 +366,8 @@ def main(
                     ),
                 )
                 summary = journal.summary()
+                summary["candidate_id"] = str(args.candidate).strip().lower()
+                summary["broker_server"] = str(candidate["server"])
                 summary["latest_cycle"] = {
                     "cycle_id": receipt.cycle_id,
                     "observed_at_utc": receipt.observed_at.isoformat().replace(
@@ -363,7 +380,7 @@ def main(
                     "closed_positions": list(receipt.closed_positions),
                     "payload_sha256": receipt.payload_sha256,
                 }
-                _write_summary(args.summary, summary)
+                _write_summary(summary_path, summary)
                 statuses = ", ".join(
                     f"{symbol}={status}"
                     for symbol, status in receipt.symbol_status.items()

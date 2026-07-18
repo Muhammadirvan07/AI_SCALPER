@@ -58,6 +58,7 @@
     "requirements-live-windows.txt",
     "generate_crypto_diagnostic_report.py",
     "generate_crypto_m5_challenger_report.py",
+    "generate_realtime_diagnostic_report.py",
     "requirements-windows-bootstrap.lock.txt",
     "requirements-windows-cp312.lock.txt",
     "run_crypto_m5_challenger.py",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import io
+from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 import unittest
@@ -10,6 +11,7 @@ from unittest.mock import patch
 
 from live_runtime.mt5_readonly import MT5ReadOnlyAttestationError
 from live_runtime.realtime_diagnostic import (
+    DiagnosticJournal,
     DiagnosticIdentity,
     RealtimeDiagnosticError,
 )
@@ -37,6 +39,43 @@ def candidate_config(path: Path) -> None:
 
 
 class RealtimeDiagnosticCLITests(unittest.TestCase):
+    def test_default_artifacts_are_isolated_per_candidate(self) -> None:
+        root = Path("C:/AI_SCALPER/runtime_state/diagnostic")
+        xm_journal, xm_summary = cli._diagnostic_artifact_paths("xm", root=root)
+        finex_journal, finex_summary = cli._diagnostic_artifact_paths(
+            "finex", root=root
+        )
+
+        self.assertEqual(root / "xm-real-market.sqlite3", xm_journal)
+        self.assertEqual(root / "xm-real-market-summary.json", xm_summary)
+        self.assertEqual(root / "finex-real-market.sqlite3", finex_journal)
+        self.assertEqual(root / "finex-real-market-summary.json", finex_summary)
+
+    def test_existing_journal_from_another_broker_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "diagnostic.sqlite3"
+            observed_at = datetime(2026, 7, 18, 9, 0, tzinfo=timezone.utc)
+            with DiagnosticJournal(database) as journal:
+                journal.record_cycle(
+                    cycle_id="xm-cycle",
+                    observed_at=observed_at,
+                    expected_server="XMTrading-MT5 3",
+                    expected_account_identity_sha256="a" * 64,
+                    symbol_status={symbol: "WAIT" for symbol in BROKER_SYMBOLS},
+                    failures={},
+                    closed_positions=(),
+                )
+
+            with DiagnosticJournal(database) as journal:
+                with self.assertRaisesRegex(
+                    RealtimeDiagnosticError,
+                    "broker cohort",
+                ):
+                    journal.assert_broker_cohort(
+                        expected_server="FinexBisnisSolusi-Demo",
+                        expected_account_identity_sha256="b" * 64,
+                    )
+
     def test_registered_xm_dst_offset_is_selected_by_utc_date(self) -> None:
         candidate = {
             "server_time_model": {

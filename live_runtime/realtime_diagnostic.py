@@ -712,6 +712,36 @@ class DiagnosticJournal:
         ).fetchall()
         return [json.loads(row["payload_json"]) for row in rows]
 
+    def assert_broker_cohort(
+        self,
+        *,
+        expected_server: str,
+        expected_account_identity_sha256: str,
+    ) -> None:
+        """Reject reuse of a journal already bound to another broker account."""
+
+        server = require_text("expected_server", expected_server)
+        account_identity = require_hash(
+            "expected_account_identity_sha256",
+            expected_account_identity_sha256,
+        )
+        for envelope in self._event_envelopes():
+            if envelope.get("event_type") != "CYCLE":
+                continue
+            payload = envelope.get("payload")
+            if not isinstance(payload, Mapping):
+                raise RealtimeDiagnosticError(
+                    "diagnostic journal broker cohort is invalid"
+                )
+            if (
+                payload.get("expected_server") != server
+                or payload.get("expected_account_identity_sha256")
+                != account_identity
+            ):
+                raise RealtimeDiagnosticError(
+                    "diagnostic journal broker cohort does not match runtime"
+                )
+
     def open_positions(self) -> tuple[OpenPaperPosition, ...]:
         decisions: dict[str, OpenPaperPosition] = {}
         closed: set[str] = set()
