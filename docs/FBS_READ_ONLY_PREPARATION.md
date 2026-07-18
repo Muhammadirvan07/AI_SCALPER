@@ -11,6 +11,8 @@ diterima melalui probe sanitasi:
 Probe hanya membaca company, exact server, mata uang akun, leverage, margin
 mode, dan kemungkinan nama empat simbol. Login, nama pemilik, saldo, equity,
 dan password tidak dibaca ke output. Tidak ada order API pada facade.
+Probe juga melaporkan kandidat opsional BTCUSD/ETHUSD secara terpisah untuk
+onboarding crypto CFD; hasil itu tidak otomatis mencampur lane forex.
 
 ## Menjalankan probe
 

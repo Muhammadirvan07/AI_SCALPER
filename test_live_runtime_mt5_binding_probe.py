@@ -38,7 +38,14 @@ class FakeMT5:
         }
         self.symbols = {
             symbol: {"name": symbol, "description": symbol, "path": "FBS/Test"}
-            for symbol in ("XAUUSD", "EURUSD", "USDJPY", "AUDUSD")
+            for symbol in (
+                "XAUUSD",
+                "EURUSD",
+                "USDJPY",
+                "AUDUSD",
+                "BTCUSD",
+                "ETHUSD",
+            )
         }
         self.shutdown_called = False
 
@@ -75,6 +82,14 @@ class MT5BindingProbeTests(unittest.TestCase):
         self.assertTrue(result["binding_ready"])
         self.assertEqual("FBS-Demo", result["account"]["server"])
         self.assertEqual("XAUUSD", result["symbols"]["XAUUSD"]["selected"])
+        self.assertEqual(
+            "BTCUSD",
+            result["optional_crypto_symbols"]["BTCUSD"]["selected"],
+        )
+        self.assertEqual(
+            "ETHUSD",
+            result["optional_crypto_symbols"]["ETHUSD"]["selected"],
+        )
         self.assertFalse(result["execution_enabled"])
         self.assertEqual("DISABLED", result["order_capability"])
         serialized = json.dumps(result, sort_keys=True)

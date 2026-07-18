@@ -12,4 +12,5 @@ It must:
 - accept no login, password, or credential argument;
 - never serialize account login, name, balance, equity, or credentials;
 - report ambiguous/missing symbol aliases without guessing;
+- report BTCUSD and ETHUSD separately as optional broker-crypto candidates;
 - keep execution, discovery evidence, promotion evidence, and live gates off.

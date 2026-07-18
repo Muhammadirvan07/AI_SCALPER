@@ -19,6 +19,10 @@ SYMBOL_ALIASES = {
     "USDJPY": ("USDJPY", "USDJPY."),
     "AUDUSD": ("AUDUSD", "AUDUSD."),
 }
+OPTIONAL_CRYPTO_ALIASES = {
+    "BTCUSD": ("BTCUSD", "BTCUSD."),
+    "ETHUSD": ("ETHUSD", "ETHUSD."),
+}
 
 
 class MT5BindingProbeError(RuntimeError):
@@ -53,6 +57,39 @@ def _required_int(value: object, field: str, *, minimum: int = 0) -> int:
     return parsed
 
 
+def _probe_symbol_aliases(
+    facade: ReadOnlyMT5Facade,
+    aliases_by_symbol: Mapping[str, tuple[str, ...]],
+) -> dict[str, object]:
+    symbols: dict[str, object] = {}
+    for canonical, aliases in aliases_by_symbol.items():
+        matches: list[str] = []
+        observations: list[dict[str, str]] = []
+        for alias in aliases:
+            raw_facts = facade.symbol_info(alias)
+            if raw_facts is None:
+                continue
+            facts = _mapping(raw_facts, f"symbol {alias}")
+            name = _required_text(facts.get("name"), "symbol name")
+            if name != alias:
+                continue
+            matches.append(name)
+            observations.append(
+                {
+                    "name": name,
+                    "description": str(facts.get("description") or "").strip(),
+                    "path": str(facts.get("path") or "").strip(),
+                }
+            )
+        ordered_matches = sorted(set(matches))
+        symbols[canonical] = {
+            "selected": ordered_matches[0] if len(ordered_matches) == 1 else None,
+            "matches": ordered_matches,
+            "observations": sorted(observations, key=lambda item: item["name"]),
+        }
+    return symbols
+
+
 def probe_candidate_binding(
     facade: ReadOnlyMT5Facade,
     *,
@@ -79,32 +116,11 @@ def probe_candidate_binding(
     if trade_mode != demo_mode:
         raise MT5BindingProbeError("binding probe requires a demo account")
 
-    symbols: dict[str, object] = {}
-    for canonical in REQUIRED_SYMBOLS:
-        matches: list[str] = []
-        observations: list[dict[str, str]] = []
-        for alias in SYMBOL_ALIASES[canonical]:
-            raw_facts = facade.symbol_info(alias)
-            if raw_facts is None:
-                continue
-            facts = _mapping(raw_facts, f"symbol {alias}")
-            name = _required_text(facts.get("name"), "symbol name")
-            if name != alias:
-                continue
-            matches.append(name)
-            observations.append(
-                {
-                    "name": name,
-                    "description": str(facts.get("description") or "").strip(),
-                    "path": str(facts.get("path") or "").strip(),
-                }
-            )
-        ordered_matches = sorted(set(matches))
-        symbols[canonical] = {
-            "selected": ordered_matches[0] if len(ordered_matches) == 1 else None,
-            "matches": ordered_matches,
-            "observations": sorted(observations, key=lambda item: item["name"]),
-        }
+    symbols = _probe_symbol_aliases(facade, SYMBOL_ALIASES)
+    optional_crypto_symbols = _probe_symbol_aliases(
+        facade,
+        OPTIONAL_CRYPTO_ALIASES,
+    )
 
     binding_ready = all(
         isinstance(symbols[symbol], Mapping)
@@ -128,6 +144,7 @@ def probe_candidate_binding(
             "balance_stored": False,
         },
         "symbols": symbols,
+        "optional_crypto_symbols": optional_crypto_symbols,
         "safety": safety,
         "execution_enabled": False,
         "discovery_evidence": False,
