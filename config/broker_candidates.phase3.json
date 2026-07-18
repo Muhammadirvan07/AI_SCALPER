@@ -1,6 +1,6 @@
 {
   "schema_version": "broker-candidate-plan-v1",
-  "status": "FINEX_SELECTED_LEGAL_AND_BINDING_PENDING",
+  "status": "FINEX_SELECTED_API_ATTESTATION_AND_ELIGIBILITY_PENDING",
   "execution_enabled": false,
   "credentials_allowed": false,
   "operational_priority": {
@@ -192,9 +192,9 @@
       "server_endpoint_observed": "prod-mt5-demo1.fnx.xmt.mx:443",
       "account_type": "Demo Reguler",
       "leverage": "500:1",
-      "account_currency": null,
+      "account_currency": "USD",
       "read_only_discovery_allowed": false,
-      "binding_status": "FOUR_SYMBOL_MAP_COMPLETE_ACCOUNT_CURRENCY_API_ATTESTATION_AND_ELIGIBILITY_PENDING",
+      "binding_status": "ACCOUNT_AND_FOUR_SYMBOL_SCREENSHOT_FACTS_COMPLETE_API_ATTESTATION_AND_ELIGIBILITY_PENDING",
       "broker_symbols_observed": {
         "XAUUSD": "XAUUSD",
         "EURUSD": "EURUSD",
@@ -292,7 +292,9 @@
         "observed_at_local": "2026-07-18T18:27:33+09:00",
         "xauusd": "CONFIRMED",
         "audusd": "CONFIRMED",
-        "account_currency": "NOT_CAPTURED"
+        "account_currency": "OPERATOR_CONFIRMED_USD_DISPLAY_API_ATTESTATION_PENDING",
+        "account_currency_observed_at_local": "2026-07-18T18:29:15+09:00",
+        "account_balance_stored": false
       },
       "regulatory_observation": {
         "entity": "PT Finex Bisnis Solusi Futures",

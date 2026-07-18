@@ -18,7 +18,7 @@ safe_to_demo_auto_order = false
 max_lot = 0.01
 ```
 
-## Fakta yang masih dibutuhkan
+## Fakta binding yang wajib ada
 
 Jangan kirim password atau credential ke repository maupun chat. Setelah akun
 demo FINEX dibuat dan terminal MT5 terhubung, catat hanya:
@@ -41,6 +41,7 @@ server = FinexBisnisSolusi-Demo
 server_endpoint = prod-mt5-demo1.fnx.xmt.mx:443
 account_type = Demo Reguler
 leverage = 500:1
+account_currency = USD
 EURUSD broker symbol = EURUSD
 USDJPY broker symbol = USDJPY
 ```
@@ -64,10 +65,13 @@ XAUUSD teramati memiliki contract size `100`, digits `2`, stop level `10`, dan
 volume minimum/step `0.01`. Tampilan MT5 membulatkan tick size menjadi `0.00`,
 sehingga nilai itu tidak boleh dipakai untuk risk math sebelum API capture.
 
-Account currency, investor/read-only login attestation, terminal external
-Python API lock, API-captured specification, dan eligibility lintas yurisdiksi
-masih belum lengkap. Karena itu `read_only_discovery_allowed=false` tetap
-dikunci walaupun four-symbol map sudah lengkap.
+Operator mengonfirmasi mata uang akun `USD` melalui screenshot tampilan saldo
+berformat dolar; fakta ini masih menunggu attestation API. Nominal saldo dan
+identifier akun tidak disimpan. Investor/read-only login attestation, terminal
+external Python API lock, API-captured specification, dan eligibility lintas
+yurisdiksi masih belum lengkap. Karena itu
+`read_only_discovery_allowed=false` tetap dikunci walaupun fakta akun dan
+four-symbol map sudah lengkap.
 
 `mt5_readonly_discovery.py --candidate finex` sengaja menolak berjalan sebelum
 exact server dan empat-symbol map direview serta dimasukkan ke

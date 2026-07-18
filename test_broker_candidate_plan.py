@@ -17,7 +17,7 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         finex = candidates["finex"]
 
         self.assertEqual(
-            "FINEX_SELECTED_LEGAL_AND_BINDING_PENDING",
+            "FINEX_SELECTED_API_ATTESTATION_AND_ELIGIBILITY_PENDING",
             plan["status"],
         )
         self.assertEqual(
@@ -29,7 +29,7 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         self.assertFalse(plan["credentials_allowed"])
         self.assertEqual("SELECTED_TARGET_PREPARATION", finex["role"])
         self.assertEqual(
-            "FOUR_SYMBOL_MAP_COMPLETE_ACCOUNT_CURRENCY_API_ATTESTATION_AND_ELIGIBILITY_PENDING",
+            "ACCOUNT_AND_FOUR_SYMBOL_SCREENSHOT_FACTS_COMPLETE_API_ATTESTATION_AND_ELIGIBILITY_PENDING",
             finex["binding_status"],
         )
         self.assertEqual("FinexBisnisSolusi-Demo", finex["server"])
@@ -39,7 +39,7 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         )
         self.assertEqual("Demo Reguler", finex["account_type"])
         self.assertEqual("500:1", finex["leverage"])
-        self.assertIsNone(finex["account_currency"])
+        self.assertEqual("USD", finex["account_currency"])
         self.assertEqual(
             {
                 "XAUUSD": "XAUUSD",
@@ -53,6 +53,13 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         self.assertEqual(
             "CONFIRMED",
             finex["screenshot_observation_status"]["audusd"],
+        )
+        self.assertEqual(
+            "OPERATOR_CONFIRMED_USD_DISPLAY_API_ATTESTATION_PENDING",
+            finex["screenshot_observation_status"]["account_currency"],
+        )
+        self.assertFalse(
+            finex["screenshot_observation_status"]["account_balance_stored"]
         )
         self.assertFalse(finex["regulatory_observation"]["legal_eligible"])
 
