@@ -188,11 +188,66 @@
       "display_name": "FINEX",
       "role": "SELECTED_TARGET_PREPARATION",
       "environment": "DEMO",
-      "server": null,
-      "account_type": null,
-      "binding_status": "AWAITING_DEMO_ACCOUNT_FACTS",
+      "server": "FinexBisnisSolusi-Demo",
+      "server_endpoint_observed": "prod-mt5-demo1.fnx.xmt.mx:443",
+      "account_type": "Demo Reguler",
+      "leverage": "500:1",
+      "account_currency": null,
+      "binding_status": "PARTIAL_DEMO_FACTS_AWAITING_XAUUSD_AUDUSD_AND_ACCOUNT_CURRENCY",
       "broker_symbols_observed": null,
-      "instrument_specification_status": "NOT_CAPTURED",
+      "partial_broker_symbols_observed": {
+        "EURUSD": "EURUSD",
+        "USDJPY": "USDJPY"
+      },
+      "instrument_specification_status": "PARTIAL_SCREENSHOT_CAPTURE_NOT_DISCOVERY_ELIGIBLE",
+      "instrument_specifications_observed": {
+        "EURUSD": {
+          "broker_symbol": "EURUSD",
+          "digits": 5,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "EUR",
+          "profit_currency": "USD",
+          "calculation": "FOREX",
+          "hedged_margin": 100000,
+          "chart_mode": "BY_BID_PRICE",
+          "trade_access": "FULL_ACCESS",
+          "execution": "MARKET",
+          "gtc_mode": "GOOD_TILL_CANCELLED",
+          "filling": ["FILL_OR_KILL", "IMMEDIATE_OR_CANCEL"],
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01,
+          "commission_observed": "1 USD per lot; instant by deal volume, in deals"
+        },
+        "USDJPY": {
+          "broker_symbol": "USDJPY",
+          "digits": 3,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "USD",
+          "profit_currency": "JPY",
+          "calculation": "FOREX",
+          "hedged_margin": 100000,
+          "chart_mode": "BY_BID_PRICE",
+          "trade_access": "FULL_ACCESS",
+          "execution": "MARKET",
+          "gtc_mode": "GOOD_TILL_CANCELLED",
+          "filling": ["FILL_OR_KILL", "IMMEDIATE_OR_CANCEL"],
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01,
+          "commission_observed": "1 USD per lot; instant by deal volume, in deals"
+        }
+      },
+      "screenshot_observation_status": {
+        "observed_at_local": "2026-07-18T18:25:33+09:00",
+        "xauusd": "AMBIGUOUS_SCREENSHOT_XAGUSD_LIST_ROW_XAUUSD_DETAIL_PANEL",
+        "audusd": "NOT_CAPTURED_AUDNZD_WAS_PROVIDED",
+        "account_currency": "NOT_CAPTURED"
+      },
       "regulatory_observation": {
         "entity": "PT Finex Bisnis Solusi Futures",
         "authority": "Badan Pengawas Perdagangan Berjangka Komoditi",
@@ -218,5 +273,5 @@
       "account_identifier_stored": false
     }
   ],
-  "notes": "FINEX is the operator-selected target broker. It is verified as a registered Indonesian broker and supports MT5 demo accounts, but remains preparation-only while operating from Japan until exact demo binding and cross-jurisdiction eligibility are established. XM remains blocked and its legacy discovery is historical only. Do not guess or store credentials here."
+  "notes": "FINEX is the operator-selected target broker. Its exact demo server, endpoint, account type, leverage, EURUSD, and USDJPY facts are partially observed. XAUUSD, AUDUSD, account currency, investor/read-only attestation, and cross-jurisdiction eligibility remain pending, so discovery and execution stay blocked. XM remains blocked and its legacy discovery is historical only. Do not guess or store credentials here."
 }

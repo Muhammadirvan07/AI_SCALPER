@@ -32,6 +32,29 @@ demo FINEX dibuat dan terminal MT5 terhubung, catat hanya:
 6. konfirmasi investor/read-only login serta external Python API trading lock;
 7. eligibility penggunaan akun saat operating jurisdiction masih Jepang.
 
+## Binding parsial 2026-07-18
+
+Fakta non-rahasia berikut telah direview dari screenshot operator:
+
+```text
+server = FinexBisnisSolusi-Demo
+server_endpoint = prod-mt5-demo1.fnx.xmt.mx:443
+account_type = Demo Reguler
+leverage = 500:1
+EURUSD broker symbol = EURUSD
+USDJPY broker symbol = USDJPY
+```
+
+EURUSD dan USDJPY teramati memakai market execution, volume minimum/step
+`0.01`, volume maksimum `50`, serta filling `Fill or Kill` atau
+`Immediate or Cancel`. Nilai tersebut masih screenshot facts dan harus
+ditangkap ulang oleh API sebelum menjadi `BrokerSpec` evidence.
+
+Screenshot logam belum dapat dipakai karena daftar menampilkan `XAGUSD`
+sementara detail panel menampilkan `XAUUSD`. Screenshot AUD yang tersedia
+adalah `AUDNZD`, bukan `AUDUSD`. Account currency juga belum terlihat. Ketiga
+hal ini tetap fail-closed.
+
 `mt5_readonly_discovery.py --candidate finex` sengaja menolak berjalan sebelum
 exact server dan empat-symbol map direview serta dimasukkan ke
 `config/broker_candidates.phase3.json`. Jangan menebak suffix simbol.

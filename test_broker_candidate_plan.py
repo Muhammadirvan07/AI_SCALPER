@@ -28,9 +28,27 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         self.assertFalse(plan["execution_enabled"])
         self.assertFalse(plan["credentials_allowed"])
         self.assertEqual("SELECTED_TARGET_PREPARATION", finex["role"])
-        self.assertEqual("AWAITING_DEMO_ACCOUNT_FACTS", finex["binding_status"])
-        self.assertIsNone(finex["server"])
+        self.assertEqual(
+            "PARTIAL_DEMO_FACTS_AWAITING_XAUUSD_AUDUSD_AND_ACCOUNT_CURRENCY",
+            finex["binding_status"],
+        )
+        self.assertEqual("FinexBisnisSolusi-Demo", finex["server"])
+        self.assertEqual(
+            "prod-mt5-demo1.fnx.xmt.mx:443",
+            finex["server_endpoint_observed"],
+        )
+        self.assertEqual("Demo Reguler", finex["account_type"])
+        self.assertEqual("500:1", finex["leverage"])
+        self.assertIsNone(finex["account_currency"])
         self.assertIsNone(finex["broker_symbols_observed"])
+        self.assertEqual(
+            {"EURUSD": "EURUSD", "USDJPY": "USDJPY"},
+            finex["partial_broker_symbols_observed"],
+        )
+        self.assertEqual(
+            "NOT_CAPTURED_AUDNZD_WAS_PROVIDED",
+            finex["screenshot_observation_status"]["audusd"],
+        )
         self.assertFalse(finex["regulatory_observation"]["legal_eligible"])
 
 
