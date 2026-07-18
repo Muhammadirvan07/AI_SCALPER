@@ -73,12 +73,32 @@ yurisdiksi masih belum lengkap. Karena itu
 `read_only_discovery_allowed=false` tetap dikunci walaupun fakta akun dan
 four-symbol map sudah lengkap.
 
+## Preflight read-only
+
+Preflight hanya memeriksa bahwa terminal yang sedang terbuka cocok dengan
+binding FINEX dan seluruh jalur trading dimatikan. Perintah ini tidak menerima
+login/password, tidak membuat evidence, dan tidak membuka discovery:
+
+```powershell
+cd C:\AI_SCALPER
+.\.venv\Scripts\Activate.ps1
+
+python -B .\run_mt5_readonly_preflight.py --candidate finex
+```
+
+Hasil yang diterima harus dimulai dengan `MT5_READ_ONLY_PREFLIGHT_PASS` serta
+tetap menampilkan `Order capability: DISABLED`, `Discovery evidence: DISABLED`,
+dan `Promotion evidence: DISABLED`. Jika gagal, jangan mengubah config secara
+manual untuk melewati pemeriksaan.
+
 `mt5_readonly_discovery.py --candidate finex` sengaja menolak berjalan sebelum
 exact server dan empat-symbol map direview serta dimasukkan ke
 `config/broker_candidates.phase3.json`. Jangan menebak suffix simbol.
 
-Setelah seluruh fakta disetujui, urutannya adalah discovery v3, signed calendar,
-forward contract, lalu read-only evidence collection. Order tetap tidak aktif.
+Setelah preflight lulus dan eligibility disetujui, perubahan gate discovery
+tetap memerlukan review source/config tersendiri. Urutannya kemudian discovery
+v3, signed calendar, forward contract, lalu read-only evidence collection.
+Order tetap tidak aktif.
 
 ## Sumber resmi
 

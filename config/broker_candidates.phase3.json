@@ -321,5 +321,5 @@
       "account_identifier_stored": false
     }
   ],
-  "notes": "FINEX is the operator-selected target broker. Its exact demo server, endpoint, account type, leverage, and four-symbol map are observed. Account currency, investor/read-only and terminal API attestation, API-captured instrument specs, and cross-jurisdiction eligibility remain pending. Explicit read_only_discovery_allowed stays false, so discovery and execution remain blocked. XM remains blocked and its legacy discovery is historical only. Do not guess or store credentials here."
+  "notes": "FINEX is the operator-selected target broker. Its exact demo server, endpoint, account type, leverage, account currency, and four-symbol map are observed. Investor/read-only and terminal API attestation, API-captured instrument specs, and cross-jurisdiction eligibility remain pending. Explicit read_only_discovery_allowed stays false, so discovery and execution remain blocked. XM remains blocked and its legacy discovery is historical only. Do not guess or store credentials here."
 }

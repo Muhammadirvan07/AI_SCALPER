@@ -34,6 +34,10 @@ M15 champion dan M5 challenger dibundel sebagai entrypoint diagnostic berbeda;
 keduanya memiliki config serta journal domain terpisah dan tidak memiliki
 primitive execution.
 
+Bundle juga membawa `run_mt5_readonly_preflight.py`. Tool preparation-only ini
+memeriksa binding kandidat dan safety flags terminal tanpa credential, tanpa
+menulis evidence, dan tanpa membuka full discovery gate.
+
 Pemisahan runtime minimal belum boleh diklaim: current shadow identity masih
 memverifikasi beberapa generator source. Refactor identity input harus selesai
 dan diuji dahulu sebelum profile service-runtime dibuat.
