@@ -105,6 +105,21 @@ class RealtimeDiagnosticCLITests(unittest.TestCase):
             ),
         )
 
+    def test_registered_fixed_fbs_diagnostic_offset_is_selected(self) -> None:
+        candidate = {
+            "server_time_model": {
+                "fixed_utc_offset": "+03:00",
+                "source_status": "OPERATOR_RUNTIME_OBSERVED_DIAGNOSTIC_ONLY",
+            }
+        }
+        self.assertEqual(
+            3 * 60 * 60,
+            cli._broker_time_offset_seconds(
+                candidate,
+                cli.datetime(2026, 7, 18, tzinfo=cli.timezone.utc),
+            ),
+        )
+
     def test_acknowledgement_and_windows_are_mandatory(self) -> None:
         with self.assertRaisesRegex(
             RealtimeDiagnosticError,

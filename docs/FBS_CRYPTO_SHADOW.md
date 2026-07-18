@@ -4,6 +4,11 @@ BTCUSD dan ETHUSD dibaca langsung dari terminal MT5 `FBS-Demo` sebagai CFD
 broker. Runtime ini tidak memakai feed Binance/Coinbase dan tidak berbagi
 journal dengan lane XAU/FX.
 
+Bar runtime menunjukkan waktu server FBS UTC+3 pada 2026-07-18. Offset ini
+terdaftar hanya untuk diagnostic dan diverifikasi ulang terhadap trusted UTC;
+runtime berhenti fail-closed bila alignment berubah. Session calendar dan DST
+policy resmi masih pending sehingga hasil belum menjadi evidence.
+
 Status permanen:
 
 ```text

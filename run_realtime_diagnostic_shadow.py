@@ -247,6 +247,21 @@ def _broker_time_offset_seconds(
     model = candidate.get("server_time_model")
     if not isinstance(model, Mapping):
         return 0
+    fixed = model.get("fixed_utc_offset")
+    if fixed is not None:
+        if (
+            str(model.get("source_status") or "").strip()
+            != "OPERATOR_RUNTIME_OBSERVED_DIAGNOSTIC_ONLY"
+        ):
+            raise RealtimeDiagnosticError(
+                "fixed broker UTC offset lacks diagnostic observation status"
+            )
+        selected = _parse_utc_offset(fixed)
+        if selected < 0:
+            raise RealtimeDiagnosticError(
+                "diagnostic broker time offset must be nonnegative"
+            )
+        return selected
     standard = _parse_utc_offset(model.get("standard_utc_offset"))
     daylight = _parse_utc_offset(model.get("daylight_saving_utc_offset"))
     rule = str(model.get("daylight_saving_rule") or "").strip()

@@ -1056,6 +1056,13 @@ def fetch_finalized_bars(
                 f"shifted_open={_utc_text(shifted_latest)}, "
                 f"next_boundary={_utc_text(next_boundary)}"
             )
+        if shifted_latest < current_boundary - timedelta(seconds=bar_seconds):
+            raise RealtimeDiagnosticError(
+                "registered broker offset no longer aligns with trusted UTC: "
+                f"latest_open={_utc_text(latest_raw_open)}, "
+                f"shifted_open={_utc_text(shifted_latest)}, "
+                f"current_boundary={_utc_text(current_boundary)}"
+            )
         effective_offset = broker_time_offset_seconds
 
     normalized: list[dict[str, object]] = []
