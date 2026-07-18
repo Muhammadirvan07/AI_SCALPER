@@ -110,6 +110,45 @@ Win rate awal dengan sampel kecil hanya diagnostic. Jangan menyimpulkan
 kelayakan strategi sebelum jumlah trade dan durasi observasi memenuhi gate
 roadmap.
 
+## Laporan performa read-only
+
+Setelah menghentikan loop dengan `Ctrl+C`, buat laporan terverifikasi dari
+journal tanpa mengubah database:
+
+```powershell
+python -B .\generate_realtime_diagnostic_report.py `
+  --acknowledge-diagnostic-only
+```
+
+Output default:
+
+```text
+runtime_state\diagnostic\xm-real-market-performance.json
+```
+
+Laporan memverifikasi ulang hash chain dan row/envelope binding sebelum
+menghitung:
+
+- win/loss, timeout, net R, expectancy R, median R, dan profit factor R;
+- maximum drawdown R dan maximum consecutive losses;
+- holding duration serta holding horizon M15;
+- exit reason, strategy, side, dan trade ledger;
+- breakdown terpisah untuk setiap pair;
+- posisi paper yang masih terbuka;
+- peringatan ukuran sampel dan batas interpretasi.
+
+Database dibuka dengan SQLite read-only/query-only dan output ditulis secara
+atomik ke file JSON terpisah. Journal yang rusak, hash-chain mismatch, orphan
+close, outcome/R mismatch, atau safety-lock drift ditolak. Laporan selalu
+`diagnostic_only=true`, `promotion_eligible=false`, dan tidak dapat membuka
+demo-auto maupun live.
+
+`profit_factor_r=null` saat belum ada loss adalah keadaan undefined, bukan
+klaim profit factor tak terbatas. Jumlah trade yang mencapai angka referensi
+roadmap juga tetap bukan promotion evidence karena durasi delapan minggu,
+broker-forward contract, cost stress, confidence interval, dan parity gate
+tidak dinilai oleh laporan ini.
+
 ## Status normal
 
 - `PAPER_OPENED`: sinyal virtual dibuka.
