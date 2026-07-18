@@ -193,14 +193,40 @@
       "account_type": "Demo Reguler",
       "leverage": "500:1",
       "account_currency": null,
-      "binding_status": "PARTIAL_DEMO_FACTS_AWAITING_XAUUSD_AUDUSD_AND_ACCOUNT_CURRENCY",
-      "broker_symbols_observed": null,
-      "partial_broker_symbols_observed": {
+      "read_only_discovery_allowed": false,
+      "binding_status": "FOUR_SYMBOL_MAP_COMPLETE_ACCOUNT_CURRENCY_API_ATTESTATION_AND_ELIGIBILITY_PENDING",
+      "broker_symbols_observed": {
+        "XAUUSD": "XAUUSD",
         "EURUSD": "EURUSD",
-        "USDJPY": "USDJPY"
+        "USDJPY": "USDJPY",
+        "AUDUSD": "AUDUSD"
       },
-      "instrument_specification_status": "PARTIAL_SCREENSHOT_CAPTURE_NOT_DISCOVERY_ELIGIBLE",
+      "instrument_specification_status": "FOUR_SYMBOL_SCREENSHOT_CAPTURE_API_ATTESTATION_PENDING",
       "instrument_specifications_observed": {
+        "XAUUSD": {
+          "broker_symbol": "XAUUSD",
+          "description": "Gold Spot",
+          "digits": 2,
+          "contract_size": 100,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 10,
+          "margin_currency": "USD",
+          "profit_currency": "USD",
+          "calculation": "CFD",
+          "tick_size_displayed": 0.0,
+          "tick_size_status": "DISPLAY_ROUNDED_REQUIRES_API_CAPTURE",
+          "tick_value_displayed": 10,
+          "hedged_margin": 100,
+          "chart_mode": "BY_BID_PRICE",
+          "trade_access": "FULL_ACCESS",
+          "execution": "MARKET",
+          "gtc_mode": "GOOD_TILL_CANCELLED",
+          "filling": ["FILL_OR_KILL", "IMMEDIATE_OR_CANCEL"],
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01,
+          "commission_observed": "1 USD per lot; instant by deal volume, in deals"
+        },
         "EURUSD": {
           "broker_symbol": "EURUSD",
           "digits": 5,
@@ -240,12 +266,32 @@
           "volume_max": 50,
           "volume_step": 0.01,
           "commission_observed": "1 USD per lot; instant by deal volume, in deals"
+        },
+        "AUDUSD": {
+          "broker_symbol": "AUDUSD",
+          "digits": 5,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "AUD",
+          "profit_currency": "USD",
+          "calculation": "FOREX",
+          "hedged_margin": 100000,
+          "chart_mode": "BY_BID_PRICE",
+          "trade_access": "FULL_ACCESS",
+          "execution": "MARKET",
+          "gtc_mode": "GOOD_TILL_CANCELLED",
+          "filling": ["FILL_OR_KILL", "IMMEDIATE_OR_CANCEL"],
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01,
+          "commission_observed": "1 USD per lot; instant by deal volume, in deals"
         }
       },
       "screenshot_observation_status": {
-        "observed_at_local": "2026-07-18T18:25:33+09:00",
-        "xauusd": "AMBIGUOUS_SCREENSHOT_XAGUSD_LIST_ROW_XAUUSD_DETAIL_PANEL",
-        "audusd": "NOT_CAPTURED_AUDNZD_WAS_PROVIDED",
+        "observed_at_local": "2026-07-18T18:27:33+09:00",
+        "xauusd": "CONFIRMED",
+        "audusd": "CONFIRMED",
         "account_currency": "NOT_CAPTURED"
       },
       "regulatory_observation": {
@@ -273,5 +319,5 @@
       "account_identifier_stored": false
     }
   ],
-  "notes": "FINEX is the operator-selected target broker. Its exact demo server, endpoint, account type, leverage, EURUSD, and USDJPY facts are partially observed. XAUUSD, AUDUSD, account currency, investor/read-only attestation, and cross-jurisdiction eligibility remain pending, so discovery and execution stay blocked. XM remains blocked and its legacy discovery is historical only. Do not guess or store credentials here."
+  "notes": "FINEX is the operator-selected target broker. Its exact demo server, endpoint, account type, leverage, and four-symbol map are observed. Account currency, investor/read-only and terminal API attestation, API-captured instrument specs, and cross-jurisdiction eligibility remain pending. Explicit read_only_discovery_allowed stays false, so discovery and execution remain blocked. XM remains blocked and its legacy discovery is historical only. Do not guess or store credentials here."
 }

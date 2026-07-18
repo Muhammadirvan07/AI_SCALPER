@@ -50,10 +50,24 @@ EURUSD dan USDJPY teramati memakai market execution, volume minimum/step
 `Immediate or Cancel`. Nilai tersebut masih screenshot facts dan harus
 ditangkap ulang oleh API sebelum menjadi `BrokerSpec` evidence.
 
-Screenshot logam belum dapat dipakai karena daftar menampilkan `XAGUSD`
-sementara detail panel menampilkan `XAUUSD`. Screenshot AUD yang tersedia
-adalah `AUDNZD`, bukan `AUDUSD`. Account currency juga belum terlihat. Ketiga
-hal ini tetap fail-closed.
+Screenshot pengganti telah mengonfirmasi `XAUUSD` dan `AUDUSD`, sehingga exact
+four-symbol map sekarang lengkap tanpa suffix:
+
+```text
+XAUUSD = XAUUSD
+EURUSD = EURUSD
+USDJPY = USDJPY
+AUDUSD = AUDUSD
+```
+
+XAUUSD teramati memiliki contract size `100`, digits `2`, stop level `10`, dan
+volume minimum/step `0.01`. Tampilan MT5 membulatkan tick size menjadi `0.00`,
+sehingga nilai itu tidak boleh dipakai untuk risk math sebelum API capture.
+
+Account currency, investor/read-only login attestation, terminal external
+Python API lock, API-captured specification, dan eligibility lintas yurisdiksi
+masih belum lengkap. Karena itu `read_only_discovery_allowed=false` tetap
+dikunci walaupun four-symbol map sudah lengkap.
 
 `mt5_readonly_discovery.py --candidate finex` sengaja menolak berjalan sebelum
 exact server dan empat-symbol map direview serta dimasukkan ke

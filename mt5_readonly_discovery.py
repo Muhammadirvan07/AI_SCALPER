@@ -23,6 +23,10 @@ def _candidate(path: Path, candidate_id: str) -> dict[str, object]:
     if len(matches) != 1:
         raise MT5DiscoveryError("candidate must exist exactly once in configuration")
     candidate = matches[0]
+    if candidate.get("read_only_discovery_allowed") is not True:
+        raise MT5DiscoveryError(
+            "candidate read-only discovery requires explicit reviewed approval"
+        )
     if not candidate.get("server"):
         raise MT5DiscoveryError("candidate exact server has not been observed")
     symbols = candidate.get("broker_symbols_observed")

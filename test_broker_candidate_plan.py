@@ -29,7 +29,7 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         self.assertFalse(plan["credentials_allowed"])
         self.assertEqual("SELECTED_TARGET_PREPARATION", finex["role"])
         self.assertEqual(
-            "PARTIAL_DEMO_FACTS_AWAITING_XAUUSD_AUDUSD_AND_ACCOUNT_CURRENCY",
+            "FOUR_SYMBOL_MAP_COMPLETE_ACCOUNT_CURRENCY_API_ATTESTATION_AND_ELIGIBILITY_PENDING",
             finex["binding_status"],
         )
         self.assertEqual("FinexBisnisSolusi-Demo", finex["server"])
@@ -40,16 +40,31 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         self.assertEqual("Demo Reguler", finex["account_type"])
         self.assertEqual("500:1", finex["leverage"])
         self.assertIsNone(finex["account_currency"])
-        self.assertIsNone(finex["broker_symbols_observed"])
         self.assertEqual(
-            {"EURUSD": "EURUSD", "USDJPY": "USDJPY"},
-            finex["partial_broker_symbols_observed"],
+            {
+                "XAUUSD": "XAUUSD",
+                "EURUSD": "EURUSD",
+                "USDJPY": "USDJPY",
+                "AUDUSD": "AUDUSD",
+            },
+            finex["broker_symbols_observed"],
         )
+        self.assertFalse(finex["read_only_discovery_allowed"])
         self.assertEqual(
-            "NOT_CAPTURED_AUDNZD_WAS_PROVIDED",
+            "CONFIRMED",
             finex["screenshot_observation_status"]["audusd"],
         )
         self.assertFalse(finex["regulatory_observation"]["legal_eligible"])
+
+    def test_finex_discovery_remains_blocked_pending_review(self) -> None:
+        from mt5_readonly_discovery import _candidate
+        from live_runtime.mt5_discovery import MT5DiscoveryError
+
+        with self.assertRaisesRegex(
+            MT5DiscoveryError,
+            "requires explicit reviewed approval",
+        ):
+            _candidate(PLAN, "finex")
 
 
 if __name__ == "__main__":
