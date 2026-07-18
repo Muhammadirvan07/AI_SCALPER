@@ -42,3 +42,7 @@ python -B .\run_mt5_readonly_preflight.py --candidate fbs
 
 Realtime diagnostic baru boleh dimulai setelah output
 `MT5_READ_ONLY_PREFLIGHT_PASS`. Semua hasil tetap paper/non-promotional.
+
+Binding crypto CFD FBS juga telah dikonfirmasi sebagai `BTCUSD` dan `ETHUSD`.
+Gunakan `docs/FBS_CRYPTO_SHADOW.md`; jangan mencampur journal crypto broker
+dengan journal forex atau public exchange.

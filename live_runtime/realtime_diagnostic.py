@@ -51,9 +51,32 @@ VALIDATION_EVIDENCE = False
 LEGAL_GATE_BYPASSED = False
 MAX_LOT = 0.01
 M15_SECONDS = 15 * 60
+M5_SECONDS = 5 * 60
 ENTRY_WINDOW_SECONDS = 10
 ZERO_HASH = "0" * 64
 ALLOWED_EVENT_TYPES = frozenset({"BAR_DECISION", "PAPER_CLOSE", "CYCLE"})
+BROKER_DIAGNOSTIC_DOMAINS = frozenset(
+    {
+        (
+            DIAGNOSTIC_PROFILE,
+            DIAGNOSTIC_SCHEMA_VERSION,
+            REQUIRED_SYMBOLS,
+            "M15",
+        ),
+        (
+            "FBS_BROKER_CRYPTO_M15_DIAGNOSTIC_ONLY",
+            "fbs-broker-crypto-m15-diagnostic-v1",
+            ("BTCUSD", "ETHUSD"),
+            "M15",
+        ),
+        (
+            "FBS_BROKER_CRYPTO_M5_CHALLENGER_DIAGNOSTIC_ONLY",
+            "fbs-broker-crypto-m5-diagnostic-v1",
+            ("BTCUSD", "ETHUSD"),
+            "M5",
+        ),
+    }
+)
 
 
 class RealtimeDiagnosticError(RuntimeError):
@@ -478,6 +501,17 @@ class DiagnosticJournal:
             is not None
         )
 
+    def decision_key(self, symbol: str, bar_closed_at: datetime) -> str:
+        canonical_symbol = require_text("symbol", symbol, upper=True)
+        if canonical_symbol not in self.required_symbols:
+            raise RealtimeDiagnosticError("unsupported diagnostic symbol")
+        require_utc("bar_closed_at", bar_closed_at)
+        return (
+            f"{canonical_symbol}:{_utc_text(bar_closed_at)}"
+            if self.timeframe == "M15"
+            else f"{canonical_symbol}:{self.timeframe}:{_utc_text(bar_closed_at)}"
+        )
+
     def record_bar_decision(
         self,
         *,
@@ -499,11 +533,7 @@ class DiagnosticJournal:
         if type(paper_opened) is not bool:
             raise TypeError("paper_opened must be bool")
         normalized_status = require_text("status", status, upper=True)
-        decision_key = (
-            f"{canonical_symbol}:{_utc_text(bar_closed_at)}"
-            if self.timeframe == "M15"
-            else f"{canonical_symbol}:{self.timeframe}:{_utc_text(bar_closed_at)}"
-        )
+        decision_key = self.decision_key(canonical_symbol, bar_closed_at)
         snapshot_payload = None
         decision_id = None
         if snapshot is not None:
@@ -947,12 +977,13 @@ class DiagnosticJournal:
         }
 
 
-def fetch_finalized_m15_bars(
+def fetch_finalized_bars(
     facade: ReadOnlyMT5Facade,
     *,
     broker_symbol: str,
     count: int,
     observed_at: datetime,
+    timeframe: str,
     broker_time_offset_seconds: int = 0,
 ) -> tuple[pd.DataFrame, datetime]:
     if type(facade) is not ReadOnlyMT5Facade:
@@ -960,6 +991,13 @@ def fetch_finalized_m15_bars(
             "market reads require the capability-reduced MT5 facade"
         )
     require_utc("observed_at", observed_at)
+    normalized_timeframe = require_decision_timeframe("timeframe", timeframe)
+    bar_seconds = M5_SECONDS if normalized_timeframe == "M5" else M15_SECONDS
+    mt5_timeframe = (
+        facade.TIMEFRAME_M5
+        if normalized_timeframe == "M5"
+        else facade.TIMEFRAME_M15
+    )
     if (
         isinstance(count, bool)
         or not isinstance(count, int)
@@ -979,19 +1017,23 @@ def fetch_finalized_m15_bars(
     request_count = min(count + 16, 5000)
     raw = facade.copy_rates_from_pos(
         require_text("broker_symbol", broker_symbol),
-        facade.TIMEFRAME_M15,
+        mt5_timeframe,
         0,
         request_count,
     )
-    rows = _records(raw, "MT5 M15 rates")
-    raw_open_times = [_epoch_utc(row, "M15 rate") for row in rows]
+    rows = _records(raw, f"MT5 {normalized_timeframe} rates")
+    raw_open_times = [
+        _epoch_utc(row, f"{normalized_timeframe} rate") for row in rows
+    ]
     if not raw_open_times:
-        raise RealtimeDiagnosticError("MT5 returned no M15 rates")
+        raise RealtimeDiagnosticError(
+            f"MT5 returned no {normalized_timeframe} rates"
+        )
     current_boundary = datetime.fromtimestamp(
-        int(observed_at.timestamp()) // M15_SECONDS * M15_SECONDS,
+        int(observed_at.timestamp()) // bar_seconds * bar_seconds,
         tz=UTC,
     )
-    next_boundary = current_boundary + timedelta(seconds=M15_SECONDS)
+    next_boundary = current_boundary + timedelta(seconds=bar_seconds)
     effective_offset = 0
     latest_raw_open = max(raw_open_times)
     if latest_raw_open > current_boundary:
@@ -1004,7 +1046,7 @@ def fetch_finalized_m15_bars(
         shifted_latest = latest_raw_open - timedelta(
             seconds=broker_time_offset_seconds
         )
-        # Some MT5 servers expose the next M15 slot shortly before its UTC
+        # Some MT5 servers expose the next bar slot shortly before its UTC
         # boundary. It remains an active/prepublished bar and is filtered below;
         # only timestamps beyond the immediately next slot indicate real drift.
         if shifted_latest > next_boundary:
@@ -1020,12 +1062,14 @@ def fetch_finalized_m15_bars(
     for row in rows:
         opened_at = _epoch_utc(
             row,
-            "M15 rate",
+            f"{normalized_timeframe} rate",
             wall_clock_offset_seconds=effective_offset,
         )
-        if int(opened_at.timestamp()) % M15_SECONDS:
-            raise RealtimeDiagnosticError("M15 rate is not boundary-aligned UTC")
-        if opened_at + timedelta(seconds=M15_SECONDS) > observed_at:
+        if int(opened_at.timestamp()) % bar_seconds:
+            raise RealtimeDiagnosticError(
+                f"{normalized_timeframe} rate is not boundary-aligned UTC"
+            )
+        if opened_at + timedelta(seconds=bar_seconds) > observed_at:
             continue
         normalized.append(
             {
@@ -1039,11 +1083,15 @@ def fetch_finalized_m15_bars(
         )
     frame = pd.DataFrame(normalized).sort_values("open_time_utc")
     if frame["open_time_utc"].duplicated(keep=False).any():
-        raise RealtimeDiagnosticError("duplicate M15 timestamps are forbidden")
+        raise RealtimeDiagnosticError(
+            f"duplicate {normalized_timeframe} timestamps are forbidden"
+        )
     frame = frame.reset_index(drop=True)
     if len(frame) < MIN_REQUIRED_ROWS:
         raise RealtimeDiagnosticError(
             f"not enough finalized M15 bars: {len(frame)}/{MIN_REQUIRED_ROWS}"
+            if normalized_timeframe == "M15"
+            else f"not enough finalized M5 bars: {len(frame)}/{MIN_REQUIRED_ROWS}"
         )
     frame = frame.iloc[-min(count, len(frame)):].reset_index(drop=True)
     if not (
@@ -1051,12 +1099,32 @@ def fetch_finalized_m15_bars(
         & (frame["High"] >= frame[["Open", "Close"]].max(axis=1))
         & (frame["Low"] <= frame["High"])
     ).all():
-        raise RealtimeDiagnosticError("M15 OHLC integrity check failed")
+        raise RealtimeDiagnosticError(
+            f"{normalized_timeframe} OHLC integrity check failed"
+        )
     bar_closed_at = (
         pd.Timestamp(frame.iloc[-1]["open_time_utc"]).to_pydatetime()
-        + timedelta(seconds=M15_SECONDS)
+        + timedelta(seconds=bar_seconds)
     )
     return frame, bar_closed_at
+
+
+def fetch_finalized_m15_bars(
+    facade: ReadOnlyMT5Facade,
+    *,
+    broker_symbol: str,
+    count: int,
+    observed_at: datetime,
+    broker_time_offset_seconds: int = 0,
+) -> tuple[pd.DataFrame, datetime]:
+    return fetch_finalized_bars(
+        facade,
+        broker_symbol=broker_symbol,
+        count=count,
+        observed_at=observed_at,
+        timeframe="M15",
+        broker_time_offset_seconds=broker_time_offset_seconds,
+    )
 
 
 def first_eligible_quote(
@@ -1145,6 +1213,7 @@ def _position_exit(
     position: OpenPaperPosition,
     observed_at: datetime,
     broker_time_offset_seconds: int,
+    bar_seconds: int,
 ) -> tuple[datetime, float, str, float, str] | None:
     if observed_at <= position.opened_at:
         return None
@@ -1181,7 +1250,7 @@ def _position_exit(
     if risk_distance <= 0:
         raise RealtimeDiagnosticError("paper position has invalid stop distance")
     timeout_at = position.bar_closed_at + timedelta(
-        seconds=position.max_holding_bars * M15_SECONDS
+        seconds=position.max_holding_bars * bar_seconds
     )
     latest_pre_timeout: tuple[datetime, float, float] | None = None
     first_post_timeout: tuple[datetime, float, float] | None = None
@@ -1247,12 +1316,14 @@ def _close_positions(
     broker_time_offset_seconds: int,
 ) -> list[str]:
     closed: list[str] = []
+    bar_seconds = M5_SECONDS if journal.timeframe == "M5" else M15_SECONDS
     for position in journal.open_positions():
         result = _position_exit(
             facade,
             position,
             observed_at,
             broker_time_offset_seconds,
+            bar_seconds,
         )
         if result is None:
             continue
@@ -1284,7 +1355,7 @@ def run_diagnostic_cycle(
     max_bar_age_seconds: int = 30 * 60,
     broker_time_offset_seconds: int = 0,
 ) -> DiagnosticCycleReceipt:
-    """Run one fail-closed real-market diagnostic cycle for all four lanes."""
+    """Run one fail-closed MT5 diagnostic cycle for the journal domain."""
 
     if type(facade) is not ReadOnlyMT5Facade:
         raise RealtimeDiagnosticError(
@@ -1292,11 +1363,13 @@ def run_diagnostic_cycle(
         )
     if type(journal) is not DiagnosticJournal:
         raise TypeError("journal must be DiagnosticJournal")
-    if (
-        journal.required_symbols != REQUIRED_SYMBOLS
-        or journal.profile != DIAGNOSTIC_PROFILE
-        or journal.schema_version != DIAGNOSTIC_SCHEMA_VERSION
-    ):
+    domain = (
+        journal.profile,
+        journal.schema_version,
+        journal.required_symbols,
+        journal.timeframe,
+    )
+    if domain not in BROKER_DIAGNOSTIC_DOMAINS:
         raise RealtimeDiagnosticError(
             "MT5 diagnostic cycle requires the broker journal domain"
         )
@@ -1309,9 +1382,9 @@ def run_diagnostic_cycle(
         str(symbol).upper(): require_text("broker symbol", broker_symbol)
         for symbol, broker_symbol in broker_symbols.items()
     }
-    if set(normalized_symbols) != set(REQUIRED_SYMBOLS):
+    if set(normalized_symbols) != set(journal.required_symbols):
         raise RealtimeDiagnosticError(
-            "diagnostic cycle requires the exact four-symbol map"
+            "diagnostic cycle requires the exact journal symbol map"
         )
 
     attest_mt5_read_only(
@@ -1332,17 +1405,18 @@ def run_diagnostic_cycle(
     symbol_status: dict[str, str] = {}
     failures: dict[str, str] = {}
 
-    for symbol in REQUIRED_SYMBOLS:
+    for symbol in journal.required_symbols:
         broker_symbol = normalized_symbols[symbol]
         try:
-            frame, bar_closed_at = fetch_finalized_m15_bars(
+            frame, bar_closed_at = fetch_finalized_bars(
                 facade,
                 broker_symbol=broker_symbol,
                 count=bar_count,
                 observed_at=observed_at,
+                timeframe=journal.timeframe,
                 broker_time_offset_seconds=broker_time_offset_seconds,
             )
-            decision_key = f"{symbol}:{_utc_text(bar_closed_at)}"
+            decision_key = journal.decision_key(symbol, bar_closed_at)
             if journal.has_decision_key(decision_key):
                 symbol_status[symbol] = "ALREADY_PROCESSED"
                 continue
@@ -1399,6 +1473,7 @@ def run_diagnostic_cycle(
                 data_fresh=True,
                 bar_closed_at=bar_closed_at,
                 created_at=quote.observed_at,
+                timeframe=journal.timeframe,
             )
             snapshot = build_runtime_decision_snapshot(
                 frame,
@@ -1408,7 +1483,11 @@ def run_diagnostic_cycle(
                 first_eligible_tick_at=quote.observed_at,
                 provenance=provenance,
             )
-            explanation = explain_decision_core(frame, symbol)
+            explanation = explain_decision_core(
+                frame,
+                symbol,
+                timeframe=journal.timeframe,
+            )
             open_symbols = {
                 position.symbol for position in journal.open_positions()
             }
@@ -1485,6 +1564,7 @@ __all__ = [
     "RealtimeDiagnosticError",
     "SAFE_TO_DEMO_AUTO_ORDER",
     "VALIDATION_EVIDENCE",
+    "fetch_finalized_bars",
     "fetch_finalized_m15_bars",
     "first_eligible_quote",
     "run_diagnostic_cycle",

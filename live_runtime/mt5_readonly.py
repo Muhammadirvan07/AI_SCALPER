@@ -48,6 +48,7 @@ class ReadOnlyMT5Facade:
         "__copy_ticks_range_call",
         "__copy_rates_from_pos_call",
         "COPY_TICKS_ALL",
+        "TIMEFRAME_M5",
         "TIMEFRAME_M15",
         "ACCOUNT_TRADE_MODE_DEMO",
         "ACCOUNT_TRADE_MODE_REAL",
@@ -98,6 +99,7 @@ class ReadOnlyMT5Facade:
         )
         for constant, default in (
             ("COPY_TICKS_ALL", 15),
+            ("TIMEFRAME_M5", 5),
             ("TIMEFRAME_M15", 15),
             ("ACCOUNT_TRADE_MODE_DEMO", 0),
             ("ACCOUNT_TRADE_MODE_REAL", 2),

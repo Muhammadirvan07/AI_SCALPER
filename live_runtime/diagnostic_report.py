@@ -640,10 +640,54 @@ def build_crypto_m5_challenger_report(
     )
 
 
+def build_fbs_crypto_broker_report(
+    database: str | Path,
+    *,
+    timeframe: str,
+    generated_at: datetime | None = None,
+) -> dict[str, object]:
+    """Build an isolated FBS MT5 BTC/ETH broker diagnostic report."""
+
+    normalized = str(timeframe or "").strip().upper()
+    if normalized == "M15":
+        profile = "FBS_BROKER_CRYPTO_M15_DIAGNOSTIC_ONLY"
+        schema = "fbs-broker-crypto-m15-diagnostic-v1"
+        report_schema = "FBS_BROKER_CRYPTO_M15_PERFORMANCE_V1"
+        report_type = "FBS_BROKER_CRYPTO_M15_DIAGNOSTIC_PERFORMANCE"
+        bar_seconds = 15 * 60
+    elif normalized == "M5":
+        profile = "FBS_BROKER_CRYPTO_M5_CHALLENGER_DIAGNOSTIC_ONLY"
+        schema = "fbs-broker-crypto-m5-diagnostic-v1"
+        report_schema = "FBS_BROKER_CRYPTO_M5_PERFORMANCE_V1"
+        report_type = "FBS_BROKER_CRYPTO_M5_CHALLENGER_PERFORMANCE"
+        bar_seconds = 5 * 60
+    else:
+        raise DiagnosticReportError("FBS broker crypto timeframe must be M5 or M15")
+    return _build_diagnostic_report(
+        database,
+        required_symbols=("BTCUSD", "ETHUSD"),
+        expected_schema_version=schema,
+        expected_profile=profile,
+        report_schema_version=report_schema,
+        report_type=report_type,
+        limitations=(
+            "FBS demo broker CFD paper outcomes only",
+            "commission, swap, slippage, funding, and margin are excluded",
+            "M5 and M15 results are isolated",
+            "diagnostic journal is not broker-forward promotion evidence",
+            "confidence intervals and cost stress are not calculated",
+        ),
+        timeframe=normalized,
+        bar_seconds=bar_seconds,
+        generated_at=generated_at,
+    )
+
+
 __all__ = [
     "DiagnosticReportError",
     "REPORT_SCHEMA_VERSION",
     "build_crypto_diagnostic_report",
     "build_crypto_m5_challenger_report",
     "build_diagnostic_report",
+    "build_fbs_crypto_broker_report",
 ]

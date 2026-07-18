@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
@@ -51,15 +52,63 @@ MODEL_SOURCE_PATHS = (
 )
 
 
+@dataclass(frozen=True)
+class BrokerRunnerDomain:
+    required_symbols: tuple[str, ...]
+    symbol_config_key: str
+    profile: str
+    schema_version: str
+    outcome_quality: str
+    timeframe: str
+    artifact_tag: str
+    model_version: str
+
+
+FOREX_RUNNER_DOMAIN = BrokerRunnerDomain(
+    required_symbols=REQUIRED_SYMBOLS,
+    symbol_config_key="broker_symbols_observed",
+    profile=DIAGNOSTIC_PROFILE,
+    schema_version="real-market-diagnostic-v1",
+    outcome_quality="BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+    timeframe="M15",
+    artifact_tag="real-market",
+    model_version="rule-core-champion-locked-v1",
+)
+FBS_CRYPTO_M15_RUNNER_DOMAIN = BrokerRunnerDomain(
+    required_symbols=("BTCUSD", "ETHUSD"),
+    symbol_config_key="broker_crypto_symbols_observed",
+    profile="FBS_BROKER_CRYPTO_M15_DIAGNOSTIC_ONLY",
+    schema_version="fbs-broker-crypto-m15-diagnostic-v1",
+    outcome_quality="FBS_BROKER_TICK_M15_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+    timeframe="M15",
+    artifact_tag="broker-crypto-m15",
+    model_version="rule-core-fbs-crypto-m15-locked-v1",
+)
+FBS_CRYPTO_M5_RUNNER_DOMAIN = BrokerRunnerDomain(
+    required_symbols=("BTCUSD", "ETHUSD"),
+    symbol_config_key="broker_crypto_symbols_observed",
+    profile="FBS_BROKER_CRYPTO_M5_CHALLENGER_DIAGNOSTIC_ONLY",
+    schema_version="fbs-broker-crypto-m5-diagnostic-v1",
+    outcome_quality="FBS_BROKER_TICK_M5_CHALLENGER_NOT_PROMOTION_EVIDENCE",
+    timeframe="M5",
+    artifact_tag="broker-crypto-m5",
+    model_version="rule-core-fbs-crypto-m5-challenger-locked-v1",
+)
+
+
 def _diagnostic_artifact_paths(
     candidate_id: str,
     *,
     root: Path = DEFAULT_DIAGNOSTIC_ROOT,
+    artifact_tag: str = "real-market",
 ) -> tuple[Path, Path]:
     normalized = str(candidate_id or "").strip().lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", normalized):
         raise RealtimeDiagnosticError("candidate id is invalid for artifact isolation")
-    prefix = f"{normalized}-real-market"
+    normalized_tag = str(artifact_tag or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,47}", normalized_tag):
+        raise RealtimeDiagnosticError("diagnostic artifact tag is invalid")
+    prefix = f"{normalized}-{normalized_tag}"
     return root / f"{prefix}.sqlite3", root / f"{prefix}-summary.json"
 
 
@@ -71,7 +120,11 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def _candidate(path: Path, candidate_id: str) -> dict[str, object]:
+def _candidate(
+    path: Path,
+    candidate_id: str,
+    domain: BrokerRunnerDomain = FOREX_RUNNER_DOMAIN,
+) -> dict[str, object]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -91,18 +144,18 @@ def _candidate(path: Path, candidate_id: str) -> dict[str, object]:
         raise RealtimeDiagnosticError("real-time diagnostic requires a demo candidate")
     if not str(candidate.get("server", "")).strip():
         raise RealtimeDiagnosticError("candidate server is unavailable")
-    symbols = candidate.get("broker_symbols_observed")
+    symbols = candidate.get(domain.symbol_config_key)
     if not isinstance(symbols, Mapping):
         raise RealtimeDiagnosticError("candidate broker symbol map is unavailable")
     normalized = {
         str(symbol).upper(): str(broker_symbol).strip()
         for symbol, broker_symbol in symbols.items()
     }
-    if set(normalized) != set(REQUIRED_SYMBOLS) or any(
+    if set(normalized) != set(domain.required_symbols) or any(
         not value for value in normalized.values()
     ):
-        raise RealtimeDiagnosticError("candidate requires the exact four-symbol map")
-    candidate["broker_symbols_observed"] = normalized
+        raise RealtimeDiagnosticError("candidate requires the exact domain symbol map")
+    candidate[domain.symbol_config_key] = normalized
     return candidate
 
 
@@ -138,14 +191,17 @@ def _model_artifact_sha256() -> str:
     return digest.hexdigest()
 
 
-def _identity(config_path: Path) -> DiagnosticIdentity:
+def _identity(
+    config_path: Path,
+    domain: BrokerRunnerDomain = FOREX_RUNNER_DOMAIN,
+) -> DiagnosticIdentity:
     try:
         config_hash = _sha256_bytes(config_path.read_bytes())
     except OSError as exc:
         raise RealtimeDiagnosticError("candidate config cannot be hashed") from exc
     return DiagnosticIdentity(
         commit_sha=_git_commit(),
-        model_version="rule-core-champion-locked-v1",
+        model_version=domain.model_version,
         model_artifact_sha256=_model_artifact_sha256(),
         config_sha256=config_hash,
     )
@@ -235,11 +291,15 @@ def _read_only_remediation(error: MT5ReadOnlyAttestationError) -> str:
     return "; ".join(actions)
 
 
-def cli_entrypoint(argv: Sequence[str] | None = None) -> int:
+def cli_entrypoint(
+    argv: Sequence[str] | None = None,
+    *,
+    runner_domain: BrokerRunnerDomain = FOREX_RUNNER_DOMAIN,
+) -> int:
     """Translate expected operator/configuration rejection into concise output."""
 
     try:
-        return main(argv)
+        return main(argv, runner_domain=runner_domain)
     except MT5ReadOnlyAttestationError as exc:
         print(str(exc), file=sys.stderr)
         print(f"Required action: {_read_only_remediation(exc)}.", file=sys.stderr)
@@ -291,6 +351,7 @@ def main(
     *,
     mt5_module: object | None = None,
     platform_name: str | None = None,
+    runner_domain: BrokerRunnerDomain = FOREX_RUNNER_DOMAIN,
 ) -> int:
     args = _parser().parse_args(argv)
     if not args.acknowledge_diagnostic_only:
@@ -306,11 +367,14 @@ def main(
     if not 1.0 <= args.poll_seconds <= 300.0:
         raise RealtimeDiagnosticError("--poll-seconds must be between 1 and 300")
 
-    candidate = _candidate(args.config, args.candidate)
-    default_journal, default_summary = _diagnostic_artifact_paths(args.candidate)
+    candidate = _candidate(args.config, args.candidate, runner_domain)
+    default_journal, default_summary = _diagnostic_artifact_paths(
+        args.candidate,
+        artifact_tag=runner_domain.artifact_tag,
+    )
     journal_path = args.journal or default_journal
     summary_path = args.summary or default_summary
-    identity = _identity(args.config)
+    identity = _identity(args.config, runner_domain)
     if mt5_module is None:
         import MetaTrader5 as mt5_module
 
@@ -335,7 +399,12 @@ def main(
             "DEMO",
         )
         with AccountRuntimeFence(runtime_identity), DiagnosticJournal(
-            journal_path
+            journal_path,
+            required_symbols=runner_domain.required_symbols,
+            profile=runner_domain.profile,
+            schema_version=runner_domain.schema_version,
+            outcome_quality=runner_domain.outcome_quality,
+            timeframe=runner_domain.timeframe,
         ) as journal:
             journal.assert_broker_cohort(
                 expected_server=str(candidate["server"]),
@@ -343,7 +412,8 @@ def main(
             )
             run_nonce = utc_now().strftime("%Y%m%dT%H%M%S%fZ")
             cycle_number = 0
-            print(f"Profile: {DIAGNOSTIC_PROFILE}")
+            print(f"Profile: {runner_domain.profile}")
+            print(f"Timeframe: {runner_domain.timeframe}")
             print("Broker mutation capability: DISABLED")
             print("Promotion evidence: DISABLED")
             while args.continuous or cycle_number < args.cycles:
@@ -355,7 +425,7 @@ def main(
                     cycle_id=f"{run_nonce}-{cycle_number:08d}",
                     expected_server=str(candidate["server"]),
                     expected_account_identity_sha256=runtime_identity,
-                    broker_symbols=candidate["broker_symbols_observed"],
+                    broker_symbols=candidate[runner_domain.symbol_config_key],
                     identity=identity,
                     observed_at=observed_at,
                     bar_count=args.bar_count,
@@ -368,6 +438,7 @@ def main(
                 summary = journal.summary()
                 summary["candidate_id"] = str(args.candidate).strip().lower()
                 summary["broker_server"] = str(candidate["server"])
+                summary["lane_domain"] = runner_domain.artifact_tag
                 summary["latest_cycle"] = {
                     "cycle_id": receipt.cycle_id,
                     "observed_at_utc": receipt.observed_at.isoformat().replace(

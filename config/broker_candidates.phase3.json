@@ -32,6 +32,11 @@
         "USDJPY": "USDJPY",
         "AUDUSD": "AUDUSD"
       },
+      "broker_crypto_symbols_observed": {
+        "BTCUSD": "BTCUSD",
+        "ETHUSD": "ETHUSD"
+      },
+      "broker_crypto_binding_status": "SANITIZED_BINDING_PROBE_COMPLETE",
       "instrument_specification_status": "API_CAPTURE_PENDING",
       "binding_probe_observation": {
         "schema_version": "mt5-candidate-binding-probe-v1",
@@ -353,5 +358,5 @@
       "account_identifier_stored": false
     }
   ],
-  "notes": "FBS is the operator-selected target broker. Its sanitized binding probe confirmed exact demo server FBS-Demo, USD account currency, 500:1 leverage, retail hedging margin mode, and canonical XAUUSD/EURUSD/USDJPY/AUDUSD names. Candidate preflight, API-captured instrument specs, session calendar, and cross-jurisdiction eligibility remain pending. Explicit read_only_discovery_allowed stays false, so evidence discovery and execution remain blocked. FINEX is retained as historical standby only and XM remains blocked. Do not guess or store credentials here."
+  "notes": "FBS is the operator-selected target broker. Its sanitized binding probe confirmed exact demo server FBS-Demo, USD account currency, 500:1 leverage, retail hedging margin mode, canonical XAUUSD/EURUSD/USDJPY/AUDUSD names, and optional BTCUSD/ETHUSD crypto CFD names. Broker crypto M15 champion and M5 challenger diagnostic domains are isolated from forex and public Binance/Coinbase journals. API-captured instrument specs, session calendar, and cross-jurisdiction eligibility remain pending. Explicit read_only_discovery_allowed stays false, so evidence discovery and execution remain blocked. FINEX is retained as historical standby only and XM remains blocked. Do not guess or store credentials here."
 }
