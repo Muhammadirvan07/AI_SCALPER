@@ -306,6 +306,8 @@ def main(
                 for symbol, status in receipt.symbol_status.items()
             )
             print(f"[{cycle_number}] {receipt.status}: {statuses}")
+            for symbol, failure in receipt.failures.items():
+                print(f"  {symbol} failure: {failure}")
             if not args.continuous and cycle_number >= args.cycles:
                 break
             time.sleep(args.poll_seconds)

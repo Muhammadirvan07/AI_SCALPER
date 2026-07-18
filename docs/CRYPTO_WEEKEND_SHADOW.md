@@ -114,6 +114,12 @@ BTC serta ETH secara terpisah.
 - `STALE_BAR`: finalized candle terlalu lama.
 - `HOLD:<Error>`: satu atau lebih trust checks gagal.
 
+Untuk `HOLD`, runner juga mencetak detail reason code yang sudah disanitasi,
+misalnya `HTTP_STATUS_451`, `TLS_CERTIFICATE_VERIFY_FAILED`, `TIMEOUT`, atau
+`DNS_RESOLUTION_FAILED`. Reason code tidak membuka safety lock dan tidak
+memuat URL, credential, maupun teks exception mentah. Detail yang sama tetap
+dicatat di `latest_cycle.failures` untuk audit.
+
 Outcome posisi diperiksa dari sampled best bid/ask setiap cycle. Intracycle
 touch dapat terlewat, sehingga hasil ini hanya diagnostic dan tidak boleh
 dianggap sebagai execution-quality evidence.

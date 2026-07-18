@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
+import io
 import json
 from pathlib import Path
+import ssl
 import tempfile
 import unittest
+from unittest.mock import patch
+from urllib import error as urllib_error
 
 import numpy as np
 
@@ -150,6 +155,74 @@ class CryptoShadowTests(unittest.TestCase):
                 "allow-listed",
             ):
                 transport.get_json(url)
+
+    def test_public_transport_preserves_safe_network_failure_reason_codes(self) -> None:
+        transport = PublicJSONTransport()
+        endpoint = "https://data-api.binance.vision/api/v3/time"
+        certificate_error = ssl.SSLCertVerificationError(
+            1,
+            "certificate verify failed for secret.invalid",
+        )
+        cases = (
+            (
+                urllib_error.URLError(certificate_error),
+                "TLS_CERTIFICATE_VERIFY_FAILED",
+            ),
+            (
+                urllib_error.HTTPError(endpoint, 451, "blocked", {}, None),
+                "HTTP_STATUS_451",
+            ),
+            (TimeoutError("private timeout detail"), "TIMEOUT"),
+        )
+        for failure, expected_code in cases:
+            with self.subTest(expected_code=expected_code), patch(
+                "live_runtime.crypto_shadow.urllib_request.urlopen",
+                side_effect=failure,
+            ), self.assertRaises(CryptoMarketDataError) as raised:
+                transport.get_json(endpoint)
+            message = str(raised.exception)
+            self.assertIn(expected_code, message)
+            self.assertNotIn("secret.invalid", message)
+            self.assertNotIn("private timeout detail", message)
+
+    def test_cli_prints_sanitized_failure_details_without_json_lookup(self) -> None:
+        class FailingTransport:
+            def get_json(self, url: str) -> object:
+                raise CryptoMarketDataError(
+                    "public market-data request failed [TLS_CERTIFICATE_VERIFY_FAILED]"
+                )
+
+        client = CryptoPublicMarketClient(
+            transport=FailingTransport(),
+            clock_provider=lambda: BOUNDARY + timedelta(seconds=2),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = crypto_cli.main(
+                    [
+                        "--acknowledge-diagnostic-only",
+                        "--journal",
+                        str(Path(directory) / "crypto.sqlite3"),
+                        "--summary",
+                        str(Path(directory) / "summary.json"),
+                    ],
+                    client=client,
+                    clock_provider=lambda: BOUNDARY + timedelta(seconds=2),
+                )
+
+        self.assertEqual(0, result)
+        terminal = output.getvalue()
+        self.assertIn(
+            "BTCUSD failure: CryptoMarketDataError:public market-data request "
+            "failed [TLS_CERTIFICATE_VERIFY_FAILED]",
+            terminal,
+        )
+        self.assertIn(
+            "ETHUSD failure: CryptoMarketDataError:public market-data request "
+            "failed [TLS_CERTIFICATE_VERIFY_FAILED]",
+            terminal,
+        )
 
     def test_cross_feed_deviation_and_staleness_fail_closed(self) -> None:
         with self.assertRaisesRegex(CryptoMarketDataError, "cross-feed deviation"):

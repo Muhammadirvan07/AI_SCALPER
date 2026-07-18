@@ -11,8 +11,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import json
 import math
+import socket
+import ssl
 from types import MappingProxyType
 from typing import Callable, Mapping, Protocol
+from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
@@ -37,6 +40,35 @@ _BINANCE_ALLOWED_PATHS = frozenset(
 
 class CryptoMarketDataError(RuntimeError):
     """Raised when public crypto market data cannot be trusted fail-closed."""
+
+
+def _network_failure_reason_code(exc: Exception) -> str:
+    """Return a bounded reason code without reflecting endpoint/error text."""
+
+    if isinstance(exc, urllib_error.HTTPError):
+        code = int(exc.code) if isinstance(exc.code, int) else 0
+        return f"HTTP_STATUS_{code}" if 100 <= code <= 599 else "HTTP_ERROR"
+    reason: object = exc.reason if isinstance(exc, urllib_error.URLError) else exc
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return "TLS_CERTIFICATE_VERIFY_FAILED"
+    if isinstance(reason, ssl.SSLError):
+        return "TLS_ERROR"
+    if isinstance(reason, (TimeoutError, socket.timeout)):
+        return "TIMEOUT"
+    if isinstance(reason, socket.gaierror):
+        return "DNS_RESOLUTION_FAILED"
+    if isinstance(reason, ConnectionRefusedError):
+        return "CONNECTION_REFUSED"
+    if isinstance(reason, ConnectionResetError):
+        return "CONNECTION_RESET"
+    if isinstance(reason, OSError):
+        error_number = reason.errno
+        if isinstance(error_number, int) and 0 < error_number <= 9999:
+            return f"NETWORK_OS_ERROR_{error_number}"
+        return "NETWORK_OS_ERROR"
+    if isinstance(exc, urllib_error.URLError):
+        return "URL_ERROR"
+    return "TRANSPORT_ERROR"
 
 
 @dataclass(frozen=True)
@@ -190,7 +222,10 @@ class PublicJSONTransport:
         except CryptoMarketDataError:
             raise
         except Exception as exc:
-            raise CryptoMarketDataError("public market-data request failed") from exc
+            reason_code = _network_failure_reason_code(exc)
+            raise CryptoMarketDataError(
+                f"public market-data request failed [{reason_code}]"
+            ) from exc
         if len(raw) > 8 * 1024 * 1024:
             raise CryptoMarketDataError("public market-data response is too large")
         try:
