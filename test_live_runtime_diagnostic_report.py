@@ -258,6 +258,29 @@ class DiagnosticReportTests(unittest.TestCase):
         self.assertEqual(-0.5, eurusd["net_r"])
         self.assertEqual(0.5, eurusd["profit_factor_r"])
 
+        breakout = report["per_strategy"]["BREAKOUT"]
+        self.assertEqual(2, breakout["closed_trades"])
+        self.assertEqual(1, breakout["wins"])
+        self.assertEqual(1, breakout["losses"])
+        self.assertEqual(1.0, breakout["net_r"])
+        self.assertEqual(2.0, breakout["profit_factor_r"])
+
+        pullback = report["per_strategy"]["MOMENTUM_PULLBACK"]
+        self.assertEqual(1, pullback["closed_trades"])
+        self.assertEqual(1, pullback["wins"])
+        self.assertEqual(0.5, pullback["net_r"])
+
+        buy = report["per_side"]["BUY"]
+        self.assertEqual(2, buy["closed_trades"])
+        self.assertEqual(1, buy["wins"])
+        self.assertEqual(1, buy["losses"])
+        self.assertEqual(1.0, buy["net_r"])
+
+        sell = report["per_side"]["SELL"]
+        self.assertEqual(1, sell["closed_trades"])
+        self.assertEqual(1, sell["wins"])
+        self.assertEqual(0.5, sell["net_r"])
+
         timeout = next(
             trade for trade in report["trades"] if trade["decision_id"] == "eur-timeout"
         )
@@ -280,6 +303,9 @@ class DiagnosticReportTests(unittest.TestCase):
         self.assertIsNone(report["overall"]["win_rate_percent"])
         self.assertIsNone(report["overall"]["profit_factor_r"])
         self.assertIsNone(report["overall"]["expectancy_r"])
+        self.assertEqual({}, report["per_strategy"])
+        self.assertEqual(0, report["per_side"]["BUY"]["closed_trades"])
+        self.assertEqual(0, report["per_side"]["SELL"]["closed_trades"])
         self.assertEqual("NO_CLOSED_TRADES", report["sample_assessment"]["status"])
         self.assertIn("NO_CLOSED_TRADES", report["sample_assessment"]["warnings"])
 

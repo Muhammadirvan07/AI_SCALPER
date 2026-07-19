@@ -66,3 +66,15 @@ python -B .\generate_fbs_crypto_broker_report.py `
 Ganti `M5` dengan `M15` untuk laporan champion. Win rate, PF, dan expectancy
 baru bermakna setelah terdapat cukup posisi paper yang tertutup. Hasil ini
 tetap diagnostic dan tidak dapat membuka gate order/live.
+
+Lihat segmentasi strategi dan arah tanpa mengubah journal:
+
+```powershell
+$r = Get-Content `
+  .\runtime_state\diagnostic\fbs-broker-crypto-m5-performance.json `
+  -Raw | ConvertFrom-Json
+
+$r.per_strategy | Format-List
+$r.per_side | Format-List
+$r.trades | Format-Table symbol,side,strategy,exit_reason,outcome,r_multiple
+```

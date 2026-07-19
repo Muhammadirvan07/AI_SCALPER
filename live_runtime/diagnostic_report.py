@@ -512,6 +512,20 @@ def _build_diagnostic_report(
         trades,
         holding_horizon_key=holding_horizon_key,
     )
+    per_strategy = {
+        strategy: _trade_metrics(
+            [trade for trade in trades if trade["strategy"] == strategy],
+            holding_horizon_key=holding_horizon_key,
+        )
+        for strategy in sorted({str(trade["strategy"]) for trade in trades})
+    }
+    per_side = {
+        side: _trade_metrics(
+            [trade for trade in trades if trade["side"] == side],
+            holding_horizon_key=holding_horizon_key,
+        )
+        for side in ("BUY", "SELL")
+    }
     report: dict[str, object] = {
         "schema_version": report_schema_version,
         "report_type": report_type,
@@ -545,6 +559,8 @@ def _build_diagnostic_report(
         },
         "overall": overall,
         "per_symbol": per_symbol,
+        "per_strategy": per_strategy,
+        "per_side": per_side,
         "open_positions": {
             "count": len(open_positions),
             "positions": open_positions,
