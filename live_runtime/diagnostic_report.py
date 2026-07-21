@@ -613,6 +613,49 @@ def build_diagnostic_report(
     )
 
 
+def build_phillip_diagnostic_report(
+    database: str | Path,
+    *,
+    lane: str,
+    generated_at: datetime | None = None,
+) -> dict[str, object]:
+    """Build a report for one explicitly selected Phillip demo account lane."""
+
+    normalized_lane = str(lane or "").strip().lower()
+    if normalized_lane == "fx":
+        required_symbols = ("AUDUSD", "EURUSD", "USDJPY")
+        expected_schema = "phillip-fx-real-market-diagnostic-v1"
+        expected_profile = "PHILLIP_FX_BROKER_REALTIME_DIAGNOSTIC_ONLY"
+        report_schema = "PHILLIP_FX_DIAGNOSTIC_PERFORMANCE_V1"
+        report_type = "PHILLIP_FX_BROKER_REALTIME_DIAGNOSTIC_PERFORMANCE"
+    elif normalized_lane == "commodity":
+        required_symbols = ("XAUUSD",)
+        expected_schema = "phillip-commodity-real-market-diagnostic-v1"
+        expected_profile = "PHILLIP_COMMODITY_BROKER_REALTIME_DIAGNOSTIC_ONLY"
+        report_schema = "PHILLIP_COMMODITY_DIAGNOSTIC_PERFORMANCE_V1"
+        report_type = "PHILLIP_COMMODITY_BROKER_REALTIME_DIAGNOSTIC_PERFORMANCE"
+    else:
+        raise DiagnosticReportError("Phillip diagnostic lane must be fx or commodity")
+    return _build_diagnostic_report(
+        database,
+        required_symbols=required_symbols,
+        expected_schema_version=expected_schema,
+        expected_profile=expected_profile,
+        report_schema_version=report_schema,
+        report_type=report_type,
+        limitations=(
+            "Phillip demo broker paper outcomes only",
+            "FX and commodity account journals are isolated",
+            "commission, swap, slippage, and margin are excluded",
+            "diagnostic journal is not broker-forward promotion evidence",
+            "confidence intervals and cost stress are not calculated",
+        ),
+        timeframe="M15",
+        bar_seconds=15 * 60,
+        generated_at=generated_at,
+    )
+
+
 def build_crypto_diagnostic_report(
     database: str | Path,
     *,
@@ -720,4 +763,5 @@ __all__ = [
     "build_crypto_m5_challenger_report",
     "build_diagnostic_report",
     "build_fbs_crypto_broker_report",
+    "build_phillip_diagnostic_report",
 ]

@@ -11,6 +11,7 @@ import unittest
 from live_runtime.diagnostic_report import (
     DiagnosticReportError,
     build_diagnostic_report,
+    build_phillip_diagnostic_report,
 )
 from live_runtime.realtime_diagnostic import DiagnosticJournal
 import generate_realtime_diagnostic_report as cli
@@ -241,6 +242,63 @@ class DiagnosticReportTests(unittest.TestCase):
             root / "phillip-commodity-commodity-real-market-performance.json",
             commodity_output,
         )
+
+    def test_report_supports_strict_phillip_lane_contracts(self) -> None:
+        lanes = (
+            (
+                "fx",
+                ("AUDUSD", "EURUSD", "USDJPY"),
+                "PHILLIP_FX_BROKER_REALTIME_DIAGNOSTIC_ONLY",
+                "phillip-fx-real-market-diagnostic-v1",
+                "PHILLIP_FX_DIAGNOSTIC_PERFORMANCE_V1",
+            ),
+            (
+                "commodity",
+                ("XAUUSD",),
+                "PHILLIP_COMMODITY_BROKER_REALTIME_DIAGNOSTIC_ONLY",
+                "phillip-commodity-real-market-diagnostic-v1",
+                "PHILLIP_COMMODITY_DIAGNOSTIC_PERFORMANCE_V1",
+            ),
+        )
+        for lane, symbols, profile, schema, report_schema in lanes:
+            with self.subTest(lane=lane), tempfile.TemporaryDirectory() as directory:
+                database = Path(directory) / f"phillip-{lane}.sqlite3"
+                with DiagnosticJournal(
+                    database,
+                    required_symbols=symbols,
+                    profile=profile,
+                    schema_version=schema,
+                ) as journal:
+                    journal._append(
+                        event_id=f"{lane}-cycle",
+                        event_type="CYCLE",
+                        observed_at=BASE,
+                        payload={"status": "OBSERVED"},
+                    )
+
+                report = build_phillip_diagnostic_report(
+                    database,
+                    lane=lane,
+                    generated_at=BASE,
+                )
+
+                self.assertEqual(report_schema, report["schema_version"])
+                self.assertEqual(set(symbols), set(report["per_symbol"]))
+                self.assertFalse(report["safety"]["promotion_eligible"])
+
+    def test_cli_dispatches_only_exact_phillip_candidate_lane_pairs(self) -> None:
+        fx_builder, fx_kwargs = cli._report_builder(
+            "phillip-fx", "fx-real-market"
+        )
+        commodity_builder, commodity_kwargs = cli._report_builder(
+            "phillip-commodity", "commodity-real-market"
+        )
+        self.assertIs(build_phillip_diagnostic_report, fx_builder)
+        self.assertEqual({"lane": "fx"}, fx_kwargs)
+        self.assertIs(build_phillip_diagnostic_report, commodity_builder)
+        self.assertEqual({"lane": "commodity"}, commodity_kwargs)
+        with self.assertRaisesRegex(DiagnosticReportError, "candidate and artifact"):
+            cli._report_builder("phillip-fx", "commodity-real-market")
 
     def test_report_calculates_trade_pair_and_sample_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

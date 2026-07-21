@@ -9,11 +9,12 @@ from pathlib import Path
 import re
 import sys
 import tempfile
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 from live_runtime.diagnostic_report import (
     DiagnosticReportError,
     build_diagnostic_report,
+    build_phillip_diagnostic_report,
 )
 
 
@@ -35,6 +36,29 @@ def _diagnostic_report_paths(
         raise DiagnosticReportError("diagnostic artifact tag is invalid")
     prefix = f"{normalized}-{normalized_tag}"
     return root / f"{prefix}.sqlite3", root / f"{prefix}-performance.json"
+
+
+def _report_builder(
+    candidate_id: str,
+    artifact_tag: str,
+) -> tuple[Callable[..., dict[str, object]], dict[str, str]]:
+    normalized_candidate = str(candidate_id or "").strip().lower()
+    normalized_tag = str(artifact_tag or "").strip().lower()
+    phillip_contracts = {
+        ("phillip-fx", "fx-real-market"): "fx",
+        ("phillip-commodity", "commodity-real-market"): "commodity",
+    }
+    lane = phillip_contracts.get((normalized_candidate, normalized_tag))
+    if lane is not None:
+        return build_phillip_diagnostic_report, {"lane": lane}
+    if normalized_candidate.startswith("phillip-") or normalized_tag in {
+        "fx-real-market",
+        "commodity-real-market",
+    }:
+        raise DiagnosticReportError(
+            "diagnostic candidate and artifact tag do not form an approved lane"
+        )
+    return build_diagnostic_report, {}
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -98,7 +122,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     output = args.output or default_output
     if database.resolve() == output.resolve():
         raise DiagnosticReportError("report output cannot replace the journal")
-    report = build_diagnostic_report(database)
+    builder, builder_kwargs = _report_builder(args.candidate, args.artifact_tag)
+    report = builder(database, **builder_kwargs)
     _write_report(report, output)
     overall = report["overall"]
     if not isinstance(overall, Mapping):
