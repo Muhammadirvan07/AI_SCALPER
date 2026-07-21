@@ -112,8 +112,9 @@ python -B .\run_phillip_commodity_shadow.py `
 One MT5 terminal executable has only one active account context. Run these
 lanes sequentially unless two separately installed Phillip terminal instances
 with distinct executable paths are available. Each launcher writes a separate
-SQLite journal and summary. Broker UTC offset and exact session calendars are
-still pending runtime observation and must not be guessed.
+SQLite journal and summary. The commodity lane has a runtime-observed fixed
+`UTC+09:00` server offset bound to `XAUUSD.ps01`. The FX offset and exact
+session calendars remain pending runtime observation and must not be guessed.
 
 Preflight and shadow remain diagnostic-only. Discovery evidence, promotion,
 demo auto-order, and live trading remain disabled.

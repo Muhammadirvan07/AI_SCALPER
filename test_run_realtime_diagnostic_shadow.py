@@ -40,6 +40,24 @@ def candidate_config(path: Path) -> None:
 
 
 class RealtimeDiagnosticCLITests(unittest.TestCase):
+    def test_phillip_commodity_uses_only_its_observed_jst_offset(self) -> None:
+        plan = json.loads(cli.DEFAULT_CONFIG.read_text(encoding="utf-8"))
+        candidates = {
+            item["candidate_id"]: item for item in plan["candidates"]
+        }
+        observed_at = cli.datetime(2026, 7, 21, 9, 12, tzinfo=cli.timezone.utc)
+        self.assertEqual(
+            9 * 60 * 60,
+            cli._broker_time_offset_seconds(
+                candidates["phillip-commodity"],
+                observed_at,
+            ),
+        )
+        self.assertEqual(
+            0,
+            cli._broker_time_offset_seconds(candidates["phillip-fx"], observed_at),
+        )
+
     def test_default_artifacts_are_isolated_per_candidate(self) -> None:
         root = Path("C:/AI_SCALPER/runtime_state/diagnostic")
         xm_journal, xm_summary = cli._diagnostic_artifact_paths("xm", root=root)

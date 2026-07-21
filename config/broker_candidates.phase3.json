@@ -83,6 +83,14 @@
       "account_currency": "JPY",
       "margin_mode_observed": 2,
       "margin_mode_normalized": "RETAIL_HEDGING",
+      "server_time_model": {
+        "fixed_utc_offset": "+09:00",
+        "source": "PhillipSecuritiesJP-PROD MT5 XAUUSD.ps01 runtime bar observation",
+        "source_status": "OPERATOR_RUNTIME_OBSERVED_DIAGNOSTIC_ONLY",
+        "observed_at_utc": "2026-07-21T09:12:41Z",
+        "offset_review_policy": "FAIL_CLOSED_ON_RUNTIME_ALIGNMENT_DRIFT",
+        "calendar_hash_status": "PENDING_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS"
+      },
       "read_only_discovery_allowed": false,
       "binding_status": "SANITIZED_BINDING_PROBE_COMPLETE_PREFLIGHT_PENDING",
       "broker_symbols_observed": {
