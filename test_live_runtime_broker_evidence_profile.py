@@ -87,6 +87,29 @@ def template_fixture(
     }
 
 
+def amendable_template_fixture(
+    symbol_map: dict[str, str] = SYMBOL_MAP,
+) -> dict[str, object]:
+    template = template_fixture(symbol_map)
+    template["schema_version"] = "broker-calendar-plan-template-v2"
+    template["calendar_amendment_policy"] = {
+        "mode": "CLOSURE_ONLY_PROSPECTIVE_V1",
+        "minimum_lead_seconds": 900,
+        "completeness_attestation_required": True,
+        "source_document_required": True,
+    }
+    template["special_hours_review"] = {
+        **template["special_hours_review"],
+        "attested": False,
+        "source": None,
+        "source_published_date": None,
+        "source_last_updated_date": None,
+        "covered_through_server_date": None,
+        "review_note": "Regular schedule only; future closures use signed amendments.",
+    }
+    return template
+
+
 def candidate_config_fixture(
     symbol_map: dict[str, str] = SYMBOL_MAP,
 ) -> dict[str, object]:
@@ -171,7 +194,15 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(BrokerWindowPlanError, "not attested"):
             verify_broker_calendar_template(scaffold)
 
-    def test_phillip_scaffolds_cannot_be_mistaken_for_attested_calendars(self) -> None:
+    def test_phillip_base_calendars_require_amendment_policy_and_stay_gated(self) -> None:
+        profiles = json.loads(
+            (ROOT / "config/broker_evidence_profiles.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        profiles_by_candidate = {
+            item["candidate_id"]: item for item in profiles["profiles"]
+        }
         for filename in (
             "phillip_fx_calendar_window_01.template.json",
             "phillip_commodity_calendar_window_01.template.json",
@@ -180,8 +211,16 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
                 scaffold = json.loads(
                     (ROOT / "config" / filename).read_text(encoding="utf-8")
                 )
+                verify_broker_calendar_template(scaffold)
+                candidate_id = scaffold["candidate_id"]
+                self.assertFalse(
+                    profiles_by_candidate[candidate_id]["registration_enabled"]
+                )
+                without_policy = dict(scaffold)
+                without_policy["schema_version"] = "broker-calendar-plan-template-v1"
+                without_policy.pop("calendar_amendment_policy")
                 with self.assertRaisesRegex(BrokerWindowPlanError, "not attested"):
-                    verify_broker_calendar_template(scaffold)
+                    verify_broker_calendar_template(without_policy)
 
     def test_generic_plan_and_calendar_bind_explicit_weekly_schedule(self) -> None:
         template = template_fixture()
@@ -205,6 +244,41 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
         self.assertTrue(
             all(bundle["calendars"][symbol]["market_open_intervals"] for symbol in SYMBOL_MAP)
         )
+
+    def test_amendable_plan_builds_base_calendar_without_false_attestation(self) -> None:
+        template = amendable_template_fixture()
+        discovery = discovery_receipt(
+            candidate_id=SYNTHETIC_CANDIDATE,
+            company=SYNTHETIC_ENTITY,
+            server=SYNTHETIC_SERVER,
+        )
+        plan = prepare_broker_calendar_plan(
+            template,
+            discovery,
+            candidate_config_fixture(),
+            TEST_KEY,
+            now_provider=lambda: datetime(2026, 7, 16, 4, 0, tzinfo=UTC),
+            legal_binding_verifier=lambda *args, **kwargs: None,
+        )
+        self.assertEqual("broker-calendar-plan-v2", plan["schema_version"])
+        verify_prepared_broker_calendar_plan(plan, template=template)
+        bundle = build_calendar_bundle(plan)
+        self.assertEqual(
+            template["calendar_amendment_policy"],
+            bundle["calendar_amendment_policy"],
+        )
+        self.assertFalse(bundle["special_hours_review"]["attested"])
+        self.assertTrue(
+            all(
+                bundle["calendars"][symbol]["market_open_intervals"]
+                for symbol in SYMBOL_MAP
+            )
+        )
+
+        invalid = amendable_template_fixture()
+        invalid["calendar_amendment_policy"]["minimum_lead_seconds"] = 899
+        with self.assertRaisesRegex(BrokerWindowPlanError, "policy"):
+            verify_broker_calendar_template(invalid)
 
     def test_generic_plan_and_calendar_support_exact_commodity_subset(self) -> None:
         symbol_map = {"XAUUSD": "XAUUSD.ps01"}

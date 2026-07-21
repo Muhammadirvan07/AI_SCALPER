@@ -10,7 +10,11 @@ import sqlite3
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
 
-from validation_evidence import REQUIRED_SYMBOLS, verify_forward_evidence
+from validation_evidence import (
+    REQUIRED_SYMBOLS,
+    load_effective_forward_contract,
+    verify_forward_evidence,
+)
 
 from .broker_exporter import BrokerExportBinding, BrokerExportResult, MT5EvidenceExporter
 from .contracts import canonical_json, canonical_sha256, require_text, require_utc
@@ -373,10 +377,16 @@ def _run_shadow_cycle_locked(
             "PASS",
             "CONTRACT_EVIDENCE_VERIFIED",
         )
-    contract_path = (
-        artifacts / "forward" / normalized_contract_id / "contract.json"
+    effective_view = load_effective_forward_contract(
+        artifacts,
+        normalized_contract_id,
+        signing_key=signing_key,
+        build_identity_provider=identity_provider,
     )
-    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract = effective_view["contract"]
+    contract["session_calendars"] = effective_view[
+        "effective_session_calendars"
+    ]
     registered_symbols = _canonical_symbol_subset(
         contract.get("symbols"),
         "contract",

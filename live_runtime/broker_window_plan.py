@@ -22,6 +22,8 @@ from .xm_window_plan import verify_candidate_legal_binding
 
 TEMPLATE_SCHEMA_VERSION = "broker-calendar-plan-template-v1"
 PLAN_SCHEMA_VERSION = "broker-calendar-plan-v1"
+AMENDABLE_TEMPLATE_SCHEMA_VERSION = "broker-calendar-plan-template-v2"
+AMENDABLE_PLAN_SCHEMA_VERSION = "broker-calendar-plan-v2"
 MAX_LOT = 0.01
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
@@ -47,8 +49,23 @@ _TEMPLATE_FIELDS = frozenset(
         "special_hours_review",
     }
 )
+_AMENDABLE_TEMPLATE_FIELDS = frozenset(
+    set(_TEMPLATE_FIELDS) | {"calendar_amendment_policy"}
+)
 _PLAN_FIELDS = frozenset(
     (_TEMPLATE_FIELDS - {"schema_version"})
+    | {
+        "schema_version",
+        "captured_at_utc",
+        "discovery_receipt_sha256",
+        "source_instance_id",
+        "plan_template_sha256",
+        "regulatory_observation_sha256",
+        "plan_payload_sha256",
+    }
+)
+_AMENDABLE_PLAN_FIELDS = frozenset(
+    (_AMENDABLE_TEMPLATE_FIELDS - {"schema_version"})
     | {
         "schema_version",
         "captured_at_utc",
@@ -122,10 +139,43 @@ def _candidate(
 
 
 def verify_broker_calendar_template(template: Mapping[str, object]) -> None:
-    if set(template) != set(_TEMPLATE_FIELDS):
+    schema_version = template.get("schema_version")
+    expected_fields = (
+        _AMENDABLE_TEMPLATE_FIELDS
+        if schema_version == AMENDABLE_TEMPLATE_SCHEMA_VERSION
+        else _TEMPLATE_FIELDS
+    )
+    if set(template) != set(expected_fields):
         raise BrokerWindowPlanError("broker calendar template fields are invalid")
-    if template.get("schema_version") != TEMPLATE_SCHEMA_VERSION:
+    if schema_version not in {
+        TEMPLATE_SCHEMA_VERSION,
+        AMENDABLE_TEMPLATE_SCHEMA_VERSION,
+    }:
         raise BrokerWindowPlanError("unsupported broker calendar template schema")
+    amendment_enabled = schema_version == AMENDABLE_TEMPLATE_SCHEMA_VERSION
+    if amendment_enabled:
+        policy = _mapping(
+            template.get("calendar_amendment_policy"),
+            "calendar_amendment_policy",
+        )
+        if set(policy) != {
+            "mode",
+            "minimum_lead_seconds",
+            "completeness_attestation_required",
+            "source_document_required",
+        }:
+            raise BrokerWindowPlanError("calendar amendment policy fields are invalid")
+        lead = policy.get("minimum_lead_seconds")
+        if (
+            policy.get("mode") != "CLOSURE_ONLY_PROSPECTIVE_V1"
+            or not isinstance(lead, int)
+            or isinstance(lead, bool)
+            or lead < 900
+            or lead % 900
+            or policy.get("completeness_attestation_required") is not True
+            or policy.get("source_document_required") is not True
+        ):
+            raise BrokerWindowPlanError("calendar amendment policy is invalid")
     candidate_id = str(template.get("candidate_id") or "").lower()
     calendar_version = str(template.get("calendar_version") or "").lower()
     if (
@@ -176,9 +226,14 @@ def verify_broker_calendar_template(template: Mapping[str, object]) -> None:
     except SessionCalendarError as exc:
         raise BrokerWindowPlanError("weekly session schedule is invalid") from exc
     review = _mapping(template.get("special_hours_review"), "special_hours_review")
-    if review.get("attested") is not True:
+    review_attested = review.get("attested")
+    if type(review_attested) is not bool or (
+        not amendment_enabled and review_attested is not True
+    ):
         raise BrokerWindowPlanError("special-hours review is not attested")
-    if not str(review.get("source") or "").startswith("https://"):
+    if review_attested is True and not str(
+        review.get("source") or ""
+    ).startswith("https://"):
         raise BrokerWindowPlanError("special-hours review requires an HTTPS source")
     if "registered_closures" not in review:
         raise BrokerWindowPlanError("special-hours review must register closures")
@@ -302,7 +357,12 @@ def prepare_broker_calendar_plan(
     template_body = deepcopy(dict(template))
     body = {
         **{key: value for key, value in template_body.items() if key != "schema_version"},
-        "schema_version": PLAN_SCHEMA_VERSION,
+        "schema_version": (
+            AMENDABLE_PLAN_SCHEMA_VERSION
+            if template.get("schema_version")
+            == AMENDABLE_TEMPLATE_SCHEMA_VERSION
+            else PLAN_SCHEMA_VERSION
+        ),
         "captured_at_utc": _iso(captured),
         "discovery_receipt_sha256": receipt_hash,
         "source_instance_id": _source_instance_id(
@@ -321,10 +381,36 @@ def verify_prepared_broker_calendar_plan(
     *,
     template: Mapping[str, object] | None = None,
 ) -> None:
-    if set(payload) != set(_PLAN_FIELDS):
+    schema_version = payload.get("schema_version")
+    expected_fields = (
+        _AMENDABLE_PLAN_FIELDS
+        if schema_version == AMENDABLE_PLAN_SCHEMA_VERSION
+        else _PLAN_FIELDS
+    )
+    if set(payload) != set(expected_fields):
         raise BrokerWindowPlanError("prepared broker plan fields are invalid")
-    if payload.get("schema_version") != PLAN_SCHEMA_VERSION:
+    if schema_version not in {PLAN_SCHEMA_VERSION, AMENDABLE_PLAN_SCHEMA_VERSION}:
         raise BrokerWindowPlanError("unsupported prepared broker plan schema")
+    if schema_version == AMENDABLE_PLAN_SCHEMA_VERSION:
+        policy = payload.get("calendar_amendment_policy")
+        if (
+            not isinstance(policy, Mapping)
+            or set(policy)
+            != {
+                "mode",
+                "minimum_lead_seconds",
+                "completeness_attestation_required",
+                "source_document_required",
+            }
+            or policy.get("mode") != "CLOSURE_ONLY_PROSPECTIVE_V1"
+            or not isinstance(policy.get("minimum_lead_seconds"), int)
+            or isinstance(policy.get("minimum_lead_seconds"), bool)
+            or int(policy["minimum_lead_seconds"]) < 900
+            or int(policy["minimum_lead_seconds"]) % 900
+            or policy.get("completeness_attestation_required") is not True
+            or policy.get("source_document_required") is not True
+        ):
+            raise BrokerWindowPlanError("prepared calendar amendment policy is invalid")
     body = {key: value for key, value in payload.items() if key != "plan_payload_sha256"}
     if canonical_sha256(body) != payload.get("plan_payload_sha256"):
         raise BrokerWindowPlanError("prepared broker plan hash mismatch")
@@ -389,6 +475,8 @@ def write_broker_calendar_plan_exclusive(
 
 
 __all__ = [
+    "AMENDABLE_PLAN_SCHEMA_VERSION",
+    "AMENDABLE_TEMPLATE_SCHEMA_VERSION",
     "BrokerWindowPlanError",
     "PLAN_SCHEMA_VERSION",
     "TEMPLATE_SCHEMA_VERSION",

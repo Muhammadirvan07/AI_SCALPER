@@ -1,5 +1,5 @@
 {
-  "schema_version": "broker-calendar-plan-template-v1",
+  "schema_version": "broker-calendar-plan-template-v2",
   "candidate_id": "phillip-commodity",
   "broker_legal_name": "Phillip Securities Japan, Ltd.",
   "broker_server": "PhillipSecuritiesJP-PROD",
@@ -17,23 +17,34 @@
   "live_allowed": false,
   "safe_to_demo_auto_order": false,
   "max_lot": 0.01,
+  "calendar_amendment_policy": {
+    "mode": "CLOSURE_ONLY_PROSPECTIVE_V1",
+    "minimum_lead_seconds": 900,
+    "completeness_attestation_required": true,
+    "source_document_required": true
+  },
   "weekly_m15_sessions": {
     "XAUUSD": [
-      {"weekday": 0, "open_local": "01:15", "close_local": "23:45"},
-      {"weekday": 1, "open_local": "01:15", "close_local": "23:45"},
-      {"weekday": 2, "open_local": "01:15", "close_local": "23:45"},
-      {"weekday": 3, "open_local": "01:15", "close_local": "23:45"},
-      {"weekday": 4, "open_local": "01:15", "close_local": "23:45"}
+      {"weekday": 0, "open_local": "07:00", "close_local": "24:00"},
+      {"weekday": 1, "open_local": "00:00", "close_local": "05:45"},
+      {"weekday": 1, "open_local": "07:00", "close_local": "24:00"},
+      {"weekday": 2, "open_local": "00:00", "close_local": "05:45"},
+      {"weekday": 2, "open_local": "07:00", "close_local": "24:00"},
+      {"weekday": 3, "open_local": "00:00", "close_local": "05:45"},
+      {"weekday": 3, "open_local": "07:00", "close_local": "24:00"},
+      {"weekday": 4, "open_local": "00:00", "close_local": "05:45"},
+      {"weekday": 4, "open_local": "07:00", "close_local": "24:00"},
+      {"weekday": 5, "open_local": "00:00", "close_local": "05:45"}
     ]
   },
   "special_hours_review": {
     "attested": false,
-    "source": "PENDING_OFFICIAL_PHILLIP_COMMODITY_SESSION_AND_HOLIDAY_REVIEW",
+    "source": null,
     "source_published_date": null,
     "source_last_updated_date": null,
-    "covered_through_server_date": "2026-09-22",
+    "covered_through_server_date": null,
     "affected_required_symbols": [],
     "registered_closures": [],
-    "review_note": "Weekly M15 windows are conservative platform-observed scaffolding. Registration remains disabled until exact official sessions and holiday closures are independently attested."
+    "review_note": "Regular XAU/USD DST sessions use only fully tradable M15 buckets from Phillip's official commodity CFD important-notes document (https://www.phillip.co.jp/fx/pdf/C-CFD_important_notes.pdf). The 05:45-07:00 partial/daily-break interval is closed. Registration remains disabled until special-hours governance and regulatory approval are completed."
   }
 }

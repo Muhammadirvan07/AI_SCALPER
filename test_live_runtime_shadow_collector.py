@@ -41,6 +41,19 @@ def contract_fixture():
     }
 
 
+def effective_view(contract, calendars=None):
+    return {
+        "contract": contract,
+        "effective_session_calendars": (
+            contract["session_calendars"] if calendars is None else calendars
+        ),
+        "calendar_amendment_chain_verified": True,
+        "calendar_completeness_required": False,
+        "calendar_completeness_attested": False,
+        "calendar_completeness_satisfied": True,
+    }
+
+
 def export_result(
     symbol: str,
     *,
@@ -134,6 +147,54 @@ class ShadowCollectorTests(unittest.TestCase):
             now=first + timedelta(minutes=45),
         )
         self.assertEqual(first + timedelta(minutes=15), plan.open_at)
+
+    def test_shadow_cycle_plans_from_effective_amended_calendar(self):
+        contract = contract_fixture()
+        contract["symbols"] = ["XAUUSD"]
+        contract["session_calendars"] = {
+            "XAUUSD": contract["session_calendars"]["XAUUSD"]
+        }
+        effective = json.loads(json.dumps(contract["session_calendars"]))
+        effective["XAUUSD"]["market_open_intervals"][0][
+            "open_at_utc"
+        ] = "2026-07-19T22:15:00Z"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            forward = root / "artifacts" / "forward" / CONTRACT_ID
+            (forward / "heads" / "segments").mkdir(parents=True)
+            (forward / "heads" / "segments" / "XAUUSD.json").write_text(
+                '{"last_at_utc":null}',
+                encoding="utf-8",
+            )
+            store = ShadowCycleStore(root / "cycles.sqlite3")
+            self.addCleanup(store.close)
+            with (
+                patch(
+                    "live_runtime.shadow_collector.verify_forward_evidence",
+                    return_value={"valid": True, "failures": []},
+                ),
+                patch(
+                    "live_runtime.shadow_collector.load_effective_forward_contract",
+                    return_value=effective_view(contract, effective),
+                ) as loader,
+                patch(
+                    "live_runtime.shadow_collector.MT5EvidenceExporter",
+                    side_effect=AssertionError("amended bucket must not export"),
+                ),
+            ):
+                receipt = run_shadow_cycle(
+                    FakeMT5(),
+                    repo_root=root,
+                    artifact_root=root / "artifacts",
+                    signing_key=b"collector-test-signing-key-32bytes-minimum",
+                    store=store,
+                    now_provider=lambda: datetime(
+                        2026, 7, 19, 22, 30, tzinfo=UTC
+                    ),
+                )
+        loader.assert_called_once()
+        self.assertEqual("NOT_DUE", receipt.symbol_status["XAUUSD"])
 
     def test_session_boundary_flags_come_only_from_exact_registered_interval(self):
         calendar = contract_fixture()["session_calendars"]["EURUSD"]
@@ -327,6 +388,10 @@ class ShadowCollectorTests(unittest.TestCase):
                     return_value={"valid": True, "failures": []},
                 ),
                 patch(
+                    "live_runtime.shadow_collector.load_effective_forward_contract",
+                    return_value=effective_view(contract),
+                ),
+                patch(
                     "live_runtime.shadow_collector.BrokerExportBinding",
                     return_value=object(),
                 ),
@@ -484,6 +549,10 @@ class ShadowCollectorTests(unittest.TestCase):
                     return_value={"valid": True, "failures": []},
                 ),
                 patch(
+                    "live_runtime.shadow_collector.load_effective_forward_contract",
+                    return_value=effective_view(contract),
+                ),
+                patch(
                     "live_runtime.shadow_collector.build_current_identity",
                     return_value={"test": "identity"},
                 ),
@@ -629,6 +698,10 @@ class ShadowCollectorTests(unittest.TestCase):
                 patch(
                     "live_runtime.shadow_collector.verify_forward_evidence",
                     return_value={"valid": True, "failures": []},
+                ),
+                patch(
+                    "live_runtime.shadow_collector.load_effective_forward_contract",
+                    return_value=effective_view(contract),
                 ),
                 patch(
                     "live_runtime.shadow_collector.MT5EvidenceExporter",

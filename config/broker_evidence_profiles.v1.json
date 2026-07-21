@@ -12,7 +12,7 @@
       "contract_id": "phillip-fx-window-01-diagnostic-v1",
       "template_path": "config/phillip_fx_calendar_window_01.template.json",
       "registration_enabled": false,
-      "status": "BLOCKED_PENDING_SIGNED_REGULATORY_AND_EXACT_CALENDAR_ATTESTATION"
+      "status": "BLOCKED_PENDING_SIGNED_REGULATORY_AND_REGISTRATION_REVIEW"
     },
     {
       "candidate_id": "phillip-commodity",
@@ -21,7 +21,7 @@
       "contract_id": "phillip-commodity-window-01-diagnostic-v1",
       "template_path": "config/phillip_commodity_calendar_window_01.template.json",
       "registration_enabled": false,
-      "status": "BLOCKED_PENDING_SIGNED_REGULATORY_AND_EXACT_CALENDAR_ATTESTATION"
+      "status": "BLOCKED_PENDING_SIGNED_REGULATORY_AND_REGISTRATION_REVIEW"
     },
     {
       "candidate_id": "fbs",

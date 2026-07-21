@@ -25,6 +25,7 @@ import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Callable, Mapping
+from urllib.parse import urlsplit
 
 import pandas as pd
 
@@ -62,15 +63,19 @@ DEVELOPMENT_SOURCES = {
 }
 
 SNAPSHOT_SCHEMA_VERSION = "snapshot-v2"
-FORWARD_CONTRACT_SCHEMA_VERSION = "forward-contract-v3"
+FORWARD_CONTRACT_SCHEMA_VERSION = "forward-contract-v4"
+LEGACY_FORWARD_CONTRACT_SCHEMA_VERSION = "forward-contract-v3"
 SESSION_CALENDAR_SCHEMA_VERSION = "session-calendar-v1"
+CALENDAR_AMENDMENT_SCHEMA_VERSION = "calendar-amendment-v1"
+CALENDAR_COMPLETENESS_SCHEMA_VERSION = "calendar-completeness-v1"
 SEGMENT_SCHEMA_VERSION = "broker-segment-v2"
 RAW_TICK_SCHEMA_VERSION = "broker-raw-tick-partition-v2"
 PAIRED_COMMIT_SCHEMA_VERSION = "paired-evidence-commit-v1"
 PAIRED_PENDING_SCHEMA_VERSION = "paired-evidence-pending-v1"
 ANCHOR_SCHEMA_VERSION = "evidence-anchor-v1"
 SEAL_SCHEMA_VERSION = "forward-seal-v1"
-RECEIPT_SCHEMA_VERSION = "validation-receipt-v2"
+RECEIPT_SCHEMA_VERSION = "validation-receipt-v3"
+LEGACY_RECEIPT_SCHEMA_VERSION = "validation-receipt-v2"
 ACCOUNT_IDENTITY_SCHEME = "HMAC-SHA256-AI_SCALPER-MT5-ACCOUNT-V2"
 TIMEFRAME_SECONDS = 900
 FINALIZATION_LAG_SECONDS = 900
@@ -138,6 +143,10 @@ SESSION_CLOSURE_REASON_CODES = frozenset(
         "OTHER_SCHEDULED_CLOSURE",
     }
 )
+CALENDAR_AMENDMENT_MODES = frozenset(
+    {"IMMUTABLE_BASE_V1", "CLOSURE_ONLY_PROSPECTIVE_V1"}
+)
+MINIMUM_CALENDAR_AMENDMENT_LEAD_SECONDS = TIMEFRAME_SECONDS
 
 
 class EvidenceValidationError(ValueError):
@@ -1259,6 +1268,274 @@ def _session_calendar_sha256(calendar: Mapping[str, object]) -> str:
     return _sha256_bytes(_canonical_json_bytes(calendar))
 
 
+def _normalize_calendar_amendment_policy(policy: object | None) -> dict:
+    if policy is None:
+        policy = {
+            "mode": "IMMUTABLE_BASE_V1",
+            "minimum_lead_seconds": MINIMUM_CALENDAR_AMENDMENT_LEAD_SECONDS,
+            "completeness_attestation_required": False,
+            "source_document_required": False,
+        }
+    required = {
+        "mode",
+        "minimum_lead_seconds",
+        "completeness_attestation_required",
+        "source_document_required",
+    }
+    if not isinstance(policy, Mapping) or set(policy) != required:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_POLICY_INVALID", "fields")
+    mode = str(policy.get("mode") or "").upper()
+    lead = policy.get("minimum_lead_seconds")
+    completeness_required = policy.get("completeness_attestation_required")
+    source_required = policy.get("source_document_required")
+    if (
+        mode not in CALENDAR_AMENDMENT_MODES
+        or not isinstance(lead, int)
+        or isinstance(lead, bool)
+        or lead < MINIMUM_CALENDAR_AMENDMENT_LEAD_SECONDS
+        or lead % TIMEFRAME_SECONDS != 0
+        or type(completeness_required) is not bool
+        or type(source_required) is not bool
+    ):
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_POLICY_INVALID", "values")
+    expected_flags = (
+        (False, False)
+        if mode == "IMMUTABLE_BASE_V1"
+        else (True, True)
+    )
+    if (completeness_required, source_required) != expected_flags:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_POLICY_INVALID", "mode")
+    return {
+        "mode": mode,
+        "minimum_lead_seconds": lead,
+        "completeness_attestation_required": completeness_required,
+        "source_document_required": source_required,
+    }
+
+
+def _normalize_calendar_source_document(
+    source: object,
+    *,
+    registered: pd.Timestamp,
+) -> dict:
+    required = {
+        "title",
+        "url",
+        "document_sha256",
+        "published_at_utc",
+        "captured_at_utc",
+    }
+    if not isinstance(source, Mapping) or set(source) != required:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_SOURCE_INVALID", "fields")
+    title = str(source.get("title") or "").strip()
+    url = str(source.get("url") or "").strip()
+    parsed = urlsplit(url)
+    if (
+        not title
+        or len(title) > 240
+        or parsed.scheme.lower() != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+    ):
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_SOURCE_INVALID", "identity")
+    try:
+        document_sha256 = _require_sha256(
+            source.get("document_sha256"),
+            "calendar_source.document_sha256",
+        )
+        published = _utc_timestamp(
+            source.get("published_at_utc"),
+            "calendar_source.published_at_utc",
+        )
+        captured = _utc_timestamp(
+            source.get("captured_at_utc"),
+            "calendar_source.captured_at_utc",
+        )
+    except EvidenceValidationError as exc:
+        raise EvidenceValidationError(
+            "CALENDAR_AMENDMENT_SOURCE_INVALID",
+            exc.code,
+        ) from exc
+    if published > captured or captured > registered:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_SOURCE_INVALID", "time")
+    return {
+        "title": title,
+        "url": url,
+        "document_sha256": document_sha256,
+        "published_at_utc": _utc_iso(published),
+        "captured_at_utc": _utc_iso(captured),
+    }
+
+
+def _normalize_requested_calendar_closures(
+    closures: object,
+    *,
+    registered_symbols: tuple[str, ...],
+    observation: pd.Timestamp,
+    blind: pd.Timestamp,
+) -> dict[str, list[dict]]:
+    if not isinstance(closures, Mapping) or not closures:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_CLOSURES_INVALID")
+    raw_symbols = tuple(closures)
+    if any(
+        not isinstance(symbol, str) or symbol != symbol.upper()
+        for symbol in raw_symbols
+    ):
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_CLOSURES_INVALID")
+    raw_map = {symbol: closures[symbol] for symbol in raw_symbols}
+    if len(raw_map) != len(raw_symbols):
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_CLOSURES_INVALID")
+    if not set(raw_map) <= set(registered_symbols):
+        raise EvidenceValidationError("SYMBOL_NOT_REGISTERED", "calendar amendment")
+    result: dict[str, list[dict]] = {}
+    seen_buckets: set[tuple[str, int]] = set()
+    timeframe = pd.to_timedelta(TIMEFRAME_SECONDS, unit="s")
+    for symbol in registered_symbols:
+        if symbol not in raw_map:
+            continue
+        raw_items = raw_map[symbol]
+        if not isinstance(raw_items, list) or not raw_items:
+            raise EvidenceValidationError(
+                "CALENDAR_AMENDMENT_CLOSURES_INVALID",
+                symbol,
+            )
+        normalized_items: list[dict] = []
+        for index, item in enumerate(raw_items):
+            required = {
+                "start_at_utc",
+                "end_at_utc",
+                "reason_code",
+                "label",
+            }
+            if not isinstance(item, Mapping) or set(item) != required:
+                raise EvidenceValidationError(
+                    "CALENDAR_AMENDMENT_CLOSURES_INVALID",
+                    f"{symbol}:{index}",
+                )
+            started = _utc_timestamp(
+                item.get("start_at_utc"),
+                f"calendar_amendment.{symbol}.start:{index}",
+            )
+            ended = _utc_timestamp(
+                item.get("end_at_utc"),
+                f"calendar_amendment.{symbol}.end:{index}",
+            )
+            _require_m15_alignment(started, f"calendar_amendment.{symbol}.start:{index}")
+            _require_m15_alignment(ended, f"calendar_amendment.{symbol}.end:{index}")
+            reason_code = str(item.get("reason_code") or "").upper()
+            label = str(item.get("label") or "").strip()
+            if (
+                not observation <= started < ended <= blind
+                or reason_code not in SESSION_CLOSURE_REASON_CODES
+                or not label
+                or len(label) > 160
+            ):
+                raise EvidenceValidationError(
+                    "CALENDAR_AMENDMENT_CLOSURES_INVALID",
+                    f"{symbol}:{index}",
+                )
+            cursor = started
+            while cursor < ended:
+                # A single request cannot assign the same symbol bucket twice.
+                scoped_key = (symbol, int(cursor.value))
+                if scoped_key in seen_buckets:
+                    raise EvidenceValidationError(
+                        "CALENDAR_AMENDMENT_CLOSURES_INVALID",
+                        f"duplicate:{symbol}",
+                    )
+                seen_buckets.add(scoped_key)
+                cursor += timeframe
+            normalized_items.append(
+                {
+                    "start_at_utc": _utc_iso(started),
+                    "end_at_utc": _utc_iso(ended),
+                    "reason_code": reason_code,
+                    "label": label,
+                }
+            )
+        normalized_items.sort(
+            key=lambda value: (value["start_at_utc"], value["end_at_utc"])
+        )
+        result[symbol] = normalized_items
+    return result
+
+
+def _merge_open_buckets(open_buckets: set[pd.Timestamp]) -> list[dict]:
+    if not open_buckets:
+        return []
+    timeframe = pd.to_timedelta(TIMEFRAME_SECONDS, unit="s")
+    ordered = sorted(open_buckets)
+    intervals: list[dict] = []
+    started = ordered[0]
+    previous = ordered[0]
+    for current in ordered[1:]:
+        if current != previous + timeframe:
+            intervals.append(
+                {
+                    "open_at_utc": _utc_iso(started),
+                    "close_at_utc": _utc_iso(previous + timeframe),
+                }
+            )
+            started = current
+        previous = current
+    intervals.append(
+        {
+            "open_at_utc": _utc_iso(started),
+            "close_at_utc": _utc_iso(previous + timeframe),
+        }
+    )
+    return intervals
+
+
+def _apply_calendar_amendment(
+    contract: Mapping[str, object],
+    effective_calendars: Mapping[str, Mapping[str, object]],
+    closures: Mapping[str, list[dict]],
+) -> dict[str, dict]:
+    observation = _utc_timestamp(
+        contract["observation_start_at_utc"],
+        "observation_start_at_utc",
+    )
+    blind = _utc_timestamp(contract["blind_until_utc"], "blind_until_utc")
+    registered = _utc_timestamp(contract["registered_at_utc"], "registered_at_utc")
+    timeframe = pd.to_timedelta(TIMEFRAME_SECONDS, unit="s")
+    result = copy.deepcopy(dict(effective_calendars))
+    for symbol, requested in closures.items():
+        calendar = result[symbol]
+        open_buckets = set(_expected_m15_grid(calendar))
+        target_buckets: set[pd.Timestamp] = set()
+        for item in requested:
+            cursor = _utc_timestamp(item["start_at_utc"], "amendment_start")
+            ended = _utc_timestamp(item["end_at_utc"], "amendment_end")
+            while cursor < ended:
+                if cursor not in open_buckets:
+                    raise EvidenceValidationError(
+                        "CALENDAR_AMENDMENT_TARGET_NOT_OPEN",
+                        f"{symbol}:{_utc_iso(cursor)}",
+                    )
+                target_buckets.add(cursor)
+                cursor += timeframe
+        candidate = copy.deepcopy(calendar)
+        candidate["market_open_intervals"] = _merge_open_buckets(
+            open_buckets - target_buckets
+        )
+        candidate["closures"] = sorted(
+            [*copy.deepcopy(calendar["closures"]), *copy.deepcopy(requested)],
+            key=lambda value: (value["start_at_utc"], value["end_at_utc"]),
+        )
+        result[symbol] = _normalize_session_calendar(
+            symbol,
+            candidate,
+            observation=observation,
+            blind=blind,
+            registered=registered,
+            broker_source=contract["broker_sources"][symbol],
+        )
+    return result
+
+
 def _expected_m15_grid(calendar: Mapping[str, object]) -> tuple[pd.Timestamp, ...]:
     timeframe = pd.to_timedelta(TIMEFRAME_SECONDS, unit="s")
     expected: list[pd.Timestamp] = []
@@ -1616,6 +1893,30 @@ def _initial_seal(contract: Mapping[str, object], key: bytes) -> dict:
     return _attach_hmac(seal, key, "seal_hmac_sha256")
 
 
+def _initial_calendar_amendment_record(
+    contract: Mapping[str, object],
+    key: bytes,
+) -> dict:
+    record = _attach_payload_hash(
+        {
+            "schema_version": CALENDAR_AMENDMENT_SCHEMA_VERSION,
+            "contract_id": contract["contract_id"],
+            "contract_hmac_sha256": contract["contract_hmac_sha256"],
+            "sequence": 0,
+            "amendment_id": None,
+            "previous_amendment_hmac_sha256": None,
+            "registered_at_utc": contract["registered_at_utc"],
+            "source": None,
+            "closures": {},
+            "effective_session_calendar_sha256": copy.deepcopy(
+                contract["session_calendar_sha256"]
+            ),
+        },
+        "amendment_payload_sha256",
+    )
+    return _attach_hmac(record, key, "amendment_hmac_sha256")
+
+
 def register_forward_contract(
     root: str | Path,
     snapshot_manifest: Mapping[str, object],
@@ -1624,6 +1925,7 @@ def register_forward_contract(
     instrument_specs: Mapping[str, Mapping[str, object]],
     *,
     session_calendars: Mapping[str, Mapping[str, object]] | None = None,
+    calendar_amendment_policy: Mapping[str, object] | None = None,
     contract_id: str,
     registered_at: object,
     observation_start_at: object,
@@ -1659,6 +1961,9 @@ def register_forward_contract(
     observation_start = _utc_timestamp(observation_start_at, "observation_start_at")
     blind = _utc_timestamp(blind_until, "blind_until")
     profile = _validation_profile(validation_profile)
+    amendment_policy = _normalize_calendar_amendment_policy(
+        calendar_amendment_policy
+    )
     _require_m15_alignment(observation_start, "observation_start_at")
     _require_m15_alignment(blind, "blind_until")
     if not registered < observation_start < blind:
@@ -1809,6 +2114,7 @@ def register_forward_contract(
             "source_sha256": source_hashes,
             "instrument_spec_sha256": spec_hashes,
             "session_calendar_sha256": calendar_hashes,
+            "calendar_amendment_policy": amendment_policy,
             "signing_key_id": _sha256_bytes(key)[:16],
             "local_anchor_model": "SIGNED_HEAD_AND_APPEND_HISTORY_V1",
             "off_host_object_lock_required": True,
@@ -1824,6 +2130,14 @@ def register_forward_contract(
             anchor = _initial_anchor(contract, key, kind=kind, symbol=symbol)
             files[f"anchors/{kind}/{symbol}/000000.json"] = _pretty_json_bytes(anchor)
             files[f"heads/{kind}/{symbol}.json"] = _pretty_json_bytes(anchor)
+    if FORWARD_CONTRACT_SCHEMA_VERSION != LEGACY_FORWARD_CONTRACT_SCHEMA_VERSION:
+        amendment_head = _initial_calendar_amendment_record(contract, key)
+        files["calendar_amendments/000000.json"] = _pretty_json_bytes(
+            amendment_head
+        )
+        files["heads/calendar_amendments.json"] = _pretty_json_bytes(
+            amendment_head
+        )
     files["seal.json"] = _pretty_json_bytes(_initial_seal(contract, key))
     parent = _safe_directory(root, "forward", create=True)
     target = parent / contract_id
@@ -1850,7 +2164,11 @@ def _load_forward_contract(
     contract = _read_json(_safe_artifact_file(directory, "contract.json"))
     if contract.get("contract_id") != contract_id:
         raise EvidenceValidationError("CONTRACT_ID_MISMATCH")
-    if contract.get("schema_version") != FORWARD_CONTRACT_SCHEMA_VERSION:
+    schema_version = contract.get("schema_version")
+    if schema_version not in {
+        FORWARD_CONTRACT_SCHEMA_VERSION,
+        LEGACY_FORWARD_CONTRACT_SCHEMA_VERSION,
+    }:
         raise EvidenceValidationError("CONTRACT_SCHEMA_INVALID")
     if not _validate_payload_hash(contract, "contract_payload_sha256"):
         raise EvidenceValidationError("CONTRACT_PAYLOAD_SHA256_MISMATCH")
@@ -1858,6 +2176,12 @@ def _load_forward_contract(
         raise EvidenceValidationError("CONTRACT_HMAC_MISMATCH")
     if contract.get("signing_key_id") != _sha256_bytes(key)[:16]:
         raise EvidenceValidationError("CONTRACT_SIGNING_KEY_MISMATCH")
+    if schema_version == FORWARD_CONTRACT_SCHEMA_VERSION:
+        amendment_policy = _normalize_calendar_amendment_policy(
+            contract.get("calendar_amendment_policy")
+        )
+        if amendment_policy != contract.get("calendar_amendment_policy"):
+            raise EvidenceValidationError("CALENDAR_AMENDMENT_POLICY_INVALID")
     registered_symbols = _registered_symbol_subset(
         contract.get("symbols"),
         "symbols",
@@ -1962,6 +2286,625 @@ def _load_forward_contract(
         if calendar != calendar_map[symbol]:
             raise EvidenceValidationError("SESSION_CALENDAR_NOT_NORMALIZED", symbol)
     return directory, contract, key
+
+
+def _validate_calendar_amendment_record_shape(
+    record: Mapping[str, object],
+    *,
+    contract: Mapping[str, object],
+    key: bytes,
+    expected_sequence: int,
+) -> None:
+    required = {
+        "schema_version",
+        "contract_id",
+        "contract_hmac_sha256",
+        "sequence",
+        "amendment_id",
+        "previous_amendment_hmac_sha256",
+        "registered_at_utc",
+        "source",
+        "closures",
+        "effective_session_calendar_sha256",
+        "amendment_payload_sha256",
+        "amendment_hmac_sha256",
+    }
+    if set(record) != required:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_RECORD_INVALID", "fields")
+    if record.get("schema_version") != CALENDAR_AMENDMENT_SCHEMA_VERSION:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_SCHEMA_INVALID")
+    if (
+        record.get("contract_id") != contract.get("contract_id")
+        or record.get("contract_hmac_sha256")
+        != contract.get("contract_hmac_sha256")
+    ):
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_CONTRACT_MISMATCH")
+    if record.get("sequence") != expected_sequence:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_SEQUENCE_INVALID")
+    if not _validate_payload_hash(record, "amendment_payload_sha256"):
+        raise EvidenceValidationError(
+            "CALENDAR_AMENDMENT_PAYLOAD_SHA256_MISMATCH"
+        )
+    if not _validate_hmac(record, key, "amendment_hmac_sha256"):
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_HMAC_MISMATCH")
+
+
+def _load_calendar_completeness_attestation(
+    directory: Path,
+    contract: Mapping[str, object],
+    key: bytes,
+    *,
+    amendment_head: Mapping[str, object] | None,
+    amendment_sources: tuple[Mapping[str, object], ...],
+) -> dict | None:
+    path = _safe_artifact_file(directory, "calendar_completeness.json")
+    if not path.exists():
+        return None
+    attestation = _read_json(path)
+    required = {
+        "schema_version",
+        "attestation_id",
+        "contract_id",
+        "contract_hmac_sha256",
+        "final_amendment_sequence",
+        "final_amendment_head_hmac_sha256",
+        "attested_at_utc",
+        "reviewed_sources",
+        "reviewed_sources_sha256",
+        "completeness_payload_sha256",
+        "completeness_hmac_sha256",
+    }
+    if set(attestation) != required:
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_INVALID", "fields")
+    if attestation.get("schema_version") != CALENDAR_COMPLETENESS_SCHEMA_VERSION:
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_SCHEMA_INVALID")
+    if (
+        attestation.get("contract_id") != contract.get("contract_id")
+        or attestation.get("contract_hmac_sha256")
+        != contract.get("contract_hmac_sha256")
+    ):
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_CONTRACT_MISMATCH")
+    if not _validate_payload_hash(attestation, "completeness_payload_sha256"):
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_PAYLOAD_MISMATCH")
+    if not _validate_hmac(attestation, key, "completeness_hmac_sha256"):
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_HMAC_MISMATCH")
+    if amendment_head is None:
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_HEAD_MISMATCH")
+    if (
+        attestation.get("final_amendment_sequence")
+        != amendment_head.get("sequence")
+        or attestation.get("final_amendment_head_hmac_sha256")
+        != amendment_head.get("amendment_hmac_sha256")
+    ):
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_HEAD_MISMATCH")
+    attested = _utc_timestamp(
+        attestation.get("attested_at_utc"),
+        "calendar_completeness.attested_at_utc",
+    )
+    blind = _utc_timestamp(contract["blind_until_utc"], "blind_until_utc")
+    if attested < blind:
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_BEFORE_BLIND")
+    raw_sources = attestation.get("reviewed_sources")
+    if not isinstance(raw_sources, list) or not raw_sources:
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_SOURCE_INVALID")
+    normalized_sources = [
+        _normalize_calendar_source_document(source, registered=attested)
+        for source in raw_sources
+    ]
+    normalized_sources.sort(
+        key=lambda source: (source["document_sha256"], source["url"])
+    )
+    if normalized_sources != raw_sources:
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_SOURCE_INVALID")
+    document_hashes = [source["document_sha256"] for source in normalized_sources]
+    if len(document_hashes) != len(set(document_hashes)):
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_SOURCE_INVALID")
+    amendment_document_hashes = {
+        str(source["document_sha256"])
+        for source in amendment_sources
+    }
+    if not amendment_document_hashes <= set(document_hashes):
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_SOURCE_MISSING")
+    if attestation.get("reviewed_sources_sha256") != _sha256_bytes(
+        _canonical_json_bytes(normalized_sources)
+    ):
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_SOURCE_HASH_MISMATCH")
+    return attestation
+
+
+def _load_calendar_amendment_state(
+    directory: Path,
+    contract: Mapping[str, object],
+    key: bytes,
+) -> dict:
+    if contract.get("schema_version") == LEGACY_FORWARD_CONTRACT_SCHEMA_VERSION:
+        return {
+            "effective_session_calendars": copy.deepcopy(
+                contract["session_calendars"]
+            ),
+            "calendar_amendment_head": None,
+            "calendar_amendment_chain_verified": True,
+            "calendar_completeness_required": False,
+            "calendar_completeness_attested": False,
+            "calendar_completeness_satisfied": True,
+            "calendar_completeness_attestation": None,
+            "amendment_sources": (),
+            "amendment_heads_by_sequence": {},
+            "amendment_ids": frozenset(),
+        }
+
+    policy = _normalize_calendar_amendment_policy(
+        contract.get("calendar_amendment_policy")
+    )
+    amendment_directory = _safe_directory(directory, "calendar_amendments")
+    head = _read_json(
+        _safe_artifact_file(
+            _safe_directory(directory, "heads"),
+            "calendar_amendments.json",
+        )
+    )
+    sequence = head.get("sequence")
+    if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_SEQUENCE_INVALID")
+    observed_names = {
+        path.name
+        for path in amendment_directory.iterdir()
+        if path.is_file() or path.is_symlink()
+    }
+    if any(re.fullmatch(r"\d{6}\.json", name) is None for name in observed_names):
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_ORPHAN_HISTORY")
+    expected_names = {f"{index:06d}.json" for index in range(sequence + 1)}
+    if observed_names - expected_names:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_ORPHAN_HISTORY")
+    if expected_names - observed_names:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_HISTORY_GAP")
+
+    effective = copy.deepcopy(contract["session_calendars"])
+    previous: dict | None = None
+    previous_registered: pd.Timestamp | None = None
+    amendment_ids: set[str] = set()
+    amendment_sources: list[Mapping[str, object]] = []
+    amendment_heads_by_sequence: dict[int, str] = {}
+    observation = _utc_timestamp(
+        contract["observation_start_at_utc"],
+        "observation_start_at_utc",
+    )
+    blind = _utc_timestamp(contract["blind_until_utc"], "blind_until_utc")
+    registered_symbols = tuple(contract["symbols"])
+    for index in range(sequence + 1):
+        record = _read_json(
+            _safe_artifact_file(amendment_directory, f"{index:06d}.json")
+        )
+        _validate_calendar_amendment_record_shape(
+            record,
+            contract=contract,
+            key=key,
+            expected_sequence=index,
+        )
+        amendment_heads_by_sequence[index] = record["amendment_hmac_sha256"]
+        record_registered = _utc_timestamp(
+            record.get("registered_at_utc"),
+            f"calendar_amendment.registered:{index}",
+        )
+        hash_map = _validate_symbol_map(
+            record.get("effective_session_calendar_sha256"),
+            "effective_session_calendar_sha256",
+            required_symbols=registered_symbols,
+        )
+        if index == 0:
+            if (
+                record.get("amendment_id") is not None
+                or record.get("previous_amendment_hmac_sha256") is not None
+                or record.get("source") is not None
+                or record.get("closures") != {}
+                or record_registered
+                != _utc_timestamp(
+                    contract["registered_at_utc"],
+                    "registered_at_utc",
+                )
+                or hash_map != contract["session_calendar_sha256"]
+            ):
+                raise EvidenceValidationError("CALENDAR_AMENDMENT_GENESIS_INVALID")
+        else:
+            if policy["mode"] != "CLOSURE_ONLY_PROSPECTIVE_V1":
+                raise EvidenceValidationError("CALENDAR_AMENDMENT_UNSUPPORTED")
+            amendment_id = _validate_id(
+                record.get("amendment_id"),
+                "calendar_amendment.amendment_id",
+            )
+            if amendment_id in amendment_ids:
+                raise EvidenceValidationError("CALENDAR_AMENDMENT_ID_DUPLICATE")
+            amendment_ids.add(amendment_id)
+            if (
+                previous is None
+                or record.get("previous_amendment_hmac_sha256")
+                != previous.get("amendment_hmac_sha256")
+            ):
+                raise EvidenceValidationError("CALENDAR_AMENDMENT_CHAIN_MISMATCH")
+            if (
+                previous_registered is None
+                or record_registered <= previous_registered
+                or not record_registered < blind
+            ):
+                raise EvidenceValidationError("CALENDAR_AMENDMENT_TIME_INVALID")
+            source = _normalize_calendar_source_document(
+                record.get("source"),
+                registered=record_registered,
+            )
+            if source != record.get("source"):
+                raise EvidenceValidationError("CALENDAR_AMENDMENT_SOURCE_INVALID")
+            normalized_closures = _normalize_requested_calendar_closures(
+                record.get("closures"),
+                registered_symbols=registered_symbols,
+                observation=observation,
+                blind=blind,
+            )
+            if normalized_closures != record.get("closures"):
+                raise EvidenceValidationError("CALENDAR_AMENDMENT_CLOSURES_INVALID")
+            lead = pd.to_timedelta(
+                int(policy["minimum_lead_seconds"]),
+                unit="s",
+            )
+            if any(
+                _utc_timestamp(item["start_at_utc"], "amendment_start")
+                < record_registered + lead
+                for items in normalized_closures.values()
+                for item in items
+            ):
+                raise EvidenceValidationError(
+                    "CALENDAR_AMENDMENT_LEAD_TIME_VIOLATION"
+                )
+            effective = _apply_calendar_amendment(
+                contract,
+                effective,
+                normalized_closures,
+            )
+            amendment_sources.append(source)
+        expected_hashes = {
+            symbol: _session_calendar_sha256(effective[symbol])
+            for symbol in registered_symbols
+        }
+        if hash_map != expected_hashes:
+            raise EvidenceValidationError(
+                "CALENDAR_AMENDMENT_EFFECTIVE_HASH_MISMATCH"
+            )
+        previous = record
+        previous_registered = record_registered
+    if previous != head:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_HEAD_MISMATCH")
+
+    completeness = _load_calendar_completeness_attestation(
+        directory,
+        contract,
+        key,
+        amendment_head=head,
+        amendment_sources=tuple(amendment_sources),
+    )
+    completeness_required = bool(policy["completeness_attestation_required"])
+    completeness_attested = completeness is not None
+    return {
+        "effective_session_calendars": effective,
+        "calendar_amendment_head": head,
+        "calendar_amendment_chain_verified": True,
+        "calendar_completeness_required": completeness_required,
+        "calendar_completeness_attested": completeness_attested,
+        "calendar_completeness_satisfied": bool(
+            completeness_attested or not completeness_required
+        ),
+        "calendar_completeness_attestation": completeness,
+        "amendment_sources": tuple(copy.deepcopy(amendment_sources)),
+        "amendment_heads_by_sequence": amendment_heads_by_sequence,
+        "amendment_ids": frozenset(amendment_ids),
+    }
+
+
+@_contract_write_locked
+def load_effective_forward_contract(
+    root: str | Path,
+    contract_id: str,
+    *,
+    signing_key: bytes | str | None = None,
+    build_identity_provider: Callable[[], Mapping[str, object]] | None = None,
+) -> dict:
+    """Load one authenticated contract plus its deterministically derived calendar."""
+
+    directory, contract, key = _load_forward_contract(
+        root,
+        contract_id,
+        signing_key,
+    )
+    _require_build_identity(contract, build_identity_provider)
+    state = _load_calendar_amendment_state(directory, contract, key)
+    return {
+        "contract": copy.deepcopy(contract),
+        "effective_session_calendars": copy.deepcopy(
+            state["effective_session_calendars"]
+        ),
+        "calendar_amendment_head": copy.deepcopy(
+            state["calendar_amendment_head"]
+        ),
+        "calendar_amendment_chain_verified": True,
+        "calendar_completeness_required": state[
+            "calendar_completeness_required"
+        ],
+        "calendar_completeness_attested": state[
+            "calendar_completeness_attested"
+        ],
+        "calendar_completeness_satisfied": state[
+            "calendar_completeness_satisfied"
+        ],
+        "calendar_completeness_attestation": copy.deepcopy(
+            state["calendar_completeness_attestation"]
+        ),
+    }
+
+
+def _assert_calendar_target_unobserved(
+    directory: Path,
+    contract: Mapping[str, object],
+    key: bytes,
+    closures: Mapping[str, list[dict]],
+) -> None:
+    for symbol, items in closures.items():
+        first_target = min(
+            _utc_timestamp(item["start_at_utc"], "amendment_start")
+            for item in items
+        )
+        for kind in ("segments", "raw_ticks"):
+            head = _load_head(
+                directory,
+                contract,
+                key,
+                kind=kind,
+                symbol=symbol,
+            )
+            if int(head["sequence"]) == 0:
+                continue
+            last_at = _utc_timestamp(head["last_at_utc"], "last_at_utc")
+            if last_at >= first_target:
+                raise EvidenceValidationError(
+                    "CALENDAR_AMENDMENT_TOUCHES_OBSERVED_EVIDENCE",
+                    symbol,
+                )
+
+
+@_contract_write_locked
+def register_calendar_amendment(
+    root: str | Path,
+    contract_id: str,
+    *,
+    amendment_id: str,
+    registered_at: object,
+    source: Mapping[str, object],
+    closures: Mapping[str, list[Mapping[str, object]]],
+    expected_previous_head_hmac_sha256: str,
+    clock_provider: Callable[[], object] | None = None,
+    signing_key: bytes | str | None = None,
+    build_identity_provider: Callable[[], Mapping[str, object]] | None = None,
+) -> dict:
+    amendment_id = _validate_id(amendment_id, "amendment_id")
+    claimed = _utc_timestamp(registered_at, "registered_at")
+    observed = _require_current_clock_claim(
+        claimed,
+        field="calendar_amendment.registered_at",
+        clock_provider=clock_provider,
+    )
+    directory, contract, key = _load_forward_contract(root, contract_id, signing_key)
+    _require_build_identity(contract, build_identity_provider)
+    if contract.get("schema_version") == LEGACY_FORWARD_CONTRACT_SCHEMA_VERSION:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_UNSUPPORTED")
+    policy = _normalize_calendar_amendment_policy(
+        contract.get("calendar_amendment_policy")
+    )
+    if policy["mode"] != "CLOSURE_ONLY_PROSPECTIVE_V1":
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_UNSUPPORTED")
+    seal = _load_seal(directory, contract, key)
+    if seal["sealed"]:
+        raise EvidenceValidationError("FORWARD_CONTRACT_SEALED")
+    blind = _utc_timestamp(contract["blind_until_utc"], "blind_until_utc")
+    observation = _utc_timestamp(
+        contract["observation_start_at_utc"],
+        "observation_start_at_utc",
+    )
+    if claimed >= blind or observed >= blind:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_AFTER_BLIND")
+    state = _load_calendar_amendment_state(directory, contract, key)
+    if state["calendar_completeness_attested"]:
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_ALREADY_ATTESTED")
+    if amendment_id in state["amendment_ids"]:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_ID_DUPLICATE")
+    head = state["calendar_amendment_head"]
+    expected_head = _require_sha256(
+        expected_previous_head_hmac_sha256,
+        "expected_previous_head_hmac_sha256",
+    )
+    if head is None or not hmac.compare_digest(
+        expected_head,
+        str(head.get("amendment_hmac_sha256") or ""),
+    ):
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_HEAD_MISMATCH")
+    normalized_source = _normalize_calendar_source_document(
+        source,
+        registered=claimed,
+    )
+    normalized_closures = _normalize_requested_calendar_closures(
+        closures,
+        registered_symbols=tuple(contract["symbols"]),
+        observation=observation,
+        blind=blind,
+    )
+    lead = pd.to_timedelta(int(policy["minimum_lead_seconds"]), unit="s")
+    if any(
+        _utc_timestamp(item["start_at_utc"], "amendment_start") < observed + lead
+        for items in normalized_closures.values()
+        for item in items
+    ):
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_LEAD_TIME_VIOLATION")
+    _assert_calendar_target_unobserved(
+        directory,
+        contract,
+        key,
+        normalized_closures,
+    )
+    effective = _apply_calendar_amendment(
+        contract,
+        state["effective_session_calendars"],
+        normalized_closures,
+    )
+    transaction_time = _trusted_clock_timestamp(
+        field="calendar_amendment_precommit",
+        clock_provider=clock_provider,
+    )
+    if transaction_time < observed:
+        raise EvidenceValidationError("TRUSTED_CLOCK_ROLLBACK", "calendar amendment")
+    if transaction_time >= blind or any(
+        _utc_timestamp(item["start_at_utc"], "amendment_start")
+        < transaction_time + lead
+        for items in normalized_closures.values()
+        for item in items
+    ):
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_LEAD_TIME_VIOLATION")
+    record = _attach_payload_hash(
+        {
+            "schema_version": CALENDAR_AMENDMENT_SCHEMA_VERSION,
+            "contract_id": contract_id,
+            "contract_hmac_sha256": contract["contract_hmac_sha256"],
+            "sequence": int(head["sequence"]) + 1,
+            "amendment_id": amendment_id,
+            "previous_amendment_hmac_sha256": head[
+                "amendment_hmac_sha256"
+            ],
+            "registered_at_utc": _utc_iso(transaction_time),
+            "source": normalized_source,
+            "closures": normalized_closures,
+            "effective_session_calendar_sha256": {
+                symbol: _session_calendar_sha256(effective[symbol])
+                for symbol in contract["symbols"]
+            },
+        },
+        "amendment_payload_sha256",
+    )
+    record = _attach_hmac(record, key, "amendment_hmac_sha256")
+    amendment_directory = _safe_directory(
+        directory,
+        "calendar_amendments",
+        create=True,
+    )
+    history_path = _safe_artifact_file(
+        amendment_directory,
+        f"{int(record['sequence']):06d}.json",
+    )
+    _atomic_exclusive_write(history_path, _pretty_json_bytes(record))
+    _atomic_replace(
+        _safe_artifact_file(
+            _safe_directory(directory, "heads", create=True),
+            "calendar_amendments.json",
+        ),
+        _pretty_json_bytes(record),
+    )
+    return copy.deepcopy(record)
+
+
+@_contract_write_locked
+def attest_calendar_completeness(
+    root: str | Path,
+    contract_id: str,
+    *,
+    attestation_id: str,
+    attested_at: object,
+    expected_final_head_hmac_sha256: str,
+    reviewed_sources: list[Mapping[str, object]],
+    clock_provider: Callable[[], object] | None = None,
+    signing_key: bytes | str | None = None,
+    build_identity_provider: Callable[[], Mapping[str, object]] | None = None,
+) -> dict:
+    attestation_id = _validate_id(attestation_id, "attestation_id")
+    claimed = _utc_timestamp(attested_at, "attested_at")
+    observed = _require_current_clock_claim(
+        claimed,
+        field="calendar_completeness.attested_at",
+        clock_provider=clock_provider,
+    )
+    directory, contract, key = _load_forward_contract(root, contract_id, signing_key)
+    _require_build_identity(contract, build_identity_provider)
+    if contract.get("schema_version") == LEGACY_FORWARD_CONTRACT_SCHEMA_VERSION:
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_UNSUPPORTED")
+    policy = _normalize_calendar_amendment_policy(
+        contract.get("calendar_amendment_policy")
+    )
+    if policy["completeness_attestation_required"] is not True:
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_UNSUPPORTED")
+    blind = _utc_timestamp(contract["blind_until_utc"], "blind_until_utc")
+    if claimed < blind or observed < blind:
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_BEFORE_BLIND")
+    seal = _load_seal(directory, contract, key)
+    if seal["sealed"]:
+        raise EvidenceValidationError("FORWARD_CONTRACT_SEALED")
+    state = _load_calendar_amendment_state(directory, contract, key)
+    if state["calendar_completeness_attested"]:
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_ALREADY_ATTESTED")
+    head = state["calendar_amendment_head"]
+    expected_head = _require_sha256(
+        expected_final_head_hmac_sha256,
+        "expected_final_head_hmac_sha256",
+    )
+    if head is None or not hmac.compare_digest(
+        expected_head,
+        str(head.get("amendment_hmac_sha256") or ""),
+    ):
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_HEAD_MISMATCH")
+    if not isinstance(reviewed_sources, list) or not reviewed_sources:
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_SOURCE_INVALID")
+    normalized_sources = [
+        _normalize_calendar_source_document(source, registered=claimed)
+        for source in reviewed_sources
+    ]
+    normalized_sources.sort(
+        key=lambda source: (source["document_sha256"], source["url"])
+    )
+    document_hashes = [source["document_sha256"] for source in normalized_sources]
+    if len(document_hashes) != len(set(document_hashes)):
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_SOURCE_INVALID")
+    amendment_hashes = {
+        str(source["document_sha256"])
+        for source in state["amendment_sources"]
+    }
+    if not amendment_hashes <= set(document_hashes):
+        raise EvidenceValidationError("CALENDAR_COMPLETENESS_SOURCE_MISSING")
+    transaction_time = _trusted_clock_timestamp(
+        field="calendar_completeness_precommit",
+        clock_provider=clock_provider,
+    )
+    if transaction_time < observed:
+        raise EvidenceValidationError("TRUSTED_CLOCK_ROLLBACK", "calendar completeness")
+    attestation = _attach_payload_hash(
+        {
+            "schema_version": CALENDAR_COMPLETENESS_SCHEMA_VERSION,
+            "attestation_id": attestation_id,
+            "contract_id": contract_id,
+            "contract_hmac_sha256": contract["contract_hmac_sha256"],
+            "final_amendment_sequence": head["sequence"],
+            "final_amendment_head_hmac_sha256": head[
+                "amendment_hmac_sha256"
+            ],
+            "attested_at_utc": _utc_iso(transaction_time),
+            "reviewed_sources": normalized_sources,
+            "reviewed_sources_sha256": _sha256_bytes(
+                _canonical_json_bytes(normalized_sources)
+            ),
+        },
+        "completeness_payload_sha256",
+    )
+    attestation = _attach_hmac(
+        attestation,
+        key,
+        "completeness_hmac_sha256",
+    )
+    _atomic_exclusive_write(
+        _safe_artifact_file(directory, "calendar_completeness.json"),
+        _pretty_json_bytes(attestation),
+    )
+    return copy.deepcopy(attestation)
 
 
 def _load_seal(directory: Path, contract: Mapping[str, object], key: bytes) -> dict:
@@ -2164,6 +3107,26 @@ def _prepare_append(
     )
     if not verification["valid"]:
         raise EvidenceValidationError("EXISTING_EVIDENCE_INVALID", contract_id)
+    calendar_state = _load_calendar_amendment_state(directory, contract, key)
+    contract = copy.deepcopy(contract)
+    contract["session_calendars"] = calendar_state[
+        "effective_session_calendars"
+    ]
+    contract["effective_calendar_amendment_head_hmac_sha256"] = (
+        None
+        if calendar_state["calendar_amendment_head"] is None
+        else calendar_state["calendar_amendment_head"][
+            "amendment_hmac_sha256"
+        ]
+    )
+    contract["effective_calendar_amendment_sequence"] = (
+        None
+        if calendar_state["calendar_amendment_head"] is None
+        else calendar_state["calendar_amendment_head"]["sequence"]
+    )
+    contract["valid_calendar_amendment_heads"] = copy.deepcopy(
+        calendar_state["amendment_heads_by_sequence"]
+    )
     return directory, contract, key, exported, blind
 
 
@@ -2201,6 +3164,47 @@ def _recheck_append_clock(
     if observed > latest_at:
         raise EvidenceValidationError(latest_code, detail)
     return observed
+
+
+def _calendar_artifact_binding(contract: Mapping[str, object]) -> dict:
+    if contract.get("schema_version") != FORWARD_CONTRACT_SCHEMA_VERSION:
+        return {}
+    sequence = contract.get("effective_calendar_amendment_sequence")
+    head_hmac = contract.get(
+        "effective_calendar_amendment_head_hmac_sha256"
+    )
+    if (
+        not isinstance(sequence, int)
+        or isinstance(sequence, bool)
+        or sequence < 0
+        or not isinstance(head_hmac, str)
+        or SHA256_PATTERN.fullmatch(head_hmac) is None
+    ):
+        raise EvidenceValidationError("CALENDAR_AMENDMENT_BINDING_INVALID")
+    return {
+        "calendar_amendment_sequence": sequence,
+        "calendar_amendment_head_hmac_sha256": head_hmac,
+    }
+
+
+def _calendar_artifact_binding_valid(
+    artifact: Mapping[str, object],
+    contract: Mapping[str, object],
+) -> bool:
+    if contract.get("schema_version") != FORWARD_CONTRACT_SCHEMA_VERSION:
+        return (
+            "calendar_amendment_sequence" not in artifact
+            and "calendar_amendment_head_hmac_sha256" not in artifact
+        )
+    sequence = artifact.get("calendar_amendment_sequence")
+    if not isinstance(sequence, int) or isinstance(sequence, bool):
+        return False
+    valid_heads = contract.get("valid_calendar_amendment_heads")
+    return bool(
+        isinstance(valid_heads, Mapping)
+        and valid_heads.get(sequence)
+        == artifact.get("calendar_amendment_head_hmac_sha256")
+    )
 
 
 def _observe_append_clock(
@@ -2356,6 +3360,7 @@ def _append_forward_segment_unlocked(
             "source_sha256": source_hash,
             "instrument_spec_sha256": spec_hash,
             "build_identity_sha256": contract["build_identity_sha256"],
+            **_calendar_artifact_binding(contract),
         },
         "segment_payload_sha256",
     )
@@ -2605,6 +3610,7 @@ def _append_raw_tick_partition_unlocked(
             "source_sha256": source_hash,
             "instrument_spec_sha256": spec_hash,
             "build_identity_sha256": contract["build_identity_sha256"],
+            **_calendar_artifact_binding(contract),
         },
         "partition_payload_sha256",
     )
@@ -3079,6 +4085,7 @@ def _write_paired_commit(
             "coverage_metadata": normalized_coverage_metadata,
             "committed_at_utc": _utc_iso(committed_at),
             "build_identity_sha256": contract["build_identity_sha256"],
+            **_calendar_artifact_binding(contract),
         },
         "paired_commit_payload_sha256",
     )
@@ -3348,6 +4355,11 @@ def _empty_verification(failure: str) -> dict:
         "data_coverage_complete": False,
         "coverage_complete": False,
         "session_calendar_verified": False,
+        "calendar_amendment_chain_verified": False,
+        "calendar_amendment_head": None,
+        "calendar_completeness_required": False,
+        "calendar_completeness_attested": False,
+        "calendar_completeness_satisfied": False,
         "evidence_root_sha256": None,
     }
 
@@ -3475,6 +4487,8 @@ def _verify_segments_for_symbol(
                 failures.append(f"SEGMENT_HMAC_MISMATCH:{prefix}")
             if segment.get("build_identity_sha256") != contract["build_identity_sha256"]:
                 failures.append(f"BUILD_IDENTITY_DRIFT:{prefix}")
+            if not _calendar_artifact_binding_valid(segment, contract):
+                failures.append(f"CALENDAR_AMENDMENT_BINDING_MISMATCH:{prefix}")
             if segment.get("source_sha256") != contract["source_sha256"][symbol]:
                 failures.append(f"SOURCE_BINDING_MISMATCH:{prefix}")
             if segment.get("instrument_spec_sha256") != contract[
@@ -3619,6 +4633,10 @@ def _verify_raw_for_symbol(
                 failures.append(f"RAW_TICK_HMAC_MISMATCH:{prefix}")
             if partition.get("build_identity_sha256") != contract["build_identity_sha256"]:
                 failures.append(f"BUILD_IDENTITY_DRIFT:{prefix}")
+            if not _calendar_artifact_binding_valid(partition, contract):
+                failures.append(
+                    f"CALENDAR_AMENDMENT_BINDING_MISMATCH:{prefix}"
+                )
             if partition.get("source_sha256") != contract["source_sha256"][symbol]:
                 failures.append(f"RAW_TICK_SOURCE_BINDING_MISMATCH:{prefix}")
             if partition.get("instrument_spec_sha256") != contract[
@@ -3858,6 +4876,10 @@ def _verify_paired_commits_for_symbol(
                 "build_identity_sha256"
             ]:
                 failures.append(f"BUILD_IDENTITY_DRIFT:paired_commit:{prefix}")
+            if not _calendar_artifact_binding_valid(commit, contract):
+                failures.append(
+                    f"CALENDAR_AMENDMENT_BINDING_MISMATCH:paired_commit:{prefix}"
+                )
             export_id = commit.get("export_id")
             try:
                 _validate_id(export_id, "export_id")
@@ -4055,6 +5077,7 @@ def _coverage_for_symbol(
     *,
     session_calendar_verified: bool,
     paired_commit_verified: bool,
+    calendar_completeness_satisfied: bool = True,
 ) -> dict:
     expected_grid = _expected_m15_grid(contract["session_calendars"][symbol])
     bar_start = (
@@ -4133,6 +5156,7 @@ def _coverage_for_symbol(
         and paired_commit_verified
         and external_sequence_authenticated
         and profile_eligible
+        and calendar_completeness_satisfied
     )
     return {
         "symbol": symbol,
@@ -4156,6 +5180,7 @@ def _coverage_for_symbol(
         "bar_raw_reconciled": reconciled,
         "paired_commit_verified": paired_commit_verified,
         "session_calendar_verified": session_calendar_verified,
+        "calendar_completeness_satisfied": calendar_completeness_satisfied,
         "observed_data_complete": observed_data_complete,
         "data_complete": data_complete,
         "validation_profile": contract.get("validation_profile"),
@@ -4199,6 +5224,40 @@ def _verify_forward_evidence_unlocked(
     except EvidenceValidationError as exc:
         failures.append(exc.code)
         seal = {"sealed": False, "evidence_root_sha256": None}
+    try:
+        calendar_state = _load_calendar_amendment_state(
+            directory,
+            contract,
+            key,
+        )
+    except EvidenceValidationError as exc:
+        failures.append(exc.code)
+        calendar_state = {
+            "effective_session_calendars": copy.deepcopy(
+                contract["session_calendars"]
+            ),
+            "calendar_amendment_head": None,
+            "calendar_amendment_chain_verified": False,
+            "calendar_completeness_required": bool(
+                contract.get("schema_version") == FORWARD_CONTRACT_SCHEMA_VERSION
+                and isinstance(contract.get("calendar_amendment_policy"), Mapping)
+                and contract["calendar_amendment_policy"].get(
+                    "completeness_attestation_required"
+                )
+                is True
+            ),
+            "calendar_completeness_attested": False,
+            "calendar_completeness_satisfied": False,
+            "calendar_completeness_attestation": None,
+            "amendment_heads_by_sequence": {},
+        }
+    effective_contract = copy.deepcopy(contract)
+    effective_contract["session_calendars"] = calendar_state[
+        "effective_session_calendars"
+    ]
+    effective_contract["valid_calendar_amendment_heads"] = copy.deepcopy(
+        calendar_state.get("amendment_heads_by_sequence", {})
+    )
 
     heads: dict[str, dict[str, dict]] = {
         "segments": {},
@@ -4237,14 +5296,14 @@ def _verify_forward_evidence_unlocked(
                 "anchor_hmac_sha256": raw_head["anchor_hmac_sha256"],
             }
         item_failures, manifests, frames = _verify_segments_for_symbol(
-            directory, contract, key, symbol, segment_head
+            directory, effective_contract, key, symbol, segment_head
         )
         failures.extend(item_failures)
         bar_manifests[symbol] = manifests
         bar_frames[symbol] = frames
         segment_counts[symbol] = int(segment_head["sequence"]) if segment_head else 0
         item_failures, manifests, frames = _verify_raw_for_symbol(
-            directory, contract, key, symbol, raw_head
+            directory, effective_contract, key, symbol, raw_head
         )
         failures.extend(item_failures)
         raw_manifests[symbol] = manifests
@@ -4253,7 +5312,7 @@ def _verify_forward_evidence_unlocked(
         paired_failures, paired_head, paired_verified = (
             _verify_paired_commits_for_symbol(
                 directory,
-                contract,
+                effective_contract,
                 key,
                 symbol,
                 bar_manifests[symbol],
@@ -4270,15 +5329,53 @@ def _verify_forward_evidence_unlocked(
         "snapshot_manifest_sha256": contract.get("snapshot_manifest_sha256"),
         "chain_heads": heads,
     }
+    if contract.get("schema_version") == FORWARD_CONTRACT_SCHEMA_VERSION:
+        evidence_root_payload["calendar_amendment_head"] = (
+            None
+            if calendar_state["calendar_amendment_head"] is None
+            else {
+                "sequence": calendar_state["calendar_amendment_head"][
+                    "sequence"
+                ],
+                "amendment_payload_sha256": calendar_state[
+                    "calendar_amendment_head"
+                ]["amendment_payload_sha256"],
+                "amendment_hmac_sha256": calendar_state[
+                    "calendar_amendment_head"
+                ]["amendment_hmac_sha256"],
+                "effective_session_calendar_sha256": calendar_state[
+                    "calendar_amendment_head"
+                ]["effective_session_calendar_sha256"],
+            }
+        )
+        evidence_root_payload["calendar_completeness_payload_sha256"] = (
+            None
+            if calendar_state["calendar_completeness_attestation"] is None
+            else calendar_state["calendar_completeness_attestation"][
+                "completeness_payload_sha256"
+            ]
+        )
     evidence_root = _sha256_bytes(_canonical_json_bytes(evidence_root_payload))
     if seal.get("sealed") is True and seal.get("evidence_root_sha256") != evidence_root:
         failures.append("SEALED_EVIDENCE_ROOT_MISMATCH")
 
     coverage: dict[str, dict] = {}
+    effective_hashes = (
+        contract["session_calendar_sha256"]
+        if calendar_state["calendar_amendment_head"] is None
+        else calendar_state["calendar_amendment_head"][
+            "effective_session_calendar_sha256"
+        ]
+    )
     calendar_verified_by_symbol = {
-        symbol: hmac.compare_digest(
-            _session_calendar_sha256(contract["session_calendars"][symbol]),
-            contract["instrument_specs"][symbol]["session_calendar_sha256"],
+        symbol: bool(
+            calendar_state["calendar_amendment_chain_verified"]
+            and hmac.compare_digest(
+                _session_calendar_sha256(
+                    effective_contract["session_calendars"][symbol]
+                ),
+                effective_hashes[symbol],
+            )
         )
         for symbol in registered_symbols
     }
@@ -4296,7 +5393,7 @@ def _verify_forward_evidence_unlocked(
             and not reconcile_failures
         )
         coverage[symbol] = _coverage_for_symbol(
-            contract,
+            effective_contract,
             symbol,
             bar_manifests[symbol],
             raw_manifests[symbol],
@@ -4304,6 +5401,9 @@ def _verify_forward_evidence_unlocked(
             reconciled,
             session_calendar_verified=calendar_verified_by_symbol[symbol],
             paired_commit_verified=paired_commit_verified_by_symbol[symbol],
+            calendar_completeness_satisfied=calendar_state[
+                "calendar_completeness_satisfied"
+            ],
         )
     observed_data_coverage_complete = all(
         item["observed_data_complete"] for item in coverage.values()
@@ -4324,6 +5424,21 @@ def _verify_forward_evidence_unlocked(
         "coverage_complete": coverage_complete,
         "validation_profile": contract.get("validation_profile"),
         "session_calendar_verified": all(calendar_verified_by_symbol.values()),
+        "calendar_amendment_chain_verified": calendar_state[
+            "calendar_amendment_chain_verified"
+        ],
+        "calendar_amendment_head": copy.deepcopy(
+            calendar_state["calendar_amendment_head"]
+        ),
+        "calendar_completeness_required": calendar_state[
+            "calendar_completeness_required"
+        ],
+        "calendar_completeness_attested": calendar_state[
+            "calendar_completeness_attested"
+        ],
+        "calendar_completeness_satisfied": calendar_state[
+            "calendar_completeness_satisfied"
+        ],
         "paired_commit_verified": all(
             paired_commit_verified_by_symbol.values()
         ),
@@ -4444,6 +5559,21 @@ def create_validation_receipt(
         "performance_verified": False,
         "performance_supplied_ignored": performance is not None,
         "session_calendar_verified": verification["session_calendar_verified"],
+        "calendar_amendment_chain_verified": verification[
+            "calendar_amendment_chain_verified"
+        ],
+        "calendar_amendment_head": copy.deepcopy(
+            verification["calendar_amendment_head"]
+        ),
+        "calendar_completeness_required": verification[
+            "calendar_completeness_required"
+        ],
+        "calendar_completeness_attested": verification[
+            "calendar_completeness_attested"
+        ],
+        "calendar_completeness_satisfied": verification[
+            "calendar_completeness_satisfied"
+        ],
         "promotion_eligible": False,
         "live_allowed": False,
         "safe_to_demo_auto_order": False,
@@ -4483,7 +5613,14 @@ def verify_validation_receipt(
             f"{receipt_id}.json",
         )
         receipt = _read_json(receipt_path)
-        if receipt.get("schema_version") != RECEIPT_SCHEMA_VERSION:
+        receipt_schema = receipt.get("schema_version")
+        if receipt_schema not in {
+            RECEIPT_SCHEMA_VERSION,
+            LEGACY_RECEIPT_SCHEMA_VERSION,
+        } or (
+            contract.get("schema_version") == FORWARD_CONTRACT_SCHEMA_VERSION
+            and receipt_schema != RECEIPT_SCHEMA_VERSION
+        ):
             failures.append("RECEIPT_SCHEMA_INVALID")
         if receipt.get("receipt_id") != receipt_id or receipt.get("contract_id") != contract_id:
             failures.append("RECEIPT_ID_MISMATCH")
@@ -4515,6 +5652,25 @@ def verify_validation_receipt(
             "session_calendar_verified"
         ) is not current.get("session_calendar_verified"):
             failures.append("RECEIPT_SESSION_CALENDAR_STATE_INVALID")
+        if receipt_schema == RECEIPT_SCHEMA_VERSION:
+            if receipt.get("calendar_amendment_head") != current.get(
+                "calendar_amendment_head"
+            ):
+                failures.append("RECEIPT_CALENDAR_AMENDMENT_HEAD_MISMATCH")
+            for field in (
+                "calendar_amendment_chain_verified",
+                "calendar_completeness_required",
+                "calendar_completeness_attested",
+                "calendar_completeness_satisfied",
+            ):
+                if (
+                    type(receipt.get(field)) is not bool
+                    or receipt.get(field) is not current.get(field)
+                ):
+                    failures.append(
+                        "RECEIPT_CALENDAR_AMENDMENT_STATE_INVALID"
+                    )
+                    break
         if receipt.get("validation_profile") != contract.get("validation_profile"):
             failures.append("RECEIPT_VALIDATION_PROFILE_MISMATCH")
         if receipt.get("status") == (
@@ -4550,9 +5706,12 @@ __all__ = [
     "append_forward_segment",
     "append_paired_forward_evidence",
     "append_raw_tick_partition",
+    "attest_calendar_completeness",
     "canonical_evidence_payload_sha256",
     "create_frozen_snapshot",
     "create_validation_receipt",
+    "load_effective_forward_contract",
+    "register_calendar_amendment",
     "register_forward_contract",
     "verify_forward_evidence",
     "verify_frozen_snapshot",

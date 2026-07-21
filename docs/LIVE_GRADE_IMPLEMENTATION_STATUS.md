@@ -12,8 +12,8 @@ membuka demo-auto maupun live.
 | Tahap | Status | Bukti saat ini |
 |---|---|---|
 | 1. Baseline terkunci | Sebagian | Seluruh safety lock terjaga, tetapi worktree telah berisi perubahan user/runtime sebelum implementasi sehingga clean baseline commit terisolasi belum dibuat. |
-| 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v3, signed session calendar per simbol, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
-| 3. Broker read-only shadow | FBS diagnostic connected; broker crypto domains implemented; evidence not started | Probe dan preflight sanitasi mengikat `FBS-Demo`, akun demo USD 500:1 retail hedging, XAUUSD/EURUSD/USDJPY/AUDUSD, serta BTCUSD/ETHUSD. Forex/metal M15, broker-crypto M15 champion, dan broker-crypto M5 challenger memiliki journal/report terpisah. FINEX tidak dipakai untuk observasi baru. Durable preflight receipt perlu dibuat ulang setelah source terbaru ditarik. Instrument specification discovery v3, calendar, 20-session benchmark, regulatory eligibility, dan promotion evidence tetap pending. |
+| 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, signed base calendar plus prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
+| 3. Broker read-only shadow | FBS and Phillip diagnostic bindings observed; evidence not started | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip sanitized discovery-v3 inputs berhasil dibuat dan reviewed regular M15 base schedules tersedia, tetapi profile registration, regulatory approval, 20-session benchmark, broker-forward contract, dan promotion evidence tetap disabled/pending. FINEX tidak dipakai untuk observasi baru. |
 | 4. Manual demo | Component foundation ready, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-wide fence, risk governor, fenced journal, one-shot runtime composition, MT5 preflight/executor/reconciliation, dan dual-control kill-switch reset tersedia. Sepuluh order demo belum dilakukan. |
 | 5. Demo-auto soak | Not started | Policy tetap locked; belum ada 30 hari, 50 fill, minimal 20 XAU, atau clean incident record. |
 | 6. XAUUSD live canary | Not started | XAUUSD belum execution-approved dan belum memiliki promotion evidence/permit/soak maupun 50 closed live trades. |
@@ -37,6 +37,17 @@ membuka demo-auto maupun live.
   hash, blinded period, high-water head, seal, dan receipt diverifikasi ulang.
   Yahoo FX serta `GC=F` tetap development-only dan tidak dapat menjadi live
   evidence.
+- Kontrak baru memakai `forward-contract-v4` dengan sequence-zero calendar
+  genesis. Notice resmi yang terbit kemudian hanya dapat menutup bucket M15
+  yang masih future/open melalui history HMAC append-only, minimum lead 900
+  detik, exact source-document SHA-256, dan optimistic head binding. Replay
+  chain menghasilkan satu effective calendar untuk append, reconciliation,
+  coverage, evidence root, shadow planning, dan receipt. Kontrak v3 tetap
+  readable tetapi immutable.
+- Setelah blind window, signed completeness attestation mengikat final calendar
+  head dan inventaris source resmi sebelum seal. Chain yang autentik tetapi
+  belum memiliki completeness tetap `valid` secara mekanis namun tidak dapat
+  membuat complete coverage atau promotion readiness menjadi true.
 - Raw-tick partition dan finalized M15 segment kini ditulis melalui satu API
   berpasangan di bawah contract-wide OS lock. HMAC-signed paired commit chain
   mengikat kedua payload hash, exporter identity hash, coverage metadata hash,
@@ -206,9 +217,11 @@ BTCUSD = shadow-only
    mempertahankan urutan yang dikembalikan broker; sistem tidak lagi membuat
    urutan lexicographic sintetis. Record yang benar-benar identik ditolak
    fail-closed karena urutan aslinya tidak dapat dibedakan.
-4. Signed session calendar membuktikan kalender tidak berubah setelah kontrak
-   dibuat, bukan bahwa jadwal awalnya diterbitkan dan di-attest oleh broker.
-   Exact broker calendar exporter serta provenance eksternalnya belum dijalankan.
+4. Signed base calendar dan prospective amendment chain membuktikan integrity,
+   urutan, no-hindsight closure, serta final source-inventory binding. Kontrol
+   ini belum membuktikan bahwa review manusia terhadap setiap dokumen resmi
+   benar, dan exact broker calendar/export provenance belum dijalankan sebagai
+   evidence window nyata. Phillip profile registration tetap false.
 5. Trusted-clock interface dan drift gate sudah ada, tetapi Windows time source,
    independent clock monitoring, dan off-host time attestation belum dipasang.
 6. Signed-news verifier sudah ada, tetapi production provider, independent key
@@ -264,8 +277,11 @@ eksternal belum terpenuhi.
    FINEX adalah future-Indonesia preparation path karena registrasi Bappebti
    telah diverifikasi, tetapi personal/account eligibility setelah kembali dan
    current-Japan eligibility tetap belum disetujui.
-   XM Window 02 tetap tidak boleh dijalankan. Setiap
-   kandidat tetap membutuhkan minimal 20 sesi terpisah.
+   Phillip Securities Japan adalah candidate path untuk operasi saat ini:
+   exact demo lanes dan regular schedule sudah terikat, namun signed regulatory
+   approval, explicit profile-registration review, dan contract registration
+   belum selesai. XM Window 02 tetap tidak boleh dijalankan. Setiap kandidat
+   tetap membutuhkan minimal 20 sesi terpisah.
 2. Jalankan broker read-only shadow pada exact symbols; ekspor signed session
    calendars, finalized M15 bid/ask bars, raw ticks, spread/fill distributions,
    dan bukti minimal delapan minggu per lane.

@@ -17,6 +17,7 @@
   "files": [
     "agents/market_status.py",
     "agents/supervisor_agent.py",
+    "attest_calendar_completeness.py",
     "bootstrap_windows_dependencies.py",
     "build_broker_calendar.py",
     "build_windows_dependency_sbom.py",
@@ -39,6 +40,7 @@
     "live_runtime/broker_evidence_profile.py",
     "live_runtime/broker_exporter.py",
     "live_runtime/broker_window_plan.py",
+    "live_runtime/calendar_operator.py",
     "live_runtime/contracts.py",
     "live_runtime/crypto_diagnostic.py",
     "live_runtime/crypto_shadow.py",
@@ -67,6 +69,7 @@
     "prepare_xm_window.py",
     "pylock.windows-cp312.toml",
     "register_broker_forward_contract.py",
+    "register_calendar_amendment.py",
     "register_xm_forward_contract.py",
     "requirements-live-windows.txt",
     "generate_crypto_diagnostic_report.py",

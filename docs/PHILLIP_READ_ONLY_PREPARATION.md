@@ -115,8 +115,11 @@ with distinct executable paths are available. Each launcher writes a separate
 SQLite journal and summary. Both account lanes have independently observed
 fixed `UTC+09:00` server offsets: the FX observation is bound to
 `AUDUSD.ps01`, `EURUSD.ps01`, and `USDJPY.ps01`; the commodity observation is
-bound to `XAUUSD.ps01`. Exact session calendars remain pending runtime
-observation and must not be guessed.
+bound to `XAUUSD.ps01`. The reviewed regular DST schedules are now encoded as
+conservative full-M15 base calendars. Later official holiday or special-hours
+notices must use the signed prospective amendment chain described in
+[`PROSPECTIVE_CALENDAR_AMENDMENTS.md`](PROSPECTIVE_CALENDAR_AMENDMENTS.md);
+they must never be guessed or applied retroactively.
 
 Preflight and shadow remain diagnostic-only. Promotion, demo auto-order, and
 live trading remain disabled. A sanitized discovery-v3 receipt may now be
@@ -227,11 +230,28 @@ trading is unavailable, terminal Algo Trading is off, and external Python API
 trading is disabled. The read-only facade exposes no order API.
 
 Do not run `prepare_broker_window.py` or
-`register_broker_forward_contract.py` for Phillip yet. Both tracked calendar
-files are explicitly unattested scaffolds and both profile registrations are
-disabled. Registration may be enabled only in a reviewed clean commit after
-exact official session/holiday calendars and the required independent signed
-regulatory approvals are present.
+`register_broker_forward_contract.py` for Phillip yet. The tracked templates
+now contain reviewed regular schedules and a closure-only prospective
+amendment policy, but `special_hours_review.attested=false` and both profile
+registrations remain disabled. Registration may be enabled only in a reviewed
+clean commit after the required independent signed regulatory approval and
+registration review are present. A valid base calendar or discovery receipt
+does not open that gate.
+
+Reviewed schedule basis:
+
+- [Phillip FX service hours](https://www.phillip.co.jp/fx/servicelist.php)
+  publish the DST weekly span and daily maintenance interval;
+- [Phillip's 2026 DST notice](https://www.phillip.co.jp/information/info/10999)
+  identifies the applicable seasonal transition; and
+- [Phillip commodity-CFD important notes](https://www.phillip.co.jp/fx/pdf/C-CFD_important_notes.pdf)
+  publish the XAU trading hours.
+
+The templates include only buckets that can complete before a published close.
+Future exceptional closures require an official HTTPS document hash, at least
+900 seconds of lead time, an authenticated current head, and a final
+post-window completeness attestation. This feature remains evidence-only and
+cannot enable orders.
 
 Official MT5 documentation states that simultaneous copies require different
 installation directories:

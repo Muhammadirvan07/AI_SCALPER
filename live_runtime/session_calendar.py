@@ -309,7 +309,22 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
     ):
         raise SessionCalendarError("broker symbol map is outside the v1 lane allowlist")
     review = plan.get("special_hours_review")
-    if not isinstance(review, Mapping) or review.get("attested") is not True:
+    policy = plan.get("calendar_amendment_policy")
+    amendment_enabled = bool(
+        isinstance(policy, Mapping)
+        and policy.get("mode") == "CLOSURE_ONLY_PROSPECTIVE_V1"
+        and isinstance(policy.get("minimum_lead_seconds"), int)
+        and not isinstance(policy.get("minimum_lead_seconds"), bool)
+        and int(policy["minimum_lead_seconds"]) >= 900
+        and int(policy["minimum_lead_seconds"]) % 900 == 0
+        and policy.get("completeness_attestation_required") is True
+        and policy.get("source_document_required") is True
+    )
+    if (
+        not isinstance(review, Mapping)
+        or type(review.get("attested")) is not bool
+        or (review.get("attested") is not True and not amendment_enabled)
+    ):
         raise SessionCalendarError("special-hours review must be explicitly attested")
     registered_closures = _registered_closures(
         review,
@@ -343,7 +358,13 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
         for cursor in (start + index * M15 for index in range(int((blind - start) / M15)))
         if cursor.astimezone(timezone).weekday() < 5
     }
-    if not required_trading_dates or max(required_trading_dates) > last_date:
+    if (
+        not required_trading_dates
+        or (
+            review.get("attested") is True
+            and max(required_trading_dates) > last_date
+        )
+    ):
         raise SessionCalendarError("special-hours review does not cover the trading window")
 
     calendars: dict[str, object] = {}
@@ -401,6 +422,11 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
         "server_timezone": timezone_name,
         "discovery_receipt_sha256": receipt_hash,
         "special_hours_review": dict(review),
+        **(
+            {"calendar_amendment_policy": dict(policy)}
+            if amendment_enabled
+            else {}
+        ),
         "calendars": calendars,
         "session_calendar_sha256": hashes,
         "execution_enabled": False,

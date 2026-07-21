@@ -745,6 +745,7 @@ def register_broker_diagnostic_contract(
         broker_sources,
         instrument_specs,
         session_calendars=calendar["calendars"],
+        calendar_amendment_policy=plan.get("calendar_amendment_policy"),
         contract_id=profile.contract_id,
         registered_at=registered_at,
         observation_start_at=plan["observation_start_at_utc"],
