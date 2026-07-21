@@ -54,7 +54,8 @@ def main(argv: list[str] | None = None) -> int:
             args.candidate,
             require_registration_enabled=True,
         )
-        key = WindowsEvidenceKeyStore().load(profile.key_name)
+        store = WindowsEvidenceKeyStore()
+        key = store.load(profile.key_name)
         contract = register_broker_diagnostic_contract(
             REPO_ROOT,
             _repo_path(args.artifact_root),
@@ -64,6 +65,7 @@ def main(argv: list[str] | None = None) -> int:
             plan_path=_repo_path(args.plan),
             profile=profile,
             profile_config_path=profile_config.relative_to(REPO_ROOT).as_posix(),
+            regulatory_approval_key_provider=store.load,
         )
     except (
         BrokerEvidenceProfileError,

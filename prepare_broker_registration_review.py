@@ -1,4 +1,4 @@
-"""Prepare an immutable broker-neutral phase-3 calendar plan on Windows."""
+"""Prepare immutable byte-derived regulatory evidence for one broker lane."""
 
 from __future__ import annotations
 
@@ -9,15 +9,12 @@ from live_runtime.broker_evidence_profile import (
     BrokerEvidenceProfileError,
     load_broker_evidence_profile,
 )
-from live_runtime.broker_window_plan import (
-    BrokerWindowPlanError,
-    prepare_broker_calendar_plan,
-    read_json_object,
-    write_broker_calendar_plan_exclusive,
-)
-from live_runtime.evidence_credentials import (
-    EvidenceCredentialError,
-    WindowsEvidenceKeyStore,
+from live_runtime.broker_window_plan import BrokerWindowPlanError, read_json_object
+from live_runtime.registration_review import (
+    RegistrationReviewError,
+    load_regulatory_source_manifest,
+    prepare_regulatory_evidence,
+    write_regulatory_artifact_exclusive,
 )
 from live_runtime.secure_files import SecureFileError
 
@@ -30,9 +27,12 @@ def _repo_path(path: Path) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Prepare broker evidence calendar plan")
+    parser = argparse.ArgumentParser(
+        description="Prepare broker registration review evidence"
+    )
     parser.add_argument("--candidate", required=True)
-    parser.add_argument("--discovery", type=Path, required=True)
+    parser.add_argument("--source-manifest", type=Path, required=True)
+    parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--candidate-config",
@@ -46,41 +46,39 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        profile_config = _repo_path(args.profile_config)
-        candidate_config = _repo_path(args.candidate_config)
         profile = load_broker_evidence_profile(
-            profile_config,
+            _repo_path(args.profile_config),
             args.candidate,
         )
         template = read_json_object(REPO_ROOT / profile.template_path)
-        discovery = read_json_object(_repo_path(args.discovery))
-        candidates = read_json_object(candidate_config)
-        store = WindowsEvidenceKeyStore()
-        key = store.load(profile.key_name)
-        plan = prepare_broker_calendar_plan(
-            template,
-            discovery,
+        candidates = read_json_object(_repo_path(args.candidate_config))
+        manifest = load_regulatory_source_manifest(_repo_path(args.source_manifest))
+        evidence = prepare_regulatory_evidence(
             candidates,
-            key,
-            regulatory_approval_key_provider=store.load,
+            template,
+            manifest,
+            source_root=_repo_path(args.source_root),
         )
-        destination = write_broker_calendar_plan_exclusive(
+        destination = write_regulatory_artifact_exclusive(
             _repo_path(args.output),
-            plan,
+            evidence,
         )
     except (
         BrokerEvidenceProfileError,
         BrokerWindowPlanError,
-        EvidenceCredentialError,
-        OSError,
+        RegistrationReviewError,
         SecureFileError,
+        OSError,
+        ValueError,
     ) as exc:
-        print("BROKER_PLAN_GATE_BLOCKED: " + str(exc))
+        print("REGULATORY_EVIDENCE_PREPARATION_BLOCKED: " + str(exc))
         print("Safety lock remains active; no broker order was submitted.")
         return 2
-    print(f"Broker calendar plan written: {destination}")
-    print(f"Candidate: {profile.candidate_id}")
-    print(f"Plan SHA-256: {plan['plan_payload_sha256']}")
+    print("Regulatory evidence written: " + str(destination))
+    print("Candidate: " + profile.candidate_id)
+    print("Evidence SHA-256: " + str(evidence["evidence_bundle_sha256"]))
+    print("Registration enabled: false")
+    print("Promotion eligible: false")
     print("Order capability: DISABLED")
     return 0
 

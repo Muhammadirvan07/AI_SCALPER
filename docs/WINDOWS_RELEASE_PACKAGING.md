@@ -45,6 +45,13 @@ Bundle operator juga membawa pipeline evidence broker-neutral:
 `setup_broker_evidence_key.py`, `mt5_readonly_discovery.py`,
 `prepare_broker_window.py`, `build_broker_calendar.py`,
 `register_broker_forward_contract.py`, dan `run_broker_shadow_once.py`.
+Tooling review regulatory (`setup_regulatory_review_key.py`,
+`prepare_broker_registration_review.py`,
+`sign_broker_registration_review.py`, dan
+`assemble_broker_registration_review.py`) juga hanya berada di bundle
+operator; ia tidak masuk minimal shadow service. Reviewer key tetap berada di
+Windows Credential Manager dan semua output review mempertahankan registration
+serta order capability disabled.
 Masing-masing mengikat exact candidate profile. FBS saat ini sengaja ditolak
 oleh external/registration gate, sehingga keberadaan file di bundle tidak
 mengaktifkan evidence maupun order.

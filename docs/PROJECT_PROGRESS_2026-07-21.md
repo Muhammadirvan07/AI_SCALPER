@@ -32,3 +32,17 @@ Continue exactly one FBS XAU/FX M15 shadow instance so the open EURUSD paper
 position can close at TP, SL, or its configured timeout. Preserve the existing
 SQLite journal and regenerate the FBS performance report after `paper_closed`
 increases. Do not run the FBS Crypto M5 shadow concurrently on the same account.
+
+## Architecture Checkpoint
+
+- Broker registration-review tooling is implemented as a fail-closed local
+  workflow: exact official source bytes, candidate/template/lane binding, two
+  independent domain-separated HMAC approvals, immutable assembly, and
+  downstream vault-key verification.
+- The tooling does not download documents, decide legal meaning, issue human
+  approvals, patch tracked candidate config, or enable registration.
+- Both Phillip profiles remain
+  `BLOCKED_PENDING_SIGNED_REGULATORY_AND_REGISTRATION_REVIEW` with
+  `registration_enabled=false`; no actual compliance/legal approval is claimed.
+- The operator workflow is documented in
+  `docs/BROKER_REGISTRATION_REVIEW.md` for a later independent review.

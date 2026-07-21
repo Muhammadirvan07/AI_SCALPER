@@ -12,7 +12,7 @@ membuka demo-auto maupun live.
 | Tahap | Status | Bukti saat ini |
 |---|---|---|
 | 1. Baseline terkunci | Sebagian | Seluruh safety lock terjaga, tetapi worktree telah berisi perubahan user/runtime sebelum implementasi sehingga clean baseline commit terisolasi belum dibuat. |
-| 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, signed base calendar plus prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
+| 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, byte-derived regulatory review package with two independent HMAC approvals, signed base calendar plus prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
 | 3. Broker read-only shadow | FBS and Phillip diagnostic bindings observed; evidence not started | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip sanitized discovery-v3 inputs berhasil dibuat dan reviewed regular M15 base schedules tersedia, tetapi profile registration, regulatory approval, 20-session benchmark, broker-forward contract, dan promotion evidence tetap disabled/pending. FINEX tidak dipakai untuk observasi baru. |
 | 4. Manual demo | Component foundation ready, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-wide fence, risk governor, fenced journal, one-shot runtime composition, MT5 preflight/executor/reconciliation, dan dual-control kill-switch reset tersedia. Sepuluh order demo belum dilakukan. |
 | 5. Demo-auto soak | Not started | Policy tetap locked; belum ada 30 hari, 50 fill, minimal 20 XAU, atau clean incident record. |
@@ -77,6 +77,12 @@ membuka demo-auto maupun live.
 - Gate broker generik tidak circular: setup key, discovery, plan, dan calendar
   tunduk pada gate sumber masing-masing; hanya contract registration dan
   evidence collector yang mensyaratkan profile `registration_enabled=true`.
+- Registration-review tooling menghitung hash dari byte dokumen authority
+  lokal, mengikat satu candidate/template/symbol lane, dan membutuhkan tepat
+  dua approval HMAC dengan role, approver, key ID, serta secret fingerprint
+  berbeda. Reviewer key hanya dimuat dari Windows Credential Manager. Final
+  assembly tidak mengubah tracked config dan profile Phillip tetap disabled;
+  plan/contract kelak juga mengulang verifier dengan vault key provider.
 
 ### Runtime trust boundary
 
@@ -217,11 +223,14 @@ BTCUSD = shadow-only
    mempertahankan urutan yang dikembalikan broker; sistem tidak lagi membuat
    urutan lexicographic sintetis. Record yang benar-benar identik ditolak
    fail-closed karena urutan aslinya tidak dapat dibedakan.
-4. Signed base calendar dan prospective amendment chain membuktikan integrity,
+4. Byte-derived regulatory review, signed base calendar, dan prospective
+   amendment chain membuktikan integrity,
    urutan, no-hindsight closure, serta final source-inventory binding. Kontrol
-   ini belum membuktikan bahwa review manusia terhadap setiap dokumen resmi
-   benar, dan exact broker calendar/export provenance belum dijalankan sebagai
-   evidence window nyata. Phillip profile registration tetap false.
+   ini belum membuktikan bahwa reviewer manusia independen/berkualifikasi atau
+   interpretasi setiap dokumen resmi benar, dan exact broker calendar/export
+   provenance belum dijalankan sebagai evidence window nyata. Tidak ada
+   compliance/legal approval aktual yang diklaim; Phillip profile registration
+   tetap false.
 5. Trusted-clock interface dan drift gate sudah ada, tetapi Windows time source,
    independent clock monitoring, dan off-host time attestation belum dipasang.
 6. Signed-news verifier sudah ada, tetapi production provider, independent key

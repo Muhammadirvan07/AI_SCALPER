@@ -233,10 +233,13 @@ Do not run `prepare_broker_window.py` or
 `register_broker_forward_contract.py` for Phillip yet. The tracked templates
 now contain reviewed regular schedules and a closure-only prospective
 amendment policy, but `special_hours_review.attested=false` and both profile
-registrations remain disabled. Registration may be enabled only in a reviewed
-clean commit after the required independent signed regulatory approval and
-registration review are present. A valid base calendar or discovery receipt
-does not open that gate.
+registrations remain disabled. The signed review tooling and exact operator
+workflow are documented in
+[`BROKER_REGISTRATION_REVIEW.md`](BROKER_REGISTRATION_REVIEW.md). Tooling
+availability does not count as either independent human approval and does not
+open the gate. Registration may be enabled only in a later reviewed clean
+commit after the exact signed observation and calendar review are accepted. A
+valid base calendar or discovery receipt does not open that gate.
 
 Reviewed schedule basis:
 
