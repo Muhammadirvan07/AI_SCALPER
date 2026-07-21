@@ -34,7 +34,8 @@ git pull origin agent/live-grade-phase3
 
 python -B .\run_mt5_binding_probe.py `
   --candidate phillip-fx `
-  --scope fx
+  --scope fx `
+  --terminal-path "C:\path\to\Phillip MT5\terminal64.exe"
 ```
 
 ## Commodity account
@@ -44,8 +45,14 @@ After switching to the separate commodity CFD demo account:
 ```powershell
 python -B .\run_mt5_binding_probe.py `
   --candidate phillip-commodity `
-  --scope commodity
+  --scope commodity `
+  --terminal-path "C:\path\to\Phillip MT5\terminal64.exe"
 ```
+
+`--candidate` is a reviewed identity label; it does not switch MT5 accounts.
+The explicit terminal path prevents Python from attaching to a different
+installed broker terminal. Known candidate families also fail closed when the
+connected MT5 company does not match the requested label.
 
 The probe may use MT5's read-only symbol catalog when direct common aliases are
 not visible. Only symbol name, description, and path are retained. A successful

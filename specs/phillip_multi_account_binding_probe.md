@@ -11,6 +11,10 @@ a time without weakening the read-only boundary.
 - `--scope fx` requires only `EURUSD`, `USDJPY`, and `AUDUSD`.
 - `--scope commodity` requires only canonical `XAUUSD`.
 - `--scope all` preserves the legacy four-symbol behavior.
+- `--terminal-path` pins the exact MT5 executable when several broker
+  terminals are installed.
+- A known `phillip-*` candidate must attest a Phillip Securities Japan company
+  identity; a mislabeled FBS or other terminal is rejected.
 - The optional MT5 symbol catalog capability is read-only.
 - Catalog output is reduced to symbol `name`, `description`, and `path`.
 - Unique delimiter-qualified broker names may be selected; ambiguous matches

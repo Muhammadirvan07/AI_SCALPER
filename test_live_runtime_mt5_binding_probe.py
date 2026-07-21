@@ -48,6 +48,7 @@ class FakeMT5:
             )
         }
         self.shutdown_called = False
+        self.initialize_path = None
 
     def account_info(self):
         return dict(self.account)
@@ -65,7 +66,8 @@ class FakeMT5:
     def copy_ticks_range(self, *_args):
         return ()
 
-    def initialize(self):
+    def initialize(self, path=None):
+        self.initialize_path = path
         return True
 
     def shutdown(self):
@@ -129,6 +131,7 @@ class MT5BindingProbeTests(unittest.TestCase):
 
     def test_catalog_discovers_delimited_broker_symbols_for_fx_scope(self) -> None:
         fake = FakeMT5()
+        fake.account["company"] = "Phillip Securities Japan, Ltd."
         fake.symbols = {
             "EURUSD.fx": {
                 "name": "EURUSD.fx",
@@ -169,6 +172,7 @@ class MT5BindingProbeTests(unittest.TestCase):
 
     def test_commodity_scope_requires_only_gold_binding(self) -> None:
         fake = FakeMT5()
+        fake.account["company"] = "Phillip Securities Japan, Ltd."
         fake.symbols = {
             "XAUUSD.cfd": {
                 "name": "XAUUSD.cfd",
@@ -194,6 +198,36 @@ class MT5BindingProbeTests(unittest.TestCase):
                 candidate_id="phillip",
                 scope="stocks",
             )
+
+    def test_known_candidate_rejects_wrong_connected_broker(self) -> None:
+        with self.assertRaisesRegex(MT5BindingProbeError, "company"):
+            probe_candidate_binding(
+                ReadOnlyMT5Facade(FakeMT5()),
+                candidate_id="phillip-commodity",
+                scope="commodity",
+            )
+
+    def test_cli_can_pin_the_exact_terminal_executable(self) -> None:
+        fake = FakeMT5()
+        terminal_path = r"C:\PhillipMT5\terminal64.exe"
+        output = io.StringIO()
+        with (
+            patch.dict(sys.modules, {"MetaTrader5": fake}),
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "run_mt5_binding_probe.py",
+                    "--candidate",
+                    "fbs",
+                    "--terminal-path",
+                    terminal_path,
+                ],
+            ),
+            redirect_stdout(output),
+        ):
+            self.assertEqual(0, probe_main())
+        self.assertEqual(terminal_path, fake.initialize_path)
 
     def test_cli_prints_safe_json_and_has_no_credential_argument(self) -> None:
         fake = FakeMT5()

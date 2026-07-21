@@ -26,12 +26,21 @@ def main() -> int:
         default="all",
         help="Required symbol lane for brokers that separate FX and commodity accounts",
     )
+    parser.add_argument(
+        "--terminal-path",
+        help="Exact terminal64.exe path when multiple MT5 installations exist",
+    )
     args = parser.parse_args()
 
     try:
         import MetaTrader5 as mt5
 
-        if not mt5.initialize():
+        initialized = (
+            mt5.initialize(args.terminal_path)
+            if args.terminal_path
+            else mt5.initialize()
+        )
+        if not initialized:
             print("MT5_BINDING_PROBE_FAILED: terminal initialization failed")
             return 1
         try:

@@ -30,6 +30,10 @@ BINDING_SCOPE_SYMBOLS = {
     "FX": ("AUDUSD", "EURUSD", "USDJPY"),
     "COMMODITY": ("XAUUSD",),
 }
+KNOWN_CANDIDATE_COMPANY_TOKENS = {
+    "FBS": "FBS",
+    "PHILLIP": "PHILLIP SECURITIES JAPAN",
+}
 
 
 class MT5BindingProbeError(RuntimeError):
@@ -62,6 +66,18 @@ def _required_int(value: object, field: str, *, minimum: int = 0) -> int:
     if parsed < minimum:
         raise MT5BindingProbeError(f"required MT5 field is invalid: {field}")
     return parsed
+
+
+def _attest_candidate_company(candidate_id: str, company: str) -> None:
+    candidate_family = candidate_id.split("-", 1)[0].upper()
+    expected_token = KNOWN_CANDIDATE_COMPANY_TOKENS.get(candidate_family)
+    if expected_token is None:
+        return
+    normalized_company = " ".join(company.upper().split())
+    if expected_token not in normalized_company:
+        raise MT5BindingProbeError(
+            "connected MT5 company does not match the requested candidate"
+        )
 
 
 def _probe_symbol_aliases(
@@ -202,6 +218,8 @@ def probe_candidate_binding(
         raise MT5BindingProbeError(f"read-only attestation failed: {exc}") from exc
 
     account = _mapping(facade.account_info(), "MT5 account")
+    company = _required_text(account.get("company"), "company")
+    _attest_candidate_company(normalized_candidate, company)
     trade_mode = _required_int(account.get("trade_mode"), "trade_mode")
     demo_mode = int(facade.ACCOUNT_TRADE_MODE_DEMO)
     if trade_mode != demo_mode:
@@ -230,7 +248,7 @@ def probe_candidate_binding(
         "status": "BINDING_PROBE_ONLY",
         "binding_ready": binding_ready,
         "account": {
-            "company": _required_text(account.get("company"), "company"),
+            "company": company,
             "server": _required_text(account.get("server"), "server"),
             "environment": "DEMO",
             "currency": _required_text(account.get("currency"), "currency").upper(),
@@ -255,6 +273,7 @@ def probe_candidate_binding(
 
 __all__ = [
     "BINDING_SCOPE_SYMBOLS",
+    "KNOWN_CANDIDATE_COMPANY_TOKENS",
     "MT5BindingProbeError",
     "probe_candidate_binding",
 ]
