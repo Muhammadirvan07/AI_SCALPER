@@ -258,9 +258,10 @@ class BrokerExportBinding(CanonicalContract):
             "instrument_spec",
             _normalize_instrument_spec(self.instrument_spec, canonical),
         )
+        if type(self.account_trade_expert) is not bool:
+            raise ValueError("account_trade_expert must be bool")
         if (
             self.account_trade_allowed is not False
-            or self.account_trade_expert is not False
             or self.terminal_trade_allowed is not False
             or self.terminal_tradeapi_disabled is not True
         ):
@@ -283,10 +284,10 @@ class BrokerExportBinding(CanonicalContract):
                 "server": self.server,
                 "environment": self.environment,
                 "account_currency": self.account_currency,
-                "account_trade_allowed": False,
-                "account_trade_expert": False,
-                "terminal_trade_allowed": False,
-                "terminal_tradeapi_disabled": True,
+                "account_trade_allowed": self.account_trade_allowed,
+                "account_trade_expert": self.account_trade_expert,
+                "terminal_trade_allowed": self.terminal_trade_allowed,
+                "terminal_tradeapi_disabled": self.terminal_tradeapi_disabled,
                 "canonical_symbol": self.canonical_symbol,
                 "broker_symbol": self.broker_symbol,
                 "instrument_spec": self.instrument_spec,
@@ -309,6 +310,7 @@ def broker_export_binding_from_spec(
     account_identity_key_id: str,
     evidence_identity: EvidenceInstrumentIdentity,
     account_identity_scheme: str = ACCOUNT_IDENTITY_SCHEME,
+    account_trade_expert: bool = False,
 ) -> BrokerExportBinding:
     """Bridge one validated runtime spec into the exact evidence schema.
 
@@ -356,6 +358,7 @@ def broker_export_binding_from_spec(
         canonical_symbol=broker_spec.symbol,
         broker_symbol=broker_spec.broker_symbol,
         instrument_spec=instrument_spec,
+        account_trade_expert=account_trade_expert,
     )
 
 
@@ -1303,7 +1306,7 @@ class MT5EvidenceExporter:
             failures.append("ACCOUNT_CURRENCY")
         if account.get("trade_allowed") is not False:
             failures.append("ACCOUNT_TRADE_ALLOWED")
-        if account.get("trade_expert") is not False:
+        if account.get("trade_expert") is not self.binding.account_trade_expert:
             failures.append("ACCOUNT_TRADE_EXPERT")
         if terminal.get("trade_allowed") is not False:
             failures.append("TERMINAL_TRADE_ALLOWED")
@@ -1370,10 +1373,10 @@ class MT5EvidenceExporter:
             "server": self.binding.server,
             "environment": self.binding.environment,
             "account_currency": self.binding.account_currency,
-            "account_trade_allowed": False,
-            "account_trade_expert": False,
-            "terminal_trade_allowed": False,
-            "terminal_tradeapi_disabled": True,
+            "account_trade_allowed": account["trade_allowed"],
+            "account_trade_expert": account["trade_expert"],
+            "terminal_trade_allowed": terminal["trade_allowed"],
+            "terminal_tradeapi_disabled": terminal["tradeapi_disabled"],
             "canonical_symbol": self.binding.canonical_symbol,
             "broker_symbol": self.binding.broker_symbol,
             "instrument_spec_sha256": canonical_evidence_payload_sha256(spec),
@@ -1414,10 +1417,10 @@ class MT5EvidenceExporter:
             "account_identity_scheme": self.binding.account_identity_scheme,
             "account_identity_key_id": self.binding.account_identity_key_id,
             "account_currency": self.binding.account_currency,
-            "account_trade_allowed": False,
-            "account_trade_expert": False,
-            "terminal_trade_allowed": False,
-            "terminal_tradeapi_disabled": True,
+            "account_trade_allowed": self.binding.account_trade_allowed,
+            "account_trade_expert": self.binding.account_trade_expert,
+            "terminal_trade_allowed": self.binding.terminal_trade_allowed,
+            "terminal_tradeapi_disabled": self.binding.terminal_tradeapi_disabled,
             "canonical_symbol": self.binding.canonical_symbol,
             "broker_symbol": self.binding.broker_symbol,
         }

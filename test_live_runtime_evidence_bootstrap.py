@@ -76,6 +76,7 @@ def discovery_receipt(
     server: str = "XMTrading-MT5 3",
     required_symbols: tuple[str, ...] = ("XAUUSD", "EURUSD", "USDJPY", "AUDUSD"),
     broker_symbols: dict[str, str] | None = None,
+    trade_expert: bool = False,
 ) -> dict[str, object]:
     account_identity_input = {
         "login": 70000001,
@@ -85,7 +86,7 @@ def discovery_receipt(
         "margin_mode": 2,
         "trade_mode": 0,
         "trade_allowed": False,
-        "trade_expert": False,
+        "trade_expert": trade_expert,
     }
     symbol_facts = {
         "XAUUSD": {
@@ -136,7 +137,7 @@ def discovery_receipt(
             "leverage": 500,
             "margin_mode": 2,
             "trade_allowed": False,
-            "trade_expert": False,
+            "trade_expert": trade_expert,
             "account_identity_sha256": account_identity_sha256(
                 account_identity_input,
                 TEST_KEY,
@@ -395,6 +396,25 @@ class EvidenceBootstrapTests(unittest.TestCase):
         bad_calendar["calendars"]["XAUUSD"]["metadata"]["calendar_version"] = "tampered"
         with self.assertRaisesRegex(EvidenceBootstrapError, "SHA-256"):
             verify_calendar_bundle(bad_calendar)
+
+    def test_investor_expert_policy_flag_remains_truthful_in_broker_source(self):
+        discovery = discovery_receipt(
+            candidate_id=SYNTHETIC_CANDIDATE,
+            company=SYNTHETIC_ENTITY,
+            server=SYNTHETIC_SERVER,
+            trade_expert=True,
+        )
+        verify_discovery_receipt(discovery, TEST_KEY)
+        sources = evidence_bootstrap._broker_sources(
+            self.plan,
+            discovery,
+            self.calendar,
+            key_id=discovery["account"]["account_identity_key_id"],
+        )
+        self.assertTrue(sources["XAUUSD"]["account_trade_expert"])
+        self.assertTrue(
+            all(source["account_trade_allowed"] is False for source in sources.values())
+        )
 
     def test_self_rehashed_calendar_cannot_escape_prepared_plan(self):
         tampered = copy.deepcopy(self.calendar)

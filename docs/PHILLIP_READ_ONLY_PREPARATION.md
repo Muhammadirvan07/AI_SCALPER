@@ -220,6 +220,12 @@ commodity receipts contain only XAUUSD facts. Cross-lane symbol mixing,
 candidate drift, terminal-path drift, raw account identifiers, or enabled
 mutation capability fail closed.
 
+Phillip investor sessions may report `account.trade_expert=true` even though
+`account.trade_allowed=false`. The receipt records that broker flag exactly;
+it is not treated as order capability. Discovery still fails unless account
+trading is unavailable, terminal Algo Trading is off, and external Python API
+trading is disabled. The read-only facade exposes no order API.
+
 Do not run `prepare_broker_window.py` or
 `register_broker_forward_contract.py` for Phillip yet. Both tracked calendar
 files are explicitly unattested scaffolds and both profile registrations are

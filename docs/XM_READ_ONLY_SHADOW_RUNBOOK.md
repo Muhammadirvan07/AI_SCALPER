@@ -45,8 +45,10 @@ M15/tick, menjalankan decision core, dan mencatat posisi paper virtual.
 - Tombol Algo Trading/AutoTrading pada MT5 tetap OFF.
 - Opsi MT5 untuk menonaktifkan automated trading melalui external Python API
   wajib ON. Discovery gagal bila `terminal.tradeapi_disabled` bukan `true`.
-- `account.trade_allowed=false`, `account.trade_expert=false`, dan
-  `terminal.trade_allowed=false` wajib terbukti dari API MT5.
+- `account.trade_allowed=false` dan `terminal.trade_allowed=false` wajib
+  terbukti dari API MT5. `account.trade_expert` harus tersedia sebagai boolean
+  dan dicatat apa adanya; nilainya tidak membuka order ketika effective locks
+  lainnya tetap aktif.
 
 ## 1. Sinkronkan release dan dependency
 
@@ -187,12 +189,12 @@ lagi tepat sebelum setiap exporter yang due. Jangan menurunkan floor ini selama
 window aktif. `MINIMUM_FREE_DISK_NOT_SATISFIED` mencegah append dan menghasilkan
 `HOLD`.
 
-Sesudah `mt5.initialize()`, runner wajib menerima empat fakta exact:
+Sesudah `mt5.initialize()`, runner wajib menerima effective lock berikut:
 
 - `account.trade_allowed=false`
-- `account.trade_expert=false`
 - `terminal.trade_allowed=false`
 - `terminal.tradeapi_disabled=true`
+- `account.trade_expert` tersedia sebagai boolean dan diikat apa adanya
 
 Flag yang hilang atau berbeda menghasilkan
 `MT5_READ_ONLY_ATTESTATION_FAILED` sebelum verifikasi/collection cycle, bahkan

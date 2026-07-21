@@ -911,9 +911,10 @@ def _validate_broker_source(symbol: str, source: object) -> dict:
     required = allowed - {"feed_grade"} - boolean_fields
     if any(not str(result.get(field) or "").strip() for field in required):
         raise EvidenceValidationError("BROKER_SOURCE_REQUIRED", symbol)
+    if any(type(result.get(field)) is not bool for field in boolean_fields):
+        raise EvidenceValidationError("BROKER_SOURCE_NOT_READ_ONLY", symbol)
     if (
         result.get("account_trade_allowed") is not False
-        or result.get("account_trade_expert") is not False
         or result.get("terminal_trade_allowed") is not False
         or result.get("terminal_tradeapi_disabled") is not True
     ):

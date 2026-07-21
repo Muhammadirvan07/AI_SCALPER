@@ -49,10 +49,11 @@ membuka demo-auto maupun live.
   sebelum dan sesudah tick collection.
 - Discovery v3 dan setiap capture juga mewajibkan investor/read-only account
   serta terminal-native order lock: `account.trade_allowed=false`,
-  `account.trade_expert=false`, `terminal.trade_allowed=false`, dan
-  `terminal.tradeapi_disabled=true`. Runtime shadow mengimpor package secara
-  lazy dan facade tidak menyimpan raw MT5 module atau mengekspor execution
-  stack.
+  `terminal.trade_allowed=false`, dan `terminal.tradeapi_disabled=true`.
+  `account.trade_expert` wajib berupa boolean dan dicatat apa adanya karena
+  sebagian investor session melaporkan `true` walaupun account trading tetap
+  unavailable. Runtime shadow mengimpor package secara lazy dan facade tidak
+  menyimpan raw MT5 module atau mengekspor execution stack.
 - Shadow collector memegang persistent OS singleton fence untuk seluruh siklus
   verify, plan, collect, append, dan SQLite receipt. Optimistic paired sequence
   fence menolak stale writer, sedangkan timestamp append baru dicetak setelah

@@ -36,7 +36,8 @@ external gates and must be supplied before a forward contract can be minted.
 
 ## Non-Functional Requirements
 
-- NFR-S1: Discovery MUST fail closed unless the connected account is DEMO and both account and terminal mutation capabilities are disabled.
+- NFR-S1: Discovery MUST fail closed unless the connected account is DEMO, `account.trade_allowed=false`, `terminal.trade_allowed=false`, and `terminal.tradeapi_disabled=true`.
+- NFR-S1A: `account.trade_expert` MUST be an explicit boolean and MUST be recorded truthfully. A broker-reported `true` is informational when account trading is unavailable and MUST NOT override any effective mutation lock.
 - NFR-S2: The terminal executable path MUST be absolute, exist, be a regular file, and have basename `terminal64.exe` before MT5 initialization.
 - NFR-S3: Candidate, discovery, plan, calendar, and contract symbol sets MUST match exactly; silent supersets and subsets are prohibited.
 - NFR-R1: Artifact writes MUST remain create-exclusive or atomic and MUST never overwrite an existing immutable artifact.
@@ -50,6 +51,7 @@ Given a read-only Phillip FX demo facade and the reviewed three-symbol map
 When discovery is executed for `phillip-fx`
 Then the signed receipt contains exactly AUDUSD, EURUSD, and USDJPY
 And it contains no raw account identity or balance fields.
+And the observed account expert policy flag is preserved in the signed receipt.
 
 ### AC-2: Commodity subset discovery (FR-1, FR-3, NFR-S1, NFR-S3)
 Given a read-only Phillip commodity demo facade and the reviewed XAUUSD map

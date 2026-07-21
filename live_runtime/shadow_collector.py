@@ -31,6 +31,23 @@ class ShadowCollectorError(RuntimeError):
     pass
 
 
+def _canonical_symbol_subset(value: object, field: str) -> tuple[str, ...]:
+    if isinstance(value, (str, bytes)):
+        raise ShadowCollectorError(f"{field} symbol set is invalid")
+    try:
+        raw = tuple(str(symbol).upper() for symbol in value)
+    except TypeError as exc:
+        raise ShadowCollectorError(f"{field} symbol set is invalid") from exc
+    normalized = tuple(symbol for symbol in REQUIRED_SYMBOLS if symbol in raw)
+    if (
+        not raw
+        or len(set(raw)) != len(raw)
+        or raw != normalized
+    ):
+        raise ShadowCollectorError(f"{field} symbol set is invalid")
+    return normalized
+
+
 @dataclass(frozen=True)
 class BarPlan:
     symbol: str
@@ -103,12 +120,19 @@ class ShadowCycleStore:
         symbol_status: Mapping[str, str],
         results: Mapping[str, BrokerExportResult],
         failures: tuple[str, ...],
+        required_symbols: tuple[str, ...] = REQUIRED_SYMBOLS,
     ) -> ShadowCycleReceipt:
         normalized_cycle = require_text("cycle_id", cycle_id)
         require_utc("observed_at", observed_at)
+        registered_symbols = _canonical_symbol_subset(
+            required_symbols,
+            "cycle receipt",
+        )
         statuses = {str(key).upper(): str(value) for key, value in symbol_status.items()}
-        if set(statuses) != set(REQUIRED_SYMBOLS):
-            raise ShadowCollectorError("cycle receipt requires all four symbol statuses")
+        if set(statuses) != set(registered_symbols):
+            raise ShadowCollectorError(
+                "cycle receipt must match the registered symbol set"
+            )
         allowed_statuses = {"APPENDED", "NOT_DUE", "WINDOW_COMPLETE", "HOLD"}
         if any(value not in allowed_statuses for value in statuses.values()):
             raise ShadowCollectorError("cycle receipt contains an invalid symbol status")
@@ -235,7 +259,11 @@ def plan_next_bar(
 ) -> BarPlan:
     require_utc("now", now)
     normalized = str(symbol).upper()
-    if normalized not in REQUIRED_SYMBOLS:
+    registered_symbols = _canonical_symbol_subset(
+        contract.get("symbols"),
+        "contract",
+    )
+    if normalized not in registered_symbols:
         raise ShadowCollectorError("symbol is outside the evidence contract")
     if last_open_at is not None:
         require_utc("last_open_at", last_open_at)
@@ -349,6 +377,10 @@ def _run_shadow_cycle_locked(
         artifacts / "forward" / normalized_contract_id / "contract.json"
     )
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    registered_symbols = _canonical_symbol_subset(
+        contract.get("symbols"),
+        "contract",
+    )
     facade = ReadOnlyMT5Facade(mt5_module)
     cycle_started = now_provider()
     require_utc("cycle_started", cycle_started)
@@ -360,7 +392,7 @@ def _run_shadow_cycle_locked(
     statuses: dict[str, str] = {}
     results: dict[str, BrokerExportResult] = {}
     failures: list[str] = []
-    for symbol in sorted(REQUIRED_SYMBOLS):
+    for symbol in registered_symbols:
         plan = plan_next_bar(
             contract,
             symbol,
@@ -397,6 +429,10 @@ def _run_shadow_cycle_locked(
             canonical_symbol=symbol,
             broker_symbol=source["broker_symbol"],
             instrument_spec=spec,
+            account_trade_allowed=source["account_trade_allowed"],
+            account_trade_expert=source["account_trade_expert"],
+            terminal_trade_allowed=source["terminal_trade_allowed"],
+            terminal_tradeapi_disabled=source["terminal_tradeapi_disabled"],
         )
         if pre_evidence_mutation_check is not None:
             try:
@@ -439,6 +475,7 @@ def _run_shadow_cycle_locked(
         symbol_status=statuses,
         results=results,
         failures=tuple(failures),
+        required_symbols=registered_symbols,
     )
 
 

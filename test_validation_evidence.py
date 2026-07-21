@@ -254,7 +254,7 @@ class ValidationEvidenceTests(unittest.TestCase):
         }
 
     @staticmethod
-    def _broker_sources():
+    def _broker_sources(*, trade_expert=False):
         broker_symbols = {
             "XAUUSD": "GOLD.a",
             "EURUSD": "EURUSD.a",
@@ -276,7 +276,7 @@ class ValidationEvidenceTests(unittest.TestCase):
                 "account_identity_key_id": "local-key-01",
                 "account_currency": "USD",
                 "account_trade_allowed": False,
-                "account_trade_expert": False,
+                "account_trade_expert": trade_expert,
                 "terminal_trade_allowed": False,
                 "terminal_tradeapi_disabled": True,
                 "canonical_symbol": symbol,
@@ -707,6 +707,26 @@ class ValidationEvidenceTests(unittest.TestCase):
                 _canonical_sha256(contract["session_calendars"][symbol]),
                 contract["session_calendar_sha256"][symbol],
             )
+
+    def test_forward_contract_records_investor_expert_policy_flag_truthfully(self):
+        snapshot = self._create_snapshot(snapshot_id="expert-policy-snapshot")
+        sources = self._broker_sources(trade_expert=True)
+        calendars = self._session_calendars(broker_sources=sources)
+        contract = register_forward_contract(
+            self.root,
+            snapshot,
+            self._ruleset(),
+            sources,
+            self._instrument_specs(calendars),
+            session_calendars=calendars,
+            contract_id="contract-expert-policy",
+            registered_at="2026-01-01T12:00:00Z",
+            observation_start_at="2026-01-02T00:00:00Z",
+            blind_until="2026-01-03T00:00:00Z",
+            git_state_provider=self._clean_git_state,
+        )
+        self.assertTrue(contract["broker_sources"]["XAUUSD"]["account_trade_expert"])
+        self.assertFalse(contract["broker_sources"]["XAUUSD"]["account_trade_allowed"])
 
     def test_forward_contract_and_verifier_use_registered_symbol_subset(self):
         snapshot = self._create_snapshot()

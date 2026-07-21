@@ -316,7 +316,7 @@ def verify_discovery_receipt(
     if (
         account.get("environment") != "DEMO"
         or account.get("trade_allowed") is not False
-        or account.get("trade_expert") is not False
+        or type(account.get("trade_expert")) is not bool
         or account.get("login_stored") is not False
         or account.get("name_stored") is not False
         or account.get("balance_stored") is not False
@@ -521,7 +521,7 @@ def _broker_sources(
             "account_identity_key_id": account["account_identity_key_id"],
             "account_currency": account["currency"],
             "account_trade_allowed": False,
-            "account_trade_expert": False,
+            "account_trade_expert": account["trade_expert"],
             "terminal_trade_allowed": False,
             "terminal_tradeapi_disabled": True,
             "canonical_symbol": symbol,

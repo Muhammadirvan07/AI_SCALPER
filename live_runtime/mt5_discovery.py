@@ -99,9 +99,9 @@ def discover_mt5_facts(
         raise MT5DiscoveryError(
             "phase 3 discovery requires an investor/read-only account login"
         )
-    if account.get("trade_expert") is not False:
+    if type(account.get("trade_expert")) is not bool:
         raise MT5DiscoveryError(
-            "phase 3 discovery requires expert trading disabled for the account"
+            "phase 3 discovery requires an explicit account expert policy flag"
         )
     if terminal.get("trade_allowed") is not False:
         raise MT5DiscoveryError(
@@ -120,7 +120,7 @@ def discover_mt5_facts(
         "leverage": int(_required(account, "leverage")),
         "margin_mode": int(_required(account, "margin_mode")),
         "trade_allowed": False,
-        "trade_expert": False,
+        "trade_expert": account["trade_expert"],
         "account_identity_sha256": account_identity_sha256(
             account,
             signing_key,

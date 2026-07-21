@@ -24,7 +24,13 @@ SYMBOL_MAP = {
 class FakeMT5:
     ACCOUNT_TRADE_MODE_DEMO = 0
 
-    def __init__(self, *, server="XMTrading-MT5 3", trade_mode=0):
+    def __init__(
+        self,
+        *,
+        server="XMTrading-MT5 3",
+        trade_mode=0,
+        trade_expert=False,
+    ):
         self.account = {
             "login": 12345678,
             "name": "Private Name",
@@ -37,7 +43,7 @@ class FakeMT5:
             "margin_mode": 2,
             "trade_mode": trade_mode,
             "trade_allowed": False,
-            "trade_expert": False,
+            "trade_expert": trade_expert,
         }
         self.terminal = {
             "trade_allowed": False,
@@ -149,6 +155,26 @@ class MT5DiscoveryTests(unittest.TestCase):
         enabled_api.terminal["tradeapi_disabled"] = False
         with self.assertRaisesRegex(MT5DiscoveryError, "Python trading API"):
             discover_mt5_facts(enabled_api, **kwargs)
+        missing_expert_policy = FakeMT5()
+        missing_expert_policy.account.pop("trade_expert")
+        with self.assertRaisesRegex(MT5DiscoveryError, "expert policy"):
+            discover_mt5_facts(missing_expert_policy, **kwargs)
+
+    def test_investor_expert_policy_flag_is_recorded_without_enabling_trading(self):
+        payload = discover_mt5_facts(
+            FakeMT5(trade_expert=True),
+            candidate_id="phillip-fx",
+            expected_server="XMTrading-MT5 3",
+            broker_symbols=SYMBOL_MAP,
+            captured_at=datetime(2026, 7, 16, 2, 0, tzinfo=UTC),
+            signing_key=TEST_KEY,
+        )
+        self.assertFalse(payload["account"]["trade_allowed"])
+        self.assertTrue(payload["account"]["trade_expert"])
+        self.assertEqual(
+            {"trade_allowed": False, "tradeapi_disabled": True},
+            payload["terminal"],
+        )
 
     def test_incomplete_symbol_map_fails_before_symbol_reads(self):
         payload = discover_mt5_facts(

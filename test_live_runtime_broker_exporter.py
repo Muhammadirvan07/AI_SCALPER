@@ -399,6 +399,27 @@ class BrokerExporterTests(unittest.TestCase):
         self.assertTrue(bars["is_final"].all())
         self.assertEqual(1, len(fake.calls))
 
+    def test_investor_expert_policy_flag_is_bound_but_cannot_enable_trading(self) -> None:
+        account = dict(self.account, trade_expert=True)
+        binding = broker_export_binding_from_spec(
+            self.broker_spec,
+            expected_account_identity_sha256=account_identity_sha256(
+                account,
+                TEST_KEY,
+                environment="DEMO",
+            ),
+            account_identity_key_id=self.binding.account_identity_key_id,
+            evidence_identity=self.evidence_identity,
+            account_trade_expert=True,
+        )
+        ticks = self.exporter(
+            self.fake(account=account),
+            binding=binding,
+        ).collect("GOLD.a", start_utc=self.start, end_utc=self.end)
+        self.assertFalse(ticks.empty)
+        self.assertTrue(binding.public_binding_payload["account_trade_expert"])
+        self.assertFalse(binding.public_binding_payload["account_trade_allowed"])
+
     def test_naive_boundary_is_rejected_before_broker_call(self) -> None:
         fake = self.fake()
         with self.assertRaises(ValueError):

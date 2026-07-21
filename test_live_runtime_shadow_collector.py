@@ -33,6 +33,7 @@ def contract_fixture():
     plan = json.loads(Path("config/xm_calendar_window_01.json").read_text(encoding="utf-8"))
     bundle = build_calendar_bundle(plan)
     return {
+        "symbols": list(SYMBOLS),
         "timeframe_seconds": 900,
         "finalization_lag_seconds": 900,
         "max_append_lag_seconds": 60,
@@ -257,6 +258,94 @@ class ShadowCollectorTests(unittest.TestCase):
                     failures=(),
                 )
 
+    def test_cycle_receipt_supports_exact_registered_symbol_subset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ShadowCycleStore(
+                Path(directory) / "cycles.sqlite3",
+                contract_id="phillip-commodity-window-01-diagnostic-v1",
+            )
+            self.addCleanup(store.close)
+            receipt = store.record(
+                cycle_id="phillip-commodity-cycle-1",
+                observed_at=datetime(2026, 7, 21, 12, 0, tzinfo=UTC),
+                symbol_status={"XAUUSD": "NOT_DUE"},
+                results={},
+                failures=(),
+                required_symbols=("XAUUSD",),
+            )
+            self.assertEqual({"XAUUSD"}, set(receipt.symbol_status))
+
+    def test_shadow_cycle_iterates_only_registered_contract_subset(self):
+        contract = contract_fixture()
+        contract["symbols"] = ["XAUUSD"]
+        contract["session_calendars"] = {
+            "XAUUSD": contract["session_calendars"]["XAUUSD"]
+        }
+        contract["broker_sources"] = {
+            "XAUUSD": {
+                "account_identity_sha256": "e" * 64,
+                "account_identity_scheme": ACCOUNT_IDENTITY_SCHEME,
+                "account_identity_key_id": "test-key",
+                "source_instance_id": "phillip-commodity-test",
+                "broker_legal_name": "Phillip Securities Japan, Ltd.",
+                "broker_server": "PhillipSecuritiesJP-PROD",
+                "environment": "DEMO",
+                "account_currency": "JPY",
+                "account_trade_allowed": False,
+                "account_trade_expert": True,
+                "terminal_trade_allowed": False,
+                "terminal_tradeapi_disabled": True,
+                "broker_symbol": "XAUUSD.ps01",
+            }
+        }
+        contract["instrument_specs"] = {"XAUUSD": {}}
+
+        class FakeExporter:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def export(self, **kwargs):
+                return export_result(kwargs["canonical_symbol"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            forward = root / "artifacts" / "forward" / CONTRACT_ID
+            (forward / "heads" / "segments").mkdir(parents=True)
+            (forward / "contract.json").write_text(
+                json.dumps(contract),
+                encoding="utf-8",
+            )
+            (forward / "heads" / "segments" / "XAUUSD.json").write_text(
+                '{"last_at_utc":null}',
+                encoding="utf-8",
+            )
+            store = ShadowCycleStore(root / "cycles.sqlite3")
+            self.addCleanup(store.close)
+            with (
+                patch(
+                    "live_runtime.shadow_collector.verify_forward_evidence",
+                    return_value={"valid": True, "failures": []},
+                ),
+                patch(
+                    "live_runtime.shadow_collector.BrokerExportBinding",
+                    return_value=object(),
+                ),
+                patch(
+                    "live_runtime.shadow_collector.MT5EvidenceExporter",
+                    FakeExporter,
+                ),
+            ):
+                receipt = run_shadow_cycle(
+                    FakeMT5(),
+                    repo_root=root,
+                    artifact_root=root / "artifacts",
+                    signing_key=b"collector-test-signing-key-32bytes-minimum",
+                    store=store,
+                    now_provider=lambda: datetime(2026, 7, 19, 22, 30, tzinfo=UTC),
+                )
+            self.assertEqual({"XAUUSD"}, set(receipt.symbol_status))
+            self.assertEqual("APPENDED", receipt.symbol_status["XAUUSD"])
+
     def test_cycle_store_rejects_export_from_another_contract(self):
         with tempfile.TemporaryDirectory() as directory:
             store = ShadowCycleStore(
@@ -322,6 +411,10 @@ class ShadowCollectorTests(unittest.TestCase):
                 "account_identity_scheme": ACCOUNT_IDENTITY_SCHEME,
                 "account_identity_key_id": "test-key",
                 "account_currency": "JPY",
+                "account_trade_allowed": False,
+                "account_trade_expert": False,
+                "terminal_trade_allowed": False,
+                "terminal_tradeapi_disabled": True,
                 "canonical_symbol": symbol,
                 "broker_symbol": broker_symbol,
                 "source_instance_id": "xm-test-terminal-window-01",
@@ -503,6 +596,10 @@ class ShadowCollectorTests(unittest.TestCase):
                 "account_identity_scheme": ACCOUNT_IDENTITY_SCHEME,
                 "account_identity_key_id": "test-key",
                 "account_currency": "JPY",
+                "account_trade_allowed": False,
+                "account_trade_expert": False,
+                "terminal_trade_allowed": False,
+                "terminal_tradeapi_disabled": True,
                 "broker_symbol": broker_symbol,
                 "source_instance_id": "xm-test-terminal-window-01",
             }

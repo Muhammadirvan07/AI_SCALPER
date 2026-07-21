@@ -76,8 +76,9 @@ Task Scheduler dijalankan dengan service account saat boot dan mengikuti aturan:
 3. MT5 terhubung ke exact keyed account identity/server yang diikat dalam
    release manifest; raw login tidak disimpan.
 4. Read-only account/terminal attestation lulus:
-   `account.trade_allowed=false`, `account.trade_expert=false`,
-   `terminal.trade_allowed=false`, dan `terminal.tradeapi_disabled=true`.
+   `account.trade_allowed=false`, `terminal.trade_allowed=false`, dan
+   `terminal.tradeapi_disabled=true`. `account.trade_expert` harus boolean,
+   dicatat apa adanya, dan tidak dapat menggantikan ketiga effective locks.
 5. Reconciliation penuh berjalan sebelum entry baru dipertimbangkan.
 6. Jika journal state `SUBMITTING`, `ACKNOWLEDGED`, `PARTIAL`, `FILLED`, atau
    `UNCERTAIN`, jangan submit ulang; reconcile orders, positions, dan deals.
