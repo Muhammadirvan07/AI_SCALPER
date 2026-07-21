@@ -46,3 +46,23 @@ increases. Do not run the FBS Crypto M5 shadow concurrently on the same account.
   `registration_enabled=false`; no actual compliance/legal approval is claimed.
 - The operator workflow is documented in
   `docs/BROKER_REGISTRATION_REVIEW.md` for a later independent review.
+
+## Registration Activation Review Checkpoint
+
+- A non-mutating activation-review pack now verifies the exact discovery-v3,
+  two independent regulatory approvals, signed pre-window calendar review,
+  clean Git commit/tree, and three bounded proposed config images together.
+- The static verifier carries both base and proposed content, recomputes every
+  canonical hash, enforces lane cross-binding, and rejects a forged base even
+  when an attacker recomputes the top-level proposal hash.
+- Discovery, compliance, legal, and calendar HMAC keys are loaded once and
+  must have four distinct secret fingerprints. Keys remain in Windows
+  Credential Manager and are never exported.
+- Preparation output must be outside the repository and create-exclusive.
+  No apply, patch, commit, activation, credential, or order command exists.
+- Validation: spec `100/100`; focused/release suite `38/38`; full regression
+  suite `669/669`; safety/reproducibility suite `28/28`; targeted project
+  compilation and Windows dependency lock verification pass.
+- Both Phillip registrations remain false. Actual independent human approvals,
+  review-pack acceptance, a later explicit clean commit, contract registration,
+  broker-forward evidence, and every order/live gate remain outstanding.

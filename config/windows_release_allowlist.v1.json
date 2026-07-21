@@ -59,6 +59,7 @@
     "live_runtime/phillip_dual_shadow.py",
     "live_runtime/mt5_readonly.py",
     "live_runtime/realtime_diagnostic.py",
+    "live_runtime/registration_activation.py",
     "live_runtime/registration_review.py",
     "live_runtime/secure_files.py",
     "live_runtime/session_calendar.py",
@@ -71,6 +72,7 @@
     "mt5_readonly_discovery.py",
     "prepare_broker_window.py",
     "prepare_broker_registration_review.py",
+    "prepare_broker_registration_activation_review.py",
     "prepare_prewindow_calendar_review.py",
     "prepare_xm_window.py",
     "pylock.windows-cp312.toml",
@@ -114,6 +116,7 @@
     "vendor/wheels/ta-0.11.0-py3-none-any.whl",
     "vendor/windows-cp312-dependency-sbom.cdx.json",
     "vendor/windows-cp312-install-manifest.json",
+    "verify_broker_registration_activation_review.py",
     "verify_windows_dependency_lock.py",
     "verify_windows_vulnerability_audit.py"
   ]

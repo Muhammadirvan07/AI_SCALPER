@@ -262,6 +262,13 @@ exact operator-supplied source bytes and creates a separate Credential
 Manager-backed calendar-review approval. The current tracked templates are not
 automatically patched or activated by that workflow.
 
+After both regulatory approvals and the pre-window calendar review have been
+assembled, use the non-mutating review pack documented in
+[`BROKER_REGISTRATION_ACTIVATION_REVIEW.md`](BROKER_REGISTRATION_ACTIVATION_REVIEW.md).
+It verifies the discovery, approvals, clean Git identity, and exact three-file
+proposal together. It has no apply path and leaves both Phillip registrations
+false until a separate explicit human-reviewed commit.
+
 Official MT5 documentation states that simultaneous copies require different
 installation directories:
 https://www.metatrader5.com/en/terminal/help/start_advanced/start. Python binds

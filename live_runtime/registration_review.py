@@ -226,6 +226,34 @@ def load_regulatory_approval(path: str | Path) -> dict[str, object]:
     return payload
 
 
+def load_regulatory_observation(path: str | Path) -> dict[str, object]:
+    """Load one fully assembled observation without trusting its signatures.
+
+    Cryptographic verification remains the responsibility of
+    :func:`assemble_regulatory_observation` or
+    ``verify_candidate_legal_binding``.  This loader exists so callers cannot
+    accidentally accept an evidence-only object where two approvals are
+    required.
+    """
+
+    payload = load_regulatory_artifact(
+        path,
+        expected_fields=set(_EVIDENCE_FIELDS) | {"regulatory_approvals"},
+    )
+    if payload.get("schema_version") != REGULATORY_EVIDENCE_SCHEMA_VERSION:
+        raise RegistrationReviewError("unsupported regulatory observation schema")
+    approvals = payload.get("regulatory_approvals")
+    if not isinstance(approvals, list) or len(approvals) != 2:
+        raise RegistrationReviewError(
+            "regulatory observation requires exactly two approvals"
+        )
+    for approval in approvals:
+        if not isinstance(approval, Mapping):
+            raise RegistrationReviewError("regulatory approval must be an object")
+        _validate_approval_shape(approval)
+    return payload
+
+
 def _mapping(value: object, field: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise RegistrationReviewError(f"{field} must be an object")
@@ -799,6 +827,7 @@ __all__ = [
     "load_regulatory_artifact",
     "load_regulatory_approval",
     "load_regulatory_evidence",
+    "load_regulatory_observation",
     "load_regulatory_source_manifest",
     "prepare_regulatory_evidence",
     "regulatory_review_key_name",

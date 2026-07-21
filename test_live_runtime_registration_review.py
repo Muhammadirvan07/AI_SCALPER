@@ -16,6 +16,7 @@ from live_runtime.registration_review import (
     RegistrationReviewError,
     assemble_regulatory_observation,
     load_regulatory_artifact,
+    load_regulatory_observation,
     load_regulatory_source_manifest,
     prepare_regulatory_evidence,
     sign_regulatory_approval,
@@ -400,6 +401,27 @@ class RegistrationReviewTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 write_regulatory_artifact_exclusive(destination, payload)
             self.assertEqual(first, destination.read_bytes())
+
+    def test_assembled_observation_loader_requires_exactly_two_approvals(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence = self._evidence(root)
+            observation = assemble_regulatory_observation(
+                evidence,
+                self._approvals(evidence),
+                self.candidates,
+                approval_key_provider=KEYS.get,
+                now_provider=lambda: NOW + timedelta(minutes=10),
+            )
+            path = root / "observation.json"
+            path.write_text(json.dumps(observation), encoding="utf-8")
+            self.assertEqual(observation, load_regulatory_observation(path))
+
+            invalid = deepcopy(observation)
+            invalid["regulatory_approvals"] = invalid["regulatory_approvals"][:1]
+            path.write_text(json.dumps(invalid), encoding="utf-8")
+            with self.assertRaisesRegex(RegistrationReviewError, "exactly two"):
+                load_regulatory_observation(path)
 
     # FR-7: all assembled artifacts use the same strict JSON reader.
     def test_regulatory_artifact_reader_rejects_unknown_and_duplicate_fields(self) -> None:

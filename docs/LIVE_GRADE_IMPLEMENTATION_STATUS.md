@@ -83,6 +83,12 @@ membuka demo-auto maupun live.
   berbeda. Reviewer key hanya dimuat dari Windows Credential Manager. Final
   assembly tidak mengubah tracked config dan profile Phillip tetap disabled;
   plan/contract kelak juga mengulang verifier dengan vault key provider.
+- Activation-review pack non-mutating kini mengikat discovery-v3, dua approval
+  regulasi, satu signed pre-window calendar review, serta clean Git commit/tree
+  dalam satu proposal immutable. Pack membawa base dan after-image lengkap
+  untuk tepat tiga tracked file sehingga bounded diff dapat diverifikasi tanpa
+  secret. Tool tidak memiliki apply entrypoint; actual registration, order,
+  promotion, demo-auto, dan live tetap false.
 
 ### Runtime trust boundary
 
@@ -288,8 +294,9 @@ eksternal belum terpenuhi.
    current-Japan eligibility tetap belum disetujui.
    Phillip Securities Japan adalah candidate path untuk operasi saat ini:
    exact demo lanes dan regular schedule sudah terikat, namun signed regulatory
-   approval, explicit profile-registration review, dan contract registration
-   belum selesai. XM Window 02 tetap tidak boleh dijalankan. Setiap kandidat
+   approval aktual, human acceptance atas profile-registration review pack,
+   dan contract registration belum selesai. XM Window 02 tetap tidak boleh
+   dijalankan. Setiap kandidat
    tetap membutuhkan minimal 20 sesi terpisah.
 2. Jalankan broker read-only shadow pada exact symbols; ekspor signed session
    calendars, finalized M15 bid/ask bars, raw ticks, spread/fill distributions,
