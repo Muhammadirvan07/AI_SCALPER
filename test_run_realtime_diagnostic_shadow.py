@@ -40,7 +40,7 @@ def candidate_config(path: Path) -> None:
 
 
 class RealtimeDiagnosticCLITests(unittest.TestCase):
-    def test_phillip_commodity_uses_only_its_observed_jst_offset(self) -> None:
+    def test_phillip_split_lanes_use_their_independently_observed_jst_offsets(self) -> None:
         plan = json.loads(cli.DEFAULT_CONFIG.read_text(encoding="utf-8"))
         candidates = {
             item["candidate_id"]: item for item in plan["candidates"]
@@ -54,8 +54,12 @@ class RealtimeDiagnosticCLITests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            0,
+            9 * 60 * 60,
             cli._broker_time_offset_seconds(candidates["phillip-fx"], observed_at),
+        )
+        self.assertIn(
+            "AUDUSD.ps01, EURUSD.ps01, and USDJPY.ps01",
+            candidates["phillip-fx"]["server_time_model"]["source"],
         )
 
     def test_default_artifacts_are_isolated_per_candidate(self) -> None:
