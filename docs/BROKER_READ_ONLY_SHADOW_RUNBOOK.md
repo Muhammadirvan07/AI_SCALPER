@@ -1,6 +1,6 @@
 # Phase 3 — Broker Read-Only Shadow
 
-Status: **FBS BINDING CONFIGURED / PREFLIGHT PENDING / XM JAPAN LEGAL-BLOCKED /
+Status: **FBS DIAGNOSTIC SHADOW ACTIVE / EVIDENCE GATES PENDING / XM JAPAN LEGAL-BLOCKED /
 BROKER-FORWARD DATA NOT STARTED / NOT_READY**
 
 Belum ada primary evidence broker yang boleh dipromosikan. FBS adalah target
@@ -60,9 +60,10 @@ read-only, dan tidak boleh ditimpa atau dilanjutkan oleh runtime v3.
 
 ## FBS target diagnostic
 
-Sebelum evidence collection, FBS masih harus melewati:
+Read-only binding dan preflight FBS telah diamati, dan diagnostic paper shadow
+sedang berjalan. Sebelum evidence collection, FBS masih harus melewati:
 
-- exact read-only preflight pada server `FBS-Demo`;
+- durable sanitized preflight receipt pada source terbaru;
 - API instrument specification untuk empat simbol;
 - session timezone/calendar dan holiday overrides;
 - independent regulatory eligibility review untuk lokasi operasi;
@@ -70,6 +71,12 @@ Sebelum evidence collection, FBS masih harus melewati:
 
 Diagnostic paper boleh dimulai setelah preflight lulus, tetapi tidak dihitung
 sebagai promotion evidence.
+
+Pipeline evidence generik, profile FBS, kalender explicit-session, contract
+registration, dan broker-neutral one-shot collector telah tersedia secara
+lokal. Seluruhnya tetap fail-closed melalui profile
+`registration_enabled=false`; urutan aktivasi dan gate ada di
+`docs/FBS_EVIDENCE_PIPELINE.md`.
 
 ## FINEX historical standby
 

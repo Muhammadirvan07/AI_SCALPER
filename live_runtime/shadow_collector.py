@@ -1,4 +1,4 @@
-"""Read-only, deadline-bound XM shadow collector with durable cycle receipts."""
+"""Read-only, deadline-bound broker shadow collector with durable receipts."""
 
 from __future__ import annotations
 
@@ -59,8 +59,9 @@ class ShadowCycleReceipt:
 class ShadowCycleStore:
     """SQLite WAL receipt ledger; no trading state and no broker credentials."""
 
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, *, contract_id: str = CONTRACT_ID):
         self.path = Path(path)
+        self.contract_id = require_text("contract_id", contract_id)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(str(self.path))
         self.connection.execute("PRAGMA busy_timeout=5000")
@@ -116,10 +117,14 @@ class ShadowCycleStore:
             symbol for symbol, value in statuses.items() if value == "APPENDED"
         }
         if set(normalized_results) != appended_symbols or any(
-            type(result) is not BrokerExportResult or result.symbol != symbol
+            type(result) is not BrokerExportResult
+            or result.symbol != symbol
+            or result.contract_id != self.contract_id
             for symbol, result in normalized_results.items()
         ):
-            raise ShadowCollectorError("APPENDED statuses do not reconcile to export receipts")
+            raise ShadowCollectorError(
+                "APPENDED statuses do not reconcile to contract-bound export receipts"
+            )
         result_hashes = {
             symbol: canonical_sha256(result)
             for symbol, result in normalized_results.items()
@@ -134,7 +139,7 @@ class ShadowCycleStore:
         )
         payload = {
             "schema_version": SHADOW_CYCLE_SCHEMA_VERSION,
-            "contract_id": CONTRACT_ID,
+            "contract_id": self.contract_id,
             "cycle_id": normalized_cycle,
             "observed_at_utc": observed_at,
             "status": status,
@@ -261,12 +266,17 @@ def _mapping(value: object) -> dict[str, object]:
     raise ShadowCollectorError("MT5 account facts are unavailable")
 
 
-def _last_open_at(artifact_root: Path, symbol: str) -> datetime | None:
+def _last_open_at(
+    artifact_root: Path,
+    symbol: str,
+    *,
+    contract_id: str = CONTRACT_ID,
+) -> datetime | None:
     head = json.loads(
         (
             artifact_root
             / "forward"
-            / CONTRACT_ID
+            / contract_id
             / "heads"
             / "segments"
             / f"{symbol}.json"
@@ -286,10 +296,17 @@ def _run_shadow_cycle_locked(
     now_provider: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     stage_reporter: StageReporter | None = None,
     pre_evidence_mutation_check: Callable[[], None] | None = None,
+    contract_id: str = CONTRACT_ID,
+    build_identity_provider: Callable[[], Mapping[str, object]] | None = None,
 ) -> ShadowCycleReceipt:
     repo = Path(repo_root).resolve()
     artifacts = Path(artifact_root)
-    identity_provider = lambda: build_current_identity(repo)
+    normalized_contract_id = require_text("contract_id", contract_id)
+    if store.contract_id != normalized_contract_id:
+        raise ShadowCollectorError("cycle store contract binding mismatch")
+    identity_provider = build_identity_provider or (
+        lambda: build_current_identity(repo)
+    )
     if stage_reporter is not None:
         stage_reporter(
             "CONTRACT_VERIFICATION",
@@ -299,7 +316,7 @@ def _run_shadow_cycle_locked(
     try:
         verification = verify_forward_evidence(
             artifacts,
-            CONTRACT_ID,
+            normalized_contract_id,
             signing_key=signing_key,
             build_identity_provider=identity_provider,
         )
@@ -328,12 +345,18 @@ def _run_shadow_cycle_locked(
             "PASS",
             "CONTRACT_EVIDENCE_VERIFIED",
         )
-    contract_path = artifacts / "forward" / CONTRACT_ID / "contract.json"
+    contract_path = (
+        artifacts / "forward" / normalized_contract_id / "contract.json"
+    )
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
     facade = ReadOnlyMT5Facade(mt5_module)
     cycle_started = now_provider()
     require_utc("cycle_started", cycle_started)
-    cycle_id = "xm-shadow-" + cycle_started.strftime("%Y%m%dT%H%M%S%fZ")
+    cycle_id = (
+        normalized_contract_id
+        + "-shadow-"
+        + cycle_started.strftime("%Y%m%dT%H%M%S%fZ")
+    )
     statuses: dict[str, str] = {}
     results: dict[str, BrokerExportResult] = {}
     failures: list[str] = []
@@ -341,7 +364,11 @@ def _run_shadow_cycle_locked(
         plan = plan_next_bar(
             contract,
             symbol,
-            last_open_at=_last_open_at(artifacts, symbol),
+            last_open_at=_last_open_at(
+                artifacts,
+                symbol,
+                contract_id=normalized_contract_id,
+            ),
             now=now_provider(),
         )
         if plan.status != "DUE":
@@ -390,7 +417,7 @@ def _run_shadow_cycle_locked(
                 clock_provider=now_provider,
             ).export(
                 artifact_root=str(artifacts),
-                contract_id=CONTRACT_ID,
+                contract_id=normalized_contract_id,
                 canonical_symbol=symbol,
                 broker_symbol=source["broker_symbol"],
                 source=source,
@@ -425,11 +452,16 @@ def run_shadow_cycle(
     now_provider: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     stage_reporter: StageReporter | None = None,
     pre_evidence_mutation_check: Callable[[], None] | None = None,
+    contract_id: str = CONTRACT_ID,
+    build_identity_provider: Callable[[], Mapping[str, object]] | None = None,
 ) -> ShadowCycleReceipt:
     """Run one whole evidence cycle while holding the contract singleton fence."""
 
     artifacts = Path(artifact_root)
-    with ShadowCycleFence(artifacts, CONTRACT_ID):
+    normalized_contract_id = require_text("contract_id", contract_id)
+    if store.contract_id != normalized_contract_id:
+        raise ShadowCollectorError("cycle store contract binding mismatch")
+    with ShadowCycleFence(artifacts, normalized_contract_id):
         return _run_shadow_cycle_locked(
             mt5_module,
             repo_root=repo_root,
@@ -439,6 +471,8 @@ def run_shadow_cycle(
             now_provider=now_provider,
             stage_reporter=stage_reporter,
             pre_evidence_mutation_check=pre_evidence_mutation_check,
+            contract_id=normalized_contract_id,
+            build_identity_provider=build_identity_provider,
         )
 
 

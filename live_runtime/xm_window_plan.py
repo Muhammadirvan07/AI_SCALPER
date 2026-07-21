@@ -13,7 +13,6 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import json
-import os
 from pathlib import Path
 import re
 from typing import Callable, Mapping
@@ -22,6 +21,7 @@ from urllib.parse import urlsplit
 from .account_identity import AccountIdentityError, payload_hmac_sha256
 from .benchmark import REQUIRED_SYMBOLS
 from .contracts import canonical_sha256, require_utc
+from .secure_files import write_json_exclusive
 
 
 TEMPLATE_SCHEMA_VERSION = "xm-calendar-plan-template-v1"
@@ -747,24 +747,7 @@ def write_xm_calendar_plan_exclusive(
     payload: Mapping[str, object],
 ) -> Path:
     verify_prepared_xm_calendar_plan(payload)
-    destination = Path(path)
-    if destination.exists() or destination.is_symlink():
-        raise FileExistsError("XM calendar plan already exists or is a symlink")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2, sort_keys=True, ensure_ascii=False)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-    except Exception:
-        try:
-            destination.unlink()
-        except OSError:
-            pass
-        raise
-    return destination
+    return write_json_exclusive(path, payload)
 
 
 __all__ = [

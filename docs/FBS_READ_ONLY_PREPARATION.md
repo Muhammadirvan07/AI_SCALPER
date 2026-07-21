@@ -37,11 +37,19 @@ order, atau live trading.
 ## Preflight setelah binding
 
 ```powershell
-python -B .\run_mt5_readonly_preflight.py --candidate fbs
+python -B .\run_mt5_readonly_preflight.py `
+  --candidate fbs `
+  --output .\runtime_state\broker_discovery\fbs-preflight-01.json
 ```
 
 Realtime diagnostic baru boleh dimulai setelah output
 `MT5_READ_ONLY_PREFLIGHT_PASS`. Semua hasil tetap paper/non-promotional.
+Receipt yang ditulis bersifat sanitasi dan create-exclusive: ia menyimpan
+server, currency, leverage, symbol map, serta safety booleans, tetapi tidak
+menyimpan login, nama, balance, equity, atau credential. Receipt ini berguna
+untuk audit operasi, namun secara eksplisit tetap
+`validation_evidence=false`, `promotion_eligible=false`, dan tidak menggantikan
+discovery v3 bertanda tangan.
 
 Binding crypto CFD FBS juga telah dikonfirmasi sebagai `BTCUSD` dan `ETHUSD`.
 Gunakan `docs/FBS_CRYPTO_SHADOW.md`; jangan mencampur journal crypto broker

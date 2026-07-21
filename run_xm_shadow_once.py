@@ -1,4 +1,8 @@
-"""Run one deadline-bound, read-only XM evidence cycle on Windows."""
+"""Run one deadline-bound, read-only broker evidence cycle on Windows.
+
+The historic filename remains as a compatibility entry point.  New broker
+profiles use ``run_broker_shadow_once.py`` and an explicit ``--candidate``.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +13,7 @@ import importlib
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sqlite3
 import sys
 from types import ModuleType
@@ -17,6 +22,7 @@ from types import ModuleType
 LOCK_FILE_NAME = "pylock.windows-cp312.toml"
 STARTUP_GUARD_SCHEMA_VERSION = "xm-shadow-startup-guard-v1"
 REPO_ROOT = Path(__file__).resolve().parent
+_CANDIDATE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 
 
 def _load_local_module(module_name: str, relative_path: str) -> ModuleType:
@@ -55,6 +61,31 @@ def _repo_path(path: str | Path) -> Path:
     if not candidate.is_absolute():
         candidate = REPO_ROOT / candidate
     return candidate.resolve()
+
+
+def _candidate_id(value: object) -> str:
+    candidate = str(value or "").strip().lower()
+    if _CANDIDATE_ID.fullmatch(candidate) is None:
+        raise ValueError("candidate id is invalid")
+    return candidate
+
+
+def _tracked_repo_file(path: str | Path) -> Path:
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = REPO_ROOT / candidate
+    try:
+        relative = candidate.relative_to(REPO_ROOT)
+    except ValueError as exc:
+        raise RuntimeError("profile configuration must be inside the repository") from exc
+    current = REPO_ROOT
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise RuntimeError("profile configuration must not contain symlinks")
+    if not current.is_file():
+        raise RuntimeError("profile configuration is unavailable")
+    return current
 
 
 def _load_dependency_guard() -> ModuleType:
@@ -103,15 +134,22 @@ def _record_startup_guard(
     reason: str,
     dependency_receipt: dict[str, object] | None = None,
     detail: str | None = None,
+    runtime_namespace: str = "xm",
 ) -> dict[str, object]:
     if observed_at.tzinfo is None or observed_at.utcoffset() is None:
         raise RuntimeError("startup guard timestamp must be timezone-aware")
     normalized_status = str(status).strip().upper()
     if normalized_status not in {"PASS", "HOLD"}:
         raise RuntimeError("startup guard status is invalid")
-    cycle_id = "xm-shadow-startup-" + observed_at.strftime("%Y%m%dT%H%M%S%fZ")
+    namespace = _candidate_id(runtime_namespace)
+    cycle_id = (
+        namespace
+        + "-shadow-startup-"
+        + observed_at.strftime("%Y%m%dT%H%M%S%fZ")
+    )
     payload = {
         "schema_version": STARTUP_GUARD_SCHEMA_VERSION,
+        "runtime_namespace": namespace,
         "startup_guard_id": cycle_id,
         "observed_at_utc": observed_at.isoformat().replace("+00:00", "Z"),
         "status": normalized_status,
@@ -241,6 +279,58 @@ def _load_runtime_components():
     )
 
 
+def _load_evidence_binding(
+    candidate_id: str,
+    profile_config: Path,
+) -> dict[str, object]:
+    """Resolve one exact contract/key/build identity after lock activation."""
+
+    from live_runtime.evidence_bootstrap import (
+        CONFIG_FILES,
+        CONTRACT_ID,
+        KEY_NAME,
+        build_current_identity,
+    )
+
+    candidate = _candidate_id(candidate_id)
+    if candidate == "xm":
+        config_files = tuple(CONFIG_FILES)
+        return {
+            "candidate_id": candidate,
+            "key_name": KEY_NAME,
+            "contract_id": CONTRACT_ID,
+            "config_files": config_files,
+            "build_identity_provider": lambda: build_current_identity(
+                REPO_ROOT,
+                config_files=config_files,
+            ),
+        }
+
+    from live_runtime.broker_evidence_profile import (
+        load_broker_evidence_profile,
+    )
+
+    tracked_profile = _tracked_repo_file(profile_config)
+    profile = load_broker_evidence_profile(
+        tracked_profile,
+        candidate,
+        require_registration_enabled=True,
+    )
+    config_files = (
+        "config/broker_candidates.phase3.json",
+        tracked_profile.relative_to(REPO_ROOT).as_posix(),
+        profile.template_path,
+    )
+    return {
+        "candidate_id": profile.candidate_id,
+        "key_name": profile.key_name,
+        "contract_id": profile.contract_id,
+        "config_files": config_files,
+        "build_identity_provider": lambda: build_current_identity(
+            REPO_ROOT,
+            config_files=config_files,
+        ),
+    }
 def _load_mt5_module() -> ModuleType:
     return importlib.import_module("MetaTrader5")
 
@@ -361,7 +451,13 @@ def _finalize_invocation(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run one XM read-only shadow cycle")
+    parser = argparse.ArgumentParser(description="Run one broker read-only shadow cycle")
+    parser.add_argument("--candidate", default="xm")
+    parser.add_argument(
+        "--profile-config",
+        type=Path,
+        default=Path("config/broker_evidence_profiles.v1.json"),
+    )
     parser.add_argument(
         "--lock",
         type=Path,
@@ -373,7 +469,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--journal",
         type=Path,
-        default=Path("runtime_state/shadow/xm-shadow-cycles.sqlite3"),
+        default=None,
     )
     parser.add_argument(
         "--audit-export-dir",
@@ -399,8 +495,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Read the local heartbeat/status projection without loading MT5",
     )
     args = parser.parse_args(argv)
+    try:
+        args.candidate = _candidate_id(args.candidate)
+    except ValueError as exc:
+        parser.error(str(exc))
     args.lock = _repo_path(args.lock)
     args.artifact_root = _repo_path(args.artifact_root)
+    args.profile_config = _repo_path(args.profile_config)
+    if args.journal is None:
+        args.journal = Path(
+            f"runtime_state/shadow/{args.candidate}-shadow-cycles.sqlite3"
+        )
     args.journal = _repo_path(args.journal)
     if args.audit_export_dir is not None:
         args.audit_export_dir = _repo_path(args.audit_export_dir)
@@ -422,6 +527,7 @@ def main(argv: list[str] | None = None) -> int:
         dependency_guard = None
         dependency_receipt = None
         runtime_components = None
+        evidence_binding = None
         key = None
         if operational.has_authenticated_events():
             try:
@@ -430,7 +536,11 @@ def main(argv: list[str] | None = None) -> int:
                     dependency_receipt,
                 ) = _verify_and_activate_dependencies(args.lock)
                 runtime_components = _load_runtime_components()
-                key_name = runtime_components[0]
+                evidence_binding = _load_evidence_binding(
+                    args.candidate,
+                    args.profile_config,
+                )
+                key_name = str(evidence_binding["key_name"])
                 key_store_class = runtime_components[1]
                 key = key_store_class().load(key_name)
                 operational.install_signing_key(key)
@@ -507,6 +617,7 @@ def main(argv: list[str] | None = None) -> int:
                         status="HOLD",
                         reason="DEPENDENCY_INTEGRITY_REJECTED",
                         detail=detail,
+                        runtime_namespace=args.candidate,
                     )
                     operational.record_stage(
                         invocation_id=invocation_id,
@@ -580,6 +691,7 @@ def main(argv: list[str] | None = None) -> int:
                     status="PASS",
                     reason="DEPENDENCY_INTEGRITY_VERIFIED",
                     dependency_receipt=dependency_receipt,
+                    runtime_namespace=args.candidate,
                 )
             except (OSError, RuntimeError, sqlite3.Error) as exc:
                 operational.record_stage(
@@ -649,7 +761,7 @@ def main(argv: list[str] | None = None) -> int:
             if runtime_components is None:
                 runtime_components = _load_runtime_components()
             (
-                key_name,
+                legacy_key_name,
                 key_store_class,
                 read_only_facade_class,
                 read_only_attestation,
@@ -657,6 +769,14 @@ def main(argv: list[str] | None = None) -> int:
                 shadow_cycle_store_class,
                 run_shadow_cycle,
             ) = runtime_components
+            if evidence_binding is None:
+                evidence_binding = _load_evidence_binding(
+                    args.candidate,
+                    args.profile_config,
+                )
+            key_name = str(evidence_binding["key_name"])
+            if args.candidate == "xm" and key_name != legacy_key_name:
+                raise RuntimeError("legacy XM evidence key binding drift")
             operational.record_stage(
                 invocation_id=invocation_id,
                 observed_at=datetime.now(timezone.utc),
@@ -792,7 +912,13 @@ def main(argv: list[str] | None = None) -> int:
                 )
 
             current_stage = "CYCLE_STORE"
-            cycle_store = shadow_cycle_store_class(args.journal)
+            if args.candidate == "xm":
+                cycle_store = shadow_cycle_store_class(args.journal)
+            else:
+                cycle_store = shadow_cycle_store_class(
+                    args.journal,
+                    contract_id=str(evidence_binding["contract_id"]),
+                )
             operational.record_stage(
                 invocation_id=invocation_id,
                 observed_at=datetime.now(timezone.utc),
@@ -809,14 +935,28 @@ def main(argv: list[str] | None = None) -> int:
                 reason_code="SHADOW_CYCLE_STARTED",
             )
             try:
+                cycle_arguments = {
+                    "repo_root": REPO_ROOT,
+                    "artifact_root": args.artifact_root,
+                    "signing_key": key,
+                    "store": cycle_store,
+                    "stage_reporter": stage_reporter,
+                    "pre_evidence_mutation_check": evidence_disk_guard,
+                }
+                if args.candidate != "xm":
+                    cycle_arguments.update(
+                        {
+                            "contract_id": str(
+                                evidence_binding["contract_id"]
+                            ),
+                            "build_identity_provider": evidence_binding[
+                                "build_identity_provider"
+                            ],
+                        }
+                    )
                 receipt = run_shadow_cycle(
                     mt5,
-                    repo_root=REPO_ROOT,
-                    artifact_root=args.artifact_root,
-                    signing_key=key,
-                    store=cycle_store,
-                    stage_reporter=stage_reporter,
-                    pre_evidence_mutation_check=evidence_disk_guard,
+                    **cycle_arguments,
                 )
             except shadow_cycle_already_running:
                 operational.record_stage(

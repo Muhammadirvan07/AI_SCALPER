@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import copy
 from contextlib import redirect_stdout
+from datetime import datetime, timezone
 import io
 import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -13,7 +15,9 @@ from live_runtime.mt5_readonly import ReadOnlyMT5Facade
 from live_runtime.mt5_preflight import (
     MT5CandidatePreflightError,
     attest_candidate_read_only,
+    build_preflight_receipt,
     load_preflight_candidate,
+    write_preflight_receipt_exclusive,
 )
 from run_mt5_readonly_preflight import main as preflight_main
 
@@ -200,6 +204,58 @@ class MT5CandidatePreflightTests(unittest.TestCase):
         self.assertNotIn("must never leave boundary", rendered)
         self.assertNotIn("3585.21", rendered)
         self.assertTrue(fake.shutdown_called)
+
+    def test_preflight_receipt_is_sanitized_hash_bound_and_exclusive(self) -> None:
+        result = attest_candidate_read_only(
+            ReadOnlyMT5Facade(FakeMT5()),
+            candidate_id="fbs",
+            candidate=self.candidate,
+        )
+        receipt = build_preflight_receipt(
+            result,
+            captured_at=datetime(2026, 7, 21, 12, 0, tzinfo=timezone.utc),
+        )
+        self.assertTrue(receipt["diagnostic_only"])
+        self.assertFalse(receipt["validation_evidence"])
+        self.assertFalse(receipt["promotion_eligible"])
+        self.assertEqual("DISABLED", receipt["order_capability"])
+        serialized = json.dumps(receipt, sort_keys=True)
+        self.assertNotIn("12345678", serialized)
+        self.assertNotIn("must never leave boundary", serialized)
+        self.assertNotIn("3585.21", serialized)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "fbs-preflight.json"
+            write_preflight_receipt_exclusive(path, receipt)
+            self.assertEqual(receipt, json.loads(path.read_text(encoding="utf-8")))
+            with self.assertRaises(FileExistsError):
+                write_preflight_receipt_exclusive(path, receipt)
+
+    def test_cli_can_write_sanitized_non_evidence_receipt(self) -> None:
+        fake = FakeMT5()
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "fbs-preflight.json"
+            with (
+                patch.dict(sys.modules, {"MetaTrader5": fake}),
+                patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "run_mt5_readonly_preflight.py",
+                        "--candidate",
+                        "fbs",
+                        "--output",
+                        str(path),
+                    ],
+                ),
+                redirect_stdout(output),
+            ):
+                self.assertEqual(0, preflight_main())
+            receipt = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual("fbs", receipt["preflight"]["candidate_id"])
+            self.assertFalse(receipt["validation_evidence"])
+            self.assertIn("Sanitized receipt:", output.getvalue())
+            self.assertIn("Receipt SHA-256:", output.getvalue())
 
     def test_cli_has_no_credential_argument(self) -> None:
         with patch.object(

@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-import json
-import os
 from pathlib import Path
-from typing import Mapping
+from typing import Iterable, Mapping
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -16,6 +14,7 @@ from validation_evidence.secure_core import _normalize_session_calendar
 
 from .benchmark import REQUIRED_SYMBOLS
 from .contracts import require_utc
+from .secure_files import write_json_exclusive
 
 
 CALENDAR_BUNDLE_SCHEMA_VERSION = "broker-calendar-bundle-v1"
@@ -23,6 +22,17 @@ M15 = timedelta(minutes=15)
 LIVE_ALLOWED = False
 SAFE_TO_DEMO_AUTO_ORDER = False
 MAX_LOT = 0.01
+CLOSURE_REASON_CODES = frozenset(
+    {
+        "WEEKEND",
+        "HOLIDAY",
+        "DAILY_BREAK",
+        "PARTIAL_SESSION_CLOSE",
+        "ROLLOVER",
+        "BROKER_MAINTENANCE",
+        "OTHER_SCHEDULED_CLOSURE",
+    }
+)
 
 
 class SessionCalendarError(ValueError):
@@ -66,13 +76,180 @@ def _scheduled_state(symbol: str, local: datetime) -> tuple[bool, str, str]:
     return True, "", ""
 
 
-def _segments(symbol: str, start: datetime, end: datetime, timezone_name: str):
+def _local_minute(value: object, field: str, *, allow_2400: bool = False) -> int:
+    text = str(value or "")
+    if allow_2400 and text == "24:00":
+        return 24 * 60
+    parts = text.split(":")
+    if (
+        len(parts) != 2
+        or not all(part.isdigit() for part in parts)
+        or not 0 <= int(parts[0]) <= 23
+        or int(parts[1]) not in {0, 15, 30, 45}
+    ):
+        raise SessionCalendarError(f"{field} must be an M15-aligned HH:MM value")
+    return int(parts[0]) * 60 + int(parts[1])
+
+
+def validate_weekly_m15_sessions(
+    value: object,
+) -> dict[str, tuple[tuple[int, int, int], ...]]:
+    """Validate an explicit broker-local weekly M15 eligibility schedule."""
+
+    if not isinstance(value, Mapping) or set(value) != set(REQUIRED_SYMBOLS):
+        raise SessionCalendarError(
+            "weekly_m15_sessions must contain exactly the four required symbols"
+        )
+    normalized: dict[str, tuple[tuple[int, int, int], ...]] = {}
+    for symbol in sorted(REQUIRED_SYMBOLS):
+        raw_sessions = value[symbol]
+        if (
+            isinstance(raw_sessions, (str, bytes))
+            or not isinstance(raw_sessions, Iterable)
+        ):
+            raise SessionCalendarError(f"weekly sessions are invalid: {symbol}")
+        sessions: list[tuple[int, int, int]] = []
+        for index, raw in enumerate(raw_sessions):
+            if not isinstance(raw, Mapping) or set(raw) != {
+                "weekday",
+                "open_local",
+                "close_local",
+            }:
+                raise SessionCalendarError(
+                    f"weekly session fields are invalid: {symbol}:{index}"
+                )
+            weekday = raw["weekday"]
+            if type(weekday) is not int or not 0 <= weekday <= 6:
+                raise SessionCalendarError(
+                    f"weekly session weekday is invalid: {symbol}:{index}"
+                )
+            opened = _local_minute(
+                raw["open_local"],
+                f"{symbol} open_local",
+            )
+            closed = _local_minute(
+                raw["close_local"],
+                f"{symbol} close_local",
+                allow_2400=True,
+            )
+            if opened >= closed:
+                raise SessionCalendarError(
+                    f"weekly session must not cross midnight: {symbol}:{index}"
+                )
+            sessions.append((weekday, opened, closed))
+        sessions.sort()
+        for previous, current in zip(sessions, sessions[1:]):
+            if previous[0] == current[0] and current[1] < previous[2]:
+                raise SessionCalendarError(
+                    f"weekly sessions overlap: {symbol}:{current[0]}"
+                )
+        if not sessions:
+            raise SessionCalendarError(f"weekly sessions are empty: {symbol}")
+        normalized[symbol] = tuple(sessions)
+    return normalized
+
+
+def _registered_closures(
+    review: Mapping[str, object],
+) -> tuple[dict[str, object], ...]:
+    raw_closures = review.get("registered_closures", [])
+    if not isinstance(raw_closures, list):
+        raise SessionCalendarError("registered_closures must be a list")
+    closures: list[dict[str, object]] = []
+    for index, raw in enumerate(raw_closures):
+        if not isinstance(raw, Mapping) or set(raw) != {
+            "symbols",
+            "start_at_utc",
+            "end_at_utc",
+            "reason_code",
+            "label",
+        }:
+            raise SessionCalendarError(
+                f"registered closure fields are invalid: {index}"
+            )
+        symbols = raw["symbols"]
+        if (
+            not isinstance(symbols, list)
+            or not symbols
+            or not set(symbols) <= set(REQUIRED_SYMBOLS)
+        ):
+            raise SessionCalendarError(
+                f"registered closure symbols are invalid: {index}"
+            )
+        start = _utc(raw["start_at_utc"], f"closure {index} start_at_utc")
+        end = _utc(raw["end_at_utc"], f"closure {index} end_at_utc")
+        if start >= end:
+            raise SessionCalendarError(
+                f"registered closure interval is invalid: {index}"
+            )
+        reason = str(raw["reason_code"] or "").strip().upper()
+        label = str(raw["label"] or "").strip()
+        if reason not in CLOSURE_REASON_CODES or not label:
+            raise SessionCalendarError(
+                f"registered closure reason is invalid: {index}"
+            )
+        closures.append(
+            {
+                "symbols": tuple(sorted(set(str(item) for item in symbols))),
+                "start": start,
+                "end": end,
+                "reason": reason,
+                "label": label,
+            }
+        )
+    return tuple(closures)
+
+
+def _explicit_scheduled_state(
+    symbol: str,
+    opened_at_utc: datetime,
+    local: datetime,
+    sessions: Mapping[str, tuple[tuple[int, int, int], ...]],
+    closures: tuple[dict[str, object], ...],
+) -> tuple[bool, str, str]:
+    close_at_utc = opened_at_utc + M15
+    for closure in closures:
+        if symbol in closure["symbols"] and (
+            opened_at_utc < closure["end"] and close_at_utc > closure["start"]
+        ):
+            return False, str(closure["reason"]), str(closure["label"])
+    minute = local.hour * 60 + local.minute
+    if any(
+        weekday == local.weekday() and opened <= minute and minute + 15 <= closed
+        for weekday, opened, closed in sessions[symbol]
+    ):
+        return True, "", ""
+    return (
+        False,
+        "OTHER_SCHEDULED_CLOSURE",
+        "Broker-attested weekly session closure",
+    )
+
+
+def _segments(
+    symbol: str,
+    start: datetime,
+    end: datetime,
+    timezone_name: str,
+    *,
+    explicit_sessions: Mapping[str, tuple[tuple[int, int, int], ...]] | None = None,
+    registered_closures: tuple[dict[str, object], ...] = (),
+):
     timezone = ZoneInfo(timezone_name)
     buckets: list[tuple[datetime, datetime, bool, str, str]] = []
     cursor = start
     while cursor < end:
         local = cursor.astimezone(timezone)
-        opened, reason, label = _scheduled_state(symbol, local)
+        if explicit_sessions is None:
+            opened, reason, label = _scheduled_state(symbol, local)
+        else:
+            opened, reason, label = _explicit_scheduled_state(
+                symbol,
+                cursor,
+                local,
+                explicit_sessions,
+                registered_closures,
+            )
         buckets.append((cursor, cursor + M15, opened, reason, label))
         cursor += M15
 
@@ -110,8 +287,24 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
     review = plan.get("special_hours_review")
     if not isinstance(review, Mapping) or review.get("attested") is not True:
         raise SessionCalendarError("special-hours review must be explicitly attested")
-    if review.get("affected_required_symbols") != []:
-        raise SessionCalendarError("special-hours changes require explicit closure intervals")
+    registered_closures = _registered_closures(review)
+    affected = review.get("affected_required_symbols")
+    if not isinstance(affected, list) or set(affected) - set(REQUIRED_SYMBOLS):
+        raise SessionCalendarError("affected_required_symbols is invalid")
+    closure_symbols = {
+        symbol
+        for closure in registered_closures
+        for symbol in closure["symbols"]
+    }
+    if set(affected) != closure_symbols:
+        raise SessionCalendarError(
+            "special-hours changes require explicit closure intervals with an exact symbol match"
+        )
+    explicit_sessions = (
+        validate_weekly_m15_sessions(plan.get("weekly_m15_sessions"))
+        if "weekly_m15_sessions" in plan
+        else None
+    )
     last_date = str(review.get("covered_through_server_date") or "")
     timezone_name = str(plan.get("server_timezone") or "")
     timezone = ZoneInfo(timezone_name)
@@ -142,7 +335,14 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
             "broker_symbol": broker_symbol,
             "source_instance_id": source_instance_id,
         }
-        intervals, closures = _segments(symbol, start, blind, timezone_name)
+        intervals, closures = _segments(
+            symbol,
+            start,
+            blind,
+            timezone_name,
+            explicit_sessions=explicit_sessions,
+            registered_closures=registered_closures,
+        )
         calendar = {
             "schema_version": "session-calendar-v1",
             "canonical_symbol": symbol,
@@ -185,14 +385,14 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
 
 
 def write_calendar_bundle_exclusive(path: str | Path, payload: Mapping[str, object]) -> Path:
-    destination = Path(path)
-    if destination.exists() or destination.is_symlink():
-        raise FileExistsError("calendar output already exists or is a symlink")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True, ensure_ascii=False)
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    return destination
+    return write_json_exclusive(path, payload)
+
+
+__all__ = [
+    "CALENDAR_BUNDLE_SCHEMA_VERSION",
+    "CLOSURE_REASON_CODES",
+    "SessionCalendarError",
+    "build_calendar_bundle",
+    "validate_weekly_m15_sessions",
+    "write_calendar_bundle_exclusive",
+]

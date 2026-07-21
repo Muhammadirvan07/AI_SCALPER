@@ -35,12 +35,22 @@ keduanya memiliki config serta journal domain terpisah dan tidak memiliki
 primitive execution.
 
 Bundle juga membawa `run_mt5_readonly_preflight.py`. Tool preparation-only ini
-memeriksa binding kandidat dan safety flags terminal tanpa credential, tanpa
-menulis evidence, dan tanpa membuka full discovery gate.
+memeriksa binding kandidat dan safety flags terminal tanpa credential dan
+tanpa membuka full discovery gate. Opsi `--output` dapat menulis receipt
+sanitasi create-exclusive untuk audit operator; receipt tersebut tetap
+non-evidence dan non-promotional.
 
-Pemisahan runtime minimal belum boleh diklaim: current shadow identity masih
-memverifikasi beberapa generator source. Refactor identity input harus selesai
-dan diuji dahulu sebelum profile service-runtime dibuat.
+Bundle operator juga membawa pipeline evidence broker-neutral:
+`setup_broker_evidence_key.py`, `mt5_readonly_discovery.py`,
+`prepare_broker_window.py`, `build_broker_calendar.py`,
+`register_broker_forward_contract.py`, dan `run_broker_shadow_once.py`.
+Masing-masing mengikat exact candidate profile. FBS saat ini sengaja ditolak
+oleh external/registration gate, sehingga keberadaan file di bundle tidak
+mengaktifkan evidence maupun order.
+
+Build identity shadow kini dapat dikomposisikan per broker dari exact config
+files. Pemisahan runtime minimal tetap belum boleh diklaim karena allowlist
+service-runtime terpisah dan clean-checkout Windows proof belum dibuat.
 
 ## Gate builder
 

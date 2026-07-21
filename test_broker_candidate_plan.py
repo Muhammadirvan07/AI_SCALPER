@@ -17,19 +17,22 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         fbs = candidates["fbs"]
 
         self.assertEqual(
-            "FBS_SELECTED_PREFLIGHT_PENDING_AND_ELIGIBILITY_UNVERIFIED",
+            "FBS_DIAGNOSTIC_SHADOW_ACTIVE_EVIDENCE_AND_ELIGIBILITY_PENDING",
             plan["status"],
         )
         self.assertEqual(
             "fbs",
             plan["operational_priority"]["selected_target_broker"],
         )
-        self.assertIsNone(plan["operational_priority"]["primary_shadow_broker"])
+        self.assertEqual(
+            "fbs",
+            plan["operational_priority"]["primary_shadow_broker"],
+        )
         self.assertFalse(plan["execution_enabled"])
         self.assertFalse(plan["credentials_allowed"])
         self.assertEqual("SELECTED_TARGET_PREPARATION", fbs["role"])
         self.assertEqual(
-            "SANITIZED_BINDING_PROBE_COMPLETE_PREFLIGHT_PENDING",
+            "SANITIZED_BINDING_AND_PREFLIGHT_OBSERVED_DIAGNOSTIC_SHADOW_ACTIVE",
             fbs["binding_status"],
         )
         self.assertEqual("FBS-Demo", fbs["server"])

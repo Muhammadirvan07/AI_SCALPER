@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from typing import Mapping
 
 from .benchmark import REQUIRED_SYMBOLS
+from .contracts import canonical_sha256, require_utc
 from .mt5_readonly import (
     MT5ReadOnlyAttestationError,
     ReadOnlyMT5Facade,
     attest_mt5_read_only,
 )
+from .secure_files import write_json_exclusive
 
 
 PREFLIGHT_SCHEMA_VERSION = "mt5-candidate-read-only-preflight-v1"
+PREFLIGHT_RECEIPT_SCHEMA_VERSION = "mt5-candidate-read-only-preflight-receipt-v1"
 
 
 class MT5CandidatePreflightError(RuntimeError):
@@ -204,9 +208,94 @@ def attest_candidate_read_only(
     }
 
 
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def build_preflight_receipt(
+    result: Mapping[str, object],
+    *,
+    captured_at: datetime,
+) -> dict[str, object]:
+    """Wrap a sanitized PASS in a hash-bound, explicitly non-evidentiary receipt."""
+
+    require_utc("captured_at", captured_at)
+    expected_fields = {
+        "schema_version",
+        "candidate_id",
+        "status",
+        "server",
+        "environment",
+        "account_currency",
+        "leverage",
+        "symbols",
+        "safety",
+        "execution_enabled",
+        "discovery_enabled",
+        "promotion_evidence",
+        "credentials_stored",
+        "account_identifier_stored",
+        "balance_stored",
+    }
+    if set(result) != expected_fields:
+        raise MT5CandidatePreflightError("preflight result fields are invalid")
+    if (
+        result.get("schema_version") != PREFLIGHT_SCHEMA_VERSION
+        or result.get("status") != "PASS"
+        or result.get("environment") != "DEMO"
+        or result.get("execution_enabled") is not False
+        or result.get("discovery_enabled") is not False
+        or result.get("promotion_evidence") is not False
+        or result.get("credentials_stored") is not False
+        or result.get("account_identifier_stored") is not False
+        or result.get("balance_stored") is not False
+    ):
+        raise MT5CandidatePreflightError("preflight result violates safety locks")
+    symbols = result.get("symbols")
+    if not isinstance(symbols, Mapping) or set(symbols) != set(REQUIRED_SYMBOLS):
+        raise MT5CandidatePreflightError("preflight receipt symbol set is incomplete")
+    body = {
+        "schema_version": PREFLIGHT_RECEIPT_SCHEMA_VERSION,
+        "captured_at_utc": captured_at.isoformat().replace("+00:00", "Z"),
+        "preflight": dict(result),
+        "diagnostic_only": True,
+        "validation_evidence": False,
+        "promotion_eligible": False,
+        "order_capability": "DISABLED",
+        "live_allowed": False,
+        "safe_to_demo_auto_order": False,
+        "max_lot": 0.01,
+    }
+    return {**body, "payload_sha256": canonical_sha256(body)}
+
+
+def write_preflight_receipt_exclusive(
+    path: str | Path,
+    receipt: Mapping[str, object],
+) -> Path:
+    body = {key: value for key, value in receipt.items() if key != "payload_sha256"}
+    if (
+        receipt.get("schema_version") != PREFLIGHT_RECEIPT_SCHEMA_VERSION
+        or canonical_sha256(body) != receipt.get("payload_sha256")
+        or receipt.get("diagnostic_only") is not True
+        or receipt.get("validation_evidence") is not False
+        or receipt.get("promotion_eligible") is not False
+        or receipt.get("order_capability") != "DISABLED"
+        or receipt.get("live_allowed") is not False
+        or receipt.get("safe_to_demo_auto_order") is not False
+        or receipt.get("max_lot") != 0.01
+    ):
+        raise MT5CandidatePreflightError("preflight receipt is invalid")
+    return write_json_exclusive(path, receipt)
+
+
 __all__ = [
     "MT5CandidatePreflightError",
+    "PREFLIGHT_RECEIPT_SCHEMA_VERSION",
     "PREFLIGHT_SCHEMA_VERSION",
     "attest_candidate_read_only",
+    "build_preflight_receipt",
     "load_preflight_candidate",
+    "utc_now",
+    "write_preflight_receipt_exclusive",
 ]

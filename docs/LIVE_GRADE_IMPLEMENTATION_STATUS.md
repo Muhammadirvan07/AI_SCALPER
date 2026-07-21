@@ -12,8 +12,8 @@ membuka demo-auto maupun live.
 | Tahap | Status | Bukti saat ini |
 |---|---|---|
 | 1. Baseline terkunci | Sebagian | Seluruh safety lock terjaga, tetapi worktree telah berisi perubahan user/runtime sebelum implementasi sehingga clean baseline commit terisolasi belum dibuat. |
-| 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v3, signed session calendar per simbol, append chains/heads, seal, blinded receipt, dan strict UTC/build/source/spec/grid verification tersedia. |
-| 3. Broker read-only shadow | FBS diagnostic connected; broker crypto domains implemented; evidence not started | Probe sanitasi mengikat `FBS-Demo`, akun demo USD 500:1 retail hedging, XAUUSD/EURUSD/USDJPY/AUDUSD, serta BTCUSD/ETHUSD. Forex/metal M15, broker-crypto M15 champion, dan broker-crypto M5 challenger memiliki journal/report terpisah. FINEX tidak dipakai untuk observasi baru. Instrument specification API, calendar, 20-session benchmark, regulatory eligibility, dan promotion evidence tetap pending. |
+| 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v3, signed session calendar per simbol, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
+| 3. Broker read-only shadow | FBS diagnostic connected; broker crypto domains implemented; evidence not started | Probe dan preflight sanitasi mengikat `FBS-Demo`, akun demo USD 500:1 retail hedging, XAUUSD/EURUSD/USDJPY/AUDUSD, serta BTCUSD/ETHUSD. Forex/metal M15, broker-crypto M15 champion, dan broker-crypto M5 challenger memiliki journal/report terpisah. FINEX tidak dipakai untuk observasi baru. Durable preflight receipt perlu dibuat ulang setelah source terbaru ditarik. Instrument specification discovery v3, calendar, 20-session benchmark, regulatory eligibility, dan promotion evidence tetap pending. |
 | 4. Manual demo | Component foundation ready, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-wide fence, risk governor, fenced journal, one-shot runtime composition, MT5 preflight/executor/reconciliation, dan dual-control kill-switch reset tersedia. Sepuluh order demo belum dilakukan. |
 | 5. Demo-auto soak | Not started | Policy tetap locked; belum ada 30 hari, 50 fill, minimal 20 XAU, atau clean incident record. |
 | 6. XAUUSD live canary | Not started | XAUUSD belum execution-approved dan belum memiliki promotion evidence/permit/soak maupun 50 closed live trades. |
@@ -57,6 +57,14 @@ membuka demo-auto maupun live.
   verify, plan, collect, append, dan SQLite receipt. Optimistic paired sequence
   fence menolak stale writer, sedangkan timestamp append baru dicetak setelah
   tick collection selesai.
+- Artifact JSON discovery/calendar/preflight/plan memakai create-exclusive
+  writer bersama yang serializes-before-create, menolak symlink/overwrite,
+  melakukan file fsync dan POSIX directory fsync, serta menghapus partial file
+  saat write gagal. Build identity path generik dibatasi ke regular tracked
+  repository path dan menolak absolute/traversal/symlink escape.
+- Gate broker generik tidak circular: setup key, discovery, plan, dan calendar
+  tunduk pada gate sumber masing-masing; hanya contract registration dan
+  evidence collector yang mensyaratkan profile `registration_enabled=true`.
 
 ### Runtime trust boundary
 
@@ -221,21 +229,20 @@ BTCUSD = shadow-only
     issuer production yang membuka, menghitung ulang, dan memverifikasi trade
     ledger, bootstrap, fold, evidence-store receipt, serta parity corpus belum
     tersedia.
-11. One-shot evidence shadow runner kini memiliki durable per-stage receipt,
+11. Broker-neutral one-shot evidence shadow runner kini memiliki durable per-stage receipt,
     hash-chained operational journal, singleton fence, disk floor, heartbeat
     projection, status-only watchdog, dan verified create-exclusive audit
     export. Loop broker-tick diagnostic non-promotional juga sudah tersedia,
-    tetapi belum dibuktikan pada exact Windows/XM host dan bukan collector
-    evidence. Periodic broker reconciliation supervisor, durable soak/demotion
+    tetapi generic collector belum dibuktikan pada exact Windows/FBS host.
+    Periodic broker reconciliation supervisor, durable soak/demotion
     reset tracker, actual off-host alert/WORM delivery, serta restore drill
     belum dipasang atau diuji pada Windows VPS.
 12. Supply-chain workflow, SBOM, OSV receipt verifier, dan deterministic
     release builder sudah tersedia lokal, tetapi actual OSV collection,
     independent signing-key custody, clean committed release identity, dan
-    clean-checkout build pada exact Windows host belum dilakukan. Worktree saat
-    ini juga masih dirty; branch remote belum memuat seluruh hardening terbaru.
-    Karena itu source/ZIP dari remote saat ini tidak boleh dipakai sebagai
-    release.
+    clean-checkout build pada exact Windows host belum dilakukan. Runtime/data
+    artifact churn pada development worktree tetap bukan release input. Karena
+    itu ZIP hanya boleh dibuat dari clean checkout commit yang sudah direview.
 
 Karena batas di atas, kalender yang valid dapat membuat
 `session_calendar_verified=true` dan data grid dapat lengkap secara lokal,
@@ -244,10 +251,12 @@ eksternal belum terpenuhi.
 
 ## Blocker eksternal sebelum tahap berikutnya
 
-1. FBS telah dipilih sebagai target dan exact demo binding sudah dikonfigurasi.
-   Jalankan FBS read-only preflight; selama operating jurisdiction masih Jepang,
-   batasi ke diagnostic read-only/paper sampai eligibility lintas yurisdiksi
-   dikonfirmasi. Lengkapi discovery v3 dan evidence contract secara terpisah.
+1. FBS telah dipilih sebagai target; exact demo binding, read-only preflight,
+   dan diagnostic shadow telah berhasil diamati. Buat receipt preflight
+   sanitasi durable pada source terbaru; selama operating jurisdiction masih
+   Jepang, batasi ke diagnostic read-only/paper sampai eligibility lintas
+   yurisdiksi dikonfirmasi. Lengkapi discovery v3 dan evidence contract secara
+   terpisah.
    XM Window 02 tetap tidak boleh dijalankan. Setiap
    kandidat tetap membutuhkan minimal 20 sesi terpisah.
 2. Jalankan broker read-only shadow pada exact symbols; ekspor signed session

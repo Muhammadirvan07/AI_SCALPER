@@ -40,10 +40,14 @@ def contract_fixture():
     }
 
 
-def export_result(symbol: str) -> BrokerExportResult:
+def export_result(
+    symbol: str,
+    *,
+    contract_id: str = CONTRACT_ID,
+) -> BrokerExportResult:
     result = object.__new__(BrokerExportResult)
     for key, value in {
-        "contract_id": CONTRACT_ID,
+        "contract_id": contract_id,
         "symbol": symbol,
         "raw_tick_partition": {"rows": 1, "partition_payload_sha256": "a" * 64},
         "finalized_bar_segment": {"rows": 1, "segment_payload_sha256": "b" * 64},
@@ -251,6 +255,44 @@ class ShadowCollectorTests(unittest.TestCase):
                     symbol_status=bad,
                     results=results,
                     failures=(),
+                )
+
+    def test_cycle_store_rejects_export_from_another_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ShadowCycleStore(
+                Path(directory) / "cycles.sqlite3",
+                contract_id="fbs-window-01-diagnostic-v1",
+            )
+            self.addCleanup(store.close)
+            statuses = {symbol: "NOT_DUE" for symbol in SYMBOLS}
+            statuses["EURUSD"] = "APPENDED"
+            with self.assertRaisesRegex(ShadowCollectorError, "contract-bound"):
+                store.record(
+                    cycle_id="fbs-cycle-1",
+                    observed_at=datetime(2026, 7, 21, 12, 0, tzinfo=UTC),
+                    symbol_status=statuses,
+                    results={"EURUSD": export_result("EURUSD")},
+                    failures=(),
+                )
+
+    def test_runner_rejects_store_bound_to_another_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ShadowCycleStore(
+                Path(directory) / "cycles.sqlite3",
+                contract_id="fbs-window-01-diagnostic-v1",
+            )
+            self.addCleanup(store.close)
+            with self.assertRaisesRegex(
+                ShadowCollectorError,
+                "cycle store contract binding mismatch",
+            ):
+                run_shadow_cycle(
+                    FakeMT5(),
+                    repo_root=directory,
+                    artifact_root=Path(directory) / "artifacts",
+                    signing_key=b"collector-test-signing-key-32bytes-minimum",
+                    store=store,
+                    contract_id=CONTRACT_ID,
                 )
 
     def test_read_only_cycle_exports_due_fx_and_leaves_closed_gold_idle(self):

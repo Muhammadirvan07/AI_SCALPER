@@ -29,6 +29,23 @@ Modul utama:
   binding, boundary and continuity proof, raw/finalized split, serta paired
   recovery marker. Bridge dari `BrokerSpec` memakai validator evidence yang
   sama agar schema broker tidak bercabang diam-diam.
+- `live_runtime/shadow_collector.py`: collector evidence menerima exact
+  `contract_id` dan build-identity provider melalui composition boundary.
+  Store receipt, singleton fence, head path, contract verification, dan export
+  semuanya menolak binding kontrak yang berbeda; default XM lama hanya
+  dipertahankan untuk backward compatibility.
+- `live_runtime/broker_evidence_profile.py` dan
+  `live_runtime/broker_window_plan.py`: identity namespace, key/snapshot/
+  contract ID, tracked template, explicit weekly M15 sessions, special-hours
+  attestation, legal binding, serta future observation window per broker.
+  Konfigurasi build wajib regular-file, berada di repository, dan tidak boleh
+  melewati symlink.
+- `run_broker_shadow_once.py`: entry point broker-neutral untuk one-shot
+  evidence collection. Ia tetap memakai dependency lock, read-only MT5
+  attestation, exact contract/key/config identity, singleton fence, durable
+  operational receipt, disk guard, heartbeat, serta verified audit export.
+  Profile kandidat yang belum di-enable ditolak sebelum credential dan MT5
+  digunakan.
 - `live_runtime/contracts.py`: broker, decision, intent, dan receipt contracts
   dengan UTC-aware validation serta canonical SHA-256.
 - `live_runtime/decision_core.py`: pure, mode-agnostic decision core yang

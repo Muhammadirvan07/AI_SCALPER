@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 from typing import Callable, Mapping
 
@@ -22,6 +22,11 @@ from validation_evidence import (
 )
 
 from .contracts import canonical_sha256
+from .broker_evidence_profile import BrokerEvidenceProfile
+from .broker_window_plan import (
+    BrokerWindowPlanError,
+    verify_prepared_broker_calendar_plan,
+)
 from .account_identity import (
     ACCOUNT_IDENTITY_SCHEME,
     DISCOVERY_RECEIPT_DOMAIN,
@@ -90,6 +95,8 @@ def utc_now() -> datetime:
 
 
 def _read_json(path: Path) -> dict[str, object]:
+    if path.is_symlink() or not path.is_file():
+        raise EvidenceBootstrapError(f"JSON artifact must be a regular file: {path}")
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -99,12 +106,46 @@ def _read_json(path: Path) -> dict[str, object]:
     return payload
 
 
+def _repository_relative_file(repo_root: Path, value: str | Path) -> str:
+    raw = str(value).replace("\\", "/")
+    relative = PurePosixPath(raw)
+    if (
+        not raw
+        or relative.is_absolute()
+        or "." in relative.parts
+        or ".." in relative.parts
+        or any(":" in part for part in relative.parts)
+    ):
+        raise EvidenceBootstrapError("build identity path must be repository-relative")
+    candidate = repo_root
+    for part in relative.parts:
+        candidate = candidate / part
+        if candidate.is_symlink():
+            raise EvidenceBootstrapError(
+                f"build identity path must not contain symlinks: {relative.as_posix()}"
+            )
+    if not candidate.is_file():
+        raise EvidenceBootstrapError(
+            f"required build file is unavailable: {relative.as_posix()}"
+        )
+    try:
+        candidate.resolve(strict=True).relative_to(repo_root)
+    except (OSError, ValueError) as exc:
+        raise EvidenceBootstrapError(
+            f"build identity path escapes the repository: {relative.as_posix()}"
+        ) from exc
+    return relative.as_posix()
+
+
 def _file_set_sha256(repo_root: Path, paths: tuple[str, ...]) -> str:
     digest = hashlib.sha256()
-    for relative in sorted(paths):
+    normalized = tuple(
+        _repository_relative_file(repo_root, relative) for relative in paths
+    )
+    if len(set(normalized)) != len(normalized):
+        raise EvidenceBootstrapError("build identity file set contains duplicates")
+    for relative in sorted(normalized):
         path = repo_root / relative
-        if not path.is_file() or path.is_symlink():
-            raise EvidenceBootstrapError(f"required build file is unavailable: {relative}")
         encoded_name = relative.encode("utf-8")
         content = path.read_bytes()
         digest.update(len(encoded_name).to_bytes(4, "big"))
@@ -135,7 +176,11 @@ def _git_identity(repo_root: Path) -> dict[str, object]:
     }
 
 
-def build_ruleset(repo_root: str | Path) -> dict[str, object]:
+def build_ruleset(
+    repo_root: str | Path,
+    *,
+    config_files: tuple[str, ...] = CONFIG_FILES,
+) -> dict[str, object]:
     root = Path(repo_root).resolve()
     try:
         validate_windows_dependency_lock(root / LOCK_FILE_NAME)
@@ -143,7 +188,7 @@ def build_ruleset(repo_root: str | Path) -> dict[str, object]:
         raise EvidenceBootstrapError("Windows dependency lock validation failed") from exc
     profile_files_sha256 = _file_set_sha256(root, PROFILE_FILES)
     return {
-        "config_sha256": _file_set_sha256(root, CONFIG_FILES),
+        "config_sha256": _file_set_sha256(root, config_files),
         "dependency_lock_sha256": _file_set_sha256(root, DEPENDENCY_FILES),
         "strategy_rule_version": "strategy-selector-profiles-v1",
         "indicator_contract_version": "ta-indicators-contract-v1",
@@ -160,12 +205,16 @@ def build_ruleset(repo_root: str | Path) -> dict[str, object]:
     }
 
 
-def build_current_identity(repo_root: str | Path) -> dict[str, object]:
+def build_current_identity(
+    repo_root: str | Path,
+    *,
+    config_files: tuple[str, ...] = CONFIG_FILES,
+) -> dict[str, object]:
     git = _git_identity(Path(repo_root).resolve())
     if git["clean"] is not True:
         raise EvidenceBootstrapError("Git worktree must remain clean during evidence capture")
     return {
-        **build_ruleset(repo_root),
+        **build_ruleset(repo_root, config_files=config_files),
         "git_commit_sha": git["commit_sha"],
         "git_tree_sha": git["tree_sha"],
     }
@@ -339,11 +388,12 @@ def ensure_frozen_snapshot(
     artifact_root: str | Path,
     *,
     created_at: datetime,
+    snapshot_id: str = SNAPSHOT_ID,
 ) -> dict[str, object]:
-    verification = verify_frozen_snapshot(artifact_root, SNAPSHOT_ID)
+    verification = verify_frozen_snapshot(artifact_root, snapshot_id)
     if verification["valid"]:
         return verification["manifest"]
-    snapshot_path = Path(artifact_root) / "snapshots" / SNAPSHOT_ID
+    snapshot_path = Path(artifact_root) / "snapshots" / snapshot_id
     if snapshot_path.exists() or snapshot_path.is_symlink():
         raise EvidenceBootstrapError("existing frozen snapshot failed verification")
     frames, sources, boundaries = _snapshot_inputs(Path(repo_root).resolve())
@@ -352,15 +402,15 @@ def ensure_frozen_snapshot(
         frames,
         sources,
         boundaries,
-        snapshot_id=SNAPSHOT_ID,
+        snapshot_id=snapshot_id,
         created_at=created_at,
     )
-    if not verify_frozen_snapshot(artifact_root, SNAPSHOT_ID)["valid"]:
+    if not verify_frozen_snapshot(artifact_root, snapshot_id)["valid"]:
         raise EvidenceBootstrapError("new frozen snapshot failed verification")
     return manifest
 
 
-def _validate_xm_inputs(
+def _validate_broker_inputs(
     plan: Mapping[str, object],
     discovery: Mapping[str, object],
     calendar: Mapping[str, object],
@@ -395,9 +445,9 @@ def _validate_xm_inputs(
     if not isinstance(account, Mapping):
         raise EvidenceBootstrapError("discovery account facts are missing")
     if account.get("server") != plan.get("broker_server"):
-        raise EvidenceBootstrapError("XM server binding mismatch")
+        raise EvidenceBootstrapError("broker server binding mismatch")
     if account.get("company") != plan.get("broker_legal_name"):
-        raise EvidenceBootstrapError("XM legal-name binding mismatch")
+        raise EvidenceBootstrapError("broker legal-name binding mismatch")
     calendars = calendar["calendars"]
     cohort_ids = {
         calendars[symbol]["metadata"]["source_instance_id"]
@@ -405,6 +455,9 @@ def _validate_xm_inputs(
     }
     if cohort_ids != {plan.get("source_instance_id")}:
         raise EvidenceBootstrapError("calendar terminal cohort mismatch")
+
+
+_validate_xm_inputs = _validate_broker_inputs
 
 
 def _broker_sources(
@@ -561,6 +614,103 @@ def register_xm_diagnostic_contract(
     )
 
 
+def register_broker_diagnostic_contract(
+    repo_root: str | Path,
+    artifact_root: str | Path,
+    discovery_path: str | Path,
+    calendar_path: str | Path,
+    signing_key: bytes,
+    *,
+    plan_path: str | Path,
+    profile: BrokerEvidenceProfile,
+    profile_config_path: str = "config/broker_evidence_profiles.v1.json",
+    now_provider: Callable[[], datetime] = utc_now,
+    git_state_provider: Callable[[], Mapping[str, object]] | None = None,
+    clock_provider: Callable[[], object] | None = None,
+    regulatory_approval_key_provider: Callable[[str], bytes | None] | None = None,
+) -> dict[str, object]:
+    """Register a broker-neutral DIAGNOSTIC contract from a tracked profile.
+
+    The profile must already be explicitly enabled.  Template, discovery,
+    regulatory, calendar and safety bindings are reverified inside this
+    function; profile enablement alone never bypasses a gate.
+    """
+
+    if type(profile) is not BrokerEvidenceProfile:
+        raise TypeError("profile must be a BrokerEvidenceProfile")
+    if not profile.registration_enabled:
+        raise EvidenceBootstrapError(
+            "broker evidence registration remains disabled"
+        )
+    root = Path(repo_root).resolve()
+    profile_config_relative = _repository_relative_file(
+        root,
+        profile_config_path,
+    )
+    template = _read_json(root / profile.template_path)
+    plan = _read_json(Path(plan_path))
+    candidate_config = _read_json(root / "config/broker_candidates.phase3.json")
+    try:
+        verify_prepared_broker_calendar_plan(plan, template=template)
+        verify_candidate_legal_binding(
+            plan,
+            candidate_config,
+            now_provider=now_provider,
+            regulatory_approval_key_provider=regulatory_approval_key_provider,
+        )
+    except (BrokerWindowPlanError, XMWindowPlanError) as exc:
+        raise EvidenceBootstrapError(
+            "prepared broker calendar plan is invalid"
+        ) from exc
+    if plan.get("candidate_id") != profile.candidate_id:
+        raise EvidenceBootstrapError("evidence profile candidate binding mismatch")
+    discovery = _read_json(Path(discovery_path))
+    calendar = _read_json(Path(calendar_path))
+    _validate_broker_inputs(
+        plan,
+        discovery,
+        calendar,
+        signing_key=signing_key,
+    )
+    snapshot = ensure_frozen_snapshot(
+        root,
+        artifact_root,
+        created_at=now_provider(),
+        snapshot_id=profile.snapshot_id,
+    )
+    config_files = (
+        "config/broker_candidates.phase3.json",
+        profile_config_relative,
+        profile.template_path,
+    )
+    ruleset = build_ruleset(root, config_files=config_files)
+    key_id = "wincred-" + signing_key_fingerprint(signing_key)
+    broker_sources = _broker_sources(
+        plan,
+        discovery,
+        calendar,
+        key_id=key_id,
+    )
+    instrument_specs = _instrument_specs(discovery, calendar)
+    registered_at = now_provider()
+    return register_forward_contract(
+        artifact_root,
+        snapshot,
+        ruleset,
+        broker_sources,
+        instrument_specs,
+        session_calendars=calendar["calendars"],
+        contract_id=profile.contract_id,
+        registered_at=registered_at,
+        observation_start_at=plan["observation_start_at_utc"],
+        blind_until=plan["blind_until_utc"],
+        validation_profile="DIAGNOSTIC",
+        git_state_provider=git_state_provider,
+        clock_provider=clock_provider,
+        signing_key=signing_key,
+    )
+
+
 __all__ = [
     "CONTRACT_ID",
     "DATA_FILES",
@@ -572,6 +722,7 @@ __all__ = [
     "build_ruleset",
     "ensure_frozen_snapshot",
     "register_xm_diagnostic_contract",
+    "register_broker_diagnostic_contract",
     "verify_calendar_bundle",
     "verify_discovery_receipt",
 ]

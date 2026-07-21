@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -21,6 +20,7 @@ from .mt5_readonly import (
     MT5ReadOnlyCapabilityError,
     ReadOnlyMT5Facade,
 )
+from .secure_files import write_json_exclusive
 
 
 DISCOVERY_SCHEMA_VERSION = "mt5-read-only-discovery-v3"
@@ -183,28 +183,8 @@ def discover_mt5_facts(
 def write_discovery_exclusive(path: str | Path, payload: Mapping[str, object]) -> Path:
     """Create one immutable local discovery receipt without overwriting evidence."""
 
-    destination = Path(path)
-    if destination.is_symlink() or destination.exists():
-        raise FileExistsError("discovery output already exists or is a symlink")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    descriptor = os.open(destination, flags, 0o600)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(
-                json.loads(canonical_json(payload)), indent=2,
-                sort_keys=True, ensure_ascii=False,
-            ))
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-    except Exception:
-        try:
-            destination.unlink()
-        except OSError:
-            pass
-        raise
-    return destination
+    normalized = json.loads(canonical_json(payload))
+    return write_json_exclusive(path, normalized)
 
 
 def utc_now() -> datetime:

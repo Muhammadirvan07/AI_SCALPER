@@ -8,15 +8,26 @@ from pathlib import Path
 from live_runtime.mt5_preflight import (
     MT5CandidatePreflightError,
     attest_candidate_read_only,
+    build_preflight_receipt,
     load_preflight_candidate,
+    utc_now,
+    write_preflight_receipt_exclusive,
 )
 from live_runtime.mt5_readonly import (
     MT5ReadOnlyCapabilityError,
     ReadOnlyMT5Facade,
 )
+from live_runtime.secure_files import SecureFileError
 
 
-def main() -> int:
+REPO_ROOT = Path(__file__).resolve().parent
+
+
+def _repo_path(path: Path) -> Path:
+    return path if path.is_absolute() else REPO_ROOT / path
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Preparation-only MT5 read-only preflight; accepts no credentials"
     )
@@ -26,10 +37,21 @@ def main() -> int:
         type=Path,
         default=Path("config/broker_candidates.phase3.json"),
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help=(
+            "optional create-exclusive sanitized preflight receipt; this is "
+            "diagnostic audit state, not validation evidence"
+        ),
+    )
+    args = parser.parse_args(argv)
 
     try:
-        candidate = load_preflight_candidate(args.config, args.candidate)
+        candidate = load_preflight_candidate(
+            _repo_path(args.config),
+            args.candidate,
+        )
         import MetaTrader5 as mt5  # Windows-only dependency, intentionally late
 
         if not mt5.initialize():
@@ -41,6 +63,7 @@ def main() -> int:
                 candidate_id=args.candidate,
                 candidate=candidate,
             )
+            receipt = build_preflight_receipt(result, captured_at=utc_now())
         finally:
             mt5.shutdown()
     except (MT5CandidatePreflightError, MT5ReadOnlyCapabilityError, ImportError) as exc:
@@ -58,6 +81,24 @@ def main() -> int:
     print("Order capability: DISABLED")
     print("Discovery evidence: DISABLED")
     print("Promotion evidence: DISABLED")
+    if args.output is not None:
+        try:
+            destination = write_preflight_receipt_exclusive(
+                _repo_path(args.output),
+                receipt,
+            )
+        except (
+            OSError,
+            SecureFileError,
+            ValueError,
+            TypeError,
+            MT5CandidatePreflightError,
+        ) as exc:
+            print(f"PREFLIGHT_RECEIPT_WRITE_FAILED: {exc}")
+            print("Safety lock remains active; no broker order was submitted.")
+            return 1
+        print(f"Sanitized receipt: {destination}")
+        print(f"Receipt SHA-256: {receipt['payload_sha256']}")
     return 0
 
 

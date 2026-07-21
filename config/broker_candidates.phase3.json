@@ -1,11 +1,11 @@
 {
   "schema_version": "broker-candidate-plan-v1",
-  "status": "FBS_SELECTED_PREFLIGHT_PENDING_AND_ELIGIBILITY_UNVERIFIED",
+  "status": "FBS_DIAGNOSTIC_SHADOW_ACTIVE_EVIDENCE_AND_ELIGIBILITY_PENDING",
   "execution_enabled": false,
   "credentials_allowed": false,
   "operational_priority": {
     "selected_target_broker": "fbs",
-    "primary_shadow_broker": null,
+    "primary_shadow_broker": "fbs",
     "standby_preparation_broker": "finex",
     "deferred_benchmark_brokers": []
   },
@@ -33,7 +33,7 @@
         "calendar_hash_status": "PENDING_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS"
       },
       "read_only_discovery_allowed": false,
-      "binding_status": "SANITIZED_BINDING_PROBE_COMPLETE_PREFLIGHT_PENDING",
+      "binding_status": "SANITIZED_BINDING_AND_PREFLIGHT_OBSERVED_DIAGNOSTIC_SHADOW_ACTIVE",
       "broker_symbols_observed": {
         "XAUUSD": "XAUUSD",
         "EURUSD": "EURUSD",

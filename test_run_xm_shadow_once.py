@@ -813,7 +813,34 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
             text=True,
         )
         self.assertEqual(0, completed.returncode, completed.stderr)
-        self.assertIn("Run one XM read-only shadow cycle", completed.stdout)
+        self.assertIn("Run one broker read-only shadow cycle", completed.stdout)
+
+    def test_generic_candidate_remains_blocked_before_credential_or_mt5(self):
+        output = io.StringIO()
+        with (
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_dependency_guard",
+                return_value=self.passing_guard(),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_runtime_components",
+                return_value=self.runtime_components(),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_mt5_module",
+                side_effect=AssertionError("MT5 must not load"),
+            ),
+            redirect_stdout(output),
+        ):
+            result = run_xm_shadow_once.main(
+                self.runner_args() + ["--candidate", "fbs"]
+            )
+        self.assertEqual(2, result)
+        self.assertIn("RUNTIME_IMPORT_FAILED", output.getvalue())
+        self.assertIn("Order capability: DISABLED", output.getvalue())
 
     def test_foreign_cwd_keeps_runtime_paths_and_identity_at_repo_root(self):
         fake_repo = self.root / "repo"
