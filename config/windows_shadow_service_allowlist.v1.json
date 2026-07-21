@@ -1,0 +1,45 @@
+{
+  "schema_version": "ai-scalper-windows-shadow-service-allowlist-v1",
+  "release_profile": "WINDOWS_READ_ONLY_SHADOW_SERVICE_V1",
+  "safety": {
+    "live_allowed": false,
+    "safe_to_demo_auto_order": false,
+    "max_lot": 0.01,
+    "order_capability": "DISABLED"
+  },
+  "usage_policy": {
+    "bundle_class": "READ_ONLY_SHADOW_SERVICE",
+    "execution_context": "WINDOWS_TASK_SCHEDULER_SERVICE_ACCOUNT",
+    "network_capable_tooling_present": true,
+    "broker_mutation_capability": false,
+    "production_service_execution_allowed": true,
+    "runtime_materialization_required": false
+  },
+  "files": [
+    "agents/market_status.py",
+    "agents/supervisor_agent.py",
+    "config/broker_candidates.phase3.json",
+    "config/windows_shadow_service_allowlist.v1.json",
+    "live_runtime/__init__.py",
+    "live_runtime/account_fence.py",
+    "live_runtime/contracts.py",
+    "live_runtime/decision_core.py",
+    "live_runtime/mt5_readonly.py",
+    "live_runtime/realtime_diagnostic.py",
+    "market_data_quality.py",
+    "market_regime_filter.py",
+    "pylock.windows-cp312.toml",
+    "requirements-live-windows.txt",
+    "requirements-windows-cp312.lock.txt",
+    "run_fbs_crypto_m15_shadow.py",
+    "run_fbs_crypto_m5_challenger.py",
+    "run_realtime_diagnostic_shadow.py",
+    "strategy/strategy_profiles.py",
+    "strategy/strategy_selector.py",
+    "strategy/trend_analyzer.py",
+    "vendor/wheels/pip-26.1.2-py3-none-any.whl",
+    "vendor/wheels/ta-0.11.0-py3-none-any.whl",
+    "vendor/windows-cp312-dependency-sbom.cdx.json",
+    "vendor/windows-cp312-install-manifest.json"
+  ]
+}

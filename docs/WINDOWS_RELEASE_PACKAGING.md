@@ -1,8 +1,8 @@
 # Windows Release Packaging
 
-Status saat ini tetap **READ-ONLY SHADOW / NOT_READY**. Artefak yang dibuat
-builder ini adalah **deployment/tooling bundle untuk release operator**, bukan
-service-runtime bundle. Builder tidak membuka manual-demo, demo-auto, atau
+Status saat ini tetap **READ-ONLY SHADOW / NOT_READY**. Builder mendukung dua
+profile yang terisolasi: deployment/tooling untuk release operator dan minimal
+read-only shadow service. Keduanya tidak membuka manual-demo, demo-auto, atau
 live.
 
 ## Mengapa repository tidak boleh langsung diarsipkan
@@ -25,7 +25,8 @@ masih mengikat source tooling tersebut. Karena itu:
 - bundle hanya boleh dipegang/dijalankan release operator;
 - production service account tidak boleh menjalankan bundle ini;
 - source tree tidak boleh langsung dijadikan Task Scheduler working directory;
-- materialisasi service-runtime minimal membutuhkan profile/allowlist terpisah.
+- service account hanya boleh menerima profile service terpisah, bukan bundle
+  tooling ini.
 
 Profile tooling juga membawa runner crypto weekend read-only. Runner tersebut
 hanya memakai allowlisted public GET Binance/Coinbase, tanpa credential maupun
@@ -49,8 +50,12 @@ oleh external/registration gate, sehingga keberadaan file di bundle tidak
 mengaktifkan evidence maupun order.
 
 Build identity shadow kini dapat dikomposisikan per broker dari exact config
-files. Pemisahan runtime minimal tetap belum boleh diklaim karena allowlist
-service-runtime terpisah dan clean-checkout Windows proof belum dibuat.
+files. Profile `WINDOWS_READ_ONLY_SHADOW_SERVICE_V1` memakai exact allowlist
+`config/windows_shadow_service_allowlist.v1.json`. Ia memuat 25 file closure
+runtime read-only yang telah direview dan tidak membawa setup/generator,
+credential bootstrap, executor, MT5 mutation adapter, atau order primitive.
+Actual clean-checkout build dan two-host/two-build reproducibility receipt tetap
+harus dikumpulkan pada exact Windows target sebelum service dipasang.
 
 ## Gate builder
 
@@ -72,8 +77,9 @@ Builder menolak release bila:
 - safety lock bukan persis `live_allowed=false`,
   `safe_to_demo_auto_order=false`, `max_lot=0.01`, dan
   `order_capability=DISABLED`;
-- usage policy bukan persis `DEPLOYMENT_TOOLING`,
-  `RELEASE_OPERATOR_ONLY`, dan service execution disabled;
+- usage policy tidak persis sama dengan policy profile terpilih: operator
+  tooling tetap `RELEASE_OPERATOR_ONLY` dan service profile tetap
+  `READ_ONLY_SHADOW_SERVICE` dengan broker mutation disabled;
 - output ditempatkan di dalam repository atau destination sudah ada.
 
 ZIP dan `RELEASE_MANIFEST.json` dibuat deterministik. Manifest mengikat exact
@@ -96,6 +102,19 @@ discovery/calendar, forward contract, journal, credential, dan validation
 evidence adalah artefak terpisah. Jangan menyalin `data/`, `runtime_state/`,
 `runtime_snapshots/`, atau `validation_artifacts/` ke release source.
 
+Untuk menghasilkan minimal read-only service bundle dari clean checkout:
+
+```powershell
+python -I -S -B .\build_windows_release.py `
+  --allowlist .\config\windows_shadow_service_allowlist.v1.json `
+  --output C:\AI_SCALPER_RELEASES\ai-scalper-readonly-shadow-service-v1.zip
+```
+
+Bangun artefak yang sama pada dua clean Windows CPython 3.12 environments.
+Masukkan kedua observasi exact ke `live_runtime.release_reproducibility`, lalu
+simpan signed comparison receipt. Receipt membuktikan kesamaan build; ia tidak
+membuktikan broker evidence, OS hardening, WORM custody, atau live readiness.
+
 ## Perubahan allowlist
 
 Penambahan file adalah perubahan security-sensitive:
@@ -106,7 +125,7 @@ Penambahan file adalah perubahan security-sensitive:
    Builder tetap akan menolak execution path dan order primitive walaupun path
    tersebut sengaja dimasukkan ke allowlist.
 4. Buat clean commit baru; release lama tidak boleh ditimpa.
-5. Buat service-runtime profile terpisah setelah coupling build identity
-   dibuang; generator/network collector tidak boleh diwariskan ke profile itu.
+5. Jika service profile berubah, pertahankan minimal import closure; jangan
+   mewariskan generator, setup, executor, atau operator-only tooling.
 6. Untuk fase manual-demo atau live, buat versi/profile baru dan approval
    terpisah. Jangan menambahkan executor ke deployment profile ini.

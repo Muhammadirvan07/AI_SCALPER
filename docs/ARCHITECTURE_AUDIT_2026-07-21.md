@@ -1,12 +1,12 @@
 # Architecture and Software Audit — 2026-07-21
 
-Status: **LOCAL HARDENING COMPLETED / DO NOT SHIP / NOT_READY**
+Status: **LOCAL SOFTWARE FOUNDATION COMPLETED / DO NOT SHIP / NOT_READY**
 
 Audit memakai boundary modular-monolith/ports-adapters, fail-closed review,
 dependency audit, dan ship-gate acceptance review. Diagnostic shadow yang
 sedang berjalan tidak diubah dan tidak dihitung sebagai promotion evidence.
 
-Verifikasi lokal setelah hardening: `529/529` unit/integration tests lulus,
+Verifikasi lokal setelah penutupan fondasi: `557/557` unit/integration tests lulus,
 project source berhasil di-compile, `pip check` tidak menemukan dependency
 rusak, Windows CPython 3.12 lock/SBOM/install manifest valid, release import
 closure lulus, dan diff whitespace bersih.
@@ -31,6 +31,22 @@ closure lulus, dan diff whitespace bersih.
 - Status FBS diselaraskan dengan fakta operator: binding/preflight observed dan
   diagnostic shadow active, sementara full discovery/evidence/legal gate tetap
   false.
+- Periodic reconciliation supervisor kini memiliki durable SQLite WAL lease,
+  fencing, startup reconciliation, hash-chained cycle receipt, serta
+  fail-closed kill-switch latch untuk exception, status asing, corruption, dan
+  critical broker state.
+- Independent promotion issuer menghitung ulang raw ledger, lima fold, seeded
+  bootstrap lower bound, drawdown, cost stress, parity corpus, dan verifier-only
+  validation binding. Caller tidak dapat membentuk status receipt terverifikasi
+  secara langsung.
+- Minimal Windows read-only shadow service profile kini terpisah dari operator
+  tooling, memakai exact 25-file allowlist dan tetap menolak executor, setup,
+  credential, runtime artifact, serta primitive order.
+- Clean-checkout Windows reproducibility comparison dan signed HMAC receipt
+  tersedia untuk exact commit/tree/archive/manifest/release hashes.
+- Provider-neutral signed off-host envelope, durable idempotent outbox, remote
+  acknowledgement verification, tamper detection, dan create-exclusive
+  directory-drop adapter tersedia. Adapter lokal tidak diklaim sebagai WORM.
 
 ## Kekurangan yang bukan bug lokal dan masih terbuka
 
@@ -44,19 +60,14 @@ closure lulus, dan diff whitespace bersih.
 - Sepuluh manual-demo order, 30-day demo-auto soak, reconciliation soak, dan
   XAU live canary belum boleh dimulai.
 
-## Kekurangan software fase berikutnya
+## Batas klaim 100% fondasi
 
-- Production reconciliation supervisor/watchdog masih one-shot/component
-  foundation; periodic lifecycle harus dibangun dan diuji sebelum demo-auto.
-- Promotion evidence issuer independen yang menghitung ulang seluruh ledger,
-  bootstrap confidence bound, folds, cost stress, parity corpus, dan evidence
-  store receipt belum tersedia.
-- Deployment-tooling bundle sudah deterministic, tetapi minimal read-only
-  service-runtime allowlist dan clean-checkout Windows reproducibility receipt
-  belum dibuat.
-- Off-host storage/monitor adapters serta signed delivery acknowledgement
-  belum diimplementasikan karena provider dan credential custody belum dipilih.
+Empat gap software lokal dalam audit ini sudah ditutup. Arti `100% fondasi`
+adalah kontrak, komponen, port/adaptor netral, persistence, fail-closed behavior,
+acceptance tests, dan dokumentasi tersedia di repository. Ini bukan `100% live
+readiness`: production composition pada exact Windows VPS, provider WORM,
+independent key custody, broker evidence, statistical sample, failure drill,
+demo soak, dan approval manusia tetap harus dibuktikan secara eksternal.
 
-Empat item software fase berikutnya tidak boleh diselesaikan dengan membuka
-lock. Hingga acceptance evidence dan approval manual tersedia, status final
-tetap `DO NOT SHIP`.
+Tidak ada penyelesaian fondasi yang membuka lock. Hingga acceptance evidence dan
+approval manual tersedia, status final tetap `DO NOT SHIP / NOT_READY`.

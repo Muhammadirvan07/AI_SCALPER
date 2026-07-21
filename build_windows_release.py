@@ -25,6 +25,9 @@ import zipfile
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_ALLOWLIST = REPO_ROOT / "config" / "windows_release_allowlist.v1.json"
 ALLOWLIST_SCHEMA = "ai-scalper-windows-release-allowlist-v1"
+READ_ONLY_SERVICE_ALLOWLIST_SCHEMA = (
+    "ai-scalper-windows-shadow-service-allowlist-v1"
+)
 ALLOWLIST_FIELDS = {
     "files",
     "release_profile",
@@ -37,7 +40,9 @@ MANIFEST_MEMBER = "RELEASE_MANIFEST.json"
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 MAX_SOURCE_FILE_BYTES = 50 * 1024 * 1024
 MAX_TOTAL_SOURCE_BYTES = 128 * 1024 * 1024
-ALLOWLIST_NAME_PATTERN = re.compile(r"windows_release_allowlist\.v[1-9][0-9]*\.json")
+ALLOWLIST_NAME_PATTERN = re.compile(
+    r"windows_(?:release|shadow_service)_allowlist\.v[1-9][0-9]*\.json"
+)
 WINDOWS_RESERVED_STEMS = {
     "aux",
     "con",
@@ -59,6 +64,18 @@ REQUIRED_USAGE_POLICY = {
     "network_capable_tooling_present": True,
     "production_service_execution_allowed": False,
     "runtime_materialization_required": True,
+}
+READ_ONLY_SERVICE_USAGE_POLICY = {
+    "bundle_class": "READ_ONLY_SHADOW_SERVICE",
+    "execution_context": "WINDOWS_TASK_SCHEDULER_SERVICE_ACCOUNT",
+    "network_capable_tooling_present": True,
+    "broker_mutation_capability": False,
+    "production_service_execution_allowed": True,
+    "runtime_materialization_required": False,
+}
+ALLOWLIST_USAGE_POLICIES = {
+    ALLOWLIST_SCHEMA: REQUIRED_USAGE_POLICY,
+    READ_ONLY_SERVICE_ALLOWLIST_SCHEMA: READ_ONLY_SERVICE_USAGE_POLICY,
 }
 FORBIDDEN_DIRECTORY_NAMES = {
     ".git",
@@ -114,6 +131,17 @@ FORBIDDEN_READ_ONLY_EXECUTION_PATHS = {
 FORBIDDEN_READ_ONLY_EXECUTION_PREFIXES = (
     "mql5/",
     "vps_package/",
+)
+FORBIDDEN_SERVICE_TOOL_PREFIXES = (
+    "bootstrap_",
+    "build_",
+    "collect_",
+    "generate_",
+    "prepare_",
+    "register_",
+    "seal_",
+    "setup_",
+    "verify_",
 )
 ORDER_CAPABILITY_SOURCE_PATTERNS = (
     re.compile(rb"\border_(?:check|send)\b", re.IGNORECASE),
@@ -317,11 +345,12 @@ def load_allowlist(path: Path) -> dict[str, Any]:
         raise ReleaseBuildError("release allowlist must be a JSON object")
     if set(payload) != ALLOWLIST_FIELDS:
         raise ReleaseBuildError("release allowlist root fields drift")
-    if payload.get("schema_version") != ALLOWLIST_SCHEMA:
+    schema_version = payload.get("schema_version")
+    if schema_version not in ALLOWLIST_USAGE_POLICIES:
         raise ReleaseBuildError("unsupported release allowlist schema")
     if payload.get("safety") != REQUIRED_SAFETY:
         raise ReleaseBuildError("release safety locks do not match the immutable policy")
-    if payload.get("usage_policy") != REQUIRED_USAGE_POLICY:
+    if payload.get("usage_policy") != ALLOWLIST_USAGE_POLICIES[schema_version]:
         raise ReleaseBuildError("release usage policy does not match the immutable policy")
     profile = payload.get("release_profile")
     if not isinstance(profile, str) or not profile.strip():
@@ -337,6 +366,13 @@ def load_allowlist(path: Path) -> dict[str, Any]:
         raise ReleaseBuildError("case-insensitive release path collision")
     for item in normalized:
         _path_policy(item)
+    if schema_version == READ_ONLY_SERVICE_ALLOWLIST_SCHEMA:
+        for item in normalized:
+            basename = PurePosixPath(item).name.casefold()
+            if basename.startswith(FORBIDDEN_SERVICE_TOOL_PREFIXES):
+                raise ReleaseBuildError(
+                    f"operator/setup tooling is forbidden in service release: {item}"
+                )
     result = dict(payload)
     result["files"] = normalized
     result["_raw_sha256"] = _sha256(raw)
@@ -559,7 +595,7 @@ def build_release(
         is None
     ):
         raise ReleaseBuildError(
-            "release allowlist must be a versioned config/windows_release_allowlist file"
+            "release allowlist must be a supported versioned config Windows allowlist"
         )
     resolved_output = output_path.resolve()
     sidecar = (
@@ -611,8 +647,8 @@ def build_release(
         "git_commit": commit,
         "git_tree": tree,
         "allowlist_sha256": allowlist["_raw_sha256"],
-        "safety": dict(REQUIRED_SAFETY),
-        "usage_policy": dict(REQUIRED_USAGE_POLICY),
+        "safety": dict(allowlist["safety"]),
+        "usage_policy": dict(allowlist["usage_policy"]),
         "source_files": [
             {
                 "path": path_text,
@@ -665,6 +701,8 @@ def build_release(
         "manifest": str(sidecar),
         "release_identity_sha256": release_identity,
         "file_count": len(source_bytes),
+        "bundle_class": allowlist["usage_policy"]["bundle_class"],
+        "execution_context": allowlist["usage_policy"]["execution_context"],
     }
 
 
@@ -704,8 +742,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Release identity: {result['release_identity_sha256']}")
     print(f"Manifest: {result['manifest']}")
     print(f"Files: {result['file_count']}")
-    print("Bundle class: DEPLOYMENT_TOOLING")
-    print("Execution context: RELEASE_OPERATOR_ONLY")
+    print(f"Bundle class: {result['bundle_class']}")
+    print(f"Execution context: {result['execution_context']}")
     print("Order capability: DISABLED")
     return 0
 

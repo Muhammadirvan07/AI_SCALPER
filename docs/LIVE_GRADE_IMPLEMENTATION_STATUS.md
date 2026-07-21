@@ -184,8 +184,8 @@ BTCUSD = shadow-only
   closure, secret/state/history exclusion, dan immutable safety/usage policy.
   Modul executor/MT5 adapter/reconciliation/MQL5 serta primitive
   `order_send`, `order_check`, action/order constants, dan `CTrade` ditolak
-  struktural dari profile read-only. Bundle saat ini tetap operator tooling,
-  bukan service runtime.
+  struktural dari profile read-only. Profile operator tooling tetap terpisah;
+  minimal read-only shadow service memiliki allowlist dan policy exact sendiri.
 
 ## Batas bukti yang masih fail-closed
 
@@ -224,21 +224,26 @@ BTCUSD = shadow-only
    memeriksa tipe, exact binding, freshness, serta konsistensi, tetapi collector
    production yang membaca state broker/OS dan menerbitkan receipt durable
    belum tersedia. Karena itu komponen ini belum menjadi trust root live.
-10. `LaneEvidence` dan golden parity saat ini adalah calculator/fixture lokal.
-    Signed promotion receipt menyediakan independent-key boundary, tetapi
-    issuer production yang membuka, menghitung ulang, dan memverifikasi trade
-    ledger, bootstrap, fold, evidence-store receipt, serta parity corpus belum
-    tersedia.
+10. Independent promotion issuer kini menerima raw immutable observations,
+    menghitung ulang trade count/duration/PF/drawdown/cost stress/seeded
+    bootstrap, memverifikasi tepat lima fold dan parity corpus, serta hanya
+    menerima validation binding dari verifier adapter yang sealed. Signed
+    receipt tetap memerlukan independent production key custody dan corpus
+    broker/OOS nyata; data sintetis dalam test bukan promotion evidence.
 11. Broker-neutral one-shot evidence shadow runner kini memiliki durable per-stage receipt,
     hash-chained operational journal, singleton fence, disk floor, heartbeat
     projection, status-only watchdog, dan verified create-exclusive audit
     export. Loop broker-tick diagnostic non-promotional juga sudah tersedia,
     tetapi generic collector belum dibuktikan pada exact Windows/FBS host.
-    Periodic broker reconciliation supervisor, durable soak/demotion
-    reset tracker, actual off-host alert/WORM delivery, serta restore drill
+    Periodic broker reconciliation supervisor lokal kini memiliki durable
+    lease/fence, startup reconciliation, hash-chain receipt, dan fail-closed
+    latch. Provider-neutral off-host signed envelope/outbox/ack port serta
+    directory-drop adapter juga tersedia. Durable soak/demotion reset tracker,
+    actual remote WORM/alert provider, supervisor composition, dan restore drill
     belum dipasang atau diuji pada Windows VPS.
-12. Supply-chain workflow, SBOM, OSV receipt verifier, dan deterministic
-    release builder sudah tersedia lokal, tetapi actual OSV collection,
+12. Supply-chain workflow, SBOM, OSV receipt verifier, deterministic release
+    builder, exact minimal read-only service allowlist, serta signed two-build
+    reproducibility receipt sudah tersedia lokal, tetapi actual OSV collection,
     independent signing-key custody, clean committed release identity, dan
     clean-checkout build pada exact Windows host belum dilakukan. Runtime/data
     artifact churn pada development worktree tetap bukan release input. Karena
@@ -282,9 +287,11 @@ eksternal belum terpenuhi.
 9. Setelah perubahan direview, buat clean commit baru, bangun bundle dengan
    exact allowlist dari clean checkout, collect receipt OSV nyata dengan key di
    luar repository, dan arsipkan manifest/receipt melalui channel off-host.
-10. Pisahkan service-runtime minimal dari deployment-tooling bundle dengan
-    menghapus coupling build identity terhadap generator/network tooling.
-    Jangan menjalankan bundle operator melalui Task Scheduler/service account.
+10. Bangun profile `WINDOWS_READ_ONLY_SHADOW_SERVICE_V1` dari clean checkout
+    pada exact Windows host, lakukan dua build independen, verifikasi signed
+    reproducibility receipt, lalu jalankan hanya bundle service tersebut melalui
+    Task Scheduler. Bundle operator tetap tidak boleh dijalankan oleh service
+    account.
 11. Selesaikan failure drills serta repeated paired bar/raw ingestion, lalu
    jalankan 10 manual-demo order dan 30-day demo-auto soak hanya setelah policy
    review terpisah.
