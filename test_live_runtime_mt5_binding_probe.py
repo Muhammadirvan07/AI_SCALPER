@@ -59,6 +59,9 @@ class FakeMT5:
         value = self.symbols.get(symbol)
         return None if value is None else dict(value)
 
+    def symbols_get(self):
+        return tuple(dict(value) for value in self.symbols.values())
+
     def copy_ticks_range(self, *_args):
         return ()
 
@@ -124,12 +127,90 @@ class MT5BindingProbeTests(unittest.TestCase):
         self.assertIsNone(result["symbols"]["XAUUSD"]["selected"])
         self.assertEqual(["GOLD", "XAUUSD"], result["symbols"]["XAUUSD"]["matches"])
 
+    def test_catalog_discovers_delimited_broker_symbols_for_fx_scope(self) -> None:
+        fake = FakeMT5()
+        fake.symbols = {
+            "EURUSD.fx": {
+                "name": "EURUSD.fx",
+                "description": "Euro vs US Dollar",
+                "path": "Phillip/FX",
+                "private_note": "must never leave boundary",
+            },
+            "USDJPY.fx": {
+                "name": "USDJPY.fx",
+                "description": "US Dollar vs Japanese Yen",
+                "path": "Phillip/FX",
+            },
+            "AUDUSD.fx": {
+                "name": "AUDUSD.fx",
+                "description": "Australian Dollar vs US Dollar",
+                "path": "Phillip/FX",
+            },
+        }
+
+        result = probe_candidate_binding(
+            ReadOnlyMT5Facade(fake),
+            candidate_id="phillip-fx",
+            scope="fx",
+        )
+
+        self.assertTrue(result["binding_ready"])
+        self.assertEqual("FX", result["binding_scope"])
+        self.assertEqual(
+            ["AUDUSD", "EURUSD", "USDJPY"],
+            result["required_symbols"],
+        )
+        self.assertEqual("EURUSD.fx", result["symbols"]["EURUSD"]["selected"])
+        self.assertEqual(
+            "CATALOG_UNIQUE",
+            result["symbols"]["EURUSD"]["selection_source"],
+        )
+        self.assertNotIn("must never leave boundary", json.dumps(result, sort_keys=True))
+
+    def test_commodity_scope_requires_only_gold_binding(self) -> None:
+        fake = FakeMT5()
+        fake.symbols = {
+            "XAUUSD.cfd": {
+                "name": "XAUUSD.cfd",
+                "description": "Gold Spot vs US Dollar",
+                "path": "Phillip/Commodity CFD",
+            }
+        }
+
+        result = probe_candidate_binding(
+            ReadOnlyMT5Facade(fake),
+            candidate_id="phillip-commodity",
+            scope="commodity",
+        )
+
+        self.assertTrue(result["binding_ready"])
+        self.assertEqual(["XAUUSD"], result["required_symbols"])
+        self.assertEqual("XAUUSD.cfd", result["symbols"]["XAUUSD"]["selected"])
+
+    def test_invalid_scope_is_rejected(self) -> None:
+        with self.assertRaisesRegex(MT5BindingProbeError, "scope"):
+            probe_candidate_binding(
+                ReadOnlyMT5Facade(FakeMT5()),
+                candidate_id="phillip",
+                scope="stocks",
+            )
+
     def test_cli_prints_safe_json_and_has_no_credential_argument(self) -> None:
         fake = FakeMT5()
         output = io.StringIO()
         with (
             patch.dict(sys.modules, {"MetaTrader5": fake}),
-            patch.object(sys, "argv", ["run_mt5_binding_probe.py", "--candidate", "fbs"]),
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "run_mt5_binding_probe.py",
+                    "--candidate",
+                    "fbs",
+                    "--scope",
+                    "all",
+                ],
+            ),
             redirect_stdout(output),
         ):
             self.assertEqual(0, probe_main())

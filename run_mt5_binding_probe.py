@@ -20,6 +20,12 @@ def main() -> int:
         description="Read safe MT5 demo binding facts; accepts no credentials"
     )
     parser.add_argument("--candidate", default="fbs")
+    parser.add_argument(
+        "--scope",
+        choices=("all", "fx", "commodity"),
+        default="all",
+        help="Required symbol lane for brokers that separate FX and commodity accounts",
+    )
     args = parser.parse_args()
 
     try:
@@ -32,6 +38,7 @@ def main() -> int:
             result = probe_candidate_binding(
                 ReadOnlyMT5Facade(mt5),
                 candidate_id=args.candidate,
+                scope=args.scope,
             )
         finally:
             mt5.shutdown()

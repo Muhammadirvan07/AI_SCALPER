@@ -45,6 +45,7 @@ class ReadOnlyMT5Facade:
         "__account_info_call",
         "__terminal_info_call",
         "__symbol_info_call",
+        "__symbols_get_call",
         "__copy_ticks_range_call",
         "__copy_rates_from_pos_call",
         "COPY_TICKS_ALL",
@@ -86,6 +87,12 @@ class ReadOnlyMT5Facade:
             "_ReadOnlyMT5Facade__symbol_info_call",
             methods["symbol_info"],
         )
+        symbols_get = getattr(mt5_module, "symbols_get", None)
+        object.__setattr__(
+            self,
+            "_ReadOnlyMT5Facade__symbols_get_call",
+            symbols_get if callable(symbols_get) else None,
+        )
         object.__setattr__(
             self,
             "_ReadOnlyMT5Facade__copy_ticks_range_call",
@@ -117,6 +124,13 @@ class ReadOnlyMT5Facade:
 
     def symbol_info(self, symbol):
         return self.__symbol_info_call(symbol)
+
+    def symbols_get(self):
+        if self.__symbols_get_call is None:
+            raise MT5ReadOnlyCapabilityError(
+                "MT5 read-only capability missing: symbols_get"
+            )
+        return self.__symbols_get_call()
 
     def copy_ticks_range(self, symbol, start, end, flags):
         return self.__copy_ticks_range_call(symbol, start, end, flags)

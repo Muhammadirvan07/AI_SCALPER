@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from typing import Mapping
 
 from .benchmark import REQUIRED_SYMBOLS
 from .contracts import require_text
 from .mt5_readonly import (
     MT5ReadOnlyAttestationError,
+    MT5ReadOnlyCapabilityError,
     ReadOnlyMT5Facade,
     attest_mt5_read_only,
 )
@@ -22,6 +24,11 @@ SYMBOL_ALIASES = {
 OPTIONAL_CRYPTO_ALIASES = {
     "BTCUSD": ("BTCUSD", "BTCUSD."),
     "ETHUSD": ("ETHUSD", "ETHUSD."),
+}
+BINDING_SCOPE_SYMBOLS = {
+    "ALL": tuple(REQUIRED_SYMBOLS),
+    "FX": ("AUDUSD", "EURUSD", "USDJPY"),
+    "COMMODITY": ("XAUUSD",),
 }
 
 
@@ -86,7 +93,86 @@ def _probe_symbol_aliases(
             "selected": ordered_matches[0] if len(ordered_matches) == 1 else None,
             "matches": ordered_matches,
             "observations": sorted(observations, key=lambda item: item["name"]),
+            "selection_source": "ALIAS_UNIQUE" if len(ordered_matches) == 1 else None,
         }
+    return symbols
+
+
+def _catalog_symbol_facts(facade: ReadOnlyMT5Facade) -> list[dict[str, str]]:
+    try:
+        raw_symbols = facade.symbols_get()
+    except MT5ReadOnlyCapabilityError:
+        return []
+    if raw_symbols is None:
+        return []
+    sanitized: list[dict[str, str]] = []
+    for raw_facts in raw_symbols:
+        facts = _mapping(raw_facts, "symbol catalog item")
+        name = _required_text(facts.get("name"), "symbol name")
+        sanitized.append(
+            {
+                "name": name,
+                "description": str(facts.get("description") or "").strip(),
+                "path": str(facts.get("path") or "").strip(),
+            }
+        )
+    return sanitized
+
+
+def _catalog_name_matches(canonical: str, name: str) -> bool:
+    canonical_upper = canonical.upper()
+    name_upper = name.upper()
+    compact_name = re.sub(r"[^A-Z0-9]", "", name_upper)
+    if compact_name == canonical_upper:
+        return True
+    escaped = re.escape(canonical_upper)
+    return bool(
+        re.search(
+            rf"(?:^|[._/#-]){escaped}(?:$|[._/#-])",
+            name_upper,
+        )
+    )
+
+
+def _merge_catalog_matches(
+    symbols: dict[str, object],
+    catalog: list[dict[str, str]],
+) -> dict[str, object]:
+    for canonical, raw_observation in symbols.items():
+        observation = (
+            dict(raw_observation)
+            if isinstance(raw_observation, Mapping)
+            else {}
+        )
+        existing = {
+            str(item)
+            for item in observation.get("matches", [])
+            if isinstance(item, str)
+        }
+        catalog_matches = {
+            item["name"]: item
+            for item in catalog
+            if _catalog_name_matches(canonical, item["name"])
+        }
+        combined = sorted(existing | set(catalog_matches))
+        observations = {
+            str(item.get("name")): dict(item)
+            for item in observation.get("observations", [])
+            if isinstance(item, Mapping) and isinstance(item.get("name"), str)
+        }
+        observations.update(catalog_matches)
+        observation["matches"] = combined
+        observation["observations"] = [
+            observations[name] for name in sorted(observations)
+        ]
+        if len(combined) == 1:
+            observation["selected"] = combined[0]
+            if observation.get("selection_source") is None:
+                observation["selection_source"] = "CATALOG_UNIQUE"
+        else:
+            observation["selected"] = None
+            observation["selection_source"] = None
+        symbols[canonical] = observation
     return symbols
 
 
@@ -94,12 +180,17 @@ def probe_candidate_binding(
     facade: ReadOnlyMT5Facade,
     *,
     candidate_id: str,
+    scope: str = "all",
 ) -> dict[str, object]:
     """Return only non-secret facts needed to review an exact demo binding."""
 
     if type(facade) is not ReadOnlyMT5Facade:
         raise MT5BindingProbeError("binding probe requires the read-only facade")
     normalized_candidate = _required_text(candidate_id, "candidate_id").lower()
+    normalized_scope = _required_text(scope, "scope").upper()
+    required_symbols = BINDING_SCOPE_SYMBOLS.get(normalized_scope)
+    if required_symbols is None:
+        raise MT5BindingProbeError("binding scope is invalid")
     try:
         safety = dict(
             attest_mt5_read_only(
@@ -116,20 +207,26 @@ def probe_candidate_binding(
     if trade_mode != demo_mode:
         raise MT5BindingProbeError("binding probe requires a demo account")
 
-    symbols = _probe_symbol_aliases(facade, SYMBOL_ALIASES)
-    optional_crypto_symbols = _probe_symbol_aliases(
-        facade,
-        OPTIONAL_CRYPTO_ALIASES,
+    catalog = _catalog_symbol_facts(facade)
+    symbols = _merge_catalog_matches(
+        _probe_symbol_aliases(facade, SYMBOL_ALIASES),
+        catalog,
+    )
+    optional_crypto_symbols = _merge_catalog_matches(
+        _probe_symbol_aliases(facade, OPTIONAL_CRYPTO_ALIASES),
+        catalog,
     )
 
     binding_ready = all(
         isinstance(symbols[symbol], Mapping)
         and symbols[symbol].get("selected") is not None
-        for symbol in REQUIRED_SYMBOLS
+        for symbol in required_symbols
     )
     return {
         "schema_version": "mt5-candidate-binding-probe-v1",
         "candidate_id": normalized_candidate,
+        "binding_scope": normalized_scope,
+        "required_symbols": sorted(required_symbols),
         "status": "BINDING_PROBE_ONLY",
         "binding_ready": binding_ready,
         "account": {
@@ -156,4 +253,8 @@ def probe_candidate_binding(
     }
 
 
-__all__ = ["MT5BindingProbeError", "probe_candidate_binding"]
+__all__ = [
+    "BINDING_SCOPE_SYMBOLS",
+    "MT5BindingProbeError",
+    "probe_candidate_binding",
+]
