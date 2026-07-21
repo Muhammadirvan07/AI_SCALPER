@@ -72,9 +72,9 @@ def _candidate_binding(
         raise MT5CandidatePreflightError("candidate is not selected for preparation")
     if candidate.get("environment") != "DEMO":
         raise MT5CandidatePreflightError("candidate preflight requires DEMO")
-    if candidate.get("read_only_discovery_allowed") is not False:
+    if type(candidate.get("read_only_discovery_allowed")) is not bool:
         raise MT5CandidatePreflightError(
-            "preflight requires the full discovery gate to remain disabled"
+            "candidate read-only discovery gate must be explicit"
         )
     server = _text(candidate.get("server"), "server")
     currency = _text(candidate.get("account_currency"), "account_currency").upper()

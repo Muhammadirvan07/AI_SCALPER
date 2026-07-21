@@ -118,8 +118,10 @@ fixed `UTC+09:00` server offsets: the FX observation is bound to
 bound to `XAUUSD.ps01`. Exact session calendars remain pending runtime
 observation and must not be guessed.
 
-Preflight and shadow remain diagnostic-only. Discovery evidence, promotion,
-demo auto-order, and live trading remain disabled.
+Preflight and shadow remain diagnostic-only. Promotion, demo auto-order, and
+live trading remain disabled. A sanitized discovery-v3 receipt may now be
+captured for each exact lane, but it is only an input to later evidence review
+and does not make shadow results promotional evidence.
 
 Generate the corresponding non-promotional reports with:
 
@@ -184,6 +186,46 @@ python -B .\run_phillip_dual_shadow.py `
 The supervisor passes no login or password. Each child repeats its read-only
 attestation and account fence. If one child exits, the supervisor terminates
 the other rather than leaving a partial topology running. `Ctrl+C` stops both.
+
+## Lane-isolated discovery-v3 preparation
+
+Set up a different Windows Credential Manager signing key for each lane. The
+secret is generated locally and is never printed or stored in the repository:
+
+```powershell
+python -B .\setup_broker_evidence_key.py --candidate phillip-fx
+python -B .\setup_broker_evidence_key.py --candidate phillip-commodity
+```
+
+While the matching demo account is active in each exact terminal, capture one
+immutable sanitized discovery receipt. Use a new output filename if a prior
+receipt already exists; evidence files are intentionally never overwritten.
+
+```powershell
+python -B .\mt5_readonly_discovery.py `
+  --candidate phillip-fx `
+  --terminal-path $fxTerminal `
+  --output .\runtime_state\broker_discovery\phillip-fx-window-01-v3.json
+
+python -B .\mt5_readonly_discovery.py `
+  --candidate phillip-commodity `
+  --terminal-path $commodityTerminal `
+  --output .\runtime_state\broker_discovery\phillip-commodity-window-01-v3.json
+```
+
+Discovery requires the stricter evidence attestation, including investor or
+read-only account authorization, Algo Trading off, and external Python API
+trading disabled. FX receipts contain only AUDUSD/EURUSD/USDJPY facts;
+commodity receipts contain only XAUUSD facts. Cross-lane symbol mixing,
+candidate drift, terminal-path drift, raw account identifiers, or enabled
+mutation capability fail closed.
+
+Do not run `prepare_broker_window.py` or
+`register_broker_forward_contract.py` for Phillip yet. Both tracked calendar
+files are explicitly unattested scaffolds and both profile registrations are
+disabled. Registration may be enabled only in a reviewed clean commit after
+exact official session/holiday calendars and the required independent signed
+regulatory approvals are present.
 
 Official MT5 documentation states that simultaneous copies require different
 installation directories:

@@ -28,6 +28,8 @@
     "config/crypto_m5_challenger.json",
     "config/crypto_weekend_shadow.json",
     "config/fbs_calendar_window_01.template.json",
+    "config/phillip_commodity_calendar_window_01.template.json",
+    "config/phillip_fx_calendar_window_01.template.json",
     "config/windows_release_allowlist.v1.json",
     "config/xm_calendar_window_02.template.json",
     "live_runtime/__init__.py",

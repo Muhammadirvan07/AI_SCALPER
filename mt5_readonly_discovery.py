@@ -32,6 +32,21 @@ def _repo_path(path: Path) -> Path:
     return path if path.is_absolute() else REPO_ROOT / path
 
 
+def _validated_terminal_path(path: Path | None) -> str:
+    if path is None:
+        raise MT5DiscoveryError("--terminal-path is required for evidence discovery")
+    if not path.is_absolute():
+        raise MT5DiscoveryError("terminal path must be absolute")
+    if path.is_symlink() or not path.is_file():
+        raise MT5DiscoveryError("terminal path must be a regular file")
+    if path.name.lower() != "terminal64.exe":
+        raise MT5DiscoveryError("terminal path must identify terminal64.exe")
+    try:
+        return str(path.resolve(strict=True))
+    except OSError as exc:
+        raise MT5DiscoveryError("terminal path cannot be resolved") from exc
+
+
 def _candidate(path: Path, candidate_id: str) -> dict[str, object]:
     if path.is_symlink() or not path.is_file():
         raise MT5DiscoveryError("candidate configuration must be a regular file")
@@ -53,7 +68,7 @@ def _candidate(path: Path, candidate_id: str) -> dict[str, object]:
         raise MT5DiscoveryError("candidate exact server has not been observed")
     symbols = candidate.get("broker_symbols_observed")
     if not isinstance(symbols, dict) or any(value is None for value in symbols.values()):
-        raise MT5DiscoveryError("candidate four-symbol map is incomplete")
+        raise MT5DiscoveryError("candidate lane symbol map is incomplete")
     return candidate
 
 
@@ -64,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         "--config", type=Path, default=Path("config/broker_candidates.phase3.json")
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--terminal-path", type=Path)
     parser.add_argument(
         "--profile-config",
         type=Path,
@@ -79,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.candidate,
             ).key_name
         signing_key = WindowsEvidenceKeyStore().load(key_name)
+        terminal_path = _validated_terminal_path(args.terminal_path)
     except (
         BrokerEvidenceProfileError,
         EvidenceCredentialError,
@@ -90,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
 
     import MetaTrader5 as mt5  # Windows-only dependency, intentionally late
 
-    if not mt5.initialize():
+    if not mt5.initialize(terminal_path):
         print(f"MT5_DISCOVERY_FAILED: initialize failed: {mt5.last_error()}")
         print("Safety lock remains active; no broker order was submitted.")
         return 2

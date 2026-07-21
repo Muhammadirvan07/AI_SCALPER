@@ -708,6 +708,52 @@ class ValidationEvidenceTests(unittest.TestCase):
                 contract["session_calendar_sha256"][symbol],
             )
 
+    def test_forward_contract_and_verifier_use_registered_symbol_subset(self):
+        snapshot = self._create_snapshot()
+        symbols = ("EURUSD", "USDJPY", "AUDUSD")
+        all_sources = self._broker_sources()
+        all_calendars = self._session_calendars(broker_sources=all_sources)
+        all_specs = self._instrument_specs(all_calendars)
+        sources = {
+            symbol: value
+            for symbol, value in all_sources.items()
+            if symbol in symbols
+        }
+        calendars = {symbol: all_calendars[symbol] for symbol in symbols}
+        specs = {symbol: all_specs[symbol] for symbol in symbols}
+        contract = register_forward_contract(
+            self.root,
+            snapshot,
+            self._ruleset(),
+            sources,
+            specs,
+            session_calendars=calendars,
+            contract_id="contract-fx-subset",
+            registered_at="2026-01-01T12:00:00Z",
+            observation_start_at="2026-01-02T00:00:00Z",
+            blind_until="2026-01-03T00:00:00Z",
+            git_state_provider=self._clean_git_state,
+        )
+        self.assertEqual(list(symbols), contract["symbols"])
+        for kind in ("segments", "raw_ticks"):
+            for symbol in symbols:
+                self.assertTrue(
+                    (self.root / "forward" / contract["contract_id"] / "heads" / kind / f"{symbol}.json").is_file()
+                )
+            self.assertFalse(
+                (self.root / "forward" / contract["contract_id"] / "heads" / kind / "XAUUSD.json").exists()
+            )
+        with self.assertRaisesRegex(EvidenceValidationError, "SYMBOL_NOT_REGISTERED"):
+            append_forward_segment(
+                self.root,
+                contract["contract_id"],
+                "XAUUSD",
+                self._segment_frame(),
+                self._broker_sources()["XAUUSD"],
+                self._instrument_specs()["XAUUSD"],
+                exported_at="2026-01-02T00:45:00Z",
+            )
+
     def test_contract_rejects_calendar_hash_that_does_not_match_instrument_spec(self):
         snapshot = self._create_snapshot()
         sources = self._broker_sources()

@@ -151,10 +151,26 @@ class MT5DiscoveryTests(unittest.TestCase):
             discover_mt5_facts(enabled_api, **kwargs)
 
     def test_incomplete_symbol_map_fails_before_symbol_reads(self):
-        with self.assertRaisesRegex(MT5DiscoveryError, "four required"):
+        payload = discover_mt5_facts(
+            FakeMT5(), candidate_id="phillip-commodity",
+            expected_server="XMTrading-MT5 3",
+            broker_symbols={"XAUUSD": "GOLD."},
+            captured_at=datetime(2026, 7, 16, 2, 0, tzinfo=UTC),
+            signing_key=TEST_KEY,
+        )
+        self.assertEqual({"XAUUSD"}, set(payload["symbols"]))
+
+        with self.assertRaisesRegex(MT5DiscoveryError, "non-empty"):
             discover_mt5_facts(
                 FakeMT5(), candidate_id="xm", expected_server="XMTrading-MT5 3",
-                broker_symbols={"XAUUSD": "GOLD."},
+                broker_symbols={},
+                captured_at=datetime(2026, 7, 16, 2, 0, tzinfo=UTC),
+                signing_key=TEST_KEY,
+            )
+        with self.assertRaisesRegex(MT5DiscoveryError, "allowlist"):
+            discover_mt5_facts(
+                FakeMT5(), candidate_id="xm", expected_server="XMTrading-MT5 3",
+                broker_symbols={"BTCUSD": "BTCUSD"},
                 captured_at=datetime(2026, 7, 16, 2, 0, tzinfo=UTC),
                 signing_key=TEST_KEY,
             )

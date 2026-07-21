@@ -15,6 +15,28 @@ import register_broker_forward_contract
 
 
 class BrokerEvidenceCLITests(unittest.TestCase):
+    def test_discovery_terminal_path_is_explicit_and_regular(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            terminal = root / "terminal64.exe"
+            terminal.write_bytes(b"fixture")
+            self.assertEqual(
+                str(terminal.resolve()),
+                mt5_readonly_discovery._validated_terminal_path(terminal.resolve()),
+            )
+            with self.assertRaisesRegex(
+                mt5_readonly_discovery.MT5DiscoveryError,
+                "required",
+            ):
+                mt5_readonly_discovery._validated_terminal_path(None)
+            wrong = root / "other.exe"
+            wrong.write_bytes(b"fixture")
+            with self.assertRaisesRegex(
+                mt5_readonly_discovery.MT5DiscoveryError,
+                "terminal64",
+            ):
+                mt5_readonly_discovery._validated_terminal_path(wrong.resolve())
+
     def test_generic_runner_help_bootstraps_in_isolated_mode(self) -> None:
         runner = Path(__file__).resolve().with_name("run_broker_shadow_once.py")
         completed = subprocess.run(

@@ -74,6 +74,8 @@ def discovery_receipt(
     candidate_id: str = "xm",
     company: str = "Tradexfin Limited",
     server: str = "XMTrading-MT5 3",
+    required_symbols: tuple[str, ...] = ("XAUUSD", "EURUSD", "USDJPY", "AUDUSD"),
+    broker_symbols: dict[str, str] | None = None,
 ) -> dict[str, object]:
     account_identity_input = {
         "login": 70000001,
@@ -119,6 +121,9 @@ def discovery_receipt(
             "currency_profit": "USD", "currency_margin": "AUD",
         },
     }
+    if broker_symbols is not None:
+        for symbol, broker_symbol in broker_symbols.items():
+            symbol_facts[symbol]["name"] = broker_symbol
     body = {
         "schema_version": "mt5-read-only-discovery-v3",
         "candidate_id": candidate_id,
@@ -149,7 +154,10 @@ def discovery_receipt(
             "trade_allowed": False,
             "tradeapi_disabled": True,
         },
-        "symbols": symbol_facts,
+        "symbols": {
+            symbol: symbol_facts[symbol]
+            for symbol in required_symbols
+        },
         "session_calendar_status": "BROKER_TIMEZONE_AND_CALENDAR_ATTESTATION_REQUIRED",
         "execution_enabled": False,
         "live_allowed": False,

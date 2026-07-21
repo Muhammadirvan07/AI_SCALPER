@@ -219,7 +219,7 @@ class MT5CandidatePreflightTests(unittest.TestCase):
 
     def test_malformed_or_enabled_candidate_is_rejected(self) -> None:
         for field, value in (
-            ("read_only_discovery_allowed", True),
+            ("read_only_discovery_allowed", "yes"),
             ("environment", "LIVE"),
             ("account_currency", None),
             ("server", None),

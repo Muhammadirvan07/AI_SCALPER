@@ -1,6 +1,6 @@
 {
   "schema_version": "broker-candidate-plan-v1",
-  "status": "PHILLIP_JAPAN_SPLIT_BINDING_PREFLIGHT_PENDING",
+  "status": "PHILLIP_JAPAN_DUAL_SHADOW_ACTIVE_EVIDENCE_DISCOVERY_PREPARED",
   "execution_enabled": false,
   "credentials_allowed": false,
   "operational_priority": {
@@ -36,8 +36,8 @@
         "offset_review_policy": "FAIL_CLOSED_ON_RUNTIME_ALIGNMENT_DRIFT",
         "calendar_hash_status": "PENDING_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS"
       },
-      "read_only_discovery_allowed": false,
-      "binding_status": "SANITIZED_BINDING_PROBE_COMPLETE_PREFLIGHT_PENDING",
+      "read_only_discovery_allowed": true,
+      "binding_status": "READ_ONLY_DISCOVERY_V3_APPROVED_REGISTRATION_GATES_REMAIN_BLOCKED",
       "broker_symbols_observed": {
         "AUDUSD": "AUDUSD.ps01",
         "EURUSD": "EURUSD.ps01",
@@ -99,8 +99,8 @@
         "offset_review_policy": "FAIL_CLOSED_ON_RUNTIME_ALIGNMENT_DRIFT",
         "calendar_hash_status": "PENDING_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS"
       },
-      "read_only_discovery_allowed": false,
-      "binding_status": "SANITIZED_BINDING_PROBE_COMPLETE_PREFLIGHT_PENDING",
+      "read_only_discovery_allowed": true,
+      "binding_status": "READ_ONLY_DISCOVERY_V3_APPROVED_REGISTRATION_GATES_REMAIN_BLOCKED",
       "broker_symbols_observed": {
         "XAUUSD": "XAUUSD.ps01"
       },
@@ -507,5 +507,5 @@
       "account_identifier_stored": false
     }
   ],
-  "notes": "FBS remains the operator-selected diagnostic broker, but the official Japan FSA unregistered-operator warning makes it project-blocked for discovery evidence, orders, promotion, and live use while operating from Japan. Its sanitized binding probe confirmed exact demo server FBS-Demo, USD account currency, 500:1 leverage, retail hedging margin mode, canonical XAUUSD/EURUSD/USDJPY/AUDUSD names, and optional BTCUSD/ETHUSD crypto CFD names. Broker crypto M15 champion and M5 challenger diagnostic domains remain isolated and paper-only. Explicit read_only_discovery_allowed stays false. FINEX is the registered Bappebti future-Indonesia preparation path, but personal/account eligibility after return and current-Japan eligibility remain unapproved. XM remains blocked. Do not guess or store credentials here."
+  "notes": "Phillip Securities Japan is split into isolated FX and commodity demo lanes. Sanitized binding, read-only preflight, and diagnostic shadow are observed for both lanes. Candidate-namespaced discovery-v3 capture is approved only through an explicit terminal64.exe path; forward contract registration remains blocked pending dual signed regulatory approval plus exact independently attested session and holiday calendars. FBS remains diagnostic-only and is project-blocked for discovery evidence, orders, promotion, and live use while operating from Japan because of the official Japan FSA unregistered-operator warning. FINEX remains the future-Indonesia preparation path; current-Japan operation and personal eligibility after return are not approved. XM remains blocked. Do not guess or store credentials here."
 }

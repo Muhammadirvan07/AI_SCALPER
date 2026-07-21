@@ -49,9 +49,13 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         )
         for candidate in (fx, commodity):
             self.assertEqual("SELECTED_TARGET_PREPARATION", candidate["role"])
-            self.assertFalse(candidate["read_only_discovery_allowed"])
+            self.assertTrue(candidate["read_only_discovery_allowed"])
             self.assertFalse(candidate["account_identifier_stored"])
             self.assertTrue(candidate["regulatory_observation"]["legal_eligible"])
+            self.assertEqual(
+                "READ_ONLY_DISCOVERY_V3_APPROVED_REGISTRATION_GATES_REMAIN_BLOCKED",
+                candidate["binding_status"],
+            )
 
     def test_fbs_is_selected_without_opening_any_operational_gate(self) -> None:
         plan = json.loads(PLAN.read_text(encoding="utf-8"))
@@ -61,7 +65,7 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         fbs = candidates["fbs"]
 
         self.assertEqual(
-            "PHILLIP_JAPAN_SPLIT_BINDING_PREFLIGHT_PENDING",
+            "PHILLIP_JAPAN_DUAL_SHADOW_ACTIVE_EVIDENCE_DISCOVERY_PREPARED",
             plan["status"],
         )
         self.assertEqual(

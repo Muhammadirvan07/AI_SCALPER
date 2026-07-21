@@ -90,6 +90,26 @@ class EvidenceBootstrapError(RuntimeError):
     pass
 
 
+def _required_symbol_subset(
+    value: object,
+    *,
+    field: str,
+) -> tuple[str, ...]:
+    if isinstance(value, (str, bytes)):
+        raise EvidenceBootstrapError(f"{field} symbol set is invalid")
+    try:
+        requested = tuple(str(symbol).upper() for symbol in value)
+    except TypeError as exc:
+        raise EvidenceBootstrapError(f"{field} symbol set is invalid") from exc
+    if (
+        not requested
+        or len(set(requested)) != len(requested)
+        or not set(requested) <= set(REQUIRED_SYMBOLS)
+    ):
+        raise EvidenceBootstrapError(f"{field} symbol set is invalid")
+    return tuple(symbol for symbol in REQUIRED_SYMBOLS if symbol in requested)
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -223,7 +243,13 @@ def build_current_identity(
 def verify_discovery_receipt(
     payload: Mapping[str, object],
     signing_key: bytes,
+    *,
+    required_symbols: tuple[str, ...] = REQUIRED_SYMBOLS,
 ) -> None:
+    lane_symbols = _required_symbol_subset(
+        required_symbols,
+        field="discovery",
+    )
     expected_fields = {
         "schema_version",
         "candidate_id",
@@ -314,8 +340,8 @@ def verify_discovery_receipt(
             "discovery terminal is not locked against Python order execution"
         )
     symbols = payload.get("symbols")
-    if not isinstance(symbols, Mapping) or set(symbols) != set(REQUIRED_SYMBOLS):
-        raise EvidenceBootstrapError("discovery symbol set is incomplete")
+    if not isinstance(symbols, Mapping) or set(symbols) != set(lane_symbols):
+        raise EvidenceBootstrapError("discovery symbol set does not match the lane")
 
     def contains_raw_account_field(value: object) -> bool:
         if isinstance(value, Mapping):
@@ -339,7 +365,12 @@ def verify_discovery_receipt(
         raise EvidenceBootstrapError("discovery receipt contains raw account data")
 
 
-def verify_calendar_bundle(payload: Mapping[str, object]) -> None:
+def verify_calendar_bundle(
+    payload: Mapping[str, object],
+    *,
+    required_symbols: tuple[str, ...] = REQUIRED_SYMBOLS,
+) -> None:
+    lane_symbols = _required_symbol_subset(required_symbols, field="calendar")
     body = {key: value for key, value in payload.items() if key != "bundle_sha256"}
     if canonical_evidence_payload_sha256(body) != payload.get("bundle_sha256"):
         raise EvidenceBootstrapError("calendar bundle SHA-256 mismatch")
@@ -354,9 +385,9 @@ def verify_calendar_bundle(payload: Mapping[str, object]) -> None:
     hashes = payload.get("session_calendar_sha256")
     if not isinstance(calendars, Mapping) or not isinstance(hashes, Mapping):
         raise EvidenceBootstrapError("calendar bundle is incomplete")
-    if set(calendars) != set(REQUIRED_SYMBOLS) or set(hashes) != set(REQUIRED_SYMBOLS):
-        raise EvidenceBootstrapError("calendar bundle symbol set is incomplete")
-    for symbol in REQUIRED_SYMBOLS:
+    if set(calendars) != set(lane_symbols) or set(hashes) != set(lane_symbols):
+        raise EvidenceBootstrapError("calendar bundle symbol set does not match the lane")
+    for symbol in lane_symbols:
         if canonical_evidence_payload_sha256(calendars[symbol]) != hashes[symbol]:
             raise EvidenceBootstrapError(f"calendar hash mismatch: {symbol}")
 
@@ -417,8 +448,16 @@ def _validate_broker_inputs(
     *,
     signing_key: bytes,
 ) -> None:
-    verify_discovery_receipt(discovery, signing_key)
-    verify_calendar_bundle(calendar)
+    symbols = _required_symbol_subset(
+        plan.get("broker_symbols", {}),
+        field="plan",
+    )
+    verify_discovery_receipt(
+        discovery,
+        signing_key,
+        required_symbols=symbols,
+    )
+    verify_calendar_bundle(calendar, required_symbols=symbols)
     try:
         expected_calendar = build_calendar_bundle(plan)
     except SessionCalendarError as exc:
@@ -451,7 +490,7 @@ def _validate_broker_inputs(
     calendars = calendar["calendars"]
     cohort_ids = {
         calendars[symbol]["metadata"]["source_instance_id"]
-        for symbol in REQUIRED_SYMBOLS
+        for symbol in symbols
     }
     if cohort_ids != {plan.get("source_instance_id")}:
         raise EvidenceBootstrapError("calendar terminal cohort mismatch")
@@ -492,7 +531,7 @@ def _broker_sources(
             "exporter_version": EXPORTER_VERSION,
             "exporter_signing_key_id": key_id,
         }
-        for symbol in REQUIRED_SYMBOLS
+        for symbol in _required_symbol_subset(plan["broker_symbols"], field="plan")
     }
 
 
@@ -514,7 +553,13 @@ def _instrument_specs(
     if normalized_margin_mode is None:
         raise EvidenceBootstrapError("unsupported MT5 margin mode")
     result: dict[str, dict[str, object]] = {}
-    for symbol in REQUIRED_SYMBOLS:
+    required_symbols = _required_symbol_subset(
+        calendar["calendars"],
+        field="calendar",
+    )
+    if set(symbols) != set(required_symbols):
+        raise EvidenceBootstrapError("discovery symbol set does not match calendar")
+    for symbol in required_symbols:
         facts = symbols[symbol]
         base, quote, kind = identities[symbol]
         result[symbol] = {

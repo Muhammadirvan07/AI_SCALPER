@@ -304,11 +304,35 @@ def _require_git_sha(value: object, field: str) -> str:
     return normalized
 
 
-def _validate_symbol_map(mapping: object, field: str) -> dict:
+def _registered_symbol_subset(value: object, field: str = "symbols") -> tuple[str, ...]:
+    if isinstance(value, (str, bytes)):
+        raise EvidenceValidationError("SYMBOL_SET_INVALID", field)
+    try:
+        raw = tuple(str(symbol).upper() for symbol in value)
+    except TypeError as exc:
+        raise EvidenceValidationError("SYMBOL_SET_INVALID", field) from exc
+    if (
+        not raw
+        or len(set(raw)) != len(raw)
+        or not set(raw) <= set(REQUIRED_SYMBOLS)
+    ):
+        raise EvidenceValidationError("SYMBOL_SET_INVALID", field)
+    normalized = tuple(symbol for symbol in REQUIRED_SYMBOLS if symbol in raw)
+    if raw != normalized:
+        raise EvidenceValidationError("SYMBOL_SET_INVALID", field)
+    return normalized
+
+
+def _validate_symbol_map(
+    mapping: object,
+    field: str,
+    *,
+    required_symbols: tuple[str, ...] = REQUIRED_SYMBOLS,
+) -> dict:
     if not isinstance(mapping, Mapping):
         raise EvidenceValidationError("SYMBOL_SET_INVALID", field)
     normalized = {str(key).upper(): value for key, value in mapping.items()}
-    if set(normalized) != set(REQUIRED_SYMBOLS):
+    if set(normalized) != set(required_symbols):
         raise EvidenceValidationError("SYMBOL_SET_INVALID", field)
     return normalized
 
@@ -1658,17 +1682,37 @@ def register_forward_contract(
     snapshot_created = _utc_timestamp(stored_manifest.get("created_at_utc"), "snapshot_created_at")
     if snapshot_created > registered:
         raise EvidenceValidationError("SNAPSHOT_CREATED_AFTER_CONTRACT")
-    source_map = _validate_symbol_map(broker_sources, "broker_sources")
-    spec_map = _validate_symbol_map(instrument_specs, "instrument_specs")
+    if not isinstance(broker_sources, Mapping):
+        raise EvidenceValidationError("SYMBOL_SET_INVALID", "broker_sources")
+    registered_symbols = _registered_symbol_subset(
+        tuple(str(symbol).upper() for symbol in broker_sources),
+        "broker_sources",
+    )
+    source_map = _validate_symbol_map(
+        broker_sources,
+        "broker_sources",
+        required_symbols=registered_symbols,
+    )
+    spec_map = _validate_symbol_map(
+        instrument_specs,
+        "instrument_specs",
+        required_symbols=registered_symbols,
+    )
     locked_sources = {
-        symbol: _validate_broker_source(symbol, source_map[symbol]) for symbol in REQUIRED_SYMBOLS
+        symbol: _validate_broker_source(symbol, source_map[symbol])
+        for symbol in registered_symbols
     }
     locked_specs = {
-        symbol: _validate_instrument_spec(symbol, spec_map[symbol]) for symbol in REQUIRED_SYMBOLS
+        symbol: _validate_instrument_spec(symbol, spec_map[symbol])
+        for symbol in registered_symbols
     }
     if session_calendars is None:
         raise EvidenceValidationError("SESSION_CALENDAR_REQUIRED")
-    calendar_map = _validate_symbol_map(session_calendars, "session_calendars")
+    calendar_map = _validate_symbol_map(
+        session_calendars,
+        "session_calendars",
+        required_symbols=registered_symbols,
+    )
     locked_calendars = {
         symbol: _normalize_session_calendar(
             symbol,
@@ -1678,13 +1722,13 @@ def register_forward_contract(
             registered=registered,
             broker_source=locked_sources[symbol],
         )
-        for symbol in REQUIRED_SYMBOLS
+        for symbol in registered_symbols
     }
     calendar_hashes = {
         symbol: _session_calendar_sha256(locked_calendars[symbol])
-        for symbol in REQUIRED_SYMBOLS
+        for symbol in registered_symbols
     }
-    for symbol in REQUIRED_SYMBOLS:
+    for symbol in registered_symbols:
         if calendar_hashes[symbol] != locked_specs[symbol]["session_calendar_sha256"]:
             raise EvidenceValidationError("SESSION_CALENDAR_HASH_MISMATCH", symbol)
     broker_bindings = {
@@ -1707,7 +1751,7 @@ def register_forward_contract(
     }
     if len(broker_bindings) != 1:
         raise EvidenceValidationError("BROKER_SOURCE_COHORT_MISMATCH")
-    for symbol in REQUIRED_SYMBOLS:
+    for symbol in registered_symbols:
         legacy_end = _utc_timestamp(
             stored_manifest["symbols"][symbol]["seen_legacy_end_at_utc"],
             f"{symbol}.seen_legacy_end_at_utc",
@@ -1719,11 +1763,11 @@ def register_forward_contract(
             raise EvidenceValidationError("HOLDOUT_WINDOW_OVERLAPS_LEGACY", symbol)
     source_hashes = {
         symbol: _sha256_bytes(_canonical_json_bytes(locked_sources[symbol]))
-        for symbol in REQUIRED_SYMBOLS
+        for symbol in registered_symbols
     }
     spec_hashes = {
         symbol: _sha256_bytes(_canonical_json_bytes(locked_specs[symbol]))
-        for symbol in REQUIRED_SYMBOLS
+        for symbol in registered_symbols
     }
     build_identity_hash = _sha256_bytes(_canonical_json_bytes(locked_ruleset))
     registered = _trusted_clock_timestamp(
@@ -1749,7 +1793,7 @@ def register_forward_contract(
             "promotion_profile_eligible": profile == "LIVE_GRADE",
             "snapshot_id": snapshot_id,
             "snapshot_manifest_sha256": stored_manifest["manifest_payload_sha256"],
-            "symbols": list(REQUIRED_SYMBOLS),
+            "symbols": list(registered_symbols),
             "timeframe_seconds": TIMEFRAME_SECONDS,
             "finalization_lag_seconds": FINALIZATION_LAG_SECONDS,
             "max_ingestion_lag_seconds": MAX_INGESTION_LAG_SECONDS,
@@ -1775,7 +1819,7 @@ def register_forward_contract(
 
     files: dict[str, bytes] = {"contract.json": _pretty_json_bytes(contract)}
     for kind in ("segments", "raw_ticks"):
-        for symbol in REQUIRED_SYMBOLS:
+        for symbol in registered_symbols:
             anchor = _initial_anchor(contract, key, kind=kind, symbol=symbol)
             files[f"anchors/{kind}/{symbol}/000000.json"] = _pretty_json_bytes(anchor)
             files[f"heads/{kind}/{symbol}.json"] = _pretty_json_bytes(anchor)
@@ -1813,8 +1857,10 @@ def _load_forward_contract(
         raise EvidenceValidationError("CONTRACT_HMAC_MISMATCH")
     if contract.get("signing_key_id") != _sha256_bytes(key)[:16]:
         raise EvidenceValidationError("CONTRACT_SIGNING_KEY_MISMATCH")
-    if contract.get("symbols") != list(REQUIRED_SYMBOLS):
-        raise EvidenceValidationError("SYMBOL_SET_INVALID")
+    registered_symbols = _registered_symbol_subset(
+        contract.get("symbols"),
+        "symbols",
+    )
     registered = _utc_timestamp(contract.get("registered_at_utc"), "registered_at_utc")
     observation = _utc_timestamp(contract.get("observation_start_at_utc"), "observation_start_at_utc")
     blind = _utc_timestamp(contract.get("blind_until_utc"), "blind_until_utc")
@@ -1859,21 +1905,37 @@ def _load_forward_contract(
         "build_identity_sha256"
     ):
         raise EvidenceValidationError("CONTRACT_BUILD_IDENTITY_MISMATCH")
-    source_map = _validate_symbol_map(contract.get("broker_sources"), "broker_sources")
-    spec_map = _validate_symbol_map(contract.get("instrument_specs"), "instrument_specs")
+    source_map = _validate_symbol_map(
+        contract.get("broker_sources"),
+        "broker_sources",
+        required_symbols=registered_symbols,
+    )
+    spec_map = _validate_symbol_map(
+        contract.get("instrument_specs"),
+        "instrument_specs",
+        required_symbols=registered_symbols,
+    )
     calendar_map = _validate_symbol_map(
         contract.get("session_calendars"),
         "session_calendars",
+        required_symbols=registered_symbols,
     )
-    source_hash_map = _validate_symbol_map(contract.get("source_sha256"), "source_sha256")
+    source_hash_map = _validate_symbol_map(
+        contract.get("source_sha256"),
+        "source_sha256",
+        required_symbols=registered_symbols,
+    )
     spec_hash_map = _validate_symbol_map(
-        contract.get("instrument_spec_sha256"), "instrument_spec_sha256"
+        contract.get("instrument_spec_sha256"),
+        "instrument_spec_sha256",
+        required_symbols=registered_symbols,
     )
     calendar_hash_map = _validate_symbol_map(
         contract.get("session_calendar_sha256"),
         "session_calendar_sha256",
+        required_symbols=registered_symbols,
     )
-    for symbol in REQUIRED_SYMBOLS:
+    for symbol in registered_symbols:
         source = _validate_broker_source(symbol, source_map[symbol])
         spec = _validate_instrument_spec(symbol, spec_map[symbol])
         calendar = _normalize_session_calendar(
@@ -2200,7 +2262,7 @@ def _append_forward_segment_unlocked(
     else:
         directory, contract, key, exported, blind = _prepared
     symbol = str(symbol or "").upper()
-    if symbol not in REQUIRED_SYMBOLS:
+    if symbol not in contract["symbols"]:
         raise EvidenceValidationError("SYMBOL_NOT_REGISTERED", symbol)
     locked_source = _validate_broker_source(symbol, source)
     locked_spec = _validate_instrument_spec(symbol, instrument_spec)
@@ -2401,7 +2463,7 @@ def _append_raw_tick_partition_unlocked(
     else:
         directory, contract, key, exported, blind = _prepared
     symbol = str(symbol or "").upper()
-    if symbol not in REQUIRED_SYMBOLS:
+    if symbol not in contract["symbols"]:
         raise EvidenceValidationError("SYMBOL_NOT_REGISTERED", symbol)
     locked_source = _validate_broker_source(symbol, source)
     locked_spec = _validate_instrument_spec(symbol, instrument_spec)
@@ -3074,7 +3136,7 @@ def append_paired_forward_evidence(
     )
     directory, contract, key, exported, blind = prepared
     normalized_symbol = str(symbol or "").upper()
-    if normalized_symbol not in REQUIRED_SYMBOLS:
+    if normalized_symbol not in contract["symbols"]:
         raise EvidenceValidationError("SYMBOL_NOT_REGISTERED", normalized_symbol)
     segment_head = _load_head(
         directory,
@@ -4149,7 +4211,8 @@ def _verify_forward_evidence_unlocked(
     segment_counts: dict[str, int] = {}
     raw_counts: dict[str, int] = {}
     paired_commit_verified_by_symbol: dict[str, bool] = {}
-    for symbol in REQUIRED_SYMBOLS:
+    registered_symbols = tuple(contract["symbols"])
+    for symbol in registered_symbols:
         anchor_failures, segment_head = _verify_anchor_ledger(
             directory, contract, key, kind="segments", symbol=symbol
         )
@@ -4216,9 +4279,9 @@ def _verify_forward_evidence_unlocked(
             _session_calendar_sha256(contract["session_calendars"][symbol]),
             contract["instrument_specs"][symbol]["session_calendar_sha256"],
         )
-        for symbol in REQUIRED_SYMBOLS
+        for symbol in registered_symbols
     }
-    for symbol in REQUIRED_SYMBOLS:
+    for symbol in registered_symbols:
         reconcile_failures = _reconcile_bars_and_ticks(
             symbol,
             bar_frames[symbol],

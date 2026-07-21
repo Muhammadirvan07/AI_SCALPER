@@ -41,24 +41,28 @@ SYMBOL_MAP = {
 }
 
 
-def weekly_sessions() -> dict[str, list[dict[str, object]]]:
+def weekly_sessions(
+    symbol_map: dict[str, str] = SYMBOL_MAP,
+) -> dict[str, list[dict[str, object]]]:
     return {
         symbol: [
             {"weekday": day, "open_local": "00:00", "close_local": "24:00"}
             for day in range(5)
         ]
-        for symbol in SYMBOL_MAP
+        for symbol in symbol_map
     }
 
 
-def template_fixture() -> dict[str, object]:
+def template_fixture(
+    symbol_map: dict[str, str] = SYMBOL_MAP,
+) -> dict[str, object]:
     return {
         "schema_version": "broker-calendar-plan-template-v1",
         "candidate_id": SYNTHETIC_CANDIDATE,
         "broker_legal_name": SYNTHETIC_ENTITY,
         "broker_server": SYNTHETIC_SERVER,
         "operating_jurisdiction": "JP",
-        "broker_symbols": dict(SYMBOL_MAP),
+        "broker_symbols": dict(symbol_map),
         "server_timezone": "UTC",
         "calendar_version": SYNTHETIC_CANDIDATE + "-window-01-v1",
         "observation_start_at_utc": "2026-07-19T21:00:00Z",
@@ -69,7 +73,7 @@ def template_fixture() -> dict[str, object]:
         "live_allowed": False,
         "safe_to_demo_auto_order": False,
         "max_lot": 0.01,
-        "weekly_m15_sessions": weekly_sessions(),
+        "weekly_m15_sessions": weekly_sessions(symbol_map),
         "special_hours_review": {
             "attested": True,
             "source": "https://example.test/broker-hours",
@@ -83,7 +87,9 @@ def template_fixture() -> dict[str, object]:
     }
 
 
-def candidate_config_fixture() -> dict[str, object]:
+def candidate_config_fixture(
+    symbol_map: dict[str, str] = SYMBOL_MAP,
+) -> dict[str, object]:
     config = json.loads(
         (ROOT / "config/broker_candidates.phase3.json").read_text(encoding="utf-8")
     )
@@ -96,7 +102,7 @@ def candidate_config_fixture() -> dict[str, object]:
             "environment": "DEMO",
             "server": SYNTHETIC_SERVER,
             "broker_legal_name_observed": SYNTHETIC_ENTITY,
-            "broker_symbols_observed": dict(SYMBOL_MAP),
+            "broker_symbols_observed": dict(symbol_map),
             "read_only_discovery_allowed": True,
             "regulatory_observation": {"fixture": "injected-verifier-only"},
         }
@@ -114,6 +120,21 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
             load_broker_evidence_profile(
                 path,
                 "fbs",
+                require_registration_enabled=True,
+            )
+
+    def test_tracked_phillip_profiles_are_lane_isolated_and_fail_closed(self) -> None:
+        path = ROOT / "config/broker_evidence_profiles.v1.json"
+        fx = load_broker_evidence_profile(path, "phillip-fx")
+        commodity = load_broker_evidence_profile(path, "phillip-commodity")
+        self.assertNotEqual(fx.key_name, commodity.key_name)
+        self.assertNotEqual(fx.contract_id, commodity.contract_id)
+        self.assertFalse(fx.registration_enabled)
+        self.assertFalse(commodity.registration_enabled)
+        with self.assertRaisesRegex(BrokerEvidenceProfileError, "external gates"):
+            load_broker_evidence_profile(
+                path,
+                "phillip-fx",
                 require_registration_enabled=True,
             )
 
@@ -150,6 +171,18 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(BrokerWindowPlanError, "not attested"):
             verify_broker_calendar_template(scaffold)
 
+    def test_phillip_scaffolds_cannot_be_mistaken_for_attested_calendars(self) -> None:
+        for filename in (
+            "phillip_fx_calendar_window_01.template.json",
+            "phillip_commodity_calendar_window_01.template.json",
+        ):
+            with self.subTest(filename=filename):
+                scaffold = json.loads(
+                    (ROOT / "config" / filename).read_text(encoding="utf-8")
+                )
+                with self.assertRaisesRegex(BrokerWindowPlanError, "not attested"):
+                    verify_broker_calendar_template(scaffold)
+
     def test_generic_plan_and_calendar_bind_explicit_weekly_schedule(self) -> None:
         template = template_fixture()
         discovery = discovery_receipt(
@@ -172,6 +205,29 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
         self.assertTrue(
             all(bundle["calendars"][symbol]["market_open_intervals"] for symbol in SYMBOL_MAP)
         )
+
+    def test_generic_plan_and_calendar_support_exact_commodity_subset(self) -> None:
+        symbol_map = {"XAUUSD": "XAUUSD.ps01"}
+        template = template_fixture(symbol_map)
+        discovery = discovery_receipt(
+            candidate_id=SYNTHETIC_CANDIDATE,
+            company=SYNTHETIC_ENTITY,
+            server=SYNTHETIC_SERVER,
+            required_symbols=("XAUUSD",),
+            broker_symbols=symbol_map,
+        )
+        plan = prepare_broker_calendar_plan(
+            template,
+            discovery,
+            candidate_config_fixture(symbol_map),
+            TEST_KEY,
+            now_provider=lambda: datetime(2026, 7, 16, 4, 0, tzinfo=UTC),
+            legal_binding_verifier=lambda *args, **kwargs: None,
+        )
+        verify_prepared_broker_calendar_plan(plan, template=template)
+        bundle = build_calendar_bundle(plan)
+        self.assertEqual({"XAUUSD"}, set(bundle["calendars"]))
+        self.assertEqual({"XAUUSD"}, set(bundle["session_calendar_sha256"]))
 
     def test_registered_closure_is_applied_only_to_bound_symbols(self) -> None:
         template = template_fixture()

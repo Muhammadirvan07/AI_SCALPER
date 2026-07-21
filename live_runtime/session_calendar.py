@@ -93,15 +93,24 @@ def _local_minute(value: object, field: str, *, allow_2400: bool = False) -> int
 
 def validate_weekly_m15_sessions(
     value: object,
+    *,
+    required_symbols: Iterable[str] = REQUIRED_SYMBOLS,
 ) -> dict[str, tuple[tuple[int, int, int], ...]]:
     """Validate an explicit broker-local weekly M15 eligibility schedule."""
 
-    if not isinstance(value, Mapping) or set(value) != set(REQUIRED_SYMBOLS):
+    symbols = tuple(str(symbol).upper() for symbol in required_symbols)
+    if (
+        not symbols
+        or len(set(symbols)) != len(symbols)
+        or not set(symbols) <= set(REQUIRED_SYMBOLS)
+    ):
+        raise SessionCalendarError("required symbol subset is invalid")
+    if not isinstance(value, Mapping) or set(value) != set(symbols):
         raise SessionCalendarError(
-            "weekly_m15_sessions must contain exactly the four required symbols"
+            "weekly_m15_sessions must exactly match the required symbols"
         )
     normalized: dict[str, tuple[tuple[int, int, int], ...]] = {}
-    for symbol in sorted(REQUIRED_SYMBOLS):
+    for symbol in sorted(symbols):
         raw_sessions = value[symbol]
         if (
             isinstance(raw_sessions, (str, bytes))
@@ -151,7 +160,10 @@ def validate_weekly_m15_sessions(
 
 def _registered_closures(
     review: Mapping[str, object],
+    *,
+    required_symbols: Iterable[str] = REQUIRED_SYMBOLS,
 ) -> tuple[dict[str, object], ...]:
+    symbols_allowed = set(str(symbol).upper() for symbol in required_symbols)
     raw_closures = review.get("registered_closures", [])
     if not isinstance(raw_closures, list):
         raise SessionCalendarError("registered_closures must be a list")
@@ -171,7 +183,7 @@ def _registered_closures(
         if (
             not isinstance(symbols, list)
             or not symbols
-            or not set(symbols) <= set(REQUIRED_SYMBOLS)
+            or not set(symbols) <= symbols_allowed
         ):
             raise SessionCalendarError(
                 f"registered closure symbols are invalid: {index}"
@@ -284,12 +296,27 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
     captured = _utc(plan.get("captured_at_utc"), "captured_at_utc")
     if not captured < start < blind:
         raise SessionCalendarError("calendar must be captured before a future window")
+    symbols = plan.get("broker_symbols")
+    if not isinstance(symbols, Mapping):
+        raise SessionCalendarError("broker symbol map must be an object")
+    required_symbols = tuple(
+        symbol for symbol in REQUIRED_SYMBOLS if symbol in symbols
+    )
+    if (
+        not required_symbols
+        or set(symbols) != set(required_symbols)
+        or any(not str(symbols[symbol] or "").strip() for symbol in required_symbols)
+    ):
+        raise SessionCalendarError("broker symbol map is outside the v1 lane allowlist")
     review = plan.get("special_hours_review")
     if not isinstance(review, Mapping) or review.get("attested") is not True:
         raise SessionCalendarError("special-hours review must be explicitly attested")
-    registered_closures = _registered_closures(review)
+    registered_closures = _registered_closures(
+        review,
+        required_symbols=required_symbols,
+    )
     affected = review.get("affected_required_symbols")
-    if not isinstance(affected, list) or set(affected) - set(REQUIRED_SYMBOLS):
+    if not isinstance(affected, list) or set(affected) - set(required_symbols):
         raise SessionCalendarError("affected_required_symbols is invalid")
     closure_symbols = {
         symbol
@@ -301,7 +328,10 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
             "special-hours changes require explicit closure intervals with an exact symbol match"
         )
     explicit_sessions = (
-        validate_weekly_m15_sessions(plan.get("weekly_m15_sessions"))
+        validate_weekly_m15_sessions(
+            plan.get("weekly_m15_sessions"),
+            required_symbols=required_symbols,
+        )
         if "weekly_m15_sessions" in plan
         else None
     )
@@ -316,16 +346,13 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
     if not required_trading_dates or max(required_trading_dates) > last_date:
         raise SessionCalendarError("special-hours review does not cover the trading window")
 
-    symbols = plan.get("broker_symbols")
-    if not isinstance(symbols, Mapping) or set(symbols) != set(REQUIRED_SYMBOLS):
-        raise SessionCalendarError("broker symbol map must contain the four required symbols")
     calendars: dict[str, object] = {}
     hashes: dict[str, str] = {}
     receipt_hash = str(plan.get("discovery_receipt_sha256") or "")
     source_instance_id = str(plan.get("source_instance_id") or "").strip()
     if not source_instance_id:
         raise SessionCalendarError("one terminal cohort source_instance_id is required")
-    for symbol in sorted(REQUIRED_SYMBOLS):
+    for symbol in sorted(required_symbols):
         broker_symbol = str(symbols[symbol])
         broker_source = {
             "provider_kind": "BROKER_EXPORT",

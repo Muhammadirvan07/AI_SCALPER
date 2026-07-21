@@ -69,8 +69,10 @@ def discover_mt5_facts(
         str(canonical).upper(): require_text("broker_symbol", broker_symbol)
         for canonical, broker_symbol in broker_symbols.items()
     }
-    if set(normalized_symbols) != set(REQUIRED_SYMBOLS):
-        raise MT5DiscoveryError("exactly four required symbol mappings are required")
+    if not normalized_symbols:
+        raise MT5DiscoveryError("a non-empty canonical symbol map is required")
+    if not set(normalized_symbols) <= set(REQUIRED_SYMBOLS):
+        raise MT5DiscoveryError("canonical symbol is outside the v1 allowlist")
     try:
         readonly = (
             mt5_module

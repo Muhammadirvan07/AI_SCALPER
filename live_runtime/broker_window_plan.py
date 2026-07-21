@@ -143,10 +143,11 @@ def verify_broker_calendar_template(template: Mapping[str, object]) -> None:
     symbols = template.get("broker_symbols")
     if (
         not isinstance(symbols, Mapping)
-        or set(symbols) != set(REQUIRED_SYMBOLS)
+        or not symbols
+        or not set(symbols) <= set(REQUIRED_SYMBOLS)
         or any(not str(value or "").strip() for value in symbols.values())
     ):
-        raise BrokerWindowPlanError("broker symbol map is incomplete")
+        raise BrokerWindowPlanError("broker symbol map is outside the v1 lane allowlist")
     if type(template.get("expected_complete_sessions")) is not int or int(
         template["expected_complete_sessions"]
     ) < 20:
@@ -168,7 +169,10 @@ def verify_broker_calendar_template(template: Mapping[str, object]) -> None:
     if start >= blind:
         raise BrokerWindowPlanError("broker calendar window is empty")
     try:
-        validate_weekly_m15_sessions(template.get("weekly_m15_sessions"))
+        validate_weekly_m15_sessions(
+            template.get("weekly_m15_sessions"),
+            required_symbols=tuple(symbols),
+        )
     except SessionCalendarError as exc:
         raise BrokerWindowPlanError("weekly session schedule is invalid") from exc
     review = _mapping(template.get("special_hours_review"), "special_hours_review")
@@ -210,8 +214,8 @@ def _verify_bindings(
     if candidate.get("broker_symbols_observed") != expected_symbols:
         raise BrokerWindowPlanError("candidate symbol map binding mismatch")
     discovered_symbols = _mapping(discovery.get("symbols"), "discovery symbols")
-    if set(discovered_symbols) != set(REQUIRED_SYMBOLS):
-        raise BrokerWindowPlanError("discovery symbol set is incomplete")
+    if set(discovered_symbols) != set(expected_symbols):
+        raise BrokerWindowPlanError("discovery symbol set does not match the lane")
     for canonical, broker_symbol in expected_symbols.items():
         facts = _mapping(discovered_symbols[canonical], f"{canonical} facts")
         if facts.get("name") != broker_symbol:
@@ -264,7 +268,11 @@ def prepare_broker_calendar_plan(
     )
 
     try:
-        verify_discovery_receipt(discovery, signing_key)
+        verify_discovery_receipt(
+            discovery,
+            signing_key,
+            required_symbols=tuple(template["broker_symbols"]),
+        )
     except EvidenceBootstrapError as exc:
         raise BrokerWindowPlanError("discovery receipt verification failed") from exc
     now = now_provider()
