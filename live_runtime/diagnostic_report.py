@@ -8,7 +8,7 @@ SQLite database for mutation or importing any broker execution capability.
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import math
 from pathlib import Path
@@ -472,20 +472,34 @@ def _build_diagnostic_report(
         trades.append(trade)
     trades.sort(key=lambda item: (str(item["closed_at_utc"]), str(item["decision_id"])))
 
-    open_positions = [
-        {
-            "decision_id": decision_id,
-            "symbol": decision["symbol"],
-            "side": decision["side"],
-            "strategy": decision["strategy"],
-            "score": decision["score"],
-            "opened_at_utc": _utc_text(decision["opened_at"]),
-            "bar_closed_at_utc": _utc_text(decision["bar_closed_at"]),
-            "configured_max_holding_bars": decision["max_holding_bars"],
-        }
-        for decision_id, decision in sorted(decisions.items())
-        if decision_id not in closes
-    ]
+    open_positions: list[dict[str, object]] = []
+    for decision_id, decision in sorted(decisions.items()):
+        if decision_id in closes:
+            continue
+        bar_closed_at = decision["bar_closed_at"]
+        if not isinstance(bar_closed_at, datetime):
+            raise DiagnosticReportError("open position bar timestamp is invalid")
+        max_holding_bars = int(decision["max_holding_bars"])
+        timeout_at = bar_closed_at + timedelta(
+            seconds=max_holding_bars * bar_seconds
+        )
+        open_positions.append(
+            {
+                "decision_id": decision_id,
+                "symbol": decision["symbol"],
+                "side": decision["side"],
+                "strategy": decision["strategy"],
+                "score": decision["score"],
+                "opened_at_utc": _utc_text(decision["opened_at"]),
+                "bar_closed_at_utc": _utc_text(bar_closed_at),
+                "configured_max_holding_bars": max_holding_bars,
+                "timeout_at_utc": _utc_text(timeout_at),
+                "remaining_seconds_at_report": _round(
+                    (timeout_at - generated).total_seconds()
+                ),
+                "overdue_at_report": generated >= timeout_at,
+            }
+        )
 
     per_symbol: dict[str, dict[str, object]] = {}
     for symbol in required_symbols:

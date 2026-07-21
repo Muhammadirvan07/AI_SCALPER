@@ -139,8 +139,20 @@ menghitung:
 - holding duration serta holding horizon M15;
 - exit reason, strategy, side, dan trade ledger;
 - breakdown terpisah untuk setiap pair;
-- posisi paper yang masih terbuka;
+- posisi paper yang masih terbuka, deadline timeout, sisa waktu pada saat
+  report dibuat, dan status overdue;
 - peringatan ukuran sampel dan batas interpretasi.
+
+Lihat deadline posisi terbuka dengan:
+
+```powershell
+$p = Get-Content `
+  .\runtime_state\diagnostic\fbs-real-market-performance.json `
+  -Raw | ConvertFrom-Json
+
+$p.open_positions.positions |
+  Format-Table symbol,side,strategy,timeout_at_utc,remaining_seconds_at_report,overdue_at_report
+```
 
 Database dibuka dengan SQLite read-only/query-only dan output ditulis secara
 atomik ke file JSON terpisah. Journal yang rusak, hash-chain mismatch, orphan

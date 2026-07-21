@@ -248,7 +248,14 @@ class DiagnosticReportTests(unittest.TestCase):
             report["overall"]["exit_reason_counts"],
         )
         self.assertEqual(1, report["open_positions"]["count"])
-        self.assertEqual("AUDUSD", report["open_positions"]["positions"][0]["symbol"])
+        open_position = report["open_positions"]["positions"][0]
+        self.assertEqual("AUDUSD", open_position["symbol"])
+        self.assertEqual(
+            "2026-07-17T20:45:00.000000Z",
+            open_position["timeout_at_utc"],
+        )
+        self.assertEqual(-54_900.0, open_position["remaining_seconds_at_report"])
+        self.assertTrue(open_position["overdue_at_report"])
 
         eurusd = report["per_symbol"]["EURUSD"]
         self.assertEqual(2, eurusd["closed_trades"])
