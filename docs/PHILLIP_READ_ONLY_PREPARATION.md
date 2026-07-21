@@ -134,3 +134,59 @@ python -B .\generate_realtime_diagnostic_report.py `
   --artifact-tag commodity-real-market `
   --acknowledge-diagnostic-only
 ```
+
+## Dual-terminal concurrent shadow
+
+MetaTrader 5 does not permit two running copies from one installation
+directory. Install the second Phillip terminal into a different directory;
+each installation path receives its own MT5 data-directory identity. Keep the
+existing installation for FX and use a clearly named second directory for the
+commodity account. Do not copy credentials or account identifiers into this
+repository.
+
+Suggested layout:
+
+```text
+C:\Program Files\Phillip Securities Japan MT5 Terminal FX\terminal64.exe
+C:\Program Files\Phillip Securities Japan MT5 Terminal Commodity\terminal64.exe
+```
+
+In the FX terminal, login to the FX demo account. In the commodity terminal,
+login to the commodity CFD demo account. On both terminals, turn Algo Trading
+off and enable the option that disables automated trading through the external
+Python API. Close the original single installation after the two new paths are
+confirmed, so Python cannot attach to the wrong account context.
+
+Validate the topology without starting either shadow:
+
+```powershell
+$fxTerminal = "C:\Program Files\Phillip Securities Japan MT5 Terminal FX\terminal64.exe"
+$commodityTerminal = "C:\Program Files\Phillip Securities Japan MT5 Terminal Commodity\terminal64.exe"
+
+python -B .\run_phillip_dual_shadow.py `
+  --fx-terminal-path $fxTerminal `
+  --commodity-terminal-path $commodityTerminal `
+  --acknowledge-diagnostic-only `
+  --validate-only
+```
+
+After both individual preflights pass against their exact paths, start the two
+isolated child processes:
+
+```powershell
+python -B .\run_phillip_dual_shadow.py `
+  --fx-terminal-path $fxTerminal `
+  --commodity-terminal-path $commodityTerminal `
+  --acknowledge-diagnostic-only `
+  --poll-seconds 5
+```
+
+The supervisor passes no login or password. Each child repeats its read-only
+attestation and account fence. If one child exits, the supervisor terminates
+the other rather than leaving a partial topology running. `Ctrl+C` stops both.
+
+Official MT5 documentation states that simultaneous copies require different
+installation directories:
+https://www.metatrader5.com/en/terminal/help/start_advanced/start. Python binds
+each child to the exact executable path using the documented `initialize(path)`
+interface: https://www.mql5.com/en/docs/python_metatrader5/mt5initialize_py.
