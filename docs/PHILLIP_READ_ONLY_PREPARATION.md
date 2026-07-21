@@ -256,6 +256,12 @@ Future exceptional closures require an official HTTPS document hash, at least
 post-window completeness attestation. This feature remains evidence-only and
 cannot enable orders.
 
+The immutable human-review workflow for those base calendars is documented in
+[`PREWINDOW_CALENDAR_REVIEW.md`](PREWINDOW_CALENDAR_REVIEW.md). It hashes the
+exact operator-supplied source bytes and creates a separate Credential
+Manager-backed calendar-review approval. The current tracked templates are not
+automatically patched or activated by that workflow.
+
 Official MT5 documentation states that simultaneous copies require different
 installation directories:
 https://www.metatrader5.com/en/terminal/help/start_advanced/start. Python binds

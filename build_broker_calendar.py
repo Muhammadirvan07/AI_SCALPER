@@ -11,8 +11,13 @@ from live_runtime.broker_evidence_profile import (
 )
 from live_runtime.broker_window_plan import (
     BrokerWindowPlanError,
+    SIGNED_REVIEW_PLAN_SCHEMA_VERSION,
     read_json_object,
     verify_prepared_broker_calendar_plan,
+)
+from live_runtime.evidence_credentials import (
+    EvidenceCredentialError,
+    WindowsEvidenceKeyStore,
 )
 from live_runtime.session_calendar import (
     SessionCalendarError,
@@ -47,7 +52,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         template = read_json_object(REPO_ROOT / profile.template_path)
         plan = read_json_object(_repo_path(args.plan))
-        verify_prepared_broker_calendar_plan(plan, template=template)
+        calendar_review_key_provider = None
+        if plan.get("schema_version") == SIGNED_REVIEW_PLAN_SCHEMA_VERSION:
+            calendar_review_key_provider = WindowsEvidenceKeyStore().load
+        verify_prepared_broker_calendar_plan(
+            plan,
+            template=template,
+            calendar_review_key_provider=calendar_review_key_provider,
+        )
         bundle = build_calendar_bundle(plan)
         destination = write_calendar_bundle_exclusive(
             _repo_path(args.output),
@@ -56,6 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     except (
         BrokerEvidenceProfileError,
         BrokerWindowPlanError,
+        EvidenceCredentialError,
         SessionCalendarError,
         OSError,
         SecureFileError,

@@ -673,6 +673,7 @@ def register_broker_diagnostic_contract(
     git_state_provider: Callable[[], Mapping[str, object]] | None = None,
     clock_provider: Callable[[], object] | None = None,
     regulatory_approval_key_provider: Callable[[str], bytes | None] | None = None,
+    calendar_review_key_provider: Callable[[str], bytes | None] | None = None,
 ) -> dict[str, object]:
     """Register a broker-neutral DIAGNOSTIC contract from a tracked profile.
 
@@ -696,7 +697,12 @@ def register_broker_diagnostic_contract(
     plan = _read_json(Path(plan_path))
     candidate_config = _read_json(root / "config/broker_candidates.phase3.json")
     try:
-        verify_prepared_broker_calendar_plan(plan, template=template)
+        verify_prepared_broker_calendar_plan(
+            plan,
+            template=template,
+            calendar_review_key_provider=calendar_review_key_provider,
+            now_provider=now_provider,
+        )
         verify_candidate_legal_binding(
             plan,
             candidate_config,

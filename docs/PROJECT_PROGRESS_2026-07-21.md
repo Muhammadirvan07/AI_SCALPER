@@ -42,7 +42,7 @@ increases. Do not run the FBS Crypto M5 shadow concurrently on the same account.
 - The tooling does not download documents, decide legal meaning, issue human
   approvals, patch tracked candidate config, or enable registration.
 - Both Phillip profiles remain
-  `BLOCKED_PENDING_SIGNED_REGULATORY_AND_REGISTRATION_REVIEW` with
+  `BLOCKED_PENDING_SIGNED_REGULATORY_CALENDAR_AND_REGISTRATION_REVIEW` with
   `registration_enabled=false`; no actual compliance/legal approval is claimed.
 - The operator workflow is documented in
   `docs/BROKER_REGISTRATION_REVIEW.md` for a later independent review.

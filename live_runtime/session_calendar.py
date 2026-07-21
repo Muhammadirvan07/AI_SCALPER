@@ -423,6 +423,15 @@ def build_calendar_bundle(plan: Mapping[str, object]) -> dict[str, object]:
         "discovery_receipt_sha256": receipt_hash,
         "special_hours_review": dict(review),
         **(
+            {
+                "prewindow_calendar_review_sha256": plan[
+                    "prewindow_calendar_review"
+                ]["review_artifact_sha256"]
+            }
+            if isinstance(plan.get("prewindow_calendar_review"), Mapping)
+            else {}
+        ),
+        **(
             {"calendar_amendment_policy": dict(policy)}
             if amendment_enabled
             else {}

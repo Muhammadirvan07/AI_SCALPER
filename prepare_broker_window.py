@@ -63,10 +63,12 @@ def main(argv: list[str] | None = None) -> int:
             candidates,
             key,
             regulatory_approval_key_provider=store.load,
+            calendar_review_key_provider=store.load,
         )
         destination = write_broker_calendar_plan_exclusive(
             _repo_path(args.output),
             plan,
+            calendar_review_key_provider=store.load,
         )
     except (
         BrokerEvidenceProfileError,

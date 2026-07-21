@@ -11,6 +11,11 @@ from typing import Callable, Mapping
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .benchmark import REQUIRED_SYMBOLS
+from .calendar_review import (
+    CalendarReviewError,
+    verify_prewindow_calendar_review,
+    verify_prewindow_calendar_review_shape,
+)
 from .contracts import canonical_sha256, require_utc
 from .secure_files import write_json_exclusive
 from .session_calendar import (
@@ -24,6 +29,8 @@ TEMPLATE_SCHEMA_VERSION = "broker-calendar-plan-template-v1"
 PLAN_SCHEMA_VERSION = "broker-calendar-plan-v1"
 AMENDABLE_TEMPLATE_SCHEMA_VERSION = "broker-calendar-plan-template-v2"
 AMENDABLE_PLAN_SCHEMA_VERSION = "broker-calendar-plan-v2"
+SIGNED_REVIEW_TEMPLATE_SCHEMA_VERSION = "broker-calendar-plan-template-v3"
+SIGNED_REVIEW_PLAN_SCHEMA_VERSION = "broker-calendar-plan-v3"
 MAX_LOT = 0.01
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
@@ -52,6 +59,9 @@ _TEMPLATE_FIELDS = frozenset(
 _AMENDABLE_TEMPLATE_FIELDS = frozenset(
     set(_TEMPLATE_FIELDS) | {"calendar_amendment_policy"}
 )
+_SIGNED_REVIEW_TEMPLATE_FIELDS = frozenset(
+    set(_AMENDABLE_TEMPLATE_FIELDS) | {"prewindow_calendar_review"}
+)
 _PLAN_FIELDS = frozenset(
     (_TEMPLATE_FIELDS - {"schema_version"})
     | {
@@ -66,6 +76,18 @@ _PLAN_FIELDS = frozenset(
 )
 _AMENDABLE_PLAN_FIELDS = frozenset(
     (_AMENDABLE_TEMPLATE_FIELDS - {"schema_version"})
+    | {
+        "schema_version",
+        "captured_at_utc",
+        "discovery_receipt_sha256",
+        "source_instance_id",
+        "plan_template_sha256",
+        "regulatory_observation_sha256",
+        "plan_payload_sha256",
+    }
+)
+_SIGNED_REVIEW_PLAN_FIELDS = frozenset(
+    (_SIGNED_REVIEW_TEMPLATE_FIELDS - {"schema_version"})
     | {
         "schema_version",
         "captured_at_utc",
@@ -141,18 +163,26 @@ def _candidate(
 def verify_broker_calendar_template(template: Mapping[str, object]) -> None:
     schema_version = template.get("schema_version")
     expected_fields = (
-        _AMENDABLE_TEMPLATE_FIELDS
-        if schema_version == AMENDABLE_TEMPLATE_SCHEMA_VERSION
-        else _TEMPLATE_FIELDS
+        _SIGNED_REVIEW_TEMPLATE_FIELDS
+        if schema_version == SIGNED_REVIEW_TEMPLATE_SCHEMA_VERSION
+        else (
+            _AMENDABLE_TEMPLATE_FIELDS
+            if schema_version == AMENDABLE_TEMPLATE_SCHEMA_VERSION
+            else _TEMPLATE_FIELDS
+        )
     )
     if set(template) != set(expected_fields):
         raise BrokerWindowPlanError("broker calendar template fields are invalid")
     if schema_version not in {
         TEMPLATE_SCHEMA_VERSION,
         AMENDABLE_TEMPLATE_SCHEMA_VERSION,
+        SIGNED_REVIEW_TEMPLATE_SCHEMA_VERSION,
     }:
         raise BrokerWindowPlanError("unsupported broker calendar template schema")
-    amendment_enabled = schema_version == AMENDABLE_TEMPLATE_SCHEMA_VERSION
+    amendment_enabled = schema_version in {
+        AMENDABLE_TEMPLATE_SCHEMA_VERSION,
+        SIGNED_REVIEW_TEMPLATE_SCHEMA_VERSION,
+    }
     if amendment_enabled:
         policy = _mapping(
             template.get("calendar_amendment_policy"),
@@ -237,6 +267,19 @@ def verify_broker_calendar_template(template: Mapping[str, object]) -> None:
         raise BrokerWindowPlanError("special-hours review requires an HTTPS source")
     if "registered_closures" not in review:
         raise BrokerWindowPlanError("special-hours review must register closures")
+    if schema_version == SIGNED_REVIEW_TEMPLATE_SCHEMA_VERSION:
+        try:
+            verify_prewindow_calendar_review_shape(
+                _mapping(
+                    template.get("prewindow_calendar_review"),
+                    "prewindow_calendar_review",
+                ),
+                template=template,
+            )
+        except CalendarReviewError as exc:
+            raise BrokerWindowPlanError(
+                "signed pre-window calendar review is invalid"
+            ) from exc
 
 
 def _verify_bindings(
@@ -314,6 +357,7 @@ def prepare_broker_calendar_plan(
     *,
     now_provider: Callable[[], datetime] = utc_now,
     regulatory_approval_key_provider: Callable[[str], bytes | None] | None = None,
+    calendar_review_key_provider: Callable[[str], bytes | None] | None = None,
     legal_binding_verifier: Callable[..., None] = verify_candidate_legal_binding,
 ) -> dict[str, object]:
     verify_broker_calendar_template(template)
@@ -335,6 +379,21 @@ def prepare_broker_calendar_plan(
         require_utc("now", now)
     except (TypeError, ValueError) as exc:
         raise BrokerWindowPlanError("plan clock must be timezone-aware UTC") from exc
+    if template.get("schema_version") == SIGNED_REVIEW_TEMPLATE_SCHEMA_VERSION:
+        try:
+            verify_prewindow_calendar_review(
+                _mapping(
+                    template.get("prewindow_calendar_review"),
+                    "prewindow_calendar_review",
+                ),
+                template=template,
+                approval_key_provider=calendar_review_key_provider,
+                now_provider=lambda: now,
+            )
+        except CalendarReviewError as exc:
+            raise BrokerWindowPlanError(
+                "signed pre-window calendar review verification failed"
+            ) from exc
     candidate = _verify_bindings(
         template,
         discovery,
@@ -358,10 +417,15 @@ def prepare_broker_calendar_plan(
     body = {
         **{key: value for key, value in template_body.items() if key != "schema_version"},
         "schema_version": (
-            AMENDABLE_PLAN_SCHEMA_VERSION
+            SIGNED_REVIEW_PLAN_SCHEMA_VERSION
             if template.get("schema_version")
-            == AMENDABLE_TEMPLATE_SCHEMA_VERSION
-            else PLAN_SCHEMA_VERSION
+            == SIGNED_REVIEW_TEMPLATE_SCHEMA_VERSION
+            else (
+                AMENDABLE_PLAN_SCHEMA_VERSION
+                if template.get("schema_version")
+                == AMENDABLE_TEMPLATE_SCHEMA_VERSION
+                else PLAN_SCHEMA_VERSION
+            )
         ),
         "captured_at_utc": _iso(captured),
         "discovery_receipt_sha256": receipt_hash,
@@ -380,18 +444,31 @@ def verify_prepared_broker_calendar_plan(
     payload: Mapping[str, object],
     *,
     template: Mapping[str, object] | None = None,
+    calendar_review_key_provider: Callable[[str], bytes | None] | None = None,
+    now_provider: Callable[[], datetime] = utc_now,
 ) -> None:
     schema_version = payload.get("schema_version")
     expected_fields = (
-        _AMENDABLE_PLAN_FIELDS
-        if schema_version == AMENDABLE_PLAN_SCHEMA_VERSION
-        else _PLAN_FIELDS
+        _SIGNED_REVIEW_PLAN_FIELDS
+        if schema_version == SIGNED_REVIEW_PLAN_SCHEMA_VERSION
+        else (
+            _AMENDABLE_PLAN_FIELDS
+            if schema_version == AMENDABLE_PLAN_SCHEMA_VERSION
+            else _PLAN_FIELDS
+        )
     )
     if set(payload) != set(expected_fields):
         raise BrokerWindowPlanError("prepared broker plan fields are invalid")
-    if schema_version not in {PLAN_SCHEMA_VERSION, AMENDABLE_PLAN_SCHEMA_VERSION}:
+    if schema_version not in {
+        PLAN_SCHEMA_VERSION,
+        AMENDABLE_PLAN_SCHEMA_VERSION,
+        SIGNED_REVIEW_PLAN_SCHEMA_VERSION,
+    }:
         raise BrokerWindowPlanError("unsupported prepared broker plan schema")
-    if schema_version == AMENDABLE_PLAN_SCHEMA_VERSION:
+    if schema_version in {
+        AMENDABLE_PLAN_SCHEMA_VERSION,
+        SIGNED_REVIEW_PLAN_SCHEMA_VERSION,
+    }:
         policy = payload.get("calendar_amendment_policy")
         if (
             not isinstance(policy, Mapping)
@@ -442,6 +519,21 @@ def verify_prepared_broker_calendar_plan(
     blind = _utc(payload.get("blind_until_utc"), "blind until", m15=True)
     if not captured < start < blind:
         raise BrokerWindowPlanError("prepared broker plan window is invalid")
+    if schema_version == SIGNED_REVIEW_PLAN_SCHEMA_VERSION:
+        try:
+            verify_prewindow_calendar_review(
+                _mapping(
+                    payload.get("prewindow_calendar_review"),
+                    "prewindow_calendar_review",
+                ),
+                template=payload,
+                approval_key_provider=calendar_review_key_provider,
+                now_provider=now_provider,
+            )
+        except CalendarReviewError as exc:
+            raise BrokerWindowPlanError(
+                "signed pre-window calendar review verification failed"
+            ) from exc
     if template is not None:
         verify_broker_calendar_template(template)
         if payload.get("plan_template_sha256") != canonical_sha256(template):
@@ -469,8 +561,15 @@ def read_json_object(path: str | Path) -> dict[str, object]:
 def write_broker_calendar_plan_exclusive(
     path: str | Path,
     payload: Mapping[str, object],
+    *,
+    calendar_review_key_provider: Callable[[str], bytes | None] | None = None,
+    now_provider: Callable[[], datetime] = utc_now,
 ) -> Path:
-    verify_prepared_broker_calendar_plan(payload)
+    verify_prepared_broker_calendar_plan(
+        payload,
+        calendar_review_key_provider=calendar_review_key_provider,
+        now_provider=now_provider,
+    )
     return write_json_exclusive(path, payload)
 
 
@@ -479,6 +578,8 @@ __all__ = [
     "AMENDABLE_TEMPLATE_SCHEMA_VERSION",
     "BrokerWindowPlanError",
     "PLAN_SCHEMA_VERSION",
+    "SIGNED_REVIEW_PLAN_SCHEMA_VERSION",
+    "SIGNED_REVIEW_TEMPLATE_SCHEMA_VERSION",
     "TEMPLATE_SCHEMA_VERSION",
     "prepare_broker_calendar_plan",
     "read_json_object",

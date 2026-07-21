@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -16,6 +17,10 @@ import mt5_readonly_discovery
 import prepare_broker_window
 import register_calendar_amendment as amendment_cli
 import register_broker_forward_contract
+from live_runtime.broker_window_plan import (
+    AMENDABLE_PLAN_SCHEMA_VERSION,
+    SIGNED_REVIEW_PLAN_SCHEMA_VERSION,
+)
 from live_runtime.calendar_operator import (
     CalendarOperatorInputError,
     load_amendment_request,
@@ -143,6 +148,73 @@ class BrokerEvidenceCLITests(unittest.TestCase):
         self.assertEqual(2, result)
         self.assertIn("BROKER_CALENDAR_GATE_BLOCKED", output.getvalue())
         self.assertIn("no broker order", output.getvalue())
+
+    def test_calendar_builder_loads_review_key_only_for_signed_plan(self) -> None:
+        profile = SimpleNamespace(
+            candidate_id="phillip-fx",
+            template_path="config/fixture.json",
+        )
+        bundle = {
+            "bundle_sha256": "a" * 64,
+            "session_calendar_sha256": {},
+        }
+        for schema_version, key_required in (
+            (AMENDABLE_PLAN_SCHEMA_VERSION, False),
+            (SIGNED_REVIEW_PLAN_SCHEMA_VERSION, True),
+        ):
+            with self.subTest(schema_version=schema_version):
+                output = io.StringIO()
+                with tempfile.TemporaryDirectory() as directory:
+                    destination = Path(directory) / "calendar.json"
+                    with (
+                        patch.object(
+                            build_broker_calendar,
+                            "load_broker_evidence_profile",
+                            return_value=profile,
+                        ),
+                        patch.object(
+                            build_broker_calendar,
+                            "read_json_object",
+                            side_effect=[{}, {"schema_version": schema_version}],
+                        ),
+                        patch.object(
+                            build_broker_calendar,
+                            "WindowsEvidenceKeyStore",
+                        ) as store,
+                        patch.object(
+                            build_broker_calendar,
+                            "verify_prepared_broker_calendar_plan",
+                        ) as verify,
+                        patch.object(
+                            build_broker_calendar,
+                            "build_calendar_bundle",
+                            return_value=bundle,
+                        ),
+                        patch.object(
+                            build_broker_calendar,
+                            "write_calendar_bundle_exclusive",
+                            return_value=destination,
+                        ),
+                        redirect_stdout(output),
+                    ):
+                        result = build_broker_calendar.main(
+                            [
+                                "--candidate",
+                                "phillip-fx",
+                                "--plan",
+                                str(Path(directory) / "plan.json"),
+                                "--output",
+                                str(destination),
+                            ]
+                        )
+                self.assertEqual(0, result)
+                provider = verify.call_args.kwargs["calendar_review_key_provider"]
+                if key_required:
+                    store.assert_called_once_with()
+                    self.assertIs(store.return_value.load, provider)
+                else:
+                    store.assert_not_called()
+                    self.assertIsNone(provider)
 
     def test_contract_registration_alone_enforces_enablement_gate(self) -> None:
         output = io.StringIO()

@@ -66,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
             profile=profile,
             profile_config_path=profile_config.relative_to(REPO_ROOT).as_posix(),
             regulatory_approval_key_provider=store.load,
+            calendar_review_key_provider=store.load,
         )
     except (
         BrokerEvidenceProfileError,

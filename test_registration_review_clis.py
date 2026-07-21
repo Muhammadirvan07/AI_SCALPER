@@ -273,6 +273,10 @@ class RegistrationReviewCLITests(unittest.TestCase):
                 prepare.call_args.kwargs["regulatory_approval_key_provider"],
                 plan_store.return_value.load,
             )
+            self.assertIs(
+                prepare.call_args.kwargs["calendar_review_key_provider"],
+                plan_store.return_value.load,
+            )
 
             with (
                 patch.object(register_broker_forward_contract, "load_broker_evidence_profile", return_value=profile),
@@ -300,6 +304,10 @@ class RegistrationReviewCLITests(unittest.TestCase):
             self.assertEqual(0, result)
             self.assertIs(
                 register.call_args.kwargs["regulatory_approval_key_provider"],
+                contract_store.return_value.load,
+            )
+            self.assertIs(
+                register.call_args.kwargs["calendar_review_key_provider"],
                 contract_store.return_value.load,
             )
 
