@@ -61,7 +61,10 @@ read-only, dan tidak boleh ditimpa atau dilanjutkan oleh runtime v3.
 ## FBS target diagnostic
 
 Read-only binding dan preflight FBS telah diamati, dan diagnostic paper shadow
-sedang berjalan. Sebelum evidence collection, FBS masih harus melewati:
+sedang berjalan. Japan FSA mencantumkan `FBS Markets Inc.` dalam peringatan
+penyedia luar negeri tanpa registrasi. Karena itu FBS dibatasi ke diagnostic
+paper; evidence discovery dan order tidak boleh diaktifkan selama operasi dari
+Jepang. Jika yurisdiksi berubah, seluruh gate berikut harus direview ulang:
 
 - durable sanitized preflight receipt pada source terbaru;
 - API instrument specification untuk empat simbol;
@@ -78,9 +81,12 @@ lokal. Seluruhnya tetap fail-closed melalui profile
 `registration_enabled=false`; urutan aktivasi dan gate ada di
 `docs/FBS_EVIDENCE_PIPELINE.md`.
 
-## FINEX historical standby
+## FINEX future Indonesia preparation
 
-Jangan menyalin binding XM ke FINEX. Sebelum menyiapkan contract FINEX,
+Registrasi FINEX di Bappebti telah diverifikasi, tetapi ini belum membuktikan
+personal/account eligibility maupun izin operasi dari Jepang. Jangan menyalin
+binding XM/FBS ke FINEX. Sebelum menyiapkan contract FINEX setelah kembali ke
+Indonesia,
 lengkapi:
 
 - exact legal/company name dan regulatory eligibility;

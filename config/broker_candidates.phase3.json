@@ -1,6 +1,6 @@
 {
   "schema_version": "broker-candidate-plan-v1",
-  "status": "FBS_DIAGNOSTIC_SHADOW_ACTIVE_EVIDENCE_AND_ELIGIBILITY_PENDING",
+  "status": "FBS_DIAGNOSTIC_ONLY_JAPAN_EVIDENCE_AND_ORDER_BLOCKED",
   "execution_enabled": false,
   "credentials_allowed": false,
   "operational_priority": {
@@ -57,11 +57,26 @@
       },
       "regulatory_observation": {
         "entity": "FBS Markets Inc.",
-        "verification_status": "NOT_VERIFIED_FOR_CURRENT_JAPAN_OPERATING_JURISDICTION",
-        "japan_residency_eligibility": "PENDING_INDEPENDENT_REGULATORY_REVIEW",
-        "indonesia_return_eligibility": "PENDING_INDEPENDENT_REGULATORY_REVIEW",
+        "authority": "Japan Financial Services Agency",
+        "verification_status": "OFFICIAL_JFSA_UNREGISTERED_WARNING_OBSERVED_PROJECT_BLOCKED",
+        "independent_registry_verification": true,
+        "verified_at_utc": "2026-07-21T06:31:49Z",
+        "independent_registry_sources": [
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/ordinary/chuui/mutouroku/04.html",
+            "result": "FBS_MARKETS_INC_LISTED_AS_UNREGISTERED_OVERSEAS_OPERATOR_WARNING_ISSUED_2015_08"
+          },
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/menkyo/menkyo.html",
+            "result": "NO_PROJECT_BASIS_TO_TREAT_FBS_AS_REGISTERED_JAPAN_FINANCIAL_INSTRUMENTS_BUSINESS"
+          }
+        ],
+        "japan_residency_eligibility": "PROJECT_BLOCKED_OFFICIAL_JFSA_WARNING",
+        "indonesia_return_eligibility": "NO_BAPPEBTI_REGISTRATION_EVIDENCE_USE_REGULATED_LOCAL_PATH",
         "legal_eligible": false,
-        "decision": "PREPARATION_AND_DIAGNOSTIC_ONLY_NO_ORDER_OR_LIVE"
+        "decision": "DIAGNOSTIC_PAPER_ONLY_BLOCK_DISCOVERY_EVIDENCE_ORDER_AND_LIVE_WHILE_IN_JAPAN"
       },
       "account_identifier_stored": false
     },
@@ -366,5 +381,5 @@
       "account_identifier_stored": false
     }
   ],
-  "notes": "FBS is the operator-selected target broker. Its sanitized binding probe confirmed exact demo server FBS-Demo, USD account currency, 500:1 leverage, retail hedging margin mode, canonical XAUUSD/EURUSD/USDJPY/AUDUSD names, and optional BTCUSD/ETHUSD crypto CFD names. Broker crypto M15 champion and M5 challenger diagnostic domains are isolated from forex and public Binance/Coinbase journals. API-captured instrument specs, session calendar, and cross-jurisdiction eligibility remain pending. Explicit read_only_discovery_allowed stays false, so evidence discovery and execution remain blocked. FINEX is retained as historical standby only and XM remains blocked. Do not guess or store credentials here."
+  "notes": "FBS remains the operator-selected diagnostic broker, but the official Japan FSA unregistered-operator warning makes it project-blocked for discovery evidence, orders, promotion, and live use while operating from Japan. Its sanitized binding probe confirmed exact demo server FBS-Demo, USD account currency, 500:1 leverage, retail hedging margin mode, canonical XAUUSD/EURUSD/USDJPY/AUDUSD names, and optional BTCUSD/ETHUSD crypto CFD names. Broker crypto M15 champion and M5 challenger diagnostic domains remain isolated and paper-only. Explicit read_only_discovery_allowed stays false. FINEX is the registered Bappebti future-Indonesia preparation path, but personal/account eligibility after return and current-Japan eligibility remain unapproved. XM remains blocked. Do not guess or store credentials here."
 }

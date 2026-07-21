@@ -17,7 +17,7 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         fbs = candidates["fbs"]
 
         self.assertEqual(
-            "FBS_DIAGNOSTIC_SHADOW_ACTIVE_EVIDENCE_AND_ELIGIBILITY_PENDING",
+            "FBS_DIAGNOSTIC_ONLY_JAPAN_EVIDENCE_AND_ORDER_BLOCKED",
             plan["status"],
         )
         self.assertEqual(
@@ -49,7 +49,32 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         )
         self.assertFalse(fbs["read_only_discovery_allowed"])
         self.assertFalse(fbs["binding_probe_observation"]["account_balance_stored"])
-        self.assertFalse(fbs["regulatory_observation"]["legal_eligible"])
+        regulatory = fbs["regulatory_observation"]
+        self.assertFalse(regulatory["legal_eligible"])
+        self.assertEqual(
+            "OFFICIAL_JFSA_UNREGISTERED_WARNING_OBSERVED_PROJECT_BLOCKED",
+            regulatory["verification_status"],
+        )
+        self.assertEqual(
+            "PROJECT_BLOCKED_OFFICIAL_JFSA_WARNING",
+            regulatory["japan_residency_eligibility"],
+        )
+        self.assertTrue(regulatory["independent_registry_verification"])
+        self.assertEqual(
+            "https://www.fsa.go.jp/ordinary/chuui/mutouroku/04.html",
+            regulatory["independent_registry_sources"][0]["url"],
+        )
+
+    def test_finex_remains_future_indonesia_path_without_current_unlock(self) -> None:
+        plan = json.loads(PLAN.read_text(encoding="utf-8"))
+        finex = next(
+            item for item in plan["candidates"] if item["candidate_id"] == "finex"
+        )
+        regulatory = finex["regulatory_observation"]
+        self.assertTrue(regulatory["independent_registry_verification"])
+        self.assertEqual("47/BAPPEBTI/SI/04/2013", regulatory["license"])
+        self.assertFalse(regulatory["legal_eligible"])
+        self.assertFalse(finex["read_only_discovery_allowed"])
 
     def test_fbs_discovery_remains_blocked_pending_review(self) -> None:
         from mt5_readonly_discovery import _candidate

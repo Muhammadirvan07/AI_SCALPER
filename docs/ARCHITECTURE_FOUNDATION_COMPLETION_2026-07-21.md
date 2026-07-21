@@ -33,7 +33,7 @@ AI_SCALPER siap mengirim order demo-auto atau live.
   disengaja karena validator generik mengharapkan HTTP endpoint sementara
   komponen ini hanya memiliki internal ports.
 - Focused acceptance suite: `28/28` lulus.
-- Full regression suite: `557/557` lulus.
+- Full regression suite: `558/558` lulus setelah jurisdiction hardening.
 - Project compile, dependency consistency, Windows lock/SBOM/install manifest,
   service import closure, deterministic archive tests, dan whitespace checks
   lulus.

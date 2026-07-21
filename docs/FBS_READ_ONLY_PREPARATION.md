@@ -1,5 +1,13 @@
 # FBS Read-Only Preparation
 
+Status: **DIAGNOSTIC PAPER ONLY IN JAPAN / EVIDENCE AND ORDER BLOCKED**
+
+Japan FSA mencantumkan `FBS Markets Inc.` pada daftar peringatan penyedia luar
+negeri tanpa registrasi. Karena itu seluruh perintah di dokumen ini hanya untuk
+binding/preflight dan diagnostic paper yang sudah berjalan. Jangan mengubah
+`read_only_discovery_allowed`, jangan mendaftarkan contract evidence, dan jangan
+mengirim order selama lokasi operasi masih Jepang.
+
 FBS adalah broker pengganti yang diminta operator. Exact terminal binding telah
 diterima melalui probe sanitasi:
 

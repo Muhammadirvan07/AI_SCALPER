@@ -256,12 +256,13 @@ eksternal belum terpenuhi.
 
 ## Blocker eksternal sebelum tahap berikutnya
 
-1. FBS telah dipilih sebagai target; exact demo binding, read-only preflight,
-   dan diagnostic shadow telah berhasil diamati. Buat receipt preflight
-   sanitasi durable pada source terbaru; selama operating jurisdiction masih
-   Jepang, batasi ke diagnostic read-only/paper sampai eligibility lintas
-   yurisdiksi dikonfirmasi. Lengkapi discovery v3 dan evidence contract secara
-   terpisah.
+1. FBS exact demo binding, read-only preflight, dan diagnostic shadow telah
+   berhasil diamati, tetapi official Japan FSA unregistered-operator warning
+   membuatnya project-blocked untuk discovery evidence, order, promotion, dan
+   live selama lokasi operasi masih Jepang. Diagnostic paper boleh berlanjut.
+   FINEX adalah future-Indonesia preparation path karena registrasi Bappebti
+   telah diverifikasi, tetapi personal/account eligibility setelah kembali dan
+   current-Japan eligibility tetap belum disetujui.
    XM Window 02 tetap tidak boleh dijalankan. Setiap
    kandidat tetap membutuhkan minimal 20 sesi terpisah.
 2. Jalankan broker read-only shadow pada exact symbols; ekspor signed session

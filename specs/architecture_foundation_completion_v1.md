@@ -24,7 +24,7 @@ external key custody, WORM retention, demo soak, or live readiness. Those facts
 require external systems and observation time and remain explicit ship blockers.
 
 Completion evidence: all fifteen acceptance criteria are implemented and the
-post-implementation project regression suite passes `557/557` tests on local
+post-implementation project regression suite passes `558/558` tests on local
 CPython 3.12. This evidence closes the repository foundation only and does not
 change the external ship blockers above.
 

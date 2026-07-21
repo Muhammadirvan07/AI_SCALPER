@@ -6,7 +6,7 @@ Audit memakai boundary modular-monolith/ports-adapters, fail-closed review,
 dependency audit, dan ship-gate acceptance review. Diagnostic shadow yang
 sedang berjalan tidak diubah dan tidak dihitung sebagai promotion evidence.
 
-Verifikasi lokal setelah penutupan fondasi: `557/557` unit/integration tests lulus,
+Verifikasi lokal setelah penutupan fondasi: `558/558` unit/integration tests lulus,
 project source berhasil di-compile, `pip check` tidak menemukan dependency
 rusak, Windows CPython 3.12 lock/SBOM/install manifest valid, release import
 closure lulus, dan diff whitespace bersih.
@@ -50,7 +50,10 @@ closure lulus, dan diff whitespace bersih.
 
 ## Kekurangan yang bukan bug lokal dan masih terbuka
 
-- FBS regulatory/operating eligibility belum diverifikasi independen.
+- FBS tercantum pada official Japan FSA unregistered-operator warning dan kini
+  project-blocked untuk evidence/order/live selama operasi dari Jepang. FINEX
+  terverifikasi terdaftar Bappebti untuk future-Indonesia preparation, tetapi
+  personal/account eligibility setelah kembali tetap membutuhkan review.
 - Exact official session/holiday attestation dan signed discovery v3 belum ada.
 - Minimal 20 sesi benchmark, delapan minggu/50 forward trades, dan 100 OOS
   trades per lane belum tersedia.

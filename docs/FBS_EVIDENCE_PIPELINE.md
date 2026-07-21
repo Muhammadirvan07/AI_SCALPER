@@ -15,23 +15,27 @@ max_lot = 0.01
 
 ## Gate saat ini
 
-Profile `fbs` ada di `config/broker_evidence_profiles.v1.json`, tetapi
-`registration_enabled=false`. Template sesi ada di
+Profile `fbs` ada di `config/broker_evidence_profiles.v1.json`, tetapi FBS
+tercantum dalam peringatan penyedia luar negeri tanpa registrasi oleh Japan FSA.
+Karena lokasi operasi saat ini Jepang, `read_only_discovery_allowed=false` dan
+`registration_enabled=false` adalah hard block proyek, bukan checklist yang
+boleh dibuka oleh operator. Template sesi ada di
 `config/fbs_calendar_window_01.template.json`, tetapi
 `special_hours_review.attested=false`. Candidate juga masih
-`read_only_discovery_allowed=false` dan regulatory eligibility belum mendapat
-dual independent approval. Karena itu discovery, plan, contract, dan collector
-akan berhenti fail-closed pada gate masing-masing.
+regulatory eligibility juga tidak lolos. Karena itu discovery, plan, contract,
+dan collector akan berhenti fail-closed pada gate masing-masing.
 
 Weekly session yang ada sekarang hanya scaffold konservatif dari screenshot.
 Ia tidak boleh diubah menjadi attested tanpa sumber resmi FBS yang mencakup
 exact account/server, timezone, regular hours, holiday, early close, dan
 maintenance untuk seluruh observation window.
 
-## Urutan setelah review eksternal selesai
+## Urutan hanya setelah yurisdiksi operasi berubah dan review baru selesai
 
-1. Selesaikan legal/regulatory eligibility untuk operasi dari Jepang dan masa
-   depan di Indonesia. Rekam approval independen sesuai schema candidate.
+1. Jangan aktifkan jalur ini selama operasi dari Jepang. Setelah kembali ke
+   Indonesia, lakukan review baru; FBS tidak memiliki bukti registrasi Bappebti
+   dalam project record, sehingga gunakan kandidat lokal terdaftar seperti
+   FINEX kecuali regulator/legal reviewer menyetujui fakta berbeda.
 2. Review exact FBS symbol specification melalui discovery API dan set
    `read_only_discovery_allowed=true` melalui clean reviewed commit.
 3. Attest template session/special-hours terhadap sumber HTTPS resmi. Daftarkan
