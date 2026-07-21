@@ -32,6 +32,7 @@ class FakeMT5:
 
     def __init__(self) -> None:
         self.shutdown_called = False
+        self.initialize_path = None
         self.account = {
             "server": "FBS-Demo",
             "currency": "USD",
@@ -65,7 +66,8 @@ class FakeMT5:
     def copy_ticks_range(self, *_args):
         return ()
 
-    def initialize(self):
+    def initialize(self, path=None):
+        self.initialize_path = path
         return True
 
     def shutdown(self):
@@ -85,6 +87,55 @@ class MT5CandidatePreflightTests(unittest.TestCase):
         self.assertFalse(candidate["read_only_discovery_allowed"])
         self.assertFalse(self.plan["execution_enabled"])
         self.assertFalse(self.plan["credentials_allowed"])
+
+    def test_phillip_scoped_bindings_preflight_independently(self) -> None:
+        cases = (
+            (
+                "phillip-fx",
+                "FX",
+                25,
+                {
+                    "AUDUSD": "AUDUSD.ps01",
+                    "EURUSD": "EURUSD.ps01",
+                    "USDJPY": "USDJPY.ps01",
+                },
+            ),
+            (
+                "phillip-commodity",
+                "COMMODITY",
+                20,
+                {"XAUUSD": "XAUUSD.ps01"},
+            ),
+        )
+        for candidate_id, scope, leverage, symbols in cases:
+            with self.subTest(candidate_id=candidate_id):
+                candidate = load_preflight_candidate(PLAN, candidate_id)
+                mt5 = FakeMT5()
+                mt5.account.update(
+                    {
+                        "server": "PhillipSecuritiesJP-PROD",
+                        "currency": "JPY",
+                        "leverage": leverage,
+                    }
+                )
+                mt5.symbols = {
+                    broker_symbol: {"name": broker_symbol}
+                    for broker_symbol in symbols.values()
+                }
+                result = attest_candidate_read_only(
+                    ReadOnlyMT5Facade(mt5),
+                    candidate_id=candidate_id,
+                    candidate=candidate,
+                )
+                self.assertEqual(scope, result["binding_scope"])
+                self.assertEqual(sorted(symbols), result["required_symbols"])
+                self.assertEqual(symbols, result["symbols"])
+                receipt = build_preflight_receipt(
+                    result,
+                    captured_at=datetime(2026, 7, 21, 12, 0, tzinfo=timezone.utc),
+                )
+                self.assertFalse(receipt["validation_evidence"])
+                self.assertFalse(receipt["promotion_eligible"])
 
     def test_pass_result_is_sanitized_and_non_promotional(self) -> None:
         result = attest_candidate_read_only(
@@ -256,6 +307,28 @@ class MT5CandidatePreflightTests(unittest.TestCase):
             self.assertFalse(receipt["validation_evidence"])
             self.assertIn("Sanitized receipt:", output.getvalue())
             self.assertIn("Receipt SHA-256:", output.getvalue())
+
+    def test_cli_can_pin_exact_terminal_path(self) -> None:
+        fake = FakeMT5()
+        output = io.StringIO()
+        terminal_path = r"C:\FBS MetaTrader 5\terminal64.exe"
+        with (
+            patch.dict(sys.modules, {"MetaTrader5": fake}),
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "run_mt5_readonly_preflight.py",
+                    "--candidate",
+                    "fbs",
+                    "--terminal-path",
+                    terminal_path,
+                ],
+            ),
+            redirect_stdout(output),
+        ):
+            self.assertEqual(0, preflight_main())
+        self.assertEqual(terminal_path, fake.initialize_path)
 
     def test_cli_has_no_credential_argument(self) -> None:
         with patch.object(

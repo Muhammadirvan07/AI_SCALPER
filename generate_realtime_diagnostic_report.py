@@ -25,11 +25,15 @@ def _diagnostic_report_paths(
     candidate_id: str,
     *,
     root: Path = DEFAULT_DIAGNOSTIC_ROOT,
+    artifact_tag: str = "real-market",
 ) -> tuple[Path, Path]:
     normalized = str(candidate_id or "").strip().lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", normalized):
         raise DiagnosticReportError("candidate id is invalid for artifact isolation")
-    prefix = f"{normalized}-real-market"
+    normalized_tag = str(artifact_tag or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,47}", normalized_tag):
+        raise DiagnosticReportError("diagnostic artifact tag is invalid")
+    prefix = f"{normalized}-{normalized_tag}"
     return root / f"{prefix}.sqlite3", root / f"{prefix}-performance.json"
 
 
@@ -41,6 +45,12 @@ def _parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("--candidate", default="fbs")
+    parser.add_argument(
+        "--artifact-tag",
+        choices=("real-market", "fx-real-market", "commodity-real-market"),
+        default="real-market",
+        help="Select the isolated broker lane journal",
+    )
     parser.add_argument("--database", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument(
@@ -80,7 +90,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if not args.acknowledge_diagnostic_only:
         raise DiagnosticReportError("--acknowledge-diagnostic-only is required")
-    default_database, default_output = _diagnostic_report_paths(args.candidate)
+    default_database, default_output = _diagnostic_report_paths(
+        args.candidate,
+        artifact_tag=args.artifact_tag,
+    )
     database = args.database or default_database
     output = args.output or default_output
     if database.resolve() == output.resolve():

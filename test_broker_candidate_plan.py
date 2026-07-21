@@ -9,6 +9,50 @@ PLAN = Path(__file__).resolve().parent / "config" / "broker_candidates.phase3.js
 
 
 class BrokerCandidatePlanTests(unittest.TestCase):
+    def test_phillip_split_bindings_are_selected_without_opening_gates(self) -> None:
+        plan = json.loads(PLAN.read_text(encoding="utf-8"))
+        candidates = {
+            item["candidate_id"]: item for item in plan["candidates"]
+        }
+
+        self.assertEqual("phillip", plan["operational_priority"]["selected_target_broker"])
+        self.assertEqual(
+            ["phillip-fx", "phillip-commodity"],
+            plan["operational_priority"]["selected_target_bindings"],
+        )
+        self.assertIn(
+            "fbs",
+            plan["operational_priority"]["preflight_allowed_bindings"],
+        )
+        self.assertFalse(plan["execution_enabled"])
+        self.assertFalse(plan["credentials_allowed"])
+
+        fx = candidates["phillip-fx"]
+        self.assertEqual("FX", fx["binding_scope"])
+        self.assertEqual("PhillipSecuritiesJP-PROD", fx["server"])
+        self.assertEqual("JPY", fx["account_currency"])
+        self.assertEqual("25:1", fx["leverage"])
+        self.assertEqual(
+            {
+                "AUDUSD": "AUDUSD.ps01",
+                "EURUSD": "EURUSD.ps01",
+                "USDJPY": "USDJPY.ps01",
+            },
+            fx["broker_symbols_observed"],
+        )
+        commodity = candidates["phillip-commodity"]
+        self.assertEqual("COMMODITY", commodity["binding_scope"])
+        self.assertEqual("20:1", commodity["leverage"])
+        self.assertEqual(
+            {"XAUUSD": "XAUUSD.ps01"},
+            commodity["broker_symbols_observed"],
+        )
+        for candidate in (fx, commodity):
+            self.assertEqual("SELECTED_TARGET_PREPARATION", candidate["role"])
+            self.assertFalse(candidate["read_only_discovery_allowed"])
+            self.assertFalse(candidate["account_identifier_stored"])
+            self.assertTrue(candidate["regulatory_observation"]["legal_eligible"])
+
     def test_fbs_is_selected_without_opening_any_operational_gate(self) -> None:
         plan = json.loads(PLAN.read_text(encoding="utf-8"))
         candidates = {
@@ -17,11 +61,11 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         fbs = candidates["fbs"]
 
         self.assertEqual(
-            "FBS_DIAGNOSTIC_ONLY_JAPAN_EVIDENCE_AND_ORDER_BLOCKED",
+            "PHILLIP_JAPAN_SPLIT_BINDING_PREFLIGHT_PENDING",
             plan["status"],
         )
         self.assertEqual(
-            "fbs",
+            "phillip",
             plan["operational_priority"]["selected_target_broker"],
         )
         self.assertEqual(

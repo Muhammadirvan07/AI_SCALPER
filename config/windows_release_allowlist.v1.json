@@ -79,6 +79,8 @@
     "run_broker_shadow_once.py",
     "run_mt5_binding_probe.py",
     "run_mt5_readonly_preflight.py",
+    "run_phillip_commodity_shadow.py",
+    "run_phillip_fx_shadow.py",
     "run_realtime_diagnostic_shadow.py",
     "run_xm_shadow_once.py",
     "seal_windows_release_environment.py",

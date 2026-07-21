@@ -219,6 +219,29 @@ class DiagnosticReportTests(unittest.TestCase):
         self.assertEqual(root / "fbs-real-market-performance.json", output)
         self.assertEqual("fbs", cli._parser().parse_args([]).candidate)
 
+    def test_report_supports_scoped_phillip_artifact_tags(self) -> None:
+        root = Path("C:/AI_SCALPER/runtime_state/diagnostic")
+        fx_database, fx_output = cli._diagnostic_report_paths(
+            "phillip-fx",
+            root=root,
+            artifact_tag="fx-real-market",
+        )
+        commodity_database, commodity_output = cli._diagnostic_report_paths(
+            "phillip-commodity",
+            root=root,
+            artifact_tag="commodity-real-market",
+        )
+        self.assertEqual(root / "phillip-fx-fx-real-market.sqlite3", fx_database)
+        self.assertEqual(root / "phillip-fx-fx-real-market-performance.json", fx_output)
+        self.assertEqual(
+            root / "phillip-commodity-commodity-real-market.sqlite3",
+            commodity_database,
+        )
+        self.assertEqual(
+            root / "phillip-commodity-commodity-real-market-performance.json",
+            commodity_output,
+        )
+
     def test_report_calculates_trade_pair_and_sample_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "diagnostic.sqlite3"

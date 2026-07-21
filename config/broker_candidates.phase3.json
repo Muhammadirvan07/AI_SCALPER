@@ -1,10 +1,12 @@
 {
   "schema_version": "broker-candidate-plan-v1",
-  "status": "FBS_DIAGNOSTIC_ONLY_JAPAN_EVIDENCE_AND_ORDER_BLOCKED",
+  "status": "PHILLIP_JAPAN_SPLIT_BINDING_PREFLIGHT_PENDING",
   "execution_enabled": false,
   "credentials_allowed": false,
   "operational_priority": {
-    "selected_target_broker": "fbs",
+    "selected_target_broker": "phillip",
+    "selected_target_bindings": ["phillip-fx", "phillip-commodity"],
+    "preflight_allowed_bindings": ["fbs", "phillip-fx", "phillip-commodity"],
     "primary_shadow_broker": "fbs",
     "standby_preparation_broker": "finex",
     "deferred_benchmark_brokers": []
@@ -12,6 +14,114 @@
   "required_symbols": ["XAUUSD", "EURUSD", "USDJPY", "AUDUSD"],
   "minimum_sessions_per_candidate": 20,
   "candidates": [
+    {
+      "candidate_id": "phillip-fx",
+      "parent_broker_id": "phillip",
+      "display_name": "Phillip Securities Japan FX",
+      "role": "SELECTED_TARGET_PREPARATION",
+      "environment": "DEMO",
+      "binding_scope": "FX",
+      "server": "PhillipSecuritiesJP-PROD",
+      "account_type": "FX_DEMO",
+      "leverage": "25:1",
+      "broker_legal_name_observed": "Phillip Securities Japan, Ltd.",
+      "account_currency": "JPY",
+      "margin_mode_observed": 2,
+      "margin_mode_normalized": "RETAIL_HEDGING",
+      "read_only_discovery_allowed": false,
+      "binding_status": "SANITIZED_BINDING_PROBE_COMPLETE_PREFLIGHT_PENDING",
+      "broker_symbols_observed": {
+        "AUDUSD": "AUDUSD.ps01",
+        "EURUSD": "EURUSD.ps01",
+        "USDJPY": "USDJPY.ps01"
+      },
+      "instrument_specification_status": "API_CAPTURE_PENDING",
+      "binding_probe_observation": {
+        "schema_version": "mt5-candidate-binding-probe-v1",
+        "status": "BINDING_READY",
+        "account_identifier_stored": false,
+        "account_name_stored": false,
+        "account_balance_stored": false,
+        "terminal_trade_allowed": false,
+        "terminal_tradeapi_disabled": true
+      },
+      "regulatory_observation": {
+        "entity": "Phillip Securities Japan, Ltd.",
+        "authority": "Japan Financial Services Agency",
+        "registration": "Kanto Finance Bureau (Kinsho) No. 127",
+        "verification_status": "OFFICIAL_JAPAN_REGISTRATION_OBSERVED",
+        "independent_registry_verification": true,
+        "independent_registry_sources": [
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/menkyo/menkyo.html",
+            "result": "REGISTERED_FINANCIAL_INSTRUMENTS_BUSINESS_OPERATOR"
+          },
+          {
+            "authority": "Phillip Securities Japan",
+            "url": "https://www.phillip.co.jp/company/outline.php",
+            "result": "COMPANY_REGISTRATION_DISCLOSURE"
+          }
+        ],
+        "japan_residency_eligibility": "VERIFIED_REGISTERED_BROKER_DEMO_ACCOUNT_OBSERVED",
+        "legal_eligible": true,
+        "decision": "DEMO_READ_ONLY_PREFLIGHT_ALLOWED_DISCOVERY_ORDER_AND_LIVE_REMAIN_BLOCKED"
+      },
+      "account_identifier_stored": false
+    },
+    {
+      "candidate_id": "phillip-commodity",
+      "parent_broker_id": "phillip",
+      "display_name": "Phillip Securities Japan Commodity CFD",
+      "role": "SELECTED_TARGET_PREPARATION",
+      "environment": "DEMO",
+      "binding_scope": "COMMODITY",
+      "server": "PhillipSecuritiesJP-PROD",
+      "account_type": "COMMODITY_CFD_DEMO",
+      "leverage": "20:1",
+      "broker_legal_name_observed": "Phillip Securities Japan, Ltd.",
+      "account_currency": "JPY",
+      "margin_mode_observed": 2,
+      "margin_mode_normalized": "RETAIL_HEDGING",
+      "read_only_discovery_allowed": false,
+      "binding_status": "SANITIZED_BINDING_PROBE_COMPLETE_PREFLIGHT_PENDING",
+      "broker_symbols_observed": {
+        "XAUUSD": "XAUUSD.ps01"
+      },
+      "instrument_specification_status": "API_CAPTURE_PENDING",
+      "binding_probe_observation": {
+        "schema_version": "mt5-candidate-binding-probe-v1",
+        "status": "BINDING_READY",
+        "account_identifier_stored": false,
+        "account_name_stored": false,
+        "account_balance_stored": false,
+        "terminal_trade_allowed": false,
+        "terminal_tradeapi_disabled": true
+      },
+      "regulatory_observation": {
+        "entity": "Phillip Securities Japan, Ltd.",
+        "authority": "Japan Financial Services Agency",
+        "registration": "Kanto Finance Bureau (Kinsho) No. 127",
+        "verification_status": "OFFICIAL_JAPAN_REGISTRATION_OBSERVED",
+        "independent_registry_verification": true,
+        "independent_registry_sources": [
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/menkyo/menkyo.html",
+            "result": "REGISTERED_FINANCIAL_INSTRUMENTS_BUSINESS_OPERATOR"
+          },
+          {
+            "authority": "Phillip Securities Japan",
+            "url": "https://www.phillip.co.jp/company/outline.php",
+            "result": "COMPANY_REGISTRATION_DISCLOSURE"
+          }
+        ],
+        "japan_residency_eligibility": "VERIFIED_REGISTERED_BROKER_DEMO_ACCOUNT_OBSERVED",
+        "legal_eligible": true,
+        "decision": "DEMO_READ_ONLY_PREFLIGHT_ALLOWED_DISCOVERY_ORDER_AND_LIVE_REMAIN_BLOCKED"
+      },
+      "account_identifier_stored": false
+    },
     {
       "candidate_id": "fbs",
       "display_name": "FBS",

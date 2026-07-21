@@ -94,6 +94,28 @@ FBS_CRYPTO_M5_RUNNER_DOMAIN = BrokerRunnerDomain(
     artifact_tag="broker-crypto-m5",
     model_version="rule-core-fbs-crypto-m5-challenger-locked-v1",
 )
+PHILLIP_FX_RUNNER_DOMAIN = BrokerRunnerDomain(
+    required_symbols=("AUDUSD", "EURUSD", "USDJPY"),
+    symbol_config_key="broker_symbols_observed",
+    profile="PHILLIP_FX_BROKER_REALTIME_DIAGNOSTIC_ONLY",
+    schema_version="phillip-fx-real-market-diagnostic-v1",
+    outcome_quality="PHILLIP_FX_BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+    timeframe="M15",
+    artifact_tag="fx-real-market",
+    model_version="rule-core-phillip-fx-locked-v1",
+)
+PHILLIP_COMMODITY_RUNNER_DOMAIN = BrokerRunnerDomain(
+    required_symbols=("XAUUSD",),
+    symbol_config_key="broker_symbols_observed",
+    profile="PHILLIP_COMMODITY_BROKER_REALTIME_DIAGNOSTIC_ONLY",
+    schema_version="phillip-commodity-real-market-diagnostic-v1",
+    outcome_quality=(
+        "PHILLIP_COMMODITY_BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE"
+    ),
+    timeframe="M15",
+    artifact_tag="commodity-real-market",
+    model_version="rule-core-phillip-commodity-locked-v1",
+)
 
 
 def _diagnostic_artifact_paths(
@@ -343,6 +365,10 @@ def _parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("--candidate", default="fbs")
+    parser.add_argument(
+        "--terminal-path",
+        help="Exact terminal64.exe path when multiple MT5 installations exist",
+    )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--journal", type=Path)
     parser.add_argument("--summary", type=Path)
@@ -398,7 +424,8 @@ def main(
     last_error = getattr(mt5_module, "last_error", lambda: "unavailable")
     if not callable(initialize) or not callable(shutdown):
         raise RealtimeDiagnosticError("MetaTrader5 lifecycle API is unavailable")
-    if not initialize():
+    initialized = initialize(args.terminal_path) if args.terminal_path else initialize()
+    if not initialized:
         raise RealtimeDiagnosticError(f"MT5 initialize failed: {last_error()}")
 
     try:

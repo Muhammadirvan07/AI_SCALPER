@@ -19,6 +19,11 @@ from .secure_files import write_json_exclusive
 
 PREFLIGHT_SCHEMA_VERSION = "mt5-candidate-read-only-preflight-v1"
 PREFLIGHT_RECEIPT_SCHEMA_VERSION = "mt5-candidate-read-only-preflight-receipt-v1"
+PREFLIGHT_SCOPE_SYMBOLS = {
+    "ALL": tuple(REQUIRED_SYMBOLS),
+    "FX": ("AUDUSD", "EURUSD", "USDJPY"),
+    "COMMODITY": ("XAUUSD",),
+}
 
 
 class MT5CandidatePreflightError(RuntimeError):
@@ -60,7 +65,7 @@ def _leverage(value: object) -> int:
 def _candidate_binding(
     candidate_id: str,
     candidate: Mapping[str, object],
-) -> tuple[str, str, int, dict[str, str]]:
+) -> tuple[str, tuple[str, ...], str, str, int, dict[str, str]]:
     if candidate.get("candidate_id") != candidate_id:
         raise MT5CandidatePreflightError("candidate identity does not match request")
     if candidate.get("role") != "SELECTED_TARGET_PREPARATION":
@@ -74,6 +79,10 @@ def _candidate_binding(
     server = _text(candidate.get("server"), "server")
     currency = _text(candidate.get("account_currency"), "account_currency").upper()
     leverage = _leverage(candidate.get("leverage"))
+    binding_scope = str(candidate.get("binding_scope") or "ALL").strip().upper()
+    required_symbols = PREFLIGHT_SCOPE_SYMBOLS.get(binding_scope)
+    if required_symbols is None:
+        raise MT5CandidatePreflightError("candidate binding scope is invalid")
     configured_symbols = candidate.get("broker_symbols_observed")
     if not isinstance(configured_symbols, Mapping):
         raise MT5CandidatePreflightError("candidate symbol map is missing")
@@ -81,11 +90,11 @@ def _candidate_binding(
         str(canonical).upper(): _text(broker_symbol, "broker symbol")
         for canonical, broker_symbol in configured_symbols.items()
     }
-    if set(symbols) != set(REQUIRED_SYMBOLS):
+    if set(symbols) != set(required_symbols):
         raise MT5CandidatePreflightError(
-            "candidate requires exactly the four canonical symbols"
+            "candidate symbol map does not match its binding scope"
         )
-    return server, currency, leverage, symbols
+    return binding_scope, required_symbols, server, currency, leverage, symbols
 
 
 def load_preflight_candidate(path: str | Path, candidate_id: str) -> dict[str, object]:
@@ -102,7 +111,16 @@ def load_preflight_candidate(path: str | Path, candidate_id: str) -> dict[str, o
     if plan.get("credentials_allowed") is not False:
         raise MT5CandidatePreflightError("credential input must remain disabled")
     priority = plan.get("operational_priority")
-    if not isinstance(priority, dict) or priority.get("selected_target_broker") != candidate_id:
+    allowed_bindings: set[str] = set()
+    if isinstance(priority, dict):
+        for field in ("selected_target_bindings", "preflight_allowed_bindings"):
+            value = priority.get(field, [])
+            if isinstance(value, list):
+                allowed_bindings.update(str(item) for item in value)
+        selected = priority.get("selected_target_broker")
+        if isinstance(selected, str):
+            allowed_bindings.add(selected)
+    if candidate_id not in allowed_bindings:
         raise MT5CandidatePreflightError("candidate is not the selected target broker")
     candidates = plan.get("candidates")
     if not isinstance(candidates, list):
@@ -159,7 +177,9 @@ def attest_candidate_read_only(
 ) -> dict[str, object]:
     """Verify preparation facts and return a deliberately non-evidentiary summary."""
 
-    server, currency, leverage, symbols = _candidate_binding(candidate_id, candidate)
+    binding_scope, required_symbols, server, currency, leverage, symbols = (
+        _candidate_binding(candidate_id, candidate)
+    )
     initial_safety = _attest_safety(facade)
 
     account_before = _mapping(facade.account_info(), "MT5 account")
@@ -192,6 +212,8 @@ def attest_candidate_read_only(
     return {
         "schema_version": PREFLIGHT_SCHEMA_VERSION,
         "candidate_id": candidate_id,
+        "binding_scope": binding_scope,
+        "required_symbols": sorted(required_symbols),
         "status": "PASS",
         "server": server,
         "environment": "DEMO",
@@ -223,6 +245,8 @@ def build_preflight_receipt(
     expected_fields = {
         "schema_version",
         "candidate_id",
+        "binding_scope",
+        "required_symbols",
         "status",
         "server",
         "environment",
@@ -251,8 +275,17 @@ def build_preflight_receipt(
         or result.get("balance_stored") is not False
     ):
         raise MT5CandidatePreflightError("preflight result violates safety locks")
+    scope = result.get("binding_scope")
+    required_symbols = result.get("required_symbols")
+    expected_symbols = PREFLIGHT_SCOPE_SYMBOLS.get(scope) if isinstance(scope, str) else None
+    if (
+        expected_symbols is None
+        or not isinstance(required_symbols, list)
+        or set(required_symbols) != set(expected_symbols)
+    ):
+        raise MT5CandidatePreflightError("preflight receipt binding scope is invalid")
     symbols = result.get("symbols")
-    if not isinstance(symbols, Mapping) or set(symbols) != set(REQUIRED_SYMBOLS):
+    if not isinstance(symbols, Mapping) or set(symbols) != set(expected_symbols):
         raise MT5CandidatePreflightError("preflight receipt symbol set is incomplete")
     body = {
         "schema_version": PREFLIGHT_RECEIPT_SCHEMA_VERSION,

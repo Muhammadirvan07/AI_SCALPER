@@ -33,6 +33,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--candidate", default="fbs")
     parser.add_argument(
+        "--terminal-path",
+        help="Exact terminal64.exe path when multiple MT5 installations exist",
+    )
+    parser.add_argument(
         "--config",
         type=Path,
         default=Path("config/broker_candidates.phase3.json"),
@@ -54,7 +58,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         import MetaTrader5 as mt5  # Windows-only dependency, intentionally late
 
-        if not mt5.initialize():
+        initialized = (
+            mt5.initialize(args.terminal_path)
+            if args.terminal_path
+            else mt5.initialize()
+        )
+        if not initialized:
             print("MT5_READ_ONLY_PREFLIGHT_FAILED: terminal initialization failed")
             return 1
         try:
@@ -73,6 +82,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print("MT5_READ_ONLY_PREFLIGHT_PASS")
     print(f"Candidate: {result['candidate_id']}")
+    print(f"Binding scope: {result['binding_scope']}")
     print(f"Server: {result['server']}")
     print(f"Environment: {result['environment']}")
     print(f"Account currency: {result['account_currency']}")

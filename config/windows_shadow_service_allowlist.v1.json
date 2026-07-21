@@ -33,6 +33,8 @@
     "requirements-windows-cp312.lock.txt",
     "run_fbs_crypto_m15_shadow.py",
     "run_fbs_crypto_m5_challenger.py",
+    "run_phillip_commodity_shadow.py",
+    "run_phillip_fx_shadow.py",
     "run_realtime_diagnostic_shadow.py",
     "strategy/strategy_profiles.py",
     "strategy/strategy_selector.py",

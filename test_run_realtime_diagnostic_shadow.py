@@ -55,6 +55,72 @@ class RealtimeDiagnosticCLITests(unittest.TestCase):
         self.assertEqual(root / "fbs-real-market-summary.json", fbs_summary)
         self.assertEqual("fbs", cli._parser().parse_args([]).candidate)
 
+    def test_phillip_split_domains_have_isolated_symbols_and_artifacts(self) -> None:
+        root = Path("C:/AI_SCALPER/runtime_state/diagnostic")
+        fx_journal, fx_summary = cli._diagnostic_artifact_paths(
+            "phillip-fx",
+            root=root,
+            artifact_tag=cli.PHILLIP_FX_RUNNER_DOMAIN.artifact_tag,
+        )
+        commodity_journal, commodity_summary = cli._diagnostic_artifact_paths(
+            "phillip-commodity",
+            root=root,
+            artifact_tag=cli.PHILLIP_COMMODITY_RUNNER_DOMAIN.artifact_tag,
+        )
+        self.assertEqual(("AUDUSD", "EURUSD", "USDJPY"), cli.PHILLIP_FX_RUNNER_DOMAIN.required_symbols)
+        self.assertEqual(("XAUUSD",), cli.PHILLIP_COMMODITY_RUNNER_DOMAIN.required_symbols)
+        self.assertEqual(root / "phillip-fx-fx-real-market.sqlite3", fx_journal)
+        self.assertEqual(root / "phillip-fx-fx-real-market-summary.json", fx_summary)
+        self.assertEqual(
+            root / "phillip-commodity-commodity-real-market.sqlite3",
+            commodity_journal,
+        )
+        self.assertEqual(
+            root / "phillip-commodity-commodity-real-market-summary.json",
+            commodity_summary,
+        )
+
+    def test_exact_terminal_path_is_forwarded_to_mt5_initialize(self) -> None:
+        fake = FakeMT5()
+        original_account_info = fake.account_info
+        fake.account_info = lambda: {
+            **original_account_info(),
+            "trade_expert": True,
+        }
+        initialized_with: list[str | None] = []
+        fake.initialize = lambda path=None: initialized_with.append(path) or True
+        fake.shutdown = lambda: None
+        fake.last_error = lambda: (0, "ok")
+        fixed_identity = DiagnosticIdentity(
+            commit_sha="a" * 40,
+            model_version="test-locked-v1",
+            model_artifact_sha256="b" * 64,
+            config_sha256="c" * 64,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "candidates.json"
+            candidate_config(config)
+            with patch.object(cli, "_identity", return_value=fixed_identity):
+                result = cli.main(
+                    [
+                        "--acknowledge-diagnostic-only",
+                        "--candidate",
+                        "xm",
+                        "--terminal-path",
+                        r"C:\Phillip MT5\terminal64.exe",
+                        "--config",
+                        str(config),
+                        "--journal",
+                        str(root / "journal.sqlite3"),
+                        "--summary",
+                        str(root / "summary.json"),
+                    ],
+                    mt5_module=fake,
+                    platform_name="Windows",
+                )
+        self.assertEqual([r"C:\Phillip MT5\terminal64.exe"], initialized_with)
+
     def test_existing_journal_from_another_broker_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "diagnostic.sqlite3"

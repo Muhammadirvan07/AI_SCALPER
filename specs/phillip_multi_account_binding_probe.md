@@ -32,3 +32,16 @@ a time without weakening the read-only boundary.
 3. Review and bind the exact server and symbol names in configuration.
 4. Keep both account adapters isolated while a future global risk governor
    coordinates exposure across lanes.
+
+## Preflight and shadow isolation
+
+- Scoped preflight validates only the canonical symbols required by its bound
+  account lane.
+- `--terminal-path` is mandatory operational practice when several MT5
+  installations are present.
+- FX and commodity shadow launchers use different profiles, schemas, artifact
+  tags, SQLite journals, and summaries.
+- A single terminal executable cannot provide both account contexts at once;
+  concurrent lanes require two separately installed terminal instances.
+- No observed server-time offset may be inferred or copied from another
+  broker. Missing time evidence remains fail-closed.
