@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from live_runtime.mt5_readonly import MT5ReadOnlyAttestationError
 from live_runtime.realtime_diagnostic import (
+    BROKER_DIAGNOSTIC_DOMAINS,
     DiagnosticJournal,
     DiagnosticIdentity,
     RealtimeDiagnosticError,
@@ -79,6 +80,77 @@ class RealtimeDiagnosticCLITests(unittest.TestCase):
             root / "phillip-commodity-commodity-real-market-summary.json",
             commodity_summary,
         )
+        for domain in (
+            cli.PHILLIP_FX_RUNNER_DOMAIN,
+            cli.PHILLIP_COMMODITY_RUNNER_DOMAIN,
+        ):
+            self.assertIn(
+                (
+                    domain.profile,
+                    domain.schema_version,
+                    domain.required_symbols,
+                    domain.timeframe,
+                ),
+                BROKER_DIAGNOSTIC_DOMAINS,
+            )
+
+    def test_phillip_commodity_domain_runs_through_shared_broker_cycle(self) -> None:
+        fake = FakeMT5()
+        fake.rates["XAUUSD.ps01"] = fake.rates.pop(BROKER_SYMBOLS["XAUUSD"])
+        fake.ticks["XAUUSD.ps01"] = fake.ticks.pop(BROKER_SYMBOLS["XAUUSD"])
+        original_account_info = fake.account_info
+        fake.account_info = lambda: {
+            **original_account_info(),
+            "server": "PhillipSecuritiesJP-PROD",
+            "trade_expert": True,
+        }
+        fake.initialize = lambda path=None: True
+        fake.shutdown = lambda: None
+        fake.last_error = lambda: (0, "ok")
+        fixed_identity = DiagnosticIdentity(
+            commit_sha="a" * 40,
+            model_version="test-locked-v1",
+            model_artifact_sha256="b" * 64,
+            config_sha256="c" * 64,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "candidates.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "candidates": [
+                            {
+                                "candidate_id": "phillip-commodity",
+                                "environment": "DEMO",
+                                "server": "PhillipSecuritiesJP-PROD",
+                                "broker_symbols_observed": {
+                                    "XAUUSD": "XAUUSD.ps01"
+                                },
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.object(cli, "_identity", return_value=fixed_identity):
+                result = cli.main(
+                    [
+                        "--acknowledge-diagnostic-only",
+                        "--candidate",
+                        "phillip-commodity",
+                        "--config",
+                        str(config),
+                        "--journal",
+                        str(root / "journal.sqlite3"),
+                        "--summary",
+                        str(root / "summary.json"),
+                    ],
+                    mt5_module=fake,
+                    platform_name="Windows",
+                    runner_domain=cli.PHILLIP_COMMODITY_RUNNER_DOMAIN,
+                )
+        self.assertEqual(0, result)
 
     def test_exact_terminal_path_is_forwarded_to_mt5_initialize(self) -> None:
         fake = FakeMT5()

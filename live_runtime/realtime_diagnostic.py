@@ -75,6 +75,18 @@ BROKER_DIAGNOSTIC_DOMAINS = frozenset(
             ("BTCUSD", "ETHUSD"),
             "M5",
         ),
+        (
+            "PHILLIP_FX_BROKER_REALTIME_DIAGNOSTIC_ONLY",
+            "phillip-fx-real-market-diagnostic-v1",
+            ("AUDUSD", "EURUSD", "USDJPY"),
+            "M15",
+        ),
+        (
+            "PHILLIP_COMMODITY_BROKER_REALTIME_DIAGNOSTIC_ONLY",
+            "phillip-commodity-real-market-diagnostic-v1",
+            ("XAUUSD",),
+            "M15",
+        ),
     }
 )
 
