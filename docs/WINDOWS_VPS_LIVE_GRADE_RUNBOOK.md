@@ -66,6 +66,30 @@ aktifkan live atau demo-auto selama repository policy masih terkunci.
 - Hanya adapter Python MT5 resmi yang boleh menjadi jalur eksekusi setelah gate
   manual-demo terpisah lolos. Decommission legacy reader tidak membuka gate itu.
 
+## Readiness manual-demo non-mutating
+
+Setelah menarik clean release operator terbaru, tampilkan blocker untuk setiap
+lane Phillip tanpa menyentuh terminal:
+
+```powershell
+python -B .\run_manual_demo_readiness.py --candidate phillip-fx
+python -B .\run_manual_demo_readiness.py --candidate phillip-commodity
+```
+
+Untuk membuat satu salinan audit create-only di luar repository, tambahkan
+`--output C:\AI_SCALPER_PRIVATE\manual-demo-readiness\<nama-baru>.json`.
+File yang sudah ada tidak akan ditimpa. Command ini hanya membaca tiga tracked
+config dan selalu melaporkan `ready=false` selama policy masih terkunci. Ia
+tidak menerima terminal path, login, password, volume, arm token, permit, atau
+approval; ia juga tidak menjalankan broker preflight maupun order API.
+
+Sebelum controlled order pertama kelak dapat dipertimbangkan, seluruh blocker
+yang dilaporkan harus ditutup melalui bukti dan review terpisah. Untuk akun JPY,
+runtime juga harus membuktikan fresh exact USD/JPY conversion quote: direct
+pair memakai broker bid dan inverse pair memakai `1 / ask`. Missing/mismatch/
+stale quote adalah WAIT, bukan fallback. Hard cap tetap `$0.20` XAU, `$0.25`
+FX, `0.25%` equity, dan `0.01` lot.
+
 ## Startup dan watchdog
 
 Task Scheduler dijalankan dengan service account saat boot dan mengikuti aturan:

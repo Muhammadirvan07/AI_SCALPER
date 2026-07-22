@@ -20,6 +20,7 @@ from typing import Any, Mapping
 SCHEMA_VERSION = "1.0"
 ENTRY_WINDOW_SECONDS = 10
 _HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
+_CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 _DECISION_SNAPSHOT_SEAL = object()
 _EXECUTION_RECEIPT_SEAL = object()
 _M15_SECONDS = 15 * 60
@@ -83,6 +84,13 @@ def require_text(name: str, value: object, *, upper: bool = False) -> str:
     if not normalized:
         raise ValueError(f"{name} is required")
     return normalized.upper() if upper else normalized
+
+
+def require_currency(name: str, value: object) -> str:
+    normalized = require_text(name, value, upper=True)
+    if _CURRENCY_RE.fullmatch(normalized) is None:
+        raise ValueError(f"{name} must be a three-letter currency code")
+    return normalized
 
 
 def require_decision_timeframe(name: str, value: object) -> str:
@@ -254,11 +262,11 @@ class BrokerSpec(CanonicalContract):
             "broker_symbol",
             require_text("broker_symbol", self.broker_symbol),
         )
-        object.__setattr__(
-            self,
+        account_currency = require_currency(
             "account_currency",
-            require_text("account_currency", self.account_currency, upper=True),
+            self.account_currency,
         )
+        object.__setattr__(self, "account_currency", account_currency)
         require_int("digits", self.digits, minimum=0, maximum=12)
         for name in (
             "point",

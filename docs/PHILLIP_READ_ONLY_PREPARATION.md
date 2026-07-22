@@ -70,6 +70,14 @@ identifiers:
 - commodity CFD demo: `PhillipSecuritiesJP-PROD`, JPY, 1:20, with
   `XAUUSD.ps01`.
 
+Karena kedua akun memakai JPY, nilai stop-loss dari `order_calc_profit()` dan
+equity broker juga berdenominasi JPY. Runtime foundation kini mempertahankan
+hard cap dalam USD lalu mengubahnya melalui sealed fresh broker quote. FX lane
+dapat memakai exact `USDJPY.ps01` direct bid. Commodity lane tetap membutuhkan
+attestation bahwa exact USDJPY conversion symbol tersedia pada akun/terminal
+commodity; jangan menyalin quote dari terminal FX. Tanpa binding account,
+server, symbol metadata, dan tick segar tersebut, sizing harus WAIT.
+
 Run the scoped preflight after logging in to the matching demo account:
 
 ```powershell
@@ -139,6 +147,15 @@ python -B .\generate_realtime_diagnostic_report.py `
   --artifact-tag commodity-real-market `
   --acknowledge-diagnostic-only
 ```
+
+Current manual-demo blocker inventory dapat dilihat tanpa membuka MT5:
+
+```powershell
+python -B .\run_manual_demo_readiness.py --candidate phillip-fx
+python -B .\run_manual_demo_readiness.py --candidate phillip-commodity
+```
+
+Output tersebut bukan permit atau approval dan tidak dapat mengirim order.
 
 ## Dual-terminal concurrent shadow
 

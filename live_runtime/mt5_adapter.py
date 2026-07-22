@@ -26,6 +26,8 @@ from live_runtime.contracts import (
     TradeIntent,
     _mint_execution_receipt,
     canonical_sha256,
+    require_currency,
+    require_hash,
     require_utc,
 )
 from live_runtime.account_fence import account_runtime_identity
@@ -38,7 +40,15 @@ from live_runtime.controls import (
 from live_runtime.health import RuntimeHealthDecision
 from live_runtime.permit import PermitValidation, account_alias_sha256
 from live_runtime.journal import DurableSubmissionLease, IntentRecord
-from live_runtime.risk import RiskDecision
+from live_runtime.risk import (
+    IDENTITY_CONVERSION_SHA256,
+    MAX_RISK_CONVERSION_AGE_SECONDS,
+    RISK_PERCENT_CAP,
+    RiskDecision,
+    USDRiskCapConversion,
+    _mint_usd_risk_cap_conversion,
+    absolute_risk_cap_usd,
+)
 from live_runtime.market_guard import MarketGuardDecision
 from live_runtime.model_governance import ModelBindingDecision
 
@@ -600,6 +610,11 @@ class BrokerSizingQuote:
     actual_stop_risk_cash: float
     margin_cash: float
     status: str
+    account_currency: str
+    absolute_risk_cap_usd: float
+    usd_to_account_currency_rate: float
+    absolute_risk_cap_account_currency: float
+    conversion_quote_sha256: str
 
     def __post_init__(self) -> None:
         require_utc("evaluated_at_utc", self.evaluated_at_utc)
@@ -622,6 +637,41 @@ class BrokerSizingQuote:
             raise ValueError("sizing quote exceeds its cash risk cap")
         if self.status not in {"SIZED", "WAIT_MINIMUM_LOT_EXCEEDS_RISK_CAP"}:
             raise ValueError("unsupported sizing status")
+        account_currency = require_currency(
+            "account_currency",
+            self.account_currency,
+        )
+        object.__setattr__(self, "account_currency", account_currency)
+        for field_name in (
+            "absolute_risk_cap_usd",
+            "usd_to_account_currency_rate",
+            "absolute_risk_cap_account_currency",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                _finite(getattr(self, field_name), field_name, positive=True),
+            )
+        expected_account_cap = (
+            self.absolute_risk_cap_usd * self.usd_to_account_currency_rate
+        )
+        if not math.isclose(
+            self.absolute_risk_cap_account_currency,
+            expected_account_cap,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            raise ValueError("converted absolute risk cap is inconsistent")
+        if self.max_risk_cash > self.absolute_risk_cap_account_currency + 1e-12:
+            raise ValueError("max_risk_cash exceeds the converted absolute cap")
+        object.__setattr__(
+            self,
+            "conversion_quote_sha256",
+            require_hash(
+                "conversion_quote_sha256",
+                self.conversion_quote_sha256,
+            ),
+        )
 
 
 class MT5Adapter:
@@ -637,6 +687,7 @@ class MT5Adapter:
         environment: str,
         session_calendar_sha256: str,
         symbol_map: Mapping[str, str],
+        usd_account_currency_symbols: Mapping[str, str] | None = None,
         mt5_module: ModuleType | Any | None = None,
         max_tick_age_seconds: int = DEFAULT_MAX_TICK_AGE_SECONDS,
         magic_number: int = 260615,
@@ -676,6 +727,27 @@ class MT5Adapter:
             normalized_symbol_map[canonical_name] = broker_name
         if len(set(normalized_symbol_map.values())) != len(normalized_symbol_map):
             raise ValueError("one broker symbol cannot map to multiple canonical symbols")
+        if usd_account_currency_symbols is None:
+            usd_account_currency_symbols = {}
+        if not isinstance(usd_account_currency_symbols, Mapping):
+            raise TypeError("usd_account_currency_symbols must be a mapping or None")
+        normalized_conversion_symbols: dict[str, str] = {}
+        for canonical, broker_symbol in usd_account_currency_symbols.items():
+            canonical_pair = str(canonical or "").strip().upper()
+            broker_name = str(broker_symbol or "").strip()
+            if (
+                len(canonical_pair) != 6
+                or not canonical_pair.isalpha()
+                or (
+                    not canonical_pair.startswith("USD")
+                    and not canonical_pair.endswith("USD")
+                )
+                or not broker_name
+            ):
+                raise ValueError(
+                    "USD conversion mappings require an exact six-letter currency pair"
+                )
+            normalized_conversion_symbols[canonical_pair] = broker_name
         self.account_alias = account_alias.strip()
         self.broker_legal_name = broker_legal_name.strip()
         self.expected_login = int(expected_login)
@@ -683,6 +755,9 @@ class MT5Adapter:
         self.environment = environment
         self.session_calendar_sha256 = session_calendar_sha256.lower()
         self.symbol_map = MappingProxyType(normalized_symbol_map)
+        self.usd_account_currency_symbols = MappingProxyType(
+            normalized_conversion_symbols
+        )
         self.mt5 = mt5_module
         self.max_tick_age_seconds = int(max_tick_age_seconds)
         self.magic_number = int(magic_number)
@@ -839,6 +914,96 @@ class MT5Adapter:
             raise MT5AdapterError(f"tick is stale or future-dated: age={age:.3f}s")
         return {"bid": bid, "ask": ask, "time_utc": tick_at, "age_seconds": age}
 
+    def quote_usd_risk_cap_conversion(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> USDRiskCapConversion:
+        """Mint a conservative, sealed USD-to-account-currency broker fact."""
+
+        captured_at = self._trusted_now(now)
+        account = self.assert_account_binding()
+        try:
+            account_currency = require_currency(
+                "MT5 account currency",
+                account.get("currency"),
+            )
+        except ValueError as exc:
+            raise AccountBindingError(
+                "MT5 account currency is not a three-letter currency code"
+            ) from exc
+        if account_currency == "USD":
+            return _mint_usd_risk_cap_conversion(
+                account_id=self.account_alias,
+                server=self.expected_server,
+                account_currency="USD",
+                account_currency_per_usd=1.0,
+                source="ACCOUNT_CURRENCY_IDENTITY",
+                broker_symbol="USD",
+                direction="IDENTITY",
+                bid=1.0,
+                ask=1.0,
+                captured_at_utc=captured_at,
+            )
+
+        direct_pair = f"USD{account_currency}"
+        inverse_pair = f"{account_currency}USD"
+        configured = tuple(
+            pair
+            for pair in (direct_pair, inverse_pair)
+            if pair in self.usd_account_currency_symbols
+        )
+        if not configured:
+            raise MT5AdapterError(
+                f"no USD risk-cap conversion symbol is configured for {account_currency}"
+            )
+        if len(configured) != 1:
+            raise MT5AdapterError(
+                f"ambiguous USD risk-cap conversion symbols for {account_currency}"
+            )
+        canonical_pair = configured[0]
+        broker_symbol = self.usd_account_currency_symbols[canonical_pair]
+        expected_base = canonical_pair[:3]
+        expected_profit = canonical_pair[3:]
+        info = _asdict(self.mt5.symbol_info(broker_symbol))
+        if not info:
+            raise MT5AdapterError(
+                f"conversion symbol_info unavailable for {broker_symbol}"
+            )
+        observed_base = str(info.get("currency_base", "") or "").strip().upper()
+        observed_profit = str(info.get("currency_profit", "") or "").strip().upper()
+        if (observed_base, observed_profit) != (expected_base, expected_profit):
+            raise MT5AdapterError(
+                "conversion symbol currency metadata does not match configured pair"
+            )
+        tick = self.current_tick(broker_symbol, now=captured_at)
+        conversion_tick_age = float(tick["age_seconds"])
+        if (
+            conversion_tick_age < 0
+            or conversion_tick_age > MAX_RISK_CONVERSION_AGE_SECONDS
+        ):
+            raise MT5AdapterError(
+                "USD risk-cap conversion tick is stale or future-dated"
+            )
+        direction = "DIRECT" if canonical_pair == direct_pair else "INVERSE"
+        rate = (
+            float(tick["bid"])
+            if direction == "DIRECT"
+            else 1.0 / float(tick["ask"])
+        )
+        return _mint_usd_risk_cap_conversion(
+            account_id=self.account_alias,
+            server=self.expected_server,
+            account_currency=account_currency,
+            account_currency_per_usd=rate,
+            source="MT5_BID_ASK",
+            broker_symbol=broker_symbol,
+            direction=direction,
+            bid=float(tick["bid"]),
+            ask=float(tick["ask"]),
+            captured_at_utc=tick["time_utc"],
+        )
+
     def estimate_stop_risk_cash(
         self,
         intent: TradeIntent,
@@ -871,6 +1036,7 @@ class MT5Adapter:
         stop_loss: float,
         equity: float,
         allowed_slippage_points: int,
+        usd_risk_cap_conversion: USDRiskCapConversion | None = None,
         now: datetime | None = None,
     ) -> BrokerSizingQuote:
         """Size from MT5 order_calc_profit, never a hard-coded pip value."""
@@ -893,6 +1059,59 @@ class MT5Adapter:
         ):
             raise ValueError("stop geometry does not match side")
         spec = self.get_broker_spec(canonical_symbol, broker_symbol, now=now)
+        account_currency = str(spec.account_currency).strip().upper()
+        conversion_hash = IDENTITY_CONVERSION_SHA256
+        if account_currency == "USD" and usd_risk_cap_conversion is None:
+            conversion_rate = 1.0
+        else:
+            conversion = usd_risk_cap_conversion
+            if not isinstance(conversion, USDRiskCapConversion):
+                raise MT5AdapterError(
+                    "a sealed USD risk-cap conversion is required for non-USD sizing"
+                )
+            conversion_hash = conversion.content_sha256
+            conversion_age = (now - conversion.captured_at_utc).total_seconds()
+            if (
+                conversion.account_id != spec.account_id
+                or conversion.server != spec.server
+            ):
+                raise MT5AdapterError(
+                    "USD risk-cap conversion account or server mismatch"
+                )
+            if conversion.account_currency != account_currency:
+                raise MT5AdapterError(
+                    "USD risk-cap conversion account currency mismatch"
+                )
+            if (
+                conversion_age < 0
+                or conversion_age > MAX_RISK_CONVERSION_AGE_SECONDS
+            ):
+                raise MT5AdapterError("USD risk-cap conversion is stale or future-dated")
+            if account_currency == "USD" and not (
+                conversion.source == "ACCOUNT_CURRENCY_IDENTITY"
+                and conversion.direction == "IDENTITY"
+                and conversion.account_currency_per_usd == 1.0
+            ):
+                raise MT5AdapterError("USD account conversion is not identity")
+            if account_currency != "USD" and not (
+                conversion.source == "MT5_BID_ASK"
+                and conversion.direction in {"DIRECT", "INVERSE"}
+            ):
+                raise MT5AdapterError("non-USD conversion source is invalid")
+            if account_currency != "USD":
+                expected_pair = (
+                    f"USD{account_currency}"
+                    if conversion.direction == "DIRECT"
+                    else f"{account_currency}USD"
+                )
+                expected_conversion_symbol = self.usd_account_currency_symbols.get(
+                    expected_pair
+                )
+                if expected_conversion_symbol != conversion.broker_symbol:
+                    raise MT5AdapterError(
+                        "USD risk-cap conversion symbol binding mismatch"
+                    )
+            conversion_rate = conversion.account_currency_per_usd
         order_type = (
             getattr(self.mt5, "ORDER_TYPE_BUY")
             if normalized_side == "BUY"
@@ -917,8 +1136,12 @@ class MT5Adapter:
         )
         if one_lot_risk <= 0:
             raise MT5AdapterError("broker returned zero stop risk")
-        absolute_cap = 0.20 if canonical_symbol.upper().startswith("XAU") else 0.25
-        max_risk = min(0.0025 * account_equity, absolute_cap)
+        absolute_cap_usd = absolute_risk_cap_usd(canonical_symbol)
+        absolute_cap_account_currency = absolute_cap_usd * conversion_rate
+        max_risk = min(
+            RISK_PERCENT_CAP * account_equity,
+            absolute_cap_account_currency,
+        )
         lot_limit = min(
             0.01,
             spec.volume_max,
@@ -976,6 +1199,11 @@ class MT5Adapter:
             max_risk_cash=max_risk,
             actual_stop_risk_cash=actual_risk,
             margin_cash=margin,
+            account_currency=account_currency,
+            absolute_risk_cap_usd=absolute_cap_usd,
+            usd_to_account_currency_rate=conversion_rate,
+            absolute_risk_cap_account_currency=absolute_cap_account_currency,
+            conversion_quote_sha256=conversion_hash,
             status=(
                 "SIZED"
                 if normalized_lot > 0

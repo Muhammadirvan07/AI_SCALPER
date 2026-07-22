@@ -14,7 +14,7 @@ membuka demo-auto maupun live.
 | 1. Baseline terkunci | Sebagian | Seluruh safety lock terjaga, tetapi worktree telah berisi perubahan user/runtime sebelum implementasi sehingga clean baseline commit terisolasi belum dibuat. |
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, byte-derived regulatory review package with two independent HMAC approvals, byte-derived pre-window base-calendar review with a separate human HMAC approval, prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
 | 3. Broker read-only shadow | FBS and Phillip diagnostic bindings observed; evidence not started | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip sanitized discovery-v3 inputs berhasil dibuat dan reviewed regular M15 base schedules tersedia, tetapi profile registration, regulatory approval, 20-session benchmark, broker-forward contract, dan promotion evidence tetap disabled/pending. FINEX tidak dipakai untuk observasi baru. |
-| 4. Manual demo | Component foundation ready, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-wide fence, risk governor, fenced journal, one-shot runtime composition, MT5 preflight/executor/reconciliation, dan dual-control kill-switch reset tersedia. Sepuluh order demo belum dilakukan. |
+| 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, one-shot runtime composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, dan non-mutating readiness report tersedia. Seluruh external gate serta sepuluh order demo belum selesai. |
 | 5. Demo-auto soak | Not started | Policy tetap locked; belum ada 30 hari, 50 fill, minimal 20 XAU, atau clean incident record. |
 | 6. XAUUSD live canary | Not started | XAUUSD belum execution-approved dan belum memiliki promotion evidence/permit/soak maupun 50 closed live trades. |
 | 7. Pair expansion | Not started | EURUSD, USDJPY, dan AUDUSD harus mengulang seluruh gate per lane; hasil lane lain tidak boleh menutup kegagalan sebuah pair. |
@@ -159,6 +159,17 @@ membuka demo-auto maupun live.
 - `LiveRuntimeService` hanya menyusun satu siklus: sealed decision, broker-native
   sizing, immutable intent, signed controls, coordinator, atau reconciliation.
   Ia tidak memiliki loop produksi, bootstrap credential, atau auto-start.
+- Batas absolut `$0.20` XAU dan `$0.25` FX tetap berdenominasi USD. Untuk akun
+  non-USD, adapter hanya menerima sealed quote yang terikat exact account,
+  server, conversion symbol, broker currency metadata, bid/ask, dan timestamp.
+  Direct `USD/ACCOUNT` memakai bid; inverse `ACCOUNT/USD` memakai `1/ask`.
+  Quote hilang, mismatch, stale, atau future menghentikan komposisi sebelum
+  sizing dan menghasilkan lot nol di pure risk governor. Akun USD memakai
+  identity rate `1.0`; tidak ada risk cap yang dinaikkan.
+- `run_manual_demo_readiness.py` hanya membaca tracked policy/candidate/profile
+  dan melaporkan blocker. Tool ini tidak menginisialisasi MT5, tidak membaca
+  secret, tidak membuat permit/approval, dan tidak memiliki jalur preflight
+  maupun order. Current policy sengaja memaksa `ready=false`.
 - Preflight mengikat timestamp dan bid/ask side dari first eligible broker tick
   persis ke `DecisionSnapshot.entry_reference`; drift sebelum `order_send`
   ditolak. Filled volume tertinggi disimpan durable sehingga partial fill yang
@@ -328,7 +339,8 @@ eksternal belum terpenuhi.
     account.
 11. Selesaikan failure drills serta repeated paired bar/raw ingestion, lalu
    jalankan 10 manual-demo order dan 30-day demo-auto soak hanya setelah policy
-   review terpisah.
+   review terpisah. Reporter `run_manual_demo_readiness.py` dapat dipakai untuk
+   inventaris blocker, tetapi hasilnya tidak merupakan izin order.
 12. Penuhi gate statistik per lane: OOS/forward trade minimum, purged folds,
     PF, bootstrap expectancy lower bound, drawdown, cost stress, dan 100%
     deterministic replay/runtime parity.

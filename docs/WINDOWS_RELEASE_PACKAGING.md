@@ -52,6 +52,11 @@ Tooling review regulatory (`setup_regulatory_review_key.py`,
 operator; ia tidak masuk minimal shadow service. Reviewer key tetap berada di
 Windows Credential Manager dan semua output review mempertahankan registration
 serta order capability disabled.
+`run_manual_demo_readiness.py` juga hanya berada di bundle operator. Ia membaca
+tracked candidate/profile/readiness policy dan menghasilkan daftar blocker
+non-mutating. Modul/command ini sengaja tidak masuk allowlist minimal shadow
+service dan tidak membawa MT5 adapter, executor, permit issuer, approval signer,
+atau order primitive.
 Masing-masing mengikat exact candidate profile. FBS saat ini sengaja ditolak
 oleh external/registration gate, sehingga keberadaan file di bundle tidak
 mengaktifkan evidence maupun order.

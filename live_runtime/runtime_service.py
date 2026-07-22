@@ -31,7 +31,13 @@ from .mt5_adapter import BrokerSizingQuote
 from .permit import PromotionPermit, account_alias_sha256
 from .promotion_evidence import PromotionEvidenceReceipt
 from .reconciliation import ReconciliationResult, reconcile_broker_state
-from .risk import RiskContext
+from .risk import (
+    IDENTITY_CONVERSION_SHA256,
+    MAX_RISK_CONVERSION_AGE_SECONDS,
+    RISK_PERCENT_CAP,
+    RiskContext,
+    absolute_risk_cap_usd,
+)
 
 
 UTC = timezone.utc
@@ -248,6 +254,23 @@ class LiveRuntimeService:
             precondition_reasons.append("RISK_ACCOUNT_MISMATCH")
         if risk_context.server != broker_spec.server:
             precondition_reasons.append("RISK_SERVER_MISMATCH")
+        conversion = risk_context.usd_risk_cap_conversion
+        if broker_spec.account_currency != "USD" and conversion is None:
+            precondition_reasons.append("USD_RISK_CAP_CONVERSION_UNAVAILABLE")
+        if conversion is not None:
+            if (
+                conversion.account_id != broker_spec.account_id
+                or conversion.server != broker_spec.server
+                or conversion.account_currency != broker_spec.account_currency
+            ):
+                precondition_reasons.append("USD_RISK_CAP_CONVERSION_MISMATCH")
+            conversion_age = (
+                risk_context.evaluated_at - conversion.captured_at_utc
+            ).total_seconds()
+            if conversion_age < 0:
+                precondition_reasons.append("USD_RISK_CAP_CONVERSION_FUTURE")
+            if conversion_age > MAX_RISK_CONVERSION_AGE_SECONDS:
+                precondition_reasons.append("USD_RISK_CAP_CONVERSION_STALE")
         if not risk_context.data_fresh:
             precondition_reasons.append("RISK_DATA_STALE")
         if not risk_context.source_aligned:
@@ -402,6 +425,7 @@ class LiveRuntimeService:
             stop_loss=float(decision.stop_loss),
             equity=risk_context.equity,
             allowed_slippage_points=allowed_slippage_points,
+            usd_risk_cap_conversion=risk_context.usd_risk_cap_conversion,
             now=now,
         )
         if not isinstance(quote, BrokerSizingQuote):
@@ -427,10 +451,52 @@ class LiveRuntimeService:
             )
         if quote.normalized_lot <= 0:
             quote_binding_reasons.append("SIZING_STATUS_INCONSISTENT")
-        expected_risk_cap = min(
-            0.0025 * risk_context.equity,
-            0.20 if decision.symbol.startswith("XAU") else 0.25,
+        conversion = risk_context.usd_risk_cap_conversion
+        expected_account_currency = broker_spec.account_currency
+        expected_conversion_rate = (
+            1.0
+            if conversion is None and expected_account_currency == "USD"
+            else (
+                conversion.account_currency_per_usd
+                if conversion is not None
+                else 0.0
+            )
         )
+        expected_conversion_hash = (
+            IDENTITY_CONVERSION_SHA256
+            if conversion is None
+            else conversion.content_sha256
+        )
+        expected_absolute_usd_cap = absolute_risk_cap_usd(decision.symbol)
+        expected_absolute_account_cap = (
+            expected_absolute_usd_cap * expected_conversion_rate
+        )
+        expected_risk_cap = min(
+            RISK_PERCENT_CAP * risk_context.equity,
+            expected_absolute_account_cap,
+        )
+        if quote.account_currency != expected_account_currency:
+            quote_binding_reasons.append("SIZING_ACCOUNT_CURRENCY_MISMATCH")
+        if (
+            abs(quote.absolute_risk_cap_usd - expected_absolute_usd_cap)
+            > 1e-12
+        ):
+            quote_binding_reasons.append("SIZING_ABSOLUTE_USD_CAP_MISMATCH")
+        if (
+            abs(quote.usd_to_account_currency_rate - expected_conversion_rate)
+            > 1e-12
+        ):
+            quote_binding_reasons.append("SIZING_CONVERSION_RATE_MISMATCH")
+        if (
+            abs(
+                quote.absolute_risk_cap_account_currency
+                - expected_absolute_account_cap
+            )
+            > 1e-12
+        ):
+            quote_binding_reasons.append("SIZING_ACCOUNT_CAP_MISMATCH")
+        if quote.conversion_quote_sha256 != expected_conversion_hash:
+            quote_binding_reasons.append("SIZING_CONVERSION_HASH_MISMATCH")
         if abs(quote.max_risk_cash - expected_risk_cap) > 1e-12:
             quote_binding_reasons.append("SIZING_RISK_CAP_MISMATCH")
         if quote.actual_stop_risk_cash <= 0 or quote.margin_cash <= 0:

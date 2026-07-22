@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
@@ -281,6 +282,26 @@ class StubCoordinator:
         )
 
 
+def sizing_quote(**changes) -> BrokerSizingQuote:
+    values = {
+        "symbol": "EURUSD",
+        "broker_symbol": "EURUSD.a",
+        "evaluated_at_utc": NOW,
+        "normalized_lot": 0.01,
+        "max_risk_cash": 0.25,
+        "actual_stop_risk_cash": 0.10,
+        "margin_cash": 0.50,
+        "status": "SIZED",
+        "account_currency": "USD",
+        "absolute_risk_cap_usd": 0.25,
+        "usd_to_account_currency_rate": 1.0,
+        "absolute_risk_cap_account_currency": 0.25,
+        "conversion_quote_sha256": "0" * 64,
+    }
+    values.update(changes)
+    return BrokerSizingQuote(**values)
+
+
 class LiveRuntimeServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         tempdir = tempfile.TemporaryDirectory()
@@ -301,6 +322,19 @@ class LiveRuntimeServiceTests(unittest.TestCase):
             clock_provider=lambda: NOW,
         )
         return service, adapter, coordinator
+
+    def test_sizing_quote_requires_explicit_currency_audit_fields(self):
+        with self.assertRaises(TypeError):
+            BrokerSizingQuote(
+                symbol="EURUSD",
+                broker_symbol="EURUSD.a",
+                evaluated_at_utc=NOW,
+                normalized_lot=0.01,
+                max_risk_cash=0.25,
+                actual_stop_risk_cash=0.10,
+                margin_cash=0.50,
+                status="SIZED",
+            )
 
     def execute(
         self,
@@ -332,12 +366,8 @@ class LiveRuntimeServiceTests(unittest.TestCase):
         )
 
     def test_sizing_wait_creates_no_intent_and_never_calls_coordinator(self):
-        quote = BrokerSizingQuote(
-            symbol="EURUSD",
-            broker_symbol="EURUSD.a",
-            evaluated_at_utc=NOW,
+        quote = sizing_quote(
             normalized_lot=0.0,
-            max_risk_cash=0.25,
             actual_stop_risk_cash=0.0,
             margin_cash=0.0,
             status="WAIT_MINIMUM_LOT_EXCEEDS_RISK_CAP",
@@ -356,16 +386,7 @@ class LiveRuntimeServiceTests(unittest.TestCase):
         self.assertEqual(adapter.positions_calls, 0)
 
     def test_sized_quote_builds_001_intent_and_requests_signed_approval(self):
-        quote = BrokerSizingQuote(
-            symbol="EURUSD",
-            broker_symbol="EURUSD.a",
-            evaluated_at_utc=NOW,
-            normalized_lot=0.01,
-            max_risk_cash=0.25,
-            actual_stop_risk_cash=0.10,
-            margin_cash=0.50,
-            status="SIZED",
-        )
+        quote = sizing_quote()
         service, adapter, coordinator = self.service(quote)
 
         approval_requests = []
@@ -400,18 +421,64 @@ class LiveRuntimeServiceTests(unittest.TestCase):
         self.assertNotIn("arm_flag", call)
         self.assertNotIn("manual_demo_approved", call)
         self.assertEqual(adapter.sizing_calls[0]["allowed_slippage_points"], 1)
+        self.assertIn("usd_risk_cap_conversion", adapter.sizing_calls[0])
+        self.assertIsNone(
+            adapter.sizing_calls[0]["usd_risk_cap_conversion"]
+        )
+
+    def test_conversion_binding_drift_waits_before_intent_or_coordinator(self):
+        quote = sizing_quote(
+            max_risk_cash=37.5,
+            actual_stop_risk_cash=30.0,
+            account_currency="JPY",
+            usd_to_account_currency_rate=150.0,
+            absolute_risk_cap_account_currency=37.5,
+            conversion_quote_sha256="9" * 64,
+        )
+        service, adapter, coordinator = self.service(quote)
+
+        result = self.execute(service, decision())
+
+        self.assertEqual("WAIT_SIZING", result.status)
+        self.assertIn("SIZING_ACCOUNT_CURRENCY_MISMATCH", result.reason_codes)
+        self.assertIn("SIZING_CONVERSION_RATE_MISMATCH", result.reason_codes)
+        self.assertIn("SIZING_CONVERSION_HASH_MISMATCH", result.reason_codes)
+        self.assertIsNone(result.intent)
+        self.assertEqual(1, len(adapter.sizing_calls))
+        self.assertEqual([], coordinator.calls)
+
+    def test_non_usd_missing_conversion_stops_before_broker_sizing(self):
+        unused_quote = sizing_quote()
+        service, adapter, coordinator = self.service(unused_quote)
+
+        result = service.execute_once(
+            decision=decision(),
+            broker_symbol="EURUSD.a",
+            broker_spec=replace(broker_spec(), account_currency="JPY"),
+            risk_context=risk_context(),
+            permit=permit(self.journal),
+            health_facts=health_facts(),
+            market_guard=market_guard(),
+            model_artifact=model_artifact(),
+            owner_id="executor-a",
+            fence_token=7,
+            manual_demo_approval_provider=lambda trade_intent: (
+                signed_manual_approval(trade_intent, self.journal)
+            ),
+            promotion_evidence=None,
+            now=NOW,
+        )
+
+        self.assertEqual("WAIT_PRECONDITION", result.status)
+        self.assertIn(
+            "USD_RISK_CAP_CONVERSION_UNAVAILABLE",
+            result.reason_codes,
+        )
+        self.assertEqual([], adapter.sizing_calls)
+        self.assertEqual([], coordinator.calls)
 
     def test_wait_decision_never_sizes_or_creates_intent(self):
-        unused_quote = BrokerSizingQuote(
-            symbol="EURUSD",
-            broker_symbol="EURUSD.a",
-            evaluated_at_utc=NOW,
-            normalized_lot=0.01,
-            max_risk_cash=0.25,
-            actual_stop_risk_cash=0.10,
-            margin_cash=0.50,
-            status="SIZED",
-        )
+        unused_quote = sizing_quote()
         service, adapter, coordinator = self.service(unused_quote)
 
         result = self.execute(service, decision(side="WAIT"))
@@ -432,16 +499,7 @@ class LiveRuntimeServiceTests(unittest.TestCase):
             payload={"source": "prior runtime cycle"},
             created_at=NOW,
         )
-        quote = BrokerSizingQuote(
-            symbol="EURUSD",
-            broker_symbol="EURUSD.a",
-            evaluated_at_utc=NOW,
-            normalized_lot=0.01,
-            max_risk_cash=0.25,
-            actual_stop_risk_cash=0.10,
-            margin_cash=0.50,
-            status="SIZED",
-        )
+        quote = sizing_quote()
         service, adapter, coordinator = self.service(quote)
 
         result = self.execute(service, selected_decision)
@@ -453,16 +511,7 @@ class LiveRuntimeServiceTests(unittest.TestCase):
         self.assertEqual([], coordinator.calls)
 
     def test_manual_demo_missing_provider_waits_after_intent_without_coordinator(self):
-        unused_quote = BrokerSizingQuote(
-            symbol="EURUSD",
-            broker_symbol="EURUSD.a",
-            evaluated_at_utc=NOW,
-            normalized_lot=0.01,
-            max_risk_cash=0.25,
-            actual_stop_risk_cash=0.10,
-            margin_cash=0.50,
-            status="SIZED",
-        )
+        unused_quote = sizing_quote()
         service, adapter, coordinator = self.service(unused_quote)
 
         result = self.execute(
@@ -481,16 +530,7 @@ class LiveRuntimeServiceTests(unittest.TestCase):
         self.assertEqual(coordinator.calls, [])
 
     def test_promotion_evidence_is_passed_to_coordinator_for_demo_auto(self):
-        quote = BrokerSizingQuote(
-            symbol="EURUSD",
-            broker_symbol="EURUSD.a",
-            evaluated_at_utc=NOW,
-            normalized_lot=0.01,
-            max_risk_cash=0.25,
-            actual_stop_risk_cash=0.10,
-            margin_cash=0.50,
-            status="SIZED",
-        )
+        quote = sizing_quote()
         service, _, coordinator = self.service(quote)
         evidence = promotion_evidence(self.journal)
 
@@ -509,12 +549,8 @@ class LiveRuntimeServiceTests(unittest.TestCase):
         self.assertIsNone(call["manual_demo_approval"])
 
     def test_reconcile_once_reads_all_broker_views_and_delegates(self):
-        quote = BrokerSizingQuote(
-            symbol="EURUSD",
-            broker_symbol="EURUSD.a",
-            evaluated_at_utc=NOW,
+        quote = sizing_quote(
             normalized_lot=0.0,
-            max_risk_cash=0.25,
             actual_stop_risk_cash=0.0,
             margin_cash=0.0,
             status="WAIT_MINIMUM_LOT_EXCEEDS_RISK_CAP",
