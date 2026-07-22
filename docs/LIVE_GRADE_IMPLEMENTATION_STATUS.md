@@ -2,6 +2,10 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
+Validasi lokal terakhir pada 2026-07-22 menjalankan **1.033 test** tanpa
+kegagalan pada development Mac. Itu adalah software regression evidence, bukan
+Windows host acceptance, broker-forward evidence, atau izin trading.
+
 Dokumen ini membedakan implementasi software lokal dari bukti operasi. Test
 hijau tidak menggantikan broker-forward evidence, legal review, Windows VPS
 hardening, demo soak, atau approval manusia. Tidak ada bagian dokumen ini yang
@@ -14,8 +18,8 @@ membuka demo-auto maupun live.
 | 1. Baseline terkunci | Sebagian | Seluruh safety lock terjaga, tetapi worktree telah berisi perubahan user/runtime sebelum implementasi sehingga clean baseline commit terisolasi belum dibuat. |
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, byte-derived regulatory review package with two independent HMAC approvals, byte-derived pre-window base-calendar review with a separate human HMAC approval, prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
 | 3. Broker read-only shadow | FBS and Phillip diagnostic bindings observed; evidence not started | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip sanitized discovery-v3 inputs berhasil dibuat dan reviewed regular M15 base schedules tersedia, tetapi profile registration, regulatory approval, 20-session benchmark, broker-forward contract, dan promotion evidence tetap disabled/pending. FINEX tidak dipakai untuk observasi baru. |
-| 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, one-shot runtime composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, dan non-mutating readiness report tersedia. Seluruh external gate serta sepuluh order demo belum selesai. |
-| 5. Demo-auto soak | Not started | Policy tetap locked; belum ada 30 hari, 50 fill, minimal 20 XAU, atau clean incident record. |
+| 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, bounded Windows composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, dan non-mutating readiness report tersedia. Seluruh external gate serta sepuluh order demo belum selesai. |
+| 5. Demo-auto soak | Software boundary implemented but inert; soak not started | Decision IPC consumer, stage binding, tracker, dan operations contract tersedia, tetapi consumer tidak memiliki broker adapter/order callback, belum dikomposisikan ke executor, dan supervisor/policy tetap menolak `DEMO_AUTO`. Belum ada 30 hari, 50 fill, minimal 20 XAU, atau clean incident record. |
 | 6. XAUUSD live canary | Not started | XAUUSD belum execution-approved dan belum memiliki promotion evidence/permit/soak maupun 50 closed live trades. |
 | 7. Pair expansion | Not started | EURUSD, USDJPY, dan AUDUSD harus mengulang seluruh gate per lane; hasil lane lain tidak boleh menutup kegagalan sebuah pair. |
 | 8. Scaling | Out of v1 | Tidak ada auto-scaling lot maupun risk cap. |
@@ -176,6 +180,64 @@ membuka demo-auto maupun live.
   sah direconcile/ditutup terhadap volume yang benar-benar terisi, bukan volume
   request awal.
 
+### Windows service, release trust, dan decision IPC
+
+- `WindowsGatedServiceRunner` menyediakan bounded cadence, interruptible wait,
+  off-host heartbeat, serta pre/post external-evidence attestation. Exact
+  release root menolak member yang tidak ada di manifest, symlink/reparse
+  point, case-collision, hash/size drift, dan factory/import origin di luar
+  release atau stdlib yang direview. Dynamic loader shapes ditolak pada seluruh
+  source release kecuali bentuk loader/validator yang direview; factory load
+  dan invocation membandingkan registry modul dan mereattest seluruh origin.
+- Heartbeat head dibangun ulang dari durable acknowledged outbox. Successor
+  tidak dibuat sampai predecessor memiliki acknowledgement valid; retry
+  transient tidak boleh membuat fork atau sequence gap.
+- Broker cycle berjalan pada bounded daemon worker agar service tetap mengirim
+  heartbeat. Jika deadline hilang atau heartbeat gagal saat worker aktif,
+  composition melakukan best-effort exact-once fail-closed abort dan proses
+  wajib berhenti dengan `os._exit(70)`. Python thread tidak dianggap dapat
+  dibatalkan dengan aman; startup berikutnya harus reconcile state broker yang
+  mungkin `UNCERTAIN`. Semantik ini belum menjalani exact Windows reboot/MT5/
+  network-partition failure drills.
+- `ProductionRuntimeComposition.abort_fail_closed()` mencegah double abort,
+  sedangkan supervisor mempertahankan `STOPPED_CRITICAL` dan tidak menimpanya
+  menjadi clean stop saat shutdown.
+- `signed_release_trust.py` mengikat release identity, full Git commit/tree,
+  profile, host/service-account alias hash, TTL, external sequence/predecessor,
+  historical nonce custody, dan post-CAS clock. Namun implementasi HMAC adalah
+  **local/test-only**: host yang memegang verification secret juga dapat
+  memalsukan receipt. Karena itu `SIGNED_RELEASE_TRUST_ENABLED=false` dan
+  `HMAC_RELEASE_TRUST_PRODUCTION_READY=false`; production membutuhkan
+  asymmetric public-key verification atau external trusted-launcher
+  attestation dengan policy yang dipin di luar release.
+- `DemoAutoDecisionIPCConsumer` terikat `decision-ipc-binding-v2`, exact permit
+  key/fingerprint, supervisor/journal/lane, fresh stage request, promotion
+  permit, serta real environment arm yang dibaca ulang sesudah queue CAS. Stage
+  expiry dan arm replacement setelah consume ditolak sebagai safe-loss: queue
+  head tetap habis dan tidak dapat direplay, tanpa dispatch. Output sukses
+  hanya sealed `DemoAutoIPCRiskIntentInput` atau deny-only no-action. Consumer
+  menerima sealed consume-only port tanpa `publish`, signing provider,
+  database, exporter, atau raw queue. Modul ini tidak mengimpor MT5, tidak
+  mempunyai executor callback, dan tidak membuka hard lock; production
+  composition serta durable one-decision-to-one-intent integration masih harus
+  direview terpisah.
+- Untuk manual-demo, supervisor mencatat signed `PRE_DISPATCH` news head lalu,
+  setelah callback approval/policy, memverifikasi ulang decision, approval,
+  journal, risk, facts, account snapshot, lease, dan signed successor news.
+  Stale/blackout/fork/expiry sebelum dispatch melatch fail-closed.
+
+### Feasibility risk cap pada minimum lot
+
+- Pure governor tetap memakai `order_calc_profit()`/broker spec dan conversion
+  receipt. Untuk pair USD-quoted, contract 100.000, dan `0.01` lot, cap FX
+  `$0.25` kira-kira hanya memberi 2,5 pip sebelum biaya. Untuk XAU contract 100,
+  `0.01` lot adalah kira-kira satu ounce sehingga cap `$0.20` kira-kira hanya
+  memberi `$0.20` jarak harga sebelum biaya.
+- Ini bukan alasan menaikkan batas. Jika spread, komisi, slippage, stop level,
+  atau minimum volume melampaui risk budget, hasil wajib `WAIT`. Feasibility
+  harus diukur pada exact broker/account/symbol dan menjadi bagian manual-demo
+  serta soak acceptance.
+
 ## Lock dan acceptance lokal
 
 ```text
@@ -259,11 +321,12 @@ BTCUSD = shadow-only
    tetapi ini bukan satu atomic filesystem transaction lintas seluruh file.
    Repeated paired-export, forced-crash recovery, NTFS durability, dan lock
    behavior pada exact Windows/MT5 stack masih harus dibuktikan lewat soak.
-9. `RiskContext`, `RuntimeHealthFacts`, decision data provenance, dan broker
-   rollover input masih merupakan domain contract dari caller. Executor
-   memeriksa tipe, exact binding, freshness, serta konsistensi, tetapi collector
-   production yang membaca state broker/OS dan menerbitkan receipt durable
-   belum tersedia. Karena itu komponen ini belum menjadi trust root live.
+9. `RuntimeFactCollector` dan factory yang mengubah signed fact receipt menjadi
+   risk context sudah tersedia serta memeriksa account, tick, broker spec,
+   disk/clock/news/journal dan exact binding/freshness. Namun exact Windows/MT5
+   provider integration, independent key custody, off-host high-water, dan
+   broker rollover/news production source belum dipasang. Karena itu receipt
+   lokal belum menjadi trust root live.
 10. Independent promotion issuer kini menerima raw immutable observations,
     menghitung ulang trade count/duration/PF/drawdown/cost stress/seeded
     bootstrap, memverifikasi tepat lima fold dan parity corpus, serta hanya
@@ -288,6 +351,17 @@ BTCUSD = shadow-only
     clean-checkout build pada exact Windows host belum dilakukan. Runtime/data
     artifact churn pada development worktree tetap bukan release input. Karena
     itu ZIP hanya boleh dibuat dari clean checkout commit yang sudah direview.
+13. Bounded Windows service sudah menutup release-root, import-origin,
+    heartbeat-chain, lost-deadline, dan exact-once abort gap secara lokal.
+    Service tetap tidak mempunyai production-ready release authority: HMAC
+    trust hanya local/test, actual asymmetric verifier/external launcher,
+    reviewed factory/config, Task Scheduler identity, dan watchdog restart
+    belum dipasang pada target Windows.
+14. Demo-auto decision IPC consumer sudah ada tetapi sengaja inert. Ia belum
+    terhubung ke risk/executor composition dan tidak dapat mengirim order.
+    Stage activation, exact Windows queue custody, durable journal constraint,
+    10 manual demo lifecycle, dan approval manusia tetap harus diselesaikan
+    sebelum soak boleh dimulai.
 
 Karena batas di atas, kalender yang valid dapat membuat
 `session_calendar_verified=true` dan data grid dapat lengkap secara lokal,
@@ -315,7 +389,8 @@ eksternal belum terpenuhi.
 3. Ekspor chain head/receipt ke Object Lock/WORM di luar VPS, gunakan key
    custody terpisah, dan uji restore serta coordinated-rollback detection.
 4. Provision Windows VPS dengan Credential Manager, least privilege, VPN/MFA,
-   Task Scheduler watchdog, trusted time source, off-host heartbeat, alerting,
+   Task Scheduler watchdog, asymmetric release verification atau external
+   trusted launcher, trusted time source, off-host heartbeat, alerting,
    immutable audit export, disk alarm, dan daily backup/restore drill.
 5. Pilih production news provider; provision signing-key custody, coverage/SLA
    monitoring, replay archive, stale-feed drill, dan documented failover yang

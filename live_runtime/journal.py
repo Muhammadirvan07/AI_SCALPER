@@ -25,11 +25,17 @@ from .permit import (
     KillSwitchResetAuthorization,
     reset_reason_sha256,
 )
+from .contracts import (
+    SubmissionConsumptionProof,
+    _mint_submission_consumption_proof,
+)
 
 
 UTC = timezone.utc
-JOURNAL_SCHEMA_VERSION = 3
+JOURNAL_SCHEMA_VERSION = 4
 MAX_DAILY_SUBMISSIONS = 4
+MAX_JOURNAL_CALLER_RECORDING_DELAY_SECONDS = 5.0
+MAX_EXECUTION_RECEIPT_RECORDING_DELAY_SECONDS = 5.0
 _SUBMISSION_LEASE_SEAL = object()
 _SUBMISSION_EVIDENCE_SEAL = object()
 
@@ -211,7 +217,9 @@ class DurableSubmissionLease:
         intent_id: str,
         execution_gate_sha256: str,
         authorization_sha256: str,
+        broker_request_sha256: str,
         issued_at: datetime,
+        final_validator: Callable[[], datetime],
         _seal: object | None = None,
     ) -> None:
         if _seal is not _SUBMISSION_LEASE_SEAL:
@@ -220,7 +228,11 @@ class DurableSubmissionLease:
         self.intent_id = str(intent_id)
         self.execution_gate_sha256 = str(execution_gate_sha256)
         self.authorization_sha256 = str(authorization_sha256)
+        self.broker_request_sha256 = str(broker_request_sha256)
         self.issued_at = require_aware_utc(issued_at, "issued_at")
+        if not callable(final_validator):
+            raise TypeError("submission lease final_validator must be callable")
+        self._final_validator = final_validator
         self._active = True
         self._used = False
         self._lock = threading.Lock()
@@ -232,7 +244,8 @@ class DurableSubmissionLease:
         intent_id: str,
         execution_gate_sha256: str,
         authorization_sha256: str,
-    ) -> None:
+        broker_request_sha256: str,
+    ) -> SubmissionConsumptionProof:
         with self._lock:
             if (
                 not self._active
@@ -241,9 +254,19 @@ class DurableSubmissionLease:
                 or intent_id != self.intent_id
                 or execution_gate_sha256 != self.execution_gate_sha256
                 or authorization_sha256 != self.authorization_sha256
+                or broker_request_sha256 != self.broker_request_sha256
             ):
                 raise SubmissionLimitError("AUTHORIZATION_ALREADY_CONSUMED")
+            consumed_at = self._final_validator()
             self._used = True
+            return _mint_submission_consumption_proof(
+                journal_sha256=self.journal_sha256,
+                intent_id=self.intent_id,
+                execution_gate_sha256=self.execution_gate_sha256,
+                authorization_sha256=self.authorization_sha256,
+                broker_request_sha256=self.broker_request_sha256,
+                consumed_at=consumed_at,
+            )
 
     def _deactivate(self) -> None:
         with self._lock:
@@ -274,10 +297,14 @@ class ExecutionJournal:
         )
         if requested is not None:
             asserted = require_aware_utc(requested, "occurred_at")
-            drift = abs((asserted - trusted).total_seconds())
-            if drift > RESET_CLOCK_ASSERTION_TOLERANCE_SECONDS:
+            age = (trusted - asserted).total_seconds()
+            if age < -RESET_CLOCK_ASSERTION_TOLERANCE_SECONDS:
                 raise ValueError(
-                    "caller timestamp disagrees with trusted journal clock"
+                    "caller timestamp is ahead of trusted journal clock"
+                )
+            if age > MAX_JOURNAL_CALLER_RECORDING_DELAY_SECONDS:
+                raise ValueError(
+                    "caller timestamp is stale relative to trusted journal clock"
                 )
         return trusted
 
@@ -393,6 +420,7 @@ class ExecutionJournal:
                 """CREATE TABLE IF NOT EXISTS authorization_consumptions (
                     execution_gate_sha256 TEXT PRIMARY KEY,
                     authorization_sha256 TEXT NOT NULL,
+                    broker_request_sha256 TEXT NOT NULL,
                     intent_id TEXT NOT NULL UNIQUE,
                     occurred_at_utc TEXT NOT NULL,
                     journal_sha256 TEXT NOT NULL,
@@ -418,6 +446,20 @@ class ExecutionJournal:
             if "filled_volume" not in intent_columns:
                 connection.execute(
                     "ALTER TABLE intents ADD COLUMN filled_volume REAL NOT NULL DEFAULT 0"
+                )
+            authorization_columns = {
+                str(row[1])
+                for row in connection.execute(
+                    "PRAGMA table_info(authorization_consumptions)"
+                ).fetchall()
+            }
+            if "broker_request_sha256" not in authorization_columns:
+                # Existing databases cannot contain a trustworthy request hash.
+                # Preserve the one-use rows, mark their provenance explicitly,
+                # and reject them for new execution receipts.
+                connection.execute(
+                    "ALTER TABLE authorization_consumptions "
+                    "ADD COLUMN broker_request_sha256 TEXT NOT NULL DEFAULT ''"
                 )
             identity = connection.execute(
                 "SELECT instance_id FROM journal_identity WHERE singleton=1"
@@ -468,7 +510,7 @@ class ExecutionJournal:
     ) -> IntentRecord:
         if not intent_id.strip() or not decision_id.strip() or not symbol.strip():
             raise ValueError("intent_id, decision_id, and symbol are required")
-        now = created_at or utc_now()
+        now = self._trusted_now(created_at)
         timestamp = _iso(now)
         payload_json = _canonical_json(payload)
         symbol = symbol.strip().upper()
@@ -625,7 +667,7 @@ class ExecutionJournal:
             raise InvalidTransitionError(
                 "broker facts require typed execution or reconciliation evidence"
             )
-        timestamp = _iso(occurred_at)
+        timestamp = _iso(self._trusted_now(occurred_at))
 
         with self._transaction() as connection:
             row = connection.execute(
@@ -728,20 +770,24 @@ class ExecutionJournal:
         fence_token: int,
         execution_gate_sha256: str,
         authorization_sha256: str,
+        broker_request_sha256: str,
         occurred_at: datetime,
     ) -> Iterator[DurableSubmissionLease]:
-        """Durably consume authorization, then hold the final write fence.
+        """Durably consume authorization without holding SQLite across broker I/O.
 
-        Consumption commits before broker I/O.  A second immediate transaction
-        repeats every fence/kill/exposure check and remains held across the
-        final broker refresh and ``order_send``.  A crash therefore cannot
-        roll back the one-use authorization record.
+        Consumption commits before broker I/O.  The in-process lease repeats
+        every fence/kill/exposure check in one short IMMEDIATE transaction when
+        it is consumed at the final send boundary.  The transaction is released
+        before ``order_send`` so a stalled broker call cannot block kill-switch
+        or reconciliation writes.  A crash cannot roll back the one-use
+        authorization record.
         """
 
         now = self._trusted_now(occurred_at)
         for field, value in (
             ("execution_gate_sha256", execution_gate_sha256),
             ("authorization_sha256", authorization_sha256),
+            ("broker_request_sha256", broker_request_sha256),
         ):
             if len(str(value)) != 64 or any(
                 character not in "0123456789abcdef" for character in str(value)
@@ -760,13 +806,15 @@ class ExecutionJournal:
                 connection.execute(
                     """
                     INSERT INTO authorization_consumptions(
-                        execution_gate_sha256, authorization_sha256, intent_id,
+                        execution_gate_sha256, authorization_sha256,
+                        broker_request_sha256, intent_id,
                         occurred_at_utc, journal_sha256
-                    ) VALUES(?, ?, ?, ?, ?)
+                    ) VALUES(?, ?, ?, ?, ?, ?)
                     """,
                     (
                         execution_gate_sha256,
                         authorization_sha256,
+                        broker_request_sha256,
                         intent_id,
                         _iso(now),
                         self.journal_sha256,
@@ -793,20 +841,13 @@ class ExecutionJournal:
                             "daily_submission_count": daily_count,
                             "execution_gate_sha256": execution_gate_sha256,
                             "authorization_sha256": authorization_sha256,
+                            "broker_request_sha256": broker_request_sha256,
                         }
                     ),
                 ),
             )
 
-        submission_lease = DurableSubmissionLease(
-            journal_sha256=self.journal_sha256,
-            intent_id=intent_id,
-            execution_gate_sha256=execution_gate_sha256,
-            authorization_sha256=authorization_sha256,
-            issued_at=now,
-            _seal=_SUBMISSION_LEASE_SEAL,
-        )
-        try:
+        def final_validator() -> datetime:
             with self._transaction() as connection:
                 final_now = self._trusted_now()
                 self._assert_final_submission_state(
@@ -818,7 +859,8 @@ class ExecutionJournal:
                 )
                 consumption = connection.execute(
                     """
-                    SELECT authorization_sha256, intent_id, journal_sha256
+                    SELECT authorization_sha256, broker_request_sha256,
+                           intent_id, journal_sha256
                     FROM authorization_consumptions
                     WHERE execution_gate_sha256=?
                     """,
@@ -828,13 +870,28 @@ class ExecutionJournal:
                     consumption is None
                     or consumption["authorization_sha256"]
                     != authorization_sha256
+                    or consumption["broker_request_sha256"]
+                    != broker_request_sha256
                     or consumption["intent_id"] != intent_id
                     or consumption["journal_sha256"] != self.journal_sha256
                 ):
                     raise SubmissionLimitError(
                         "AUTHORIZATION_CONSUMPTION_MISMATCH"
                     )
-                yield submission_lease
+                return final_now
+
+        submission_lease = DurableSubmissionLease(
+            journal_sha256=self.journal_sha256,
+            intent_id=intent_id,
+            execution_gate_sha256=execution_gate_sha256,
+            authorization_sha256=authorization_sha256,
+            broker_request_sha256=broker_request_sha256,
+            issued_at=now,
+            final_validator=final_validator,
+            _seal=_SUBMISSION_LEASE_SEAL,
+        )
+        try:
+            yield submission_lease
         finally:
             submission_lease._deactivate()
 
@@ -1097,11 +1154,18 @@ class ExecutionJournal:
 
         if type(receipt) is not ExecutionReceipt:
             raise TypeError("sealed ExecutionReceipt is required")
-        trusted_now = self._trusted_now(occurred_at or receipt.received_at)
-        if abs((receipt.received_at - trusted_now).total_seconds()) > (
-            RESET_CLOCK_ASSERTION_TOLERANCE_SECONDS
-        ):
-            raise ValueError("execution receipt timestamp disagrees with trusted clock")
+        # ``received_at`` is minted by the sealed broker adapter immediately
+        # after ``order_send`` returns.  Journal persistence can legitimately
+        # take longer than the 50 ms caller-clock assertion tolerance, so use
+        # the journal clock as the transition authority and enforce a narrow,
+        # one-way recording delay instead of requiring two independent calls
+        # to happen almost simultaneously.
+        trusted_now = self._trusted_now(occurred_at)
+        receipt_age = (trusted_now - receipt.received_at).total_seconds()
+        if receipt_age < -RESET_CLOCK_ASSERTION_TOLERANCE_SECONDS:
+            raise ValueError("execution receipt timestamp is in the future")
+        if receipt_age > MAX_EXECUTION_RECEIPT_RECORDING_DELAY_SECONDS:
+            raise ValueError("execution receipt was not journaled promptly")
         target = str(receipt.state).upper()
         if target not in {
             "ACKNOWLEDGED",
@@ -1140,10 +1204,56 @@ class ExecutionJournal:
                     - float(intent_payload.get("requested_lot"))
                 )
                 <= 1e-12
+                and receipt.journal_sha256 == self.journal_sha256
             )
             if not receipt_matches:
                 raise InvalidTransitionError(
                     "execution receipt does not bind the immutable intent"
+                )
+            consumption = connection.execute(
+                """
+                SELECT authorization_sha256, broker_request_sha256,
+                       intent_id, journal_sha256
+                FROM authorization_consumptions
+                WHERE execution_gate_sha256=?
+                """,
+                (receipt.execution_gate_sha256,),
+            ).fetchone()
+            if (
+                consumption is None
+                or consumption["intent_id"] != receipt.intent_id
+                or consumption["journal_sha256"] != receipt.journal_sha256
+                or consumption["authorization_sha256"]
+                != receipt.authorization_sha256
+                or consumption["broker_request_sha256"]
+                != receipt.broker_request_sha256
+            ):
+                raise InvalidTransitionError(
+                    "execution receipt has no matching authorization consumption"
+                )
+            final_guard = connection.execute(
+                """
+                SELECT payload_json FROM receipts
+                WHERE intent_id=? AND receipt_type='FINAL_SUBMISSION_GUARD'
+                ORDER BY receipt_id DESC LIMIT 1
+                """,
+                (receipt.intent_id,),
+            ).fetchone()
+            if final_guard is None:
+                raise InvalidTransitionError(
+                    "execution receipt has no committed final submission guard"
+                )
+            guard_payload = json.loads(final_guard["payload_json"])
+            if any(
+                guard_payload.get(name) != getattr(receipt, name)
+                for name in (
+                    "execution_gate_sha256",
+                    "authorization_sha256",
+                    "broker_request_sha256",
+                )
+            ):
+                raise InvalidTransitionError(
+                    "execution receipt does not match final submission guard"
                 )
             payload = receipt.to_canonical_dict()
             connection.execute(
@@ -1490,7 +1600,7 @@ class ExecutionJournal:
                 (
                     intent_id,
                     normalized_type,
-                    _iso(occurred_at),
+                    _iso(self._trusted_now(occurred_at)),
                     _canonical_json(payload),
                 ),
             )
@@ -1613,6 +1723,7 @@ class ExecutionJournal:
     ) -> None:
         if not reason.strip() or not source.strip():
             raise ValueError("kill-switch reason and source are required")
+        trusted_now = self._trusted_now(occurred_at)
         with self._transaction() as connection:
             connection.execute(
                 """
@@ -1621,14 +1732,14 @@ class ExecutionJournal:
                     reset_at_utc=NULL, reset_reason=NULL
                 WHERE singleton=1
                 """,
-                (reason.strip(), _iso(occurred_at), source.strip().upper()),
+                (reason.strip(), _iso(trusted_now), source.strip().upper()),
             )
             connection.execute(
                 """
                 INSERT INTO kill_switch_events(action, reason, source, occurred_at_utc)
                 VALUES('LATCH', ?, ?, ?)
                 """,
-                (reason.strip(), source.strip().upper(), _iso(occurred_at)),
+                (reason.strip(), source.strip().upper(), _iso(trusted_now)),
             )
 
     def kill_switch_status(self) -> dict[str, Any]:

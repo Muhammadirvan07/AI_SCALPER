@@ -144,6 +144,56 @@ class ManualDemoReadinessTests(unittest.TestCase):
                 evaluated_at_utc=NOW,
             )
 
+    def test_binding_status_requires_an_exact_approved_enum(self) -> None:
+        plan = _candidate_plan()
+        plan["candidates"][0]["binding_status"] = "NOT_APPROVED"
+
+        report = evaluate_manual_demo_readiness(
+            candidate_id="phillip-fx",
+            candidate_plan=plan,
+            evidence_profiles=_evidence_profiles(),
+            readiness_policy=_readiness_policy(),
+            evaluated_at_utc=NOW,
+        )
+
+        self.assertIn("BROKER_BINDING_NOT_APPROVED", report.blocker_codes)
+
+    def test_calendar_status_missing_or_unknown_is_blocked(self) -> None:
+        for status in (None, "UNKNOWN"):
+            with self.subTest(status=status):
+                plan = _candidate_plan()
+                time_model = plan["candidates"][0]["server_time_model"]
+                if status is None:
+                    del time_model["calendar_hash_status"]
+                else:
+                    time_model["calendar_hash_status"] = status
+
+                report = evaluate_manual_demo_readiness(
+                    candidate_id="phillip-fx",
+                    candidate_plan=plan,
+                    evidence_profiles=_evidence_profiles(),
+                    readiness_policy=_readiness_policy(),
+                    evaluated_at_utc=NOW,
+                )
+
+                self.assertIn("SESSION_CALENDAR_PENDING", report.blocker_codes)
+
+    def test_exact_verified_calendar_status_clears_calendar_blocker(self) -> None:
+        plan = _candidate_plan()
+        plan["candidates"][0]["server_time_model"]["calendar_hash_status"] = (
+            "VERIFIED_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS"
+        )
+
+        report = evaluate_manual_demo_readiness(
+            candidate_id="phillip-fx",
+            candidate_plan=plan,
+            evidence_profiles=_evidence_profiles(),
+            readiness_policy=_readiness_policy(),
+            evaluated_at_utc=NOW,
+        )
+
+        self.assertNotIn("SESSION_CALENDAR_PENDING", report.blocker_codes)
+
     def test_any_policy_lock_weakening_is_rejected(self) -> None:
         mutations = {
             "manual_demo_enabled": True,

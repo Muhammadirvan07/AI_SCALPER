@@ -272,6 +272,7 @@ class RiskDecision(CanonicalContract):
     normalized_lot: float
     estimated_risk_cash: float
     estimated_margin_cash: float
+    margin_limit_cash: float
     spread_points: float
     spread_limit_points: float
     spread_p95_points: float
@@ -308,6 +309,7 @@ class RiskDecision(CanonicalContract):
             "normalized_lot",
             "estimated_risk_cash",
             "estimated_margin_cash",
+            "margin_limit_cash",
             "spread_points",
             "spread_limit_points",
             "spread_p95_points",
@@ -324,6 +326,8 @@ class RiskDecision(CanonicalContract):
             raise ValueError("normalized_lot exceeds the global maximum")
         if self.estimated_risk_cash > self.max_risk_cash + 1e-12:
             raise ValueError("estimated_risk_cash exceeds max_risk_cash")
+        if self.allowed and self.estimated_margin_cash > self.margin_limit_cash + 1e-12:
+            raise ValueError("estimated_margin_cash exceeds margin_limit_cash")
         require_int("open_position_count", self.open_position_count, minimum=0)
         object.__setattr__(
             self,
@@ -651,6 +655,7 @@ def evaluate_risk(
         normalized_lot=normalized_lot,
         estimated_risk_cash=estimated_risk,
         estimated_margin_cash=estimated_margin,
+        margin_limit_cash=MAX_MARGIN_FRACTION * context.equity,
         spread_points=context.current_spread_points,
         spread_limit_points=spread_limit,
         spread_p95_points=context.p95_spread_points,

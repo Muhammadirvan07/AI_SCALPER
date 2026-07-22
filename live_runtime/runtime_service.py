@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import math
+import threading
 from typing import Any, Callable
 
 from execution_policy import validate_execution_symbol
@@ -20,6 +21,7 @@ from .contracts import (
     BrokerSpec,
     DecisionSnapshot,
     TradeIntent,
+    canonical_sha256,
     require_utc,
 )
 from .executor import ExecutionOutcome
@@ -35,8 +37,12 @@ from .risk import (
     IDENTITY_CONVERSION_SHA256,
     MAX_RISK_CONVERSION_AGE_SECONDS,
     RISK_PERCENT_CAP,
-    RiskContext,
     absolute_risk_cap_usd,
+)
+from .risk_context_factory import (
+    RiskContextVerificationError,
+    VerifiedRiskContext,
+    require_verified_risk_context,
 )
 
 
@@ -51,6 +57,47 @@ def _utc_now() -> datetime:
 
 class RuntimeCompositionError(RuntimeError):
     """Raised when a dependency violates the one-shot composition contract."""
+
+
+def _broker_spec_binding_sha256(spec: BrokerSpec) -> str:
+    """Hash executable broker semantics while allowing a fresh capture time."""
+
+    if type(spec) is not BrokerSpec:
+        raise TypeError("spec must be an exact BrokerSpec")
+    payload = spec.to_canonical_dict()
+    payload.pop("captured_at", None)
+    return canonical_sha256(payload)
+
+
+@dataclass(frozen=True)
+class FreshManualDemoContext:
+    """Fresh, factory-sealed evidence rebuilt after human approval."""
+
+    broker_spec: BrokerSpec
+    risk_context: VerifiedRiskContext
+    health_facts: RuntimeHealthFacts
+    market_guard: MarketGuardDecision
+
+    def __post_init__(self) -> None:
+        if type(self.broker_spec) is not BrokerSpec:
+            raise TypeError("broker_spec must be an exact BrokerSpec")
+        if type(self.risk_context) is not VerifiedRiskContext:
+            raise TypeError("risk_context must be an exact sealed VerifiedRiskContext")
+        if type(self.health_facts) is not RuntimeHealthFacts:
+            raise TypeError("health_facts must be exact RuntimeHealthFacts")
+        if type(self.market_guard) is not MarketGuardDecision:
+            raise TypeError("market_guard must be an exact sealed MarketGuardDecision")
+
+
+@dataclass
+class _PreparedManualDemoRecord:
+    intent: TradeIntent
+    broker_symbol: str
+    broker_spec_binding_sha256: str
+    permit_sha256: str
+    model_artifact_sha256: str
+    sizing_quote: BrokerSizingQuote
+    state: str = "PREPARED"
 
 
 @dataclass(frozen=True)
@@ -92,15 +139,13 @@ class LiveRuntimeService:
         clock_provider: Callable[[], datetime] = _utc_now,
         intent_ttl_seconds: float = DEFAULT_INTENT_TTL_SECONDS,
     ) -> None:
-        required_adapter_methods = (
-            "calculate_broker_sized_lot",
-            "orders",
-            "positions",
-            "deals",
-        )
-        if any(
-            not callable(getattr(adapter, method, None))
-            for method in required_adapter_methods
+        if not all(
+            (
+                callable(getattr(adapter, "calculate_broker_sized_lot", None)),
+                callable(getattr(adapter, "orders", None)),
+                callable(getattr(adapter, "positions", None)),
+                callable(getattr(adapter, "deals", None)),
+            )
         ):
             raise TypeError(
                 "adapter must expose sizing and read-only reconciliation methods"
@@ -112,6 +157,15 @@ class LiveRuntimeService:
         coordinator_journal = getattr(coordinator, "journal", None)
         if coordinator_journal is not journal:
             raise ValueError("execution and reconciliation must share one journal")
+        runtime_identity = str(
+            getattr(coordinator, "account_runtime_identity_sha256", "") or ""
+        ).lower()
+        if len(runtime_identity) != 64 or any(
+            character not in "0123456789abcdef" for character in runtime_identity
+        ):
+            raise TypeError(
+                "coordinator must expose account_runtime_identity_sha256"
+            )
         if isinstance(magic_number, bool) or not isinstance(magic_number, int):
             raise TypeError("magic_number must be an integer")
         if magic_number <= 0:
@@ -133,6 +187,10 @@ class LiveRuntimeService:
         self.magic_number = magic_number
         self._clock_provider = clock_provider
         self.intent_ttl_seconds = ttl
+        self._account_runtime_identity_sha256 = runtime_identity
+        self._prepared_lock = threading.Lock()
+        self._prepared_by_intent: dict[str, _PreparedManualDemoRecord] = {}
+        self._prepared_intent_by_decision: dict[str, str] = {}
 
     def _trusted_now(self, asserted: datetime | None = None) -> datetime:
         trusted = require_utc("trusted runtime clock", self._clock_provider())
@@ -159,13 +217,48 @@ class LiveRuntimeService:
             intent=intent,
         )
 
+    def prepare_manual_demo(
+        self,
+        *,
+        decision: DecisionSnapshot,
+        broker_symbol: str,
+        broker_spec: BrokerSpec,
+        risk_context: VerifiedRiskContext,
+        permit: PromotionPermit,
+        health_facts: RuntimeHealthFacts,
+        market_guard: MarketGuardDecision,
+        model_artifact: ModelArtifactManifest,
+        owner_id: str,
+        fence_token: int,
+        now: datetime | None = None,
+    ) -> RuntimeCycleResult:
+        """Phase 1: create one exact approval proposal without broker mutation."""
+
+        if type(permit) is not PromotionPermit or permit.mode != "DEMO":
+            raise ValueError("prepared manual execution requires a DEMO permit")
+        return self.execute_once(
+            decision=decision,
+            broker_symbol=broker_symbol,
+            broker_spec=broker_spec,
+            risk_context=risk_context,
+            permit=permit,
+            health_facts=health_facts,
+            market_guard=market_guard,
+            model_artifact=model_artifact,
+            owner_id=owner_id,
+            fence_token=fence_token,
+            manual_demo_approval_provider=None,
+            promotion_evidence=None,
+            now=now,
+        )
+
     def execute_once(
         self,
         *,
         decision: DecisionSnapshot,
         broker_symbol: str,
         broker_spec: BrokerSpec,
-        risk_context: RiskContext,
+        risk_context: VerifiedRiskContext,
         permit: PromotionPermit,
         health_facts: RuntimeHealthFacts,
         market_guard: MarketGuardDecision,
@@ -185,8 +278,8 @@ class LiveRuntimeService:
             raise TypeError("decision must be a sealed DecisionSnapshot")
         if not isinstance(broker_spec, BrokerSpec):
             raise TypeError("broker_spec must be a BrokerSpec")
-        if not isinstance(risk_context, RiskContext):
-            raise TypeError("risk_context must be a RiskContext")
+        if type(risk_context) is not VerifiedRiskContext:
+            raise TypeError("risk_context must be an exact sealed VerifiedRiskContext")
         if not isinstance(permit, PromotionPermit):
             raise TypeError("permit must be a signed PromotionPermit")
         if not isinstance(health_facts, RuntimeHealthFacts):
@@ -215,6 +308,25 @@ class LiveRuntimeService:
         normalized_broker_symbol = str(broker_symbol or "").strip()
         if not normalized_owner or not normalized_broker_symbol:
             raise ValueError("owner_id and broker_symbol are required")
+
+        trusted_context = require_verified_risk_context(
+            risk_context,
+            now=now,
+            expected_account_id=broker_spec.account_id,
+            expected_server=broker_spec.server,
+            expected_environment=broker_spec.environment,
+            expected_mode=permit.mode,
+            expected_symbol=decision.symbol,
+            expected_broker_symbol=normalized_broker_symbol,
+            expected_account_runtime_identity_sha256=(
+                self._account_runtime_identity_sha256
+            ),
+            expected_journal_sha256=self.journal.journal_sha256,
+            broker_spec=broker_spec,
+            health_facts=health_facts,
+            market_guard_decision=market_guard,
+            expected_permit_id=permit.permit_id,
+        )
 
         if decision.side == "WAIT":
             return self._wait(
@@ -248,13 +360,13 @@ class LiveRuntimeService:
             precondition_reasons.append("BROKER_SPEC_SYMBOL_MISMATCH")
         if broker_spec.broker_symbol != normalized_broker_symbol:
             precondition_reasons.append("BROKER_SYMBOL_MISMATCH")
-        if risk_context.mode != permit.mode:
+        if trusted_context.mode != permit.mode:
             precondition_reasons.append("RISK_MODE_MISMATCH")
-        if risk_context.account_id != broker_spec.account_id:
+        if trusted_context.account_id != broker_spec.account_id:
             precondition_reasons.append("RISK_ACCOUNT_MISMATCH")
-        if risk_context.server != broker_spec.server:
+        if trusted_context.server != broker_spec.server:
             precondition_reasons.append("RISK_SERVER_MISMATCH")
-        conversion = risk_context.usd_risk_cap_conversion
+        conversion = trusted_context.usd_risk_cap_conversion
         if broker_spec.account_currency != "USD" and conversion is None:
             precondition_reasons.append("USD_RISK_CAP_CONVERSION_UNAVAILABLE")
         if conversion is not None:
@@ -265,21 +377,21 @@ class LiveRuntimeService:
             ):
                 precondition_reasons.append("USD_RISK_CAP_CONVERSION_MISMATCH")
             conversion_age = (
-                risk_context.evaluated_at - conversion.captured_at_utc
+                trusted_context.evaluated_at - conversion.captured_at_utc
             ).total_seconds()
             if conversion_age < 0:
                 precondition_reasons.append("USD_RISK_CAP_CONVERSION_FUTURE")
             if conversion_age > MAX_RISK_CONVERSION_AGE_SECONDS:
                 precondition_reasons.append("USD_RISK_CAP_CONVERSION_STALE")
-        if not risk_context.data_fresh:
+        if not trusted_context.data_fresh:
             precondition_reasons.append("RISK_DATA_STALE")
-        if not risk_context.source_aligned:
+        if not trusted_context.source_aligned:
             precondition_reasons.append("RISK_SOURCE_MISMATCH")
-        if not risk_context.permit_valid:
+        if not trusted_context.permit_valid:
             precondition_reasons.append("RISK_PERMIT_NOT_VALIDATED")
-        if risk_context.news_clear != market_guard.news_clear:
+        if trusted_context.news_clear != market_guard.news_clear:
             precondition_reasons.append("RISK_NEWS_GUARD_MISMATCH")
-        if risk_context.rollover_clear != market_guard.rollover_clear:
+        if trusted_context.rollover_clear != market_guard.rollover_clear:
             precondition_reasons.append("RISK_ROLLOVER_GUARD_MISMATCH")
         if market_guard.symbol != decision.symbol:
             precondition_reasons.append("MARKET_GUARD_SYMBOL_MISMATCH")
@@ -381,7 +493,7 @@ class LiveRuntimeService:
                     precondition_reasons.append("PROMOTION_EVIDENCE_TIME_INVALID")
 
         for observed_at, reason in (
-            (risk_context.evaluated_at, "RISK_CONTEXT_STALE"),
+            (trusted_context.evaluated_at, "RISK_CONTEXT_STALE"),
             (broker_spec.captured_at, "BROKER_SPEC_STALE"),
             (health_facts.observed_at, "HEALTH_FACTS_STALE"),
             (market_guard.evaluated_at, "MARKET_GUARD_STALE"),
@@ -410,7 +522,7 @@ class LiveRuntimeService:
             int(
                 math.floor(
                     min(
-                        risk_context.p95_slippage_points,
+                        trusted_context.p95_slippage_points,
                         0.10 * stop_distance_points,
                     )
                     + 1e-12
@@ -423,9 +535,9 @@ class LiveRuntimeService:
             side=decision.side,
             entry_price=float(decision.entry_reference),
             stop_loss=float(decision.stop_loss),
-            equity=risk_context.equity,
+            equity=trusted_context.equity,
             allowed_slippage_points=allowed_slippage_points,
-            usd_risk_cap_conversion=risk_context.usd_risk_cap_conversion,
+            usd_risk_cap_conversion=trusted_context.usd_risk_cap_conversion,
             now=now,
         )
         if not isinstance(quote, BrokerSizingQuote):
@@ -451,7 +563,7 @@ class LiveRuntimeService:
             )
         if quote.normalized_lot <= 0:
             quote_binding_reasons.append("SIZING_STATUS_INCONSISTENT")
-        conversion = risk_context.usd_risk_cap_conversion
+        conversion = trusted_context.usd_risk_cap_conversion
         expected_account_currency = broker_spec.account_currency
         expected_conversion_rate = (
             1.0
@@ -472,7 +584,7 @@ class LiveRuntimeService:
             expected_absolute_usd_cap * expected_conversion_rate
         )
         expected_risk_cap = min(
-            RISK_PERCENT_CAP * risk_context.equity,
+            RISK_PERCENT_CAP * trusted_context.equity,
             expected_absolute_account_cap,
         )
         if quote.account_currency != expected_account_currency:
@@ -501,7 +613,7 @@ class LiveRuntimeService:
             quote_binding_reasons.append("SIZING_RISK_CAP_MISMATCH")
         if quote.actual_stop_risk_cash <= 0 or quote.margin_cash <= 0:
             quote_binding_reasons.append("SIZING_CASH_FACTS_INVALID")
-        if quote.margin_cash > 0.10 * risk_context.equity + 1e-12:
+        if quote.margin_cash > 0.10 * trusted_context.equity + 1e-12:
             quote_binding_reasons.append("SIZING_MARGIN_CAP_EXCEEDED")
         if not (
             broker_spec.volume_min - 1e-12
@@ -520,9 +632,16 @@ class LiveRuntimeService:
                 sizing_quote=quote,
             )
 
-        expires_at = min(
-            now + timedelta(seconds=self.intent_ttl_seconds),
-            entry_deadline,
+        preparing_manual_demo = (
+            permit.mode == "DEMO" and manual_demo_approval_provider is None
+        )
+        expires_at = (
+            entry_deadline
+            if preparing_manual_demo
+            else min(
+                now + timedelta(seconds=self.intent_ttl_seconds),
+                entry_deadline,
+            )
         )
         if expires_at <= now:
             return self._wait(
@@ -549,10 +668,45 @@ class LiveRuntimeService:
         manual_demo_approval: ManualDemoApproval | None = None
         if permit.mode == "DEMO":
             if manual_demo_approval_provider is None:
+                record = _PreparedManualDemoRecord(
+                    intent=intent,
+                    broker_symbol=normalized_broker_symbol,
+                    broker_spec_binding_sha256=(
+                        _broker_spec_binding_sha256(broker_spec)
+                    ),
+                    permit_sha256=permit.content_sha256,
+                    model_artifact_sha256=model_artifact.content_sha256,
+                    sizing_quote=quote,
+                )
+                with self._prepared_lock:
+                    existing_id = self._prepared_intent_by_decision.get(
+                        decision.snapshot_id
+                    )
+                    if existing_id is not None:
+                        existing = self._prepared_by_intent[existing_id]
+                        return self._wait(
+                            decision,
+                            status=(
+                                "MANUAL_DEMO_PREPARED"
+                                if existing.state == "PREPARED"
+                                else "WAIT_CONTROL"
+                            ),
+                            reasons=(
+                                "MANUAL_DEMO_APPROVAL_REQUIRED"
+                                if existing.state == "PREPARED"
+                                else "PREPARED_INTENT_REPLAYED"
+                            ,),
+                            sizing_quote=existing.sizing_quote,
+                            intent=existing.intent,
+                        )
+                    self._prepared_by_intent[intent.intent_id] = record
+                    self._prepared_intent_by_decision[
+                        decision.snapshot_id
+                    ] = intent.intent_id
                 return self._wait(
                     decision,
-                    status="WAIT_CONTROL",
-                    reasons=("MANUAL_DEMO_APPROVAL_PROVIDER_REQUIRED",),
+                    status="MANUAL_DEMO_PREPARED",
+                    reasons=("MANUAL_DEMO_APPROVAL_REQUIRED",),
                     sizing_quote=quote,
                     intent=intent,
                 )
@@ -647,6 +801,342 @@ class LiveRuntimeService:
             decision_snapshot_id=decision.snapshot_id,
             sizing_quote=quote,
             intent=intent,
+            execution_outcome=outcome,
+        )
+
+    def execute_prepared_manual_demo(
+        self,
+        *,
+        prepared_intent: TradeIntent,
+        manual_demo_approval: ManualDemoApproval,
+        permit: PromotionPermit,
+        fresh_context_provider: (
+            Callable[[TradeIntent, datetime], FreshManualDemoContext]
+        ),
+        model_artifact: ModelArtifactManifest,
+        owner_id: str,
+        fence_token: int,
+        now: datetime | None = None,
+    ) -> RuntimeCycleResult:
+        """Phase 2: refresh all sub-second proofs and execute the exact proposal."""
+
+        checked_at = self._trusted_now(now)
+        if type(prepared_intent) is not TradeIntent:
+            raise TypeError("prepared_intent must be an exact TradeIntent")
+        if type(manual_demo_approval) is not ManualDemoApproval:
+            raise TypeError("manual_demo_approval must be an exact ManualDemoApproval")
+        if type(permit) is not PromotionPermit:
+            raise TypeError("permit must be an exact PromotionPermit")
+        if type(model_artifact) is not ModelArtifactManifest:
+            raise TypeError("model_artifact must be an exact ModelArtifactManifest")
+        if not callable(fresh_context_provider):
+            raise TypeError("fresh_context_provider must be callable")
+        if isinstance(fence_token, bool) or not isinstance(fence_token, int):
+            raise TypeError("fence_token must be an integer")
+        normalized_owner = str(owner_id or "").strip()
+        if not normalized_owner or fence_token < 0:
+            raise ValueError("owner_id and nonnegative fence_token are required")
+
+        decision = prepared_intent.decision
+        with self._prepared_lock:
+            record = self._prepared_by_intent.get(prepared_intent.intent_id)
+            if record is None:
+                known_id = self._prepared_intent_by_decision.get(
+                    decision.snapshot_id
+                )
+                reason = (
+                    "PREPARED_INTENT_CHANGED"
+                    if known_id is not None
+                    else "PREPARED_INTENT_UNKNOWN"
+                )
+                return self._wait(
+                    decision,
+                    status="WAIT_CONTROL",
+                    reasons=(reason,),
+                    intent=prepared_intent,
+                )
+            if record.state != "PREPARED":
+                return self._wait(
+                    decision,
+                    status="WAIT_CONTROL",
+                    reasons=("PREPARED_INTENT_REPLAYED",),
+                    sizing_quote=record.sizing_quote,
+                    intent=record.intent,
+                )
+            if (
+                record.intent.content_sha256 != prepared_intent.content_sha256
+                or record.intent.to_canonical_dict()
+                != prepared_intent.to_canonical_dict()
+            ):
+                return self._wait(
+                    decision,
+                    status="WAIT_CONTROL",
+                    reasons=("PREPARED_INTENT_CHANGED",),
+                    sizing_quote=record.sizing_quote,
+                    intent=record.intent,
+                )
+
+        deadline = min(
+            prepared_intent.expires_at,
+            decision.bar_closed_at + timedelta(seconds=ENTRY_WINDOW_SECONDS),
+        )
+        control_reasons: list[str] = []
+        if prepared_intent.mode != "DEMO" or permit.mode != "DEMO":
+            control_reasons.append("MANUAL_DEMO_MODE_MISMATCH")
+        if checked_at < prepared_intent.created_at or checked_at >= deadline:
+            control_reasons.append("PREPARED_INTENT_EXPIRED")
+        if (
+            permit.content_sha256 != record.permit_sha256
+            or permit.permit_id != prepared_intent.permit_id
+        ):
+            control_reasons.append("PREPARED_PERMIT_MISMATCH")
+        if not permit.issued_at <= checked_at < permit.expires_at:
+            control_reasons.append("PERMIT_TIME_INVALID")
+        if model_artifact.content_sha256 != record.model_artifact_sha256:
+            control_reasons.append("PREPARED_MODEL_MISMATCH")
+        approval_bindings = (
+            (
+                manual_demo_approval.intent_id == prepared_intent.intent_id,
+                "MANUAL_DEMO_INTENT_MISMATCH",
+            ),
+            (
+                manual_demo_approval.account_id_sha256
+                == manual_demo_account_sha256(prepared_intent.account_id),
+                "MANUAL_DEMO_ACCOUNT_MISMATCH",
+            ),
+            (
+                manual_demo_approval.server == prepared_intent.server,
+                "MANUAL_DEMO_SERVER_MISMATCH",
+            ),
+            (
+                manual_demo_approval.journal_sha256
+                == self.journal.journal_sha256,
+                "MANUAL_DEMO_JOURNAL_MISMATCH",
+            ),
+            (
+                manual_demo_approval.mode == "DEMO",
+                "MANUAL_DEMO_MODE_MISMATCH",
+            ),
+        )
+        control_reasons.extend(
+            reason for matched, reason in approval_bindings if not matched
+        )
+        if not manual_demo_approval.signature:
+            control_reasons.append("MANUAL_DEMO_APPROVAL_UNSIGNED")
+        if manual_demo_approval.issued_at_utc < prepared_intent.created_at:
+            control_reasons.append("MANUAL_DEMO_APPROVAL_PREDATES_PROPOSAL")
+        if not (
+            manual_demo_approval.issued_at_utc
+            <= checked_at
+            < manual_demo_approval.expires_at_utc
+        ):
+            control_reasons.append("MANUAL_DEMO_APPROVAL_TIME_INVALID")
+        if control_reasons:
+            return self._wait(
+                decision,
+                status="WAIT_CONTROL",
+                reasons=tuple(control_reasons),
+                sizing_quote=record.sizing_quote,
+                intent=record.intent,
+            )
+
+        try:
+            fresh = fresh_context_provider(record.intent, checked_at)
+        except Exception:
+            return self._wait(
+                decision,
+                status="WAIT_PRECONDITION",
+                reasons=("FRESH_CONTEXT_PROVIDER_FAILED",),
+                sizing_quote=record.sizing_quote,
+                intent=record.intent,
+            )
+        if type(fresh) is not FreshManualDemoContext:
+            return self._wait(
+                decision,
+                status="WAIT_PRECONDITION",
+                reasons=("FRESH_CONTEXT_PROVIDER_INVALID",),
+                sizing_quote=record.sizing_quote,
+                intent=record.intent,
+            )
+        fresh_now = self._trusted_now()
+        fresh_reasons: list[str] = []
+        if fresh_now >= deadline:
+            fresh_reasons.append("PREPARED_INTENT_EXPIRED")
+        if (
+            _broker_spec_binding_sha256(fresh.broker_spec)
+            != record.broker_spec_binding_sha256
+        ):
+            fresh_reasons.append("BROKER_SPEC_BINDING_DRIFT")
+        spec_age = (fresh_now - fresh.broker_spec.captured_at).total_seconds()
+        if spec_age < 0 or spec_age > MAX_COMPOSITION_FACT_AGE_SECONDS:
+            fresh_reasons.append("BROKER_SPEC_STALE")
+        model_binding = verify_decision_model(
+            decision,
+            model_artifact,
+            checked_at=fresh_now,
+        )
+        if not model_binding.bound:
+            fresh_reasons.extend(model_binding.reason_codes)
+        try:
+            trusted_context = require_verified_risk_context(
+                fresh.risk_context,
+                now=fresh_now,
+                expected_account_id=prepared_intent.account_id,
+                expected_server=prepared_intent.server,
+                expected_environment="DEMO",
+                expected_mode="DEMO",
+                expected_symbol=prepared_intent.symbol,
+                expected_broker_symbol=record.broker_symbol,
+                expected_account_runtime_identity_sha256=(
+                    self._account_runtime_identity_sha256
+                ),
+                expected_journal_sha256=self.journal.journal_sha256,
+                broker_spec=fresh.broker_spec,
+                health_facts=fresh.health_facts,
+                market_guard_decision=fresh.market_guard,
+                expected_permit_id=permit.permit_id,
+            )
+        except RiskContextVerificationError as exc:
+            fresh_reasons.extend(exc.reason_codes)
+            trusted_context = None
+        if fresh_reasons or trusted_context is None:
+            return self._wait(
+                decision,
+                status="WAIT_PRECONDITION",
+                reasons=tuple(fresh_reasons),
+                sizing_quote=record.sizing_quote,
+                intent=record.intent,
+            )
+
+        stop_distance_points = abs(
+            prepared_intent.entry_reference - prepared_intent.stop_loss
+        ) / fresh.broker_spec.point
+        allowed_slippage_points = max(
+            0,
+            int(
+                math.floor(
+                    min(
+                        trusted_context.p95_slippage_points,
+                        0.10 * stop_distance_points,
+                    )
+                    + 1e-12
+                )
+            ),
+        )
+        quote = self.adapter.calculate_broker_sized_lot(
+            canonical_symbol=prepared_intent.symbol,
+            broker_symbol=record.broker_symbol,
+            side=prepared_intent.side,
+            entry_price=prepared_intent.entry_reference,
+            stop_loss=prepared_intent.stop_loss,
+            equity=trusted_context.equity,
+            allowed_slippage_points=allowed_slippage_points,
+            usd_risk_cap_conversion=trusted_context.usd_risk_cap_conversion,
+            now=fresh_now,
+        )
+        delegate_now = self._trusted_now()
+        sizing_reasons: list[str] = []
+        if type(quote) is not BrokerSizingQuote:
+            sizing_reasons.append("FRESH_SIZING_QUOTE_INVALID")
+        else:
+            quote_age = (delegate_now - quote.evaluated_at_utc).total_seconds()
+            if quote_age < 0 or quote_age > 0.05:
+                sizing_reasons.append("FRESH_SIZING_QUOTE_STALE")
+            if quote.status != "SIZED":
+                sizing_reasons.append(quote.status)
+            if (
+                quote.symbol != prepared_intent.symbol
+                or quote.broker_symbol != record.broker_symbol
+            ):
+                sizing_reasons.append("FRESH_SIZING_LANE_MISMATCH")
+            if quote.normalized_lot != prepared_intent.requested_lot:
+                sizing_reasons.append("PREPARED_LOT_NO_LONGER_SAFE")
+            if quote.actual_stop_risk_cash <= 0 or quote.margin_cash <= 0:
+                sizing_reasons.append("FRESH_SIZING_CASH_FACTS_INVALID")
+            if quote.margin_cash > 0.10 * trusted_context.equity + 1e-12:
+                sizing_reasons.append("FRESH_SIZING_MARGIN_CAP_EXCEEDED")
+        try:
+            require_verified_risk_context(
+                fresh.risk_context,
+                now=delegate_now,
+                expected_account_id=prepared_intent.account_id,
+                expected_server=prepared_intent.server,
+                expected_environment="DEMO",
+                expected_mode="DEMO",
+                expected_symbol=prepared_intent.symbol,
+                expected_broker_symbol=record.broker_symbol,
+                expected_account_runtime_identity_sha256=(
+                    self._account_runtime_identity_sha256
+                ),
+                expected_journal_sha256=self.journal.journal_sha256,
+                broker_spec=fresh.broker_spec,
+                health_facts=fresh.health_facts,
+                market_guard_decision=fresh.market_guard,
+                expected_permit_id=permit.permit_id,
+            )
+        except RiskContextVerificationError as exc:
+            sizing_reasons.extend(exc.reason_codes)
+        if delegate_now >= deadline:
+            sizing_reasons.append("PREPARED_INTENT_EXPIRED")
+        if not permit.issued_at <= delegate_now < permit.expires_at:
+            sizing_reasons.append("PERMIT_TIME_INVALID")
+        if not (
+            manual_demo_approval.issued_at_utc
+            <= delegate_now
+            < manual_demo_approval.expires_at_utc
+        ):
+            sizing_reasons.append("MANUAL_DEMO_APPROVAL_TIME_INVALID")
+        if sizing_reasons:
+            return self._wait(
+                decision,
+                status="WAIT_PRECONDITION",
+                reasons=tuple(sizing_reasons),
+                sizing_quote=quote if isinstance(quote, BrokerSizingQuote) else None,
+                intent=record.intent,
+            )
+
+        with self._prepared_lock:
+            current = self._prepared_by_intent.get(record.intent.intent_id)
+            if current is not record or current.state != "PREPARED":
+                return self._wait(
+                    decision,
+                    status="WAIT_CONTROL",
+                    reasons=("PREPARED_INTENT_REPLAYED",),
+                    sizing_quote=record.sizing_quote,
+                    intent=record.intent,
+                )
+            # Claim before delegation.  Any exception is fail-closed and the
+            # proposal can never be submitted a second time.
+            current.state = "DELEGATED"
+        outcome = self.coordinator.execute_once(
+            intent=record.intent,
+            broker_symbol=record.broker_symbol,
+            broker_spec=fresh.broker_spec,
+            risk_context=fresh.risk_context,
+            permit=permit,
+            health_facts=fresh.health_facts,
+            market_guard=fresh.market_guard,
+            model_artifact=model_artifact,
+            owner_id=normalized_owner,
+            fence_token=fence_token,
+            manual_demo_approval=manual_demo_approval,
+            promotion_evidence=None,
+            now=delegate_now,
+        )
+        if not isinstance(outcome, ExecutionOutcome):
+            raise RuntimeCompositionError(
+                "execution coordinator must return an ExecutionOutcome"
+            )
+        if outcome.intent_id != record.intent.intent_id:
+            raise RuntimeCompositionError(
+                "execution outcome is bound to another prepared intent"
+            )
+        return RuntimeCycleResult(
+            status=outcome.status,
+            reason_codes=outcome.reason_codes,
+            decision_snapshot_id=decision.snapshot_id,
+            sizing_quote=quote,
+            intent=record.intent,
             execution_outcome=outcome,
         )
 

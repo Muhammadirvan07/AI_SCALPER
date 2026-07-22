@@ -67,7 +67,12 @@ from .promotion_evidence import (
     PromotionEvidenceValidation,
     validate_promotion_evidence_receipt,
 )
-from .risk import MAX_MARGIN_FRACTION, RiskContext, RiskDecision, evaluate_risk
+from .risk import MAX_MARGIN_FRACTION, RiskDecision, evaluate_risk
+from .risk_context_factory import (
+    RiskContextVerificationError,
+    VerifiedRiskContext,
+    require_verified_risk_context,
+)
 
 
 UTC = timezone.utc
@@ -123,13 +128,14 @@ class ExecutionCoordinator:
     ):
         if not isinstance(journal, ExecutionJournal):
             raise TypeError("journal must be an ExecutionJournal")
-        required_methods = (
-            "preflight",
-            "submission_guard",
-            "submit",
-            "execution_fence_identity",
-        )
-        if any(not callable(getattr(adapter, name, None)) for name in required_methods):
+        if not all(
+            (
+                callable(getattr(adapter, "preflight", None)),
+                callable(getattr(adapter, "submission_guard", None)),
+                callable(getattr(adapter, "submit", None)),
+                callable(getattr(adapter, "execution_fence_identity", None)),
+            )
+        ):
             raise TypeError("adapter must expose preflight, submission_guard, and submit")
         if not callable(permit_secret_provider):
             raise TypeError("permit_secret_provider must be callable")
@@ -168,6 +174,12 @@ class ExecutionCoordinator:
         if self._account_runtime_fence is not None:
             self._account_runtime_fence.close()
             self._account_runtime_fence = None
+
+    @property
+    def account_runtime_identity_sha256(self) -> str:
+        """Public, non-secret identity used to bind trusted runtime proofs."""
+
+        return self._account_runtime_identity_sha256
 
     def __enter__(self) -> ExecutionCoordinator:
         return self
@@ -289,7 +301,7 @@ class ExecutionCoordinator:
         intent: TradeIntent,
         broker_symbol: str,
         broker_spec: BrokerSpec,
-        risk_context: RiskContext,
+        risk_context: VerifiedRiskContext,
         permit: PromotionPermit,
         health_facts: RuntimeHealthFacts,
         market_guard: MarketGuardDecision,
@@ -305,8 +317,8 @@ class ExecutionCoordinator:
         now = self._trusted_now(now)
         if not isinstance(intent, TradeIntent) or not isinstance(broker_spec, BrokerSpec):
             raise TypeError("validated intent and broker_spec are required")
-        if not isinstance(risk_context, RiskContext):
-            raise TypeError("risk_context must be RiskContext")
+        if type(risk_context) is not VerifiedRiskContext:
+            raise TypeError("risk_context must be an exact sealed VerifiedRiskContext")
         if not isinstance(permit, PromotionPermit):
             raise TypeError("permit must be a signed PromotionPermit")
         if not isinstance(health_facts, RuntimeHealthFacts):
@@ -315,6 +327,24 @@ class ExecutionCoordinator:
             raise TypeError("market_guard must come from evaluate_market_guards")
         if not isinstance(model_artifact, ModelArtifactManifest):
             raise TypeError("model_artifact must be ModelArtifactManifest")
+        trusted_context = require_verified_risk_context(
+            risk_context,
+            now=now,
+            expected_account_id=intent.account_id,
+            expected_server=intent.server,
+            expected_environment=broker_spec.environment,
+            expected_mode=intent.mode,
+            expected_symbol=intent.symbol,
+            expected_broker_symbol=broker_symbol,
+            expected_account_runtime_identity_sha256=(
+                self._account_runtime_identity_sha256
+            ),
+            expected_journal_sha256=self.journal.journal_sha256,
+            broker_spec=broker_spec,
+            health_facts=health_facts,
+            market_guard_decision=market_guard,
+            expected_permit_id=permit.permit_id,
+        )
         self.journal.assert_executor_fence(owner_id, fence_token, now=now)
         existing_record = self.journal.get_intent(intent.intent_id)
         if existing_record is not None:
@@ -422,6 +452,8 @@ class ExecutionCoordinator:
                 else None
             ),
             "promotion_evidence_sha256": promotion_evidence_sha256,
+            "verified_risk_context_sha256": risk_context.content_sha256,
+            "verified_risk_context": risk_context.provenance_metadata(),
         }
         try:
             record = self.journal.create_intent(
@@ -488,15 +520,15 @@ class ExecutionCoordinator:
             safety_reasons.extend(market_guard.reason_codes or ("NEWS_WINDOW_BLOCKED",))
         if not market_guard.rollover_clear:
             safety_reasons.extend(market_guard.reason_codes or ("ROLLOVER_WINDOW_BLOCKED",))
-        if risk_context.news_clear != market_guard.news_clear:
+        if trusted_context.news_clear != market_guard.news_clear:
             safety_reasons.append("RISK_NEWS_GUARD_MISMATCH")
-        if risk_context.rollover_clear != market_guard.rollover_clear:
+        if trusted_context.rollover_clear != market_guard.rollover_clear:
             safety_reasons.append("RISK_ROLLOVER_GUARD_MISMATCH")
         if not model_binding.bound:
             safety_reasons.extend(model_binding.reason_codes)
         for observed_at, stale_code in (
             (health.observed_at, "HEALTH_DECISION_STALE"),
-            (risk_context.evaluated_at, "RISK_CONTEXT_STALE"),
+            (trusted_context.evaluated_at, "RISK_CONTEXT_STALE"),
             (broker_spec.captured_at, "BROKER_SPEC_STALE"),
             (market_guard.evaluated_at, "MARKET_GUARD_STALE"),
             (model_binding.checked_at, "MODEL_BINDING_STALE"),
@@ -512,7 +544,7 @@ class ExecutionCoordinator:
             safety_reasons.append("PERMIT_ID_MISMATCH")
         if permit_validation is not None and not permit_validation.valid:
             safety_reasons.extend(permit_validation.reason_codes)
-        if risk_context.permit_valid != (
+        if trusted_context.permit_valid != (
             permit_validation.valid if permit_validation is not None else False
         ):
             safety_reasons.append("PERMIT_CONTEXT_MISMATCH")
@@ -565,7 +597,7 @@ class ExecutionCoordinator:
                 now,
             )
 
-        risk = evaluate_risk(intent, broker_spec, risk_context)
+        risk = evaluate_risk(intent, broker_spec, trusted_context)
         self.journal.record_risk_decision(
             intent.intent_id,
             risk,
@@ -594,6 +626,7 @@ class ExecutionCoordinator:
                 occurred_at=now,
             )
 
+        preflight_now = self._trusted_now()
         try:
             preflight = self.adapter.preflight(
                 intent,
@@ -601,7 +634,7 @@ class ExecutionCoordinator:
                 allowed_deviation_points=max(
                     0, int(math.floor(risk.slippage_limit_points))
                 ),
-                now=now,
+                now=preflight_now,
             )
         except (
             AccountBindingError,
@@ -625,7 +658,7 @@ class ExecutionCoordinator:
             preflight_reasons.append("BROKER_ORDER_CHECK_REJECTED")
         if preflight.estimated_stop_risk_cash > risk.max_risk_cash + 1e-12:
             preflight_reasons.append("BROKER_CALCULATED_RISK_EXCEEDED")
-        if preflight.estimated_margin_cash > MAX_MARGIN_FRACTION * risk_context.equity:
+        if preflight.estimated_margin_cash > MAX_MARGIN_FRACTION * trusted_context.equity:
             preflight_reasons.append("BROKER_CALCULATED_MARGIN_EXCEEDED")
         actual_spread_points = (
             float(preflight.current_ask) - float(preflight.current_bid)
@@ -677,12 +710,13 @@ class ExecutionCoordinator:
                 risk=risk,
             )
 
+        guard_now = self._trusted_now()
         try:
             guard = self.adapter.submission_guard(
                 intent,
                 broker_spec,
-                expected_equity=risk_context.equity,
-                now=now,
+                expected_equity=trusted_context.equity,
+                now=guard_now,
             )
         except (
             AccountBindingError,
@@ -697,6 +731,32 @@ class ExecutionCoordinator:
                 risk=risk,
             )
         reserve_now = self._trusted_now()
+        try:
+            require_verified_risk_context(
+                risk_context,
+                now=reserve_now,
+                expected_account_id=intent.account_id,
+                expected_server=intent.server,
+                expected_environment=broker_spec.environment,
+                expected_mode=intent.mode,
+                expected_symbol=intent.symbol,
+                expected_broker_symbol=broker_symbol,
+                expected_account_runtime_identity_sha256=(
+                    self._account_runtime_identity_sha256
+                ),
+                expected_journal_sha256=self.journal.journal_sha256,
+                broker_spec=broker_spec,
+                health_facts=health_facts,
+                market_guard_decision=market_guard,
+                expected_permit_id=permit.permit_id,
+            )
+        except RiskContextVerificationError as exc:
+            return self._reject(
+                record,
+                exc.reason_codes,
+                now=reserve_now,
+                risk=risk,
+            )
         refreshed_arm_decision = read_environment_arm(
             intent.account_id,
             intent.server,
@@ -853,6 +913,7 @@ class ExecutionCoordinator:
                 permit_validation=permit_validation,
                 risk_decision=risk,
                 broker_spec=broker_spec,
+                verified_risk_context=risk_context,
                 reservation=record,
                 gate_capability=gate_capability,
                 journal_sha256=self.journal.journal_sha256,
@@ -893,7 +954,11 @@ class ExecutionCoordinator:
                     "reason_codes": ["EXECUTION_EVIDENCE_EXPIRED_BEFORE_SEND"],
                     "retry_allowed": False,
                 },
-                occurred_at=submission_now,
+                # The execution journal is the timestamp authority for its own
+                # state machine.  The coordinator clock is used to decide that
+                # evidence expired, but is not allowed to forge journal time if
+                # independently configured clocks disagree.
+                occurred_at=None,
                 last_error="EXECUTION_EVIDENCE_EXPIRED_BEFORE_SEND",
             )
             return self._outcome(
@@ -909,6 +974,7 @@ class ExecutionCoordinator:
                 fence_token=fence_token,
                 execution_gate_sha256=authorization.execution_gate_sha256,
                 authorization_sha256=canonical_sha256(authorization),
+                broker_request_sha256=preflight.request_sha256,
                 occurred_at=submission_now,
             ) as submission_lease:
                 receipt = self.adapter.submit(
@@ -919,6 +985,7 @@ class ExecutionCoordinator:
                     now=submission_now,
                 )
         except KillSwitchLatchedError as exc:
+            event_now = self._trusted_now()
             uncertain = self.journal.transition(
                 intent.intent_id,
                 "UNCERTAIN",
@@ -927,7 +994,7 @@ class ExecutionCoordinator:
                     "error": type(exc).__name__,
                     "retry_allowed": False,
                 },
-                occurred_at=submission_now,
+                occurred_at=event_now,
                 last_error=str(exc),
             )
             return self._outcome(
@@ -948,12 +1015,13 @@ class ExecutionCoordinator:
                 risk=risk,
             )
         except SubmissionUncertainError as exc:
+            event_now = self._trusted_now()
             uncertain = self.journal.transition(
                 intent.intent_id,
                 "UNCERTAIN",
                 expected_state="SUBMITTING",
                 details={"error": type(exc).__name__, "retry_allowed": False},
-                occurred_at=submission_now,
+                occurred_at=event_now,
                 last_error=str(exc),
             )
             return self._outcome(
@@ -964,6 +1032,7 @@ class ExecutionCoordinator:
                 risk=risk,
             )
         except (ExecutionLockedError, PreflightRejectedError, AccountBindingError) as exc:
+            event_now = self._trusted_now()
             uncertain = self.journal.transition(
                 intent.intent_id,
                 "UNCERTAIN",
@@ -972,7 +1041,7 @@ class ExecutionCoordinator:
                     "error": type(exc).__name__,
                     "retry_allowed": False,
                 },
-                occurred_at=submission_now,
+                occurred_at=event_now,
                 last_error=str(exc),
             )
             return self._outcome(
@@ -982,12 +1051,13 @@ class ExecutionCoordinator:
                 risk=risk,
             )
         except Exception as exc:
+            event_now = self._trusted_now()
             uncertain = self.journal.transition(
                 intent.intent_id,
                 "UNCERTAIN",
                 expected_state="SUBMITTING",
                 details={"error": type(exc).__name__, "retry_allowed": False},
-                occurred_at=submission_now,
+                occurred_at=event_now,
                 last_error=str(exc),
             )
             return self._outcome(
@@ -1000,7 +1070,9 @@ class ExecutionCoordinator:
 
         updated = self.journal.record_execution_receipt(
             receipt,
-            occurred_at=submission_now,
+            # The sealed receipt keeps its broker-bound receive time; the
+            # journal independently timestamps the durable state transition.
+            occurred_at=None,
         )
         next_state = updated.state
         realized_slippage_points = (
@@ -1008,11 +1080,12 @@ class ExecutionCoordinator:
         )
         slippage_breach = realized_slippage_points > risk.slippage_limit_points + 1e-12
         if slippage_breach:
+            event_now = self._trusted_now()
             self.journal.latch_kill_switch(
                 f"realized slippage {realized_slippage_points:.6f} exceeded "
                 f"limit {risk.slippage_limit_points:.6f} for {intent.intent_id}",
                 source="EXECUTION",
-                occurred_at=submission_now,
+                occurred_at=event_now,
             )
         return self._outcome(
             updated,

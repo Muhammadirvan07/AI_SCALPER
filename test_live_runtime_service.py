@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from live_runtime.contracts import BrokerSpec, DecisionSnapshot, _mint_decision_snapshot
+from live_runtime.account_fence import account_runtime_identity
 from live_runtime.controls import ManualDemoApproval, manual_demo_account_sha256
 from live_runtime.executor import ExecutionOutcome
 from live_runtime.health import RuntimeHealthFacts
@@ -24,7 +25,8 @@ from live_runtime.permit import PromotionPermit, account_alias_sha256
 from live_runtime.promotion_evidence import PromotionEvidenceReceipt
 from live_runtime.reconciliation import ReconciliationResult
 from live_runtime.risk import RiskContext
-from live_runtime.runtime_service import LiveRuntimeService
+from live_runtime.runtime_service import FreshManualDemoContext, LiveRuntimeService
+from test_fixtures.verified_risk_context import build_verified_risk_context
 
 
 UTC = timezone.utc
@@ -62,7 +64,7 @@ def decision(*, side: str = "BUY") -> DecisionSnapshot:
     )
 
 
-def broker_spec(*, mode: str = "DEMO") -> BrokerSpec:
+def broker_spec(*, mode: str = "DEMO", captured_at: datetime = NOW) -> BrokerSpec:
     return BrokerSpec(
         account_id="account-alias",
         broker_legal_name="Example Broker Ltd",
@@ -83,7 +85,7 @@ def broker_spec(*, mode: str = "DEMO") -> BrokerSpec:
         freeze_level_points=0,
         margin_per_lot=50.0,
         session_calendar_sha256="d" * 64,
-        captured_at=NOW,
+        captured_at=captured_at,
     )
 
 
@@ -105,7 +107,7 @@ def promotion_evidence(journal: ExecutionJournal) -> PromotionEvidenceReceipt:
         runtime_parity_receipt_sha256="4" * 64,
         build_manifest_sha256="5" * 64,
         issued_at=NOW - timedelta(seconds=1),
-        expires_at=NOW + timedelta(minutes=5),
+        expires_at=NOW + timedelta(minutes=4),
         signer_key_id="promotion-key-v1",
         nonce="runtime-service-promotion",
     ).sign(PROMOTION_SECRET)
@@ -126,7 +128,7 @@ def permit(
         config_sha256="b" * 64,
         model_artifact_sha256="f" * 64,
         issued_at=NOW - timedelta(seconds=1),
-        expires_at=NOW + timedelta(minutes=5),
+        expires_at=NOW + timedelta(minutes=4),
         nonce=f"runtime-service-{mode.lower()}",
         journal_sha256=journal.journal_sha256,
         promotion_evidence_sha256=(
@@ -135,9 +137,9 @@ def permit(
     ).sign(SECRET)
 
 
-def risk_context(*, mode: str = "DEMO") -> RiskContext:
+def risk_context(*, mode: str = "DEMO", evaluated_at: datetime = NOW) -> RiskContext:
     return RiskContext(
-        evaluated_at=NOW,
+        evaluated_at=evaluated_at,
         mode=mode,
         account_id="account-alias",
         server="Broker-Demo",
@@ -165,10 +167,10 @@ def risk_context(*, mode: str = "DEMO") -> RiskContext:
     )
 
 
-def health_facts() -> RuntimeHealthFacts:
+def health_facts(*, observed_at: datetime = NOW) -> RuntimeHealthFacts:
     return RuntimeHealthFacts(
-        observed_at=NOW,
-        heartbeat_at=NOW,
+        observed_at=observed_at,
+        heartbeat_at=observed_at,
         clock_drift_seconds=0.0,
         free_disk_bytes=2_000_000_000,
         database_integrity_ok=True,
@@ -180,29 +182,29 @@ def health_facts() -> RuntimeHealthFacts:
     )
 
 
-def market_guard():
+def market_guard(*, evaluated_at: datetime = NOW):
     feed = NewsFeed(
-        fetched_at=NOW,
+        fetched_at=evaluated_at,
         events=(
             NewsEvent(
                 event_id="non-blocking-jpy",
                 currency="JPY",
                 impact="LOW",
-                scheduled_at=NOW,
+                scheduled_at=evaluated_at,
             ),
         ),
         provider_name="trusted-calendar",
         provider_healthy=True,
         schema_version=NEWS_FEED_SCHEMA_VERSION,
-        coverage_start_at=NOW - timedelta(hours=1),
-        coverage_end_at=NOW + timedelta(hours=1),
+        coverage_start_at=evaluated_at - timedelta(hours=1),
+        coverage_end_at=evaluated_at + timedelta(hours=1),
         signing_key_id="news-key-v1",
     ).sign(NEWS_SECRET)
     return evaluate_market_guards(
         symbol="EURUSD",
-        now=NOW,
+        now=evaluated_at,
         news_feed=feed,
-        broker_rollover_at=NOW + timedelta(hours=5),
+        broker_rollover_at=evaluated_at + timedelta(hours=5),
         news_signing_key_provider=lambda key_id: NEWS_SECRET,
     )
 
@@ -223,15 +225,18 @@ def model_artifact() -> ModelArtifactManifest:
 def signed_manual_approval(
     trade_intent,
     journal: ExecutionJournal,
+    *,
+    approved_at: datetime | None = None,
 ) -> ManualDemoApproval:
+    issued_at = NOW - timedelta(seconds=1) if approved_at is None else approved_at
     return ManualDemoApproval(
         intent_id=trade_intent.intent_id,
         account_id_sha256=manual_demo_account_sha256(trade_intent.account_id),
         server=trade_intent.server,
         approver_id="operator-1",
         key_id="manual-demo-key-v1",
-        issued_at_utc=NOW - timedelta(seconds=1),
-        expires_at_utc=NOW + timedelta(minutes=1),
+        issued_at_utc=issued_at,
+        expires_at_utc=issued_at + timedelta(minutes=1),
         nonce=trade_intent.intent_id,
         journal_sha256=journal.journal_sha256,
     ).sign(MANUAL_SECRET)
@@ -268,6 +273,9 @@ class StubCoordinator:
     def __init__(self, journal: ExecutionJournal):
         self.journal = journal
         self.calls: list[dict[str, object]] = []
+        self.account_runtime_identity_sha256 = account_runtime_identity(
+            12345, "Broker-Demo", "DEMO"
+        )
 
     def execute_once(self, **kwargs):
         self.calls.append(kwargs)
@@ -311,15 +319,21 @@ class LiveRuntimeServiceTests(unittest.TestCase):
             clock_provider=lambda: NOW,
         )
 
-    def service(self, quote: BrokerSizingQuote):
+    def service(
+        self,
+        quote: BrokerSizingQuote,
+        *,
+        clock: list[datetime] | None = None,
+    ):
         adapter = StubAdapter(quote)
         coordinator = StubCoordinator(self.journal)
+        runtime_clock = clock if clock is not None else [NOW]
         service = LiveRuntimeService(
             adapter=adapter,
             coordinator=coordinator,
             journal=self.journal,
             magic_number=260615,
-            clock_provider=lambda: NOW,
+            clock_provider=lambda: runtime_clock[0],
         )
         return service, adapter, coordinator
 
@@ -349,20 +363,105 @@ class LiveRuntimeServiceTests(unittest.TestCase):
             manual_demo_approval_provider = lambda trade_intent: (
                 signed_manual_approval(trade_intent, self.journal)
             )
+        selected_spec = broker_spec(mode=mode)
+        selected_permit = permit(self.journal, mode=mode, evidence=evidence)
+        selected_health = health_facts()
+        selected_guard = market_guard()
+        selected_context = build_verified_risk_context(
+            journal=self.journal,
+            broker_spec=selected_spec,
+            health_facts=selected_health,
+            market_guard=selected_guard,
+            permit=selected_permit,
+            permit_secret=SECRET,
+            account_runtime_identity_sha256=(
+                service.coordinator.account_runtime_identity_sha256
+            ),
+            now=NOW,
+            template=risk_context(mode=mode),
+        )
         return service.execute_once(
             decision=selected_decision,
             broker_symbol="EURUSD.a",
-            broker_spec=broker_spec(mode=mode),
-            risk_context=risk_context(mode=mode),
-            permit=permit(self.journal, mode=mode, evidence=evidence),
-            health_facts=health_facts(),
-            market_guard=market_guard(),
+            broker_spec=selected_spec,
+            risk_context=selected_context,
+            permit=selected_permit,
+            health_facts=selected_health,
+            market_guard=selected_guard,
             model_artifact=model_artifact(),
             owner_id="executor-a",
             fence_token=7,
             manual_demo_approval_provider=manual_demo_approval_provider,
             promotion_evidence=evidence,
             now=NOW,
+        )
+
+    def prepare_manual(
+        self,
+        service: LiveRuntimeService,
+        *,
+        at: datetime = NOW,
+    ):
+        selected_spec = broker_spec(captured_at=at)
+        selected_permit = permit(self.journal)
+        selected_health = health_facts(observed_at=at)
+        selected_guard = market_guard(evaluated_at=at)
+        selected_context = build_verified_risk_context(
+            journal=self.journal,
+            broker_spec=selected_spec,
+            health_facts=selected_health,
+            market_guard=selected_guard,
+            permit=selected_permit,
+            permit_secret=SECRET,
+            account_runtime_identity_sha256=(
+                service.coordinator.account_runtime_identity_sha256
+            ),
+            now=at,
+            template=risk_context(evaluated_at=at),
+        )
+        result = service.prepare_manual_demo(
+            decision=decision(),
+            broker_symbol="EURUSD.a",
+            broker_spec=selected_spec,
+            risk_context=selected_context,
+            permit=selected_permit,
+            health_facts=selected_health,
+            market_guard=selected_guard,
+            model_artifact=model_artifact(),
+            owner_id="executor-a",
+            fence_token=7,
+            now=at,
+        )
+        return result, selected_permit
+
+    def fresh_manual_context(
+        self,
+        service: LiveRuntimeService,
+        selected_permit: PromotionPermit,
+        *,
+        at: datetime,
+    ) -> FreshManualDemoContext:
+        selected_spec = broker_spec(captured_at=at)
+        selected_health = health_facts(observed_at=at)
+        selected_guard = market_guard(evaluated_at=at)
+        selected_context = build_verified_risk_context(
+            journal=self.journal,
+            broker_spec=selected_spec,
+            health_facts=selected_health,
+            market_guard=selected_guard,
+            permit=selected_permit,
+            permit_secret=SECRET,
+            account_runtime_identity_sha256=(
+                service.coordinator.account_runtime_identity_sha256
+            ),
+            now=at,
+            template=risk_context(evaluated_at=at),
+        )
+        return FreshManualDemoContext(
+            broker_spec=selected_spec,
+            risk_context=selected_context,
+            health_facts=selected_health,
+            market_guard=selected_guard,
         )
 
     def test_sizing_wait_creates_no_intent_and_never_calls_coordinator(self):
@@ -447,33 +546,28 @@ class LiveRuntimeServiceTests(unittest.TestCase):
         self.assertEqual(1, len(adapter.sizing_calls))
         self.assertEqual([], coordinator.calls)
 
-    def test_non_usd_missing_conversion_stops_before_broker_sizing(self):
+    def test_raw_non_usd_context_is_rejected_before_broker_sizing(self):
         unused_quote = sizing_quote()
         service, adapter, coordinator = self.service(unused_quote)
 
-        result = service.execute_once(
-            decision=decision(),
-            broker_symbol="EURUSD.a",
-            broker_spec=replace(broker_spec(), account_currency="JPY"),
-            risk_context=risk_context(),
-            permit=permit(self.journal),
-            health_facts=health_facts(),
-            market_guard=market_guard(),
-            model_artifact=model_artifact(),
-            owner_id="executor-a",
-            fence_token=7,
-            manual_demo_approval_provider=lambda trade_intent: (
-                signed_manual_approval(trade_intent, self.journal)
-            ),
-            promotion_evidence=None,
-            now=NOW,
-        )
-
-        self.assertEqual("WAIT_PRECONDITION", result.status)
-        self.assertIn(
-            "USD_RISK_CAP_CONVERSION_UNAVAILABLE",
-            result.reason_codes,
-        )
+        with self.assertRaises(TypeError):
+            service.execute_once(
+                decision=decision(),
+                broker_symbol="EURUSD.a",
+                broker_spec=replace(broker_spec(), account_currency="JPY"),
+                risk_context=risk_context(),  # type: ignore[arg-type]
+                permit=permit(self.journal),
+                health_facts=health_facts(),
+                market_guard=market_guard(),
+                model_artifact=model_artifact(),
+                owner_id="executor-a",
+                fence_token=7,
+                manual_demo_approval_provider=lambda trade_intent: (
+                    signed_manual_approval(trade_intent, self.journal)
+                ),
+                promotion_evidence=None,
+                now=NOW,
+            )
         self.assertEqual([], adapter.sizing_calls)
         self.assertEqual([], coordinator.calls)
 
@@ -520,14 +614,177 @@ class LiveRuntimeServiceTests(unittest.TestCase):
             manual_demo_approval_provider=None,
         )
 
-        self.assertEqual(result.status, "WAIT_CONTROL")
+        self.assertEqual(result.status, "MANUAL_DEMO_PREPARED")
         self.assertIn(
-            "MANUAL_DEMO_APPROVAL_PROVIDER_REQUIRED",
+            "MANUAL_DEMO_APPROVAL_REQUIRED",
             result.reason_codes,
         )
         self.assertIsNotNone(result.intent)
         self.assertEqual(len(adapter.sizing_calls), 1)
         self.assertEqual(coordinator.calls, [])
+
+    def test_prepared_manual_demo_refreshes_one_second_proofs_after_human_delay(self):
+        clock = [NOW]
+        service, adapter, coordinator = self.service(sizing_quote(), clock=clock)
+        prepared, selected_permit = self.prepare_manual(service)
+        self.assertEqual("MANUAL_DEMO_PREPARED", prepared.status)
+        self.assertEqual(
+            BAR_CLOSE + timedelta(seconds=10),
+            prepared.intent.expires_at,
+        )
+        self.assertEqual([], coordinator.calls)
+
+        approved_at = NOW + timedelta(seconds=2)
+        clock[0] = approved_at
+        adapter.quote = sizing_quote(evaluated_at_utc=approved_at)
+        approval = signed_manual_approval(
+            prepared.intent,
+            self.journal,
+            approved_at=approved_at,
+        )
+        provider_calls = []
+
+        def provider(exact_intent, requested_at):
+            provider_calls.append((exact_intent, requested_at))
+            return self.fresh_manual_context(
+                service,
+                selected_permit,
+                at=approved_at,
+            )
+
+        result = service.execute_prepared_manual_demo(
+            prepared_intent=prepared.intent,
+            manual_demo_approval=approval,
+            permit=selected_permit,
+            fresh_context_provider=provider,
+            model_artifact=model_artifact(),
+            owner_id="executor-a",
+            fence_token=7,
+            now=approved_at,
+        )
+
+        self.assertEqual("WAIT", result.status)
+        self.assertIs(result.intent, prepared.intent)
+        self.assertEqual([(prepared.intent, approved_at)], provider_calls)
+        self.assertEqual(1, len(coordinator.calls))
+        call = coordinator.calls[0]
+        self.assertIs(call["intent"], prepared.intent)
+        self.assertEqual(approved_at, call["now"])
+        self.assertEqual(approved_at, call["risk_context"].evaluated_at_utc)
+
+        replay = service.execute_prepared_manual_demo(
+            prepared_intent=prepared.intent,
+            manual_demo_approval=approval,
+            permit=selected_permit,
+            fresh_context_provider=lambda *_args: self.fail(
+                "a replay must not refresh broker evidence"
+            ),
+            model_artifact=model_artifact(),
+            owner_id="executor-a",
+            fence_token=7,
+            now=approved_at,
+        )
+        self.assertEqual("WAIT_CONTROL", replay.status)
+        self.assertIn("PREPARED_INTENT_REPLAYED", replay.reason_codes)
+        self.assertEqual(1, len(coordinator.calls))
+
+    def test_prepared_manual_demo_expires_at_original_entry_deadline(self):
+        clock = [NOW]
+        service, adapter, coordinator = self.service(sizing_quote(), clock=clock)
+        prepared, selected_permit = self.prepare_manual(service)
+        expired_at = BAR_CLOSE + timedelta(seconds=10)
+        clock[0] = expired_at
+        adapter.quote = sizing_quote(evaluated_at_utc=expired_at)
+        approval = signed_manual_approval(
+            prepared.intent,
+            self.journal,
+            approved_at=expired_at,
+        )
+
+        result = service.execute_prepared_manual_demo(
+            prepared_intent=prepared.intent,
+            manual_demo_approval=approval,
+            permit=selected_permit,
+            fresh_context_provider=lambda *_args: self.fail(
+                "an expired proposal must not collect fresh broker evidence"
+            ),
+            model_artifact=model_artifact(),
+            owner_id="executor-a",
+            fence_token=7,
+            now=expired_at,
+        )
+
+        self.assertEqual("WAIT_CONTROL", result.status)
+        self.assertIn("PREPARED_INTENT_EXPIRED", result.reason_codes)
+        self.assertEqual([], coordinator.calls)
+
+    def test_prepared_manual_demo_rejects_changes_mismatch_and_stale_facts(self):
+        for scenario in ("changed", "approval", "stale"):
+            with self.subTest(scenario=scenario):
+                clock = [NOW]
+                service, adapter, coordinator = self.service(
+                    sizing_quote(),
+                    clock=clock,
+                )
+                prepared, selected_permit = self.prepare_manual(service)
+                approved_at = NOW + timedelta(seconds=2)
+                clock[0] = approved_at
+                adapter.quote = sizing_quote(evaluated_at_utc=approved_at)
+                selected_intent = prepared.intent
+                approval = signed_manual_approval(
+                    prepared.intent,
+                    self.journal,
+                    approved_at=approved_at,
+                )
+                expected = ""
+                if scenario == "changed":
+                    selected_intent = replace(
+                        prepared.intent,
+                        requested_lot=0.02,
+                    )
+                    approval = signed_manual_approval(
+                        selected_intent,
+                        self.journal,
+                        approved_at=approved_at,
+                    )
+                    expected = "PREPARED_INTENT_CHANGED"
+                elif scenario == "approval":
+                    approval = replace(
+                        approval,
+                        intent_id="another-intent",
+                        signature="",
+                    ).sign(MANUAL_SECRET)
+                    expected = "MANUAL_DEMO_INTENT_MISMATCH"
+                else:
+                    expected = "VERIFIED_RISK_CONTEXT_EXPIRED"
+
+                initial_context = self.fresh_manual_context(
+                    service,
+                    selected_permit,
+                    at=NOW,
+                )
+                provider_calls = []
+
+                def provider(*_args):
+                    provider_calls.append(True)
+                    return initial_context
+
+                result = service.execute_prepared_manual_demo(
+                    prepared_intent=selected_intent,
+                    manual_demo_approval=approval,
+                    permit=selected_permit,
+                    fresh_context_provider=provider,
+                    model_artifact=model_artifact(),
+                    owner_id="executor-a",
+                    fence_token=7,
+                    now=approved_at,
+                )
+                self.assertIn(expected, result.reason_codes)
+                self.assertEqual([], coordinator.calls)
+                self.assertEqual(
+                    [True] if scenario == "stale" else [],
+                    provider_calls,
+                )
 
     def test_promotion_evidence_is_passed_to_coordinator_for_demo_auto(self):
         quote = sizing_quote()

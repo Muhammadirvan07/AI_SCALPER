@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -29,6 +30,7 @@ from live_runtime.permit import (
 )
 from live_runtime.risk import RiskContext, evaluate_risk
 from live_runtime.reconciliation import reconcile_broker_state
+from test_fixtures.execution_receipt import mint_submission_consumption_proof
 
 
 UTC = timezone.utc
@@ -47,6 +49,7 @@ class ExecutionJournalTests(unittest.TestCase):
         self.now = datetime(2026, 7, 15, 12, 0, 1, tzinfo=UTC)
         self.clock_now = self.now
         self.submission_evidence = {}
+        self.submission_proofs = {}
         self.journal = ExecutionJournal(
             self.path,
             clock_provider=lambda: self.clock_now,
@@ -207,12 +210,42 @@ class ExecutionJournalTests(unittest.TestCase):
     def execution_receipt(self, intent_id: str, state: str):
         record = self.journal.get_intent(intent_id)
         intent_payload = record.payload["intent"]
+        proof = self.submission_proofs.get(intent_id)
+        if proof is None:
+            with self.journal._reader() as connection:
+                executor = connection.execute(
+                    "SELECT owner_id, fence_token FROM executor_lease WHERE singleton=1"
+                ).fetchone()
+            self.assertIsNotNone(executor)
+            gate_hash = hashlib.sha256(f"gate:{intent_id}".encode()).hexdigest()
+            authorization_hash = hashlib.sha256(
+                f"authorization:{intent_id}".encode()
+            ).hexdigest()
+            request_hash = hashlib.sha256(f"request:{intent_id}".encode()).hexdigest()
+            with self.journal.final_submission_guard(
+                intent_id,
+                owner_id=executor["owner_id"],
+                fence_token=int(executor["fence_token"]),
+                execution_gate_sha256=gate_hash,
+                authorization_sha256=authorization_hash,
+                broker_request_sha256=request_hash,
+                occurred_at=self.clock_now,
+            ) as submission_lease:
+                proof = submission_lease.consume(
+                    journal_sha256=self.journal.journal_sha256,
+                    intent_id=intent_id,
+                    execution_gate_sha256=gate_hash,
+                    authorization_sha256=authorization_hash,
+                    broker_request_sha256=request_hash,
+                )
+            self.submission_proofs[intent_id] = proof
         filled = (
             0.0
             if state in {"ACKNOWLEDGED", "REJECTED", "UNCERTAIN"}
             else 0.01
         )
         return _mint_execution_receipt(
+            submission_proof=proof,
             intent_id=intent_id,
             state=state,
             account_id=intent_payload["account_id"],
@@ -229,7 +262,7 @@ class ExecutionJournalTests(unittest.TestCase):
         )
 
     def test_intent_is_idempotent_but_payload_reuse_is_rejected(self):
-        self.assertEqual(3, self.journal.schema_version())
+        self.assertEqual(4, self.journal.schema_version())
         self.assertTrue(self.journal.integrity_check())
         first = self.create()
         second = self.create()
@@ -251,7 +284,7 @@ class ExecutionJournalTests(unittest.TestCase):
             decision_id="decision-shared",
             symbol="XAUUSD",
             payload={"lot": 0.01, "mode": "SHADOW", "retry": True},
-            created_at=self.now + timedelta(milliseconds=100),
+            created_at=self.now,
         )
         self.assertEqual(first, second)
         self.assertIsNone(self.journal.get_intent("intent-2"))
@@ -323,6 +356,105 @@ class ExecutionJournalTests(unittest.TestCase):
                 "CLOSED",
             ],
         )
+
+    def test_sealed_execution_receipt_allows_short_persistence_delay(self):
+        token = self.journal.claim_executor(
+            "executor-receipt-delay", now=self.now, lease_seconds=60
+        )
+        self._prepare_reservation("intent-1", token, self.now)
+        self.journal.reserve_submission(
+            "intent-1",
+            owner_id="executor-receipt-delay",
+            fence_token=token,
+            submission_evidence=self.submission_evidence["intent-1"],
+            occurred_at=self.now,
+        )
+        receipt = self.execution_receipt("intent-1", "FILLED")
+        self.clock_now = self.now + timedelta(seconds=1)
+
+        record = self.journal.record_execution_receipt(receipt)
+
+        self.assertEqual("FILLED", record.state)
+        self.assertEqual(
+            self.clock_now.isoformat(),
+            self.journal.transition_history("intent-1")[-1]["occurred_at_utc"],
+        )
+
+    def test_execution_receipt_requires_consumption_in_the_same_journal(self):
+        token = self.journal.claim_executor(
+            "executor-cross-journal", now=self.now, lease_seconds=60
+        )
+        self._prepare_reservation("intent-1", token, self.now)
+        self.journal.reserve_submission(
+            "intent-1",
+            owner_id="executor-cross-journal",
+            fence_token=token,
+            submission_evidence=self.submission_evidence["intent-1"],
+            occurred_at=self.now,
+        )
+        # The proof is genuinely sealed and claims the same public journal
+        # identity, but its authorization was consumed in a different SQLite
+        # incarnation.  Hash assertions alone must not be sufficient.
+        foreign_proof = mint_submission_consumption_proof(
+            intent_id="intent-1",
+            consumed_at=self.now,
+            journal_sha256=self.journal.journal_sha256,
+        )
+        receipt = _mint_execution_receipt(
+            submission_proof=foreign_proof,
+            intent_id="intent-1",
+            state="REJECTED",
+            account_id="account-alias",
+            server="Broker-Demo",
+            symbol="EURUSD",
+            requested_volume=0.01,
+            filled_volume=0.0,
+            received_at=self.now,
+            broker_retcode="10006",
+            message="forged local outcome",
+        )
+        with self.assertRaisesRegex(
+            InvalidTransitionError,
+            "matching authorization consumption",
+        ):
+            self.journal.record_execution_receipt(receipt, occurred_at=self.now)
+
+    def test_sealed_execution_receipt_rejects_future_or_stale_time(self):
+        token = self.journal.claim_executor(
+            "executor-receipt-time", now=self.now, lease_seconds=60
+        )
+        self._prepare_reservation("intent-1", token, self.now)
+        self.journal.reserve_submission(
+            "intent-1",
+            owner_id="executor-receipt-time",
+            fence_token=token,
+            submission_evidence=self.submission_evidence["intent-1"],
+            occurred_at=self.now,
+        )
+        stale_receipt = self.execution_receipt("intent-1", "FILLED")
+        self.clock_now = self.now + timedelta(seconds=6)
+        with self.assertRaisesRegex(ValueError, "not journaled promptly"):
+            self.journal.record_execution_receipt(stale_receipt)
+
+        self.clock_now = self.now
+        future_receipt = _mint_execution_receipt(
+            submission_proof=self.submission_proofs["intent-1"],
+            intent_id="intent-1",
+            state="FILLED",
+            account_id="account-alias",
+            server="Broker-Demo",
+            symbol="EURUSD",
+            requested_volume=0.01,
+            filled_volume=0.01,
+            received_at=self.now + timedelta(seconds=1),
+            broker_retcode="10009",
+            message="filled",
+            order_ticket="42",
+            deal_ticket="84",
+            fill_price=1.1,
+        )
+        with self.assertRaisesRegex(ValueError, "in the future"):
+            self.journal.record_execution_receipt(future_receipt)
 
     def test_uncertain_state_can_only_be_resolved_by_reconciliation_states(self):
         token = self.journal.claim_executor(
@@ -922,6 +1054,7 @@ class ExecutionJournalTests(unittest.TestCase):
                 fence_token=token,
                 execution_gate_sha256="a" * 64,
                 authorization_sha256="b" * 64,
+                broker_request_sha256="1" * 64,
                 occurred_at=self.now + timedelta(milliseconds=1),
             ):
                 self.fail("stale fence entered final submission guard")
@@ -931,6 +1064,7 @@ class ExecutionJournalTests(unittest.TestCase):
             fence_token=replacement,
             execution_gate_sha256="a" * 64,
             authorization_sha256="b" * 64,
+            broker_request_sha256="1" * 64,
             occurred_at=self.now + timedelta(milliseconds=1),
         ):
             self.assertEqual(
@@ -957,6 +1091,7 @@ class ExecutionJournalTests(unittest.TestCase):
             fence_token=token,
             execution_gate_sha256=gate_hash,
             authorization_sha256=authorization_hash,
+            broker_request_sha256="1" * 64,
             occurred_at=self.now,
         ):
             pass
@@ -972,10 +1107,53 @@ class ExecutionJournalTests(unittest.TestCase):
                 fence_token=token,
                 execution_gate_sha256=gate_hash,
                 authorization_sha256=authorization_hash,
+                broker_request_sha256="1" * 64,
                 occurred_at=self.now,
             ):
                 self.fail("a consumed authorization was reminted after restart")
         self.assertEqual("AUTHORIZATION_ALREADY_CONSUMED", raised.exception.reason_code)
+
+    def test_final_guard_does_not_hold_sqlite_write_lock_across_broker_io(self):
+        token = self.journal.claim_executor(
+            "executor-a", now=self.now, lease_seconds=60
+        )
+        intent_id = "intent-nonblocking-final-guard"
+        self._prepare_reservation(intent_id, token, self.now)
+        self.journal.reserve_submission(
+            intent_id,
+            owner_id="executor-a",
+            fence_token=token,
+            submission_evidence=self.submission_evidence[intent_id],
+            occurred_at=self.now,
+        )
+        gate_hash = "e" * 64
+        authorization_hash = "f" * 64
+        restarted = ExecutionJournal(
+            self.path,
+            clock_provider=lambda: self.clock_now,
+        )
+        with self.journal.final_submission_guard(
+            intent_id,
+            owner_id="executor-a",
+            fence_token=token,
+            execution_gate_sha256=gate_hash,
+            authorization_sha256=authorization_hash,
+            broker_request_sha256="1" * 64,
+            occurred_at=self.now,
+        ) as submission_lease:
+            restarted.latch_kill_switch(
+                "operator emergency stop",
+                source="TEST",
+                occurred_at=self.now,
+            )
+            with self.assertRaises(KillSwitchLatchedError):
+                submission_lease.consume(
+                    journal_sha256=self.journal.journal_sha256,
+                    intent_id=intent_id,
+                    execution_gate_sha256=gate_hash,
+                    authorization_sha256=authorization_hash,
+                    broker_request_sha256="1" * 64,
+                )
 
     def test_naive_timestamp_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -1005,6 +1183,36 @@ class ExecutionJournalTests(unittest.TestCase):
                 now=self.now + timedelta(seconds=1),
             )
 
+        with self.assertRaisesRegex(ValueError, "trusted journal clock"):
+            self.journal.create_intent(
+                intent_id="intent-forged-created-at",
+                decision_id="decision-forged-created-at",
+                symbol="EURUSD",
+                payload={},
+                created_at=self.now + timedelta(seconds=1),
+            )
+
+        self.create("intent-timestamp-boundaries")
+        with self.assertRaisesRegex(ValueError, "trusted journal clock"):
+            self.journal.transition(
+                "intent-timestamp-boundaries",
+                "RISK_APPROVED",
+                occurred_at=self.now + timedelta(seconds=1),
+            )
+        with self.assertRaisesRegex(ValueError, "trusted journal clock"):
+            self.journal.append_receipt(
+                "intent-timestamp-boundaries",
+                "TEST_RECEIPT",
+                {},
+                occurred_at=self.now + timedelta(seconds=1),
+            )
+        with self.assertRaisesRegex(ValueError, "trusted journal clock"):
+            self.journal.latch_kill_switch(
+                "forged-time incident",
+                source="TEST",
+                occurred_at=self.now + timedelta(seconds=1),
+            )
+
         self._prepare_reservation("intent-clock", token, self.now)
         with self.assertRaisesRegex(ValueError, "trusted journal clock"):
             self.journal.reserve_submission(
@@ -1028,9 +1236,30 @@ class ExecutionJournalTests(unittest.TestCase):
                 fence_token=token,
                 execution_gate_sha256="a" * 64,
                 authorization_sha256="b" * 64,
+                broker_request_sha256="1" * 64,
                 occurred_at=self.now + timedelta(seconds=1),
             ):
                 self.fail("stale clock entered final submission boundary")
+
+    def test_short_one_way_recording_delay_uses_journal_clock(self):
+        self.clock_now = self.now + timedelta(seconds=2)
+        record = self.journal.create_intent(
+            intent_id="intent-short-recording-delay",
+            decision_id="decision-short-recording-delay",
+            symbol="EURUSD",
+            payload={},
+            created_at=self.now,
+        )
+        self.assertEqual(self.clock_now, record.created_at_utc)
+
+        with self.assertRaisesRegex(ValueError, "stale"):
+            self.journal.create_intent(
+                intent_id="intent-excessive-recording-delay",
+                decision_id="decision-excessive-recording-delay",
+                symbol="EURUSD",
+                payload={},
+                created_at=self.now - timedelta(seconds=4),
+            )
 
 
 if __name__ == "__main__":

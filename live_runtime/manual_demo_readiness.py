@@ -42,6 +42,18 @@ _POLICY_FIELDS = frozenset(
     }
 )
 _GATE_CODE = re.compile(r"^[A-Z][A-Z0-9_]{2,127}$")
+_APPROVED_BINDING_STATUSES = frozenset(
+    {
+        "READ_ONLY_DISCOVERY_V3_APPROVED",
+        "READ_ONLY_DISCOVERY_V3_APPROVED_REGISTRATION_GATES_REMAIN_BLOCKED",
+    }
+)
+_APPROVED_CALENDAR_HASH_STATUSES = frozenset(
+    {
+        "APPROVED_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS",
+        "VERIFIED_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS",
+    }
+)
 
 
 class ManualDemoReadinessError(RuntimeError):
@@ -281,12 +293,15 @@ def evaluate_manual_demo_readiness(
         blockers.add("EVIDENCE_REGISTRATION_DISABLED")
     if str(profile.get("status", "")).upper().startswith("BLOCKED"):
         blockers.add("EVIDENCE_PROFILE_BLOCKED")
-    if "APPROVED" not in str(candidate.get("binding_status", "")).upper():
+    if candidate.get("binding_status") not in _APPROVED_BINDING_STATUSES:
         blockers.add("BROKER_BINDING_NOT_APPROVED")
     if candidate.get("instrument_specification_status") != "API_CAPTURED_COMPLETE":
         blockers.add("INSTRUMENT_SPECIFICATION_PENDING")
     time_model = _mapping(candidate.get("server_time_model"), "server_time_model")
-    if "PENDING" in str(time_model.get("calendar_hash_status", "")).upper():
+    if (
+        time_model.get("calendar_hash_status")
+        not in _APPROVED_CALENDAR_HASH_STATUSES
+    ):
         blockers.add("SESSION_CALENDAR_PENDING")
     regulatory = _mapping(
         candidate.get("regulatory_observation"),

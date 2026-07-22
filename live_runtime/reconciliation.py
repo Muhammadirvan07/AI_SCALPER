@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import InitVar, dataclass
-from datetime import datetime, timezone
+from dataclasses import InitVar, dataclass, replace
+from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
 import math
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from live_runtime.contracts import require_utc
+from live_runtime.contracts import (
+    CanonicalContract,
+    canonical_json,
+    canonical_sha256,
+    require_currency,
+    require_finite,
+    require_hash,
+    require_int,
+    require_text,
+    require_utc,
+)
 from live_runtime.journal import (
     ALLOWED_TRANSITIONS,
     EXECUTION_STATES,
@@ -20,6 +32,17 @@ from live_runtime.journal import (
 UTC = timezone.utc
 DEAL_ENTRY_OUT_VALUES = frozenset({1, 3, "OUT", "OUT_BY", "DEAL_ENTRY_OUT", "DEAL_ENTRY_OUT_BY"})
 _BROKER_RECONCILIATION_EVIDENCE_SEAL = object()
+_BROKER_RECONCILIATION_RECEIPT_SEAL = object()
+_BROKER_DEAL_RECEIPT_SEAL = object()
+_BROKER_CLOSED_TRADE_RECEIPT_SEAL = object()
+_BROKER_RECONCILIATION_HMAC_DOMAIN = (
+    b"AI_SCALPER_BROKER_RECONCILIATION_RECEIPT_V1\x00"
+)
+_BROKER_DEAL_HMAC_DOMAIN = b"AI_SCALPER_BROKER_DEAL_RECEIPT_V1\x00"
+_BROKER_CLOSED_TRADE_HMAC_DOMAIN = (
+    b"AI_SCALPER_BROKER_CLOSED_TRADE_RECEIPT_V1\x00"
+)
+BROKER_RECONCILIATION_RECEIPT_MAX_AGE = timedelta(seconds=10)
 
 
 def _value(item: Mapping[str, Any], *keys: str, default: Any = None) -> Any:
@@ -59,6 +82,876 @@ class ReconciliationResult:
     volume_failures: tuple[str, ...]
     binding_failures: tuple[str, ...]
     kill_switch_latched: bool
+
+
+def reconciliation_result_sha256(result: ReconciliationResult) -> str:
+    """Hash every semantic field of one reconciler result."""
+
+    if type(result) is not ReconciliationResult:
+        raise TypeError("exact ReconciliationResult is required")
+    return canonical_sha256(
+        {
+            "status": result.status,
+            "matched_intents": result.matched_intents,
+            "uncertain_intents": result.uncertain_intents,
+            "closed_intents": result.closed_intents,
+            "orphan_position_tickets": result.orphan_position_tickets,
+            "orphan_order_tickets": result.orphan_order_tickets,
+            "protection_failures": result.protection_failures,
+            "volume_failures": result.volume_failures,
+            "binding_failures": result.binding_failures,
+            "kill_switch_latched": result.kill_switch_latched,
+        }
+    )
+
+
+def _receipt_secret(value: str | bytes) -> bytes:
+    if isinstance(value, str):
+        normalized = value.encode("utf-8")
+    elif isinstance(value, bytes):
+        normalized = value
+    else:
+        raise TypeError("receipt key must be str or bytes")
+    if len(normalized) < 32:
+        raise ValueError("receipt key must contain at least 32 bytes")
+    return normalized
+
+
+def _ticket_tuple(name: str, values: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)):
+        raise TypeError(f"{name} must be a sequence")
+    normalized = tuple(sorted(require_text(name, item) for item in values))
+    if len(set(normalized)) != len(normalized):
+        raise ValueError(f"{name} contains duplicate tickets")
+    return normalized
+
+
+def _closed_intent_deal_tuple(
+    value: Mapping[str, Sequence[str]]
+    | Sequence[tuple[str, Sequence[str]]],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    raw = value.items() if isinstance(value, Mapping) else value
+    normalized = tuple(
+        sorted(
+            (
+                require_text("closed intent id", intent_id),
+                _ticket_tuple("closed intent deal tickets", tickets),
+            )
+            for intent_id, tickets in raw
+        )
+    )
+    if len({intent_id for intent_id, _ in normalized}) != len(normalized):
+        raise ValueError("closed intent deal mapping contains duplicate intents")
+    attributed = [ticket for _, tickets in normalized for ticket in tickets]
+    if len(set(attributed)) != len(attributed):
+        raise ValueError("one broker deal cannot close multiple intents")
+    return normalized
+
+
+@dataclass(frozen=True)
+class BrokerReconciliationReceipt(CanonicalContract):
+    """Signed broker-observation envelope for exactly one reconciliation.
+
+    It binds the open ``ReconciliationResult`` to the exact account, journal,
+    query window, observed broker ticket sets, raw broker payload digest, and
+    a monotonic source sequence.  Construction is restricted to the issuer.
+    """
+
+    receipt_id: str
+    account_id_sha256: str
+    server: str
+    environment: str
+    journal_sha256: str
+    reconciliation_result_sha256: str
+    query_from_utc: datetime
+    query_to_utc: datetime
+    source_time_utc: datetime
+    observed_at_utc: datetime
+    source_sequence: int
+    previous_receipt_sha256: str
+    order_tickets: tuple[str, ...]
+    position_tickets: tuple[str, ...]
+    deal_tickets: tuple[str, ...]
+    closed_intent_deal_tickets: tuple[tuple[str, tuple[str, ...]], ...]
+    raw_payload_sha256: str
+    provider_id: str
+    key_id: str
+    signature_hmac_sha256: str
+    schema_version: str = "broker-reconciliation-receipt-v1"
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _BROKER_RECONCILIATION_RECEIPT_SEAL:
+            raise TypeError("broker reconciliation receipts require the issuer")
+        for name in ("receipt_id", "server", "provider_id", "key_id"):
+            object.__setattr__(self, name, require_text(name, getattr(self, name)))
+        environment = require_text("environment", self.environment, upper=True)
+        if environment not in {"DEMO", "LIVE", "LIVE_READ_ONLY"}:
+            raise ValueError("unsupported broker receipt environment")
+        object.__setattr__(self, "environment", environment)
+        for name in (
+            "account_id_sha256",
+            "journal_sha256",
+            "reconciliation_result_sha256",
+            "previous_receipt_sha256",
+            "raw_payload_sha256",
+        ):
+            object.__setattr__(self, name, require_hash(name, getattr(self, name)))
+        signature = str(self.signature_hmac_sha256 or "").strip().lower()
+        if signature:
+            signature = require_hash("signature_hmac_sha256", signature)
+        object.__setattr__(self, "signature_hmac_sha256", signature)
+        for name in (
+            "query_from_utc",
+            "query_to_utc",
+            "source_time_utc",
+            "observed_at_utc",
+        ):
+            require_utc(name, getattr(self, name))
+        if not (
+            self.query_from_utc
+            <= self.source_time_utc
+            <= self.query_to_utc
+            <= self.observed_at_utc
+        ):
+            raise ValueError("broker receipt query/source time ordering is invalid")
+        object.__setattr__(
+            self,
+            "source_sequence",
+            require_int("source_sequence", self.source_sequence, minimum=1),
+        )
+        for name in ("order_tickets", "position_tickets", "deal_tickets"):
+            object.__setattr__(self, name, _ticket_tuple(name, getattr(self, name)))
+        closed_mapping = _closed_intent_deal_tuple(
+            self.closed_intent_deal_tickets
+        )
+        attributed = {
+            ticket for _, tickets in closed_mapping for ticket in tickets
+        }
+        if not attributed.issubset(set(self.deal_tickets)):
+            raise ValueError("closed intent deal is absent from broker observation")
+        object.__setattr__(self, "closed_intent_deal_tickets", closed_mapping)
+        if self.schema_version != "broker-reconciliation-receipt-v1":
+            raise ValueError("unsupported broker reconciliation receipt schema")
+
+    def signing_dict(self) -> dict[str, object]:
+        payload = self.to_canonical_dict()
+        payload.pop("signature_hmac_sha256")
+        return payload
+
+
+@dataclass(frozen=True)
+class BrokerDealReceipt(CanonicalContract):
+    """Signed exact exit-deal evidence for one reconciled closed intent."""
+
+    receipt_id: str
+    trade_id: str
+    intent_id: str
+    account_id_sha256: str
+    server: str
+    environment: str
+    journal_sha256: str
+    reconciliation_receipt_sha256: str
+    query_from_utc: datetime
+    query_to_utc: datetime
+    source_time_utc: datetime
+    observed_at_utc: datetime
+    source_sequence: int
+    deal_sequence: int
+    deal_ticket: str
+    order_ticket: str | None
+    position_ticket: str
+    canonical_symbol: str
+    broker_symbol: str
+    account_currency: str
+    deal_time_utc: datetime
+    entry_side: str
+    exit_side: str
+    volume: float
+    fill_price: float
+    profit_account_currency: float
+    commission_account_currency: float
+    swap_account_currency: float
+    fee_account_currency: float
+    realized_net_pnl_account_currency: float
+    raw_payload_sha256: str
+    provider_id: str
+    key_id: str
+    signature_hmac_sha256: str
+    schema_version: str = "broker-deal-receipt-v1"
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _BROKER_DEAL_RECEIPT_SEAL:
+            raise TypeError("broker deal receipts require the issuer")
+        for name in (
+            "receipt_id",
+            "trade_id",
+            "intent_id",
+            "server",
+            "deal_ticket",
+            "position_ticket",
+            "broker_symbol",
+            "provider_id",
+            "key_id",
+        ):
+            object.__setattr__(self, name, require_text(name, getattr(self, name)))
+        if self.order_ticket is not None:
+            object.__setattr__(
+                self, "order_ticket", require_text("order_ticket", self.order_ticket)
+            )
+        environment = require_text("environment", self.environment, upper=True)
+        if environment not in {"DEMO", "LIVE", "LIVE_READ_ONLY"}:
+            raise ValueError("unsupported broker deal environment")
+        object.__setattr__(self, "environment", environment)
+        object.__setattr__(
+            self,
+            "canonical_symbol",
+            require_text("canonical_symbol", self.canonical_symbol, upper=True),
+        )
+        object.__setattr__(
+            self,
+            "account_currency",
+            require_currency("account_currency", self.account_currency),
+        )
+        entry_side = require_text("entry_side", self.entry_side, upper=True)
+        exit_side = require_text("exit_side", self.exit_side, upper=True)
+        if entry_side not in {"BUY", "SELL"} or exit_side not in {"BUY", "SELL"}:
+            raise ValueError("broker deal sides must be BUY or SELL")
+        if entry_side == exit_side:
+            raise ValueError("broker exit side must oppose the entry side")
+        object.__setattr__(self, "entry_side", entry_side)
+        object.__setattr__(self, "exit_side", exit_side)
+        object.__setattr__(
+            self, "volume", require_finite("volume", self.volume, positive=True)
+        )
+        object.__setattr__(
+            self,
+            "fill_price",
+            require_finite("fill_price", self.fill_price, positive=True),
+        )
+        for name in (
+            "profit_account_currency",
+            "commission_account_currency",
+            "swap_account_currency",
+            "fee_account_currency",
+            "realized_net_pnl_account_currency",
+        ):
+            object.__setattr__(
+                self, name, require_finite(name, getattr(self, name))
+            )
+        expected_net = math.fsum(
+            (
+                self.profit_account_currency,
+                self.commission_account_currency,
+                self.swap_account_currency,
+                self.fee_account_currency,
+            )
+        )
+        if self.realized_net_pnl_account_currency != expected_net:
+            raise ValueError("broker deal realized net PnL is not exact")
+        for name in (
+            "account_id_sha256",
+            "journal_sha256",
+            "reconciliation_receipt_sha256",
+            "raw_payload_sha256",
+        ):
+            object.__setattr__(self, name, require_hash(name, getattr(self, name)))
+        signature = str(self.signature_hmac_sha256 or "").strip().lower()
+        if signature:
+            signature = require_hash("signature_hmac_sha256", signature)
+        object.__setattr__(self, "signature_hmac_sha256", signature)
+        for name in (
+            "query_from_utc",
+            "query_to_utc",
+            "source_time_utc",
+            "deal_time_utc",
+            "observed_at_utc",
+        ):
+            require_utc(name, getattr(self, name))
+        if not (
+            self.query_from_utc
+            <= self.source_time_utc
+            <= self.query_to_utc
+            <= self.observed_at_utc
+        ):
+            raise ValueError("broker deal query/source time ordering is invalid")
+        if self.deal_time_utc != self.source_time_utc:
+            raise ValueError("broker deal timestamp must equal the signed source time")
+        object.__setattr__(
+            self,
+            "source_sequence",
+            require_int("source_sequence", self.source_sequence, minimum=1),
+        )
+        object.__setattr__(
+            self,
+            "deal_sequence",
+            require_int("deal_sequence", self.deal_sequence, minimum=1),
+        )
+        if self.schema_version != "broker-deal-receipt-v1":
+            raise ValueError("unsupported broker deal receipt schema")
+
+    def signing_dict(self) -> dict[str, object]:
+        payload = self.to_canonical_dict()
+        payload.pop("signature_hmac_sha256")
+        return payload
+
+
+@dataclass(frozen=True)
+class BrokerClosedTradeReceipt(CanonicalContract):
+    """Signed aggregate of every exit deal that fully closed one intent."""
+
+    receipt_id: str
+    trade_id: str
+    intent_id: str
+    account_id_sha256: str
+    server: str
+    environment: str
+    journal_sha256: str
+    reconciliation_receipt_sha256: str
+    source_sequence: int
+    canonical_symbol: str
+    broker_symbol: str
+    account_currency: str
+    entry_side: str
+    position_ticket: str
+    deal_receipts: tuple[BrokerDealReceipt, ...]
+    deal_receipt_sha256s: tuple[str, ...]
+    deal_tickets: tuple[str, ...]
+    final_closed_volume: float
+    closed_at_utc: datetime
+    profit_account_currency: float
+    commission_account_currency: float
+    swap_account_currency: float
+    fee_account_currency: float
+    realized_net_pnl_account_currency: float
+    provider_id: str
+    key_id: str
+    signature_hmac_sha256: str
+    schema_version: str = "broker-closed-trade-receipt-v1"
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _BROKER_CLOSED_TRADE_RECEIPT_SEAL:
+            raise TypeError("broker closed-trade receipts require the issuer")
+        for name in (
+            "receipt_id",
+            "trade_id",
+            "intent_id",
+            "server",
+            "broker_symbol",
+            "position_ticket",
+            "provider_id",
+            "key_id",
+        ):
+            object.__setattr__(self, name, require_text(name, getattr(self, name)))
+        environment = require_text("environment", self.environment, upper=True)
+        if environment not in {"DEMO", "LIVE", "LIVE_READ_ONLY"}:
+            raise ValueError("unsupported broker close environment")
+        object.__setattr__(self, "environment", environment)
+        object.__setattr__(
+            self,
+            "canonical_symbol",
+            require_text("canonical_symbol", self.canonical_symbol, upper=True),
+        )
+        object.__setattr__(
+            self,
+            "account_currency",
+            require_currency("account_currency", self.account_currency),
+        )
+        side = require_text("entry_side", self.entry_side, upper=True)
+        if side not in {"BUY", "SELL"}:
+            raise ValueError("entry_side must be BUY or SELL")
+        object.__setattr__(self, "entry_side", side)
+        for name in (
+            "account_id_sha256",
+            "journal_sha256",
+            "reconciliation_receipt_sha256",
+        ):
+            object.__setattr__(self, name, require_hash(name, getattr(self, name)))
+        object.__setattr__(
+            self,
+            "source_sequence",
+            require_int("source_sequence", self.source_sequence, minimum=1),
+        )
+        receipts = tuple(self.deal_receipts)
+        if not receipts or any(type(item) is not BrokerDealReceipt for item in receipts):
+            raise TypeError("closed trade requires exact BrokerDealReceipt items")
+        if (
+            receipts
+            != tuple(sorted(receipts, key=lambda item: (item.deal_sequence, item.deal_ticket)))
+            or tuple(item.deal_sequence for item in receipts)
+            != tuple(range(1, len(receipts) + 1))
+        ):
+            raise ValueError(
+                "closed trade deal receipts must have canonical unique sequence"
+            )
+        object.__setattr__(self, "deal_receipts", receipts)
+        hashes = tuple(require_hash("deal_receipt_sha256", item) for item in self.deal_receipt_sha256s)
+        tickets = _ticket_tuple("deal_tickets", self.deal_tickets)
+        if (
+            hashes != tuple(item.content_sha256 for item in receipts)
+            or tickets != tuple(sorted(item.deal_ticket for item in receipts))
+            or len(set(hashes)) != len(hashes)
+        ):
+            raise ValueError("closed trade deal receipt set is not exact")
+        object.__setattr__(self, "deal_receipt_sha256s", hashes)
+        object.__setattr__(self, "deal_tickets", tickets)
+        object.__setattr__(
+            self,
+            "final_closed_volume",
+            require_finite(
+                "final_closed_volume", self.final_closed_volume, positive=True
+            ),
+        )
+        require_utc("closed_at_utc", self.closed_at_utc)
+        for name in (
+            "profit_account_currency",
+            "commission_account_currency",
+            "swap_account_currency",
+            "fee_account_currency",
+            "realized_net_pnl_account_currency",
+        ):
+            object.__setattr__(self, name, require_finite(name, getattr(self, name)))
+        if (
+            self.final_closed_volume != math.fsum(item.volume for item in receipts)
+            or self.closed_at_utc != max(item.deal_time_utc for item in receipts)
+            or self.profit_account_currency
+            != math.fsum(item.profit_account_currency for item in receipts)
+            or self.commission_account_currency
+            != math.fsum(item.commission_account_currency for item in receipts)
+            or self.swap_account_currency
+            != math.fsum(item.swap_account_currency for item in receipts)
+            or self.fee_account_currency
+            != math.fsum(item.fee_account_currency for item in receipts)
+            or self.realized_net_pnl_account_currency
+            != math.fsum(
+                item.realized_net_pnl_account_currency for item in receipts
+            )
+        ):
+            raise ValueError("closed trade aggregate values are not exact")
+        signature = str(self.signature_hmac_sha256 or "").strip().lower()
+        if signature:
+            signature = require_hash("signature_hmac_sha256", signature)
+        object.__setattr__(self, "signature_hmac_sha256", signature)
+        if self.schema_version != "broker-closed-trade-receipt-v1":
+            raise ValueError("unsupported broker closed-trade receipt schema")
+
+    def signing_dict(self) -> dict[str, object]:
+        payload = self.to_canonical_dict()
+        payload.pop("signature_hmac_sha256")
+        return payload
+
+
+def issue_broker_reconciliation_receipt(
+    *,
+    result: ReconciliationResult,
+    account_id_sha256: str,
+    server: str,
+    environment: str,
+    journal_sha256: str,
+    query_from_utc: datetime,
+    query_to_utc: datetime,
+    source_time_utc: datetime,
+    observed_at_utc: datetime,
+    source_sequence: int,
+    previous_receipt_sha256: str,
+    order_tickets: Sequence[str],
+    position_tickets: Sequence[str],
+    deal_tickets: Sequence[str],
+    closed_intent_deal_tickets: Mapping[str, Sequence[str]]
+    | Sequence[tuple[str, Sequence[str]]],
+    raw_payload_sha256: str,
+    provider_id: str,
+    key_id: str,
+    key: str | bytes,
+) -> BrokerReconciliationReceipt:
+    """Issue a signed, type-sealed broker observation receipt."""
+
+    normalized_closed_deals = _closed_intent_deal_tuple(
+        closed_intent_deal_tickets
+    )
+    if tuple(intent_id for intent_id, _ in normalized_closed_deals) != tuple(
+        sorted(result.closed_intents)
+    ):
+        raise ValueError(
+            "closed intent deal mapping must exactly cover reconciliation closes"
+        )
+    unsigned = BrokerReconciliationReceipt(
+        receipt_id=(
+            f"broker-reconciliation-{source_sequence}-"
+            f"{require_hash('raw_payload_sha256', raw_payload_sha256)[:16]}"
+        ),
+        account_id_sha256=account_id_sha256,
+        server=server,
+        environment=environment,
+        journal_sha256=journal_sha256,
+        reconciliation_result_sha256=reconciliation_result_sha256(result),
+        query_from_utc=query_from_utc,
+        query_to_utc=query_to_utc,
+        source_time_utc=source_time_utc,
+        observed_at_utc=observed_at_utc,
+        source_sequence=source_sequence,
+        previous_receipt_sha256=previous_receipt_sha256,
+        order_tickets=tuple(order_tickets),
+        position_tickets=tuple(position_tickets),
+        deal_tickets=tuple(deal_tickets),
+        closed_intent_deal_tickets=normalized_closed_deals,
+        raw_payload_sha256=raw_payload_sha256,
+        provider_id=provider_id,
+        key_id=key_id,
+        signature_hmac_sha256="",
+        _seal=_BROKER_RECONCILIATION_RECEIPT_SEAL,
+    )
+    signature = hmac.new(
+        _receipt_secret(key),
+        _BROKER_RECONCILIATION_HMAC_DOMAIN
+        + canonical_json(unsigned.signing_dict()).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return replace(
+        unsigned,
+        signature_hmac_sha256=signature,
+        _seal=_BROKER_RECONCILIATION_RECEIPT_SEAL,
+    )
+
+
+def verify_broker_reconciliation_receipt(
+    receipt: BrokerReconciliationReceipt,
+    *,
+    expected_result: ReconciliationResult,
+    expected_account_id_sha256: str,
+    expected_server: str,
+    expected_environment: str,
+    expected_journal_sha256: str,
+    expected_provider_id: str,
+    expected_key_id: str,
+    key_provider: Callable[[str], str | bytes],
+    now: datetime,
+    prior_receipt: BrokerReconciliationReceipt | None = None,
+) -> BrokerReconciliationReceipt:
+    """Verify signature, binding, freshness and monotonic replay chain."""
+
+    if type(receipt) is not BrokerReconciliationReceipt:
+        raise TypeError("exact BrokerReconciliationReceipt is required")
+    require_utc("now", now)
+    expected_previous = "0" * 64 if prior_receipt is None else prior_receipt.content_sha256
+    expected_sequence = 1 if prior_receipt is None else prior_receipt.source_sequence + 1
+    if (
+        receipt.account_id_sha256 != expected_account_id_sha256
+        or receipt.server != expected_server
+        or receipt.environment != expected_environment.upper()
+        or receipt.journal_sha256 != expected_journal_sha256
+        or receipt.provider_id != expected_provider_id
+        or receipt.key_id != expected_key_id
+        or receipt.reconciliation_result_sha256
+        != reconciliation_result_sha256(expected_result)
+        or receipt.previous_receipt_sha256 != expected_previous
+        or receipt.source_sequence != expected_sequence
+        or not receipt.observed_at_utc <= now
+        < receipt.observed_at_utc + BROKER_RECONCILIATION_RECEIPT_MAX_AGE
+    ):
+        raise ValueError("broker reconciliation receipt binding/replay check failed")
+    expected_signature = hmac.new(
+        _receipt_secret(key_provider(receipt.key_id)),
+        _BROKER_RECONCILIATION_HMAC_DOMAIN
+        + canonical_json(receipt.signing_dict()).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected_signature, receipt.signature_hmac_sha256):
+        raise ValueError("broker reconciliation receipt signature mismatch")
+    return receipt
+
+
+def issue_broker_deal_receipt(
+    *,
+    reconciliation_receipt: BrokerReconciliationReceipt,
+    intent_id: str,
+    deal_sequence: int,
+    deal_ticket: str,
+    order_ticket: str | None,
+    position_ticket: str,
+    canonical_symbol: str,
+    broker_symbol: str,
+    account_currency: str,
+    entry_side: str,
+    exit_side: str,
+    volume: float,
+    fill_price: float,
+    profit_account_currency: float,
+    commission_account_currency: float,
+    swap_account_currency: float,
+    fee_account_currency: float,
+    source_time_utc: datetime,
+    raw_payload_sha256: str,
+    key: str | bytes,
+) -> BrokerDealReceipt:
+    """Issue one exit-deal receipt bound to its exact observation receipt."""
+
+    if type(reconciliation_receipt) is not BrokerReconciliationReceipt:
+        raise TypeError("exact BrokerReconciliationReceipt is required")
+    if deal_ticket not in reconciliation_receipt.deal_tickets:
+        raise ValueError("deal ticket is absent from reconciliation observation")
+    unsigned = BrokerDealReceipt(
+        receipt_id=(
+            f"broker-deal-{reconciliation_receipt.source_sequence}-{deal_sequence}-"
+            f"{require_text('deal_ticket', deal_ticket)}"
+        ),
+        trade_id=(
+            f"trade-{reconciliation_receipt.source_sequence}-"
+            f"{require_text('deal_ticket', deal_ticket)}"
+        ),
+        intent_id=intent_id,
+        account_id_sha256=reconciliation_receipt.account_id_sha256,
+        server=reconciliation_receipt.server,
+        environment=reconciliation_receipt.environment,
+        journal_sha256=reconciliation_receipt.journal_sha256,
+        reconciliation_receipt_sha256=reconciliation_receipt.content_sha256,
+        query_from_utc=reconciliation_receipt.query_from_utc,
+        query_to_utc=reconciliation_receipt.query_to_utc,
+        source_time_utc=source_time_utc,
+        observed_at_utc=reconciliation_receipt.observed_at_utc,
+        source_sequence=reconciliation_receipt.source_sequence,
+        deal_sequence=deal_sequence,
+        deal_ticket=deal_ticket,
+        order_ticket=order_ticket,
+        position_ticket=position_ticket,
+        canonical_symbol=canonical_symbol,
+        broker_symbol=broker_symbol,
+        account_currency=account_currency,
+        deal_time_utc=source_time_utc,
+        entry_side=entry_side,
+        exit_side=exit_side,
+        volume=volume,
+        fill_price=fill_price,
+        profit_account_currency=profit_account_currency,
+        commission_account_currency=commission_account_currency,
+        swap_account_currency=swap_account_currency,
+        fee_account_currency=fee_account_currency,
+        realized_net_pnl_account_currency=math.fsum(
+            (
+                float(profit_account_currency),
+                float(commission_account_currency),
+                float(swap_account_currency),
+                float(fee_account_currency),
+            )
+        ),
+        raw_payload_sha256=raw_payload_sha256,
+        provider_id=reconciliation_receipt.provider_id,
+        key_id=reconciliation_receipt.key_id,
+        signature_hmac_sha256="",
+        _seal=_BROKER_DEAL_RECEIPT_SEAL,
+    )
+    signature = hmac.new(
+        _receipt_secret(key),
+        _BROKER_DEAL_HMAC_DOMAIN
+        + canonical_json(unsigned.signing_dict()).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return replace(
+        unsigned,
+        signature_hmac_sha256=signature,
+        _seal=_BROKER_DEAL_RECEIPT_SEAL,
+    )
+
+
+def verify_broker_deal_receipt(
+    receipt: BrokerDealReceipt,
+    *,
+    reconciliation_receipt: BrokerReconciliationReceipt,
+    expected_intent_id: str,
+    key_provider: Callable[[str], str | bytes],
+) -> BrokerDealReceipt:
+    """Verify one deal against the exact broker observation envelope."""
+
+    if type(receipt) is not BrokerDealReceipt:
+        raise TypeError("exact BrokerDealReceipt is required")
+    if type(reconciliation_receipt) is not BrokerReconciliationReceipt:
+        raise TypeError("exact BrokerReconciliationReceipt is required")
+    if (
+        receipt.intent_id != expected_intent_id
+        or receipt.reconciliation_receipt_sha256
+        != reconciliation_receipt.content_sha256
+        or receipt.account_id_sha256 != reconciliation_receipt.account_id_sha256
+        or receipt.server != reconciliation_receipt.server
+        or receipt.environment != reconciliation_receipt.environment
+        or receipt.journal_sha256 != reconciliation_receipt.journal_sha256
+        or receipt.provider_id != reconciliation_receipt.provider_id
+        or receipt.key_id != reconciliation_receipt.key_id
+        or receipt.source_sequence != reconciliation_receipt.source_sequence
+        or receipt.query_from_utc != reconciliation_receipt.query_from_utc
+        or receipt.query_to_utc != reconciliation_receipt.query_to_utc
+        or receipt.observed_at_utc != reconciliation_receipt.observed_at_utc
+        or receipt.deal_ticket not in reconciliation_receipt.deal_tickets
+    ):
+        raise ValueError("broker deal receipt binding mismatch")
+    expected_signature = hmac.new(
+        _receipt_secret(key_provider(receipt.key_id)),
+        _BROKER_DEAL_HMAC_DOMAIN
+        + canonical_json(receipt.signing_dict()).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected_signature, receipt.signature_hmac_sha256):
+        raise ValueError("broker deal receipt signature mismatch")
+    return receipt
+
+
+def issue_broker_closed_trade_receipt(
+    *,
+    reconciliation_receipt: BrokerReconciliationReceipt,
+    intent_id: str,
+    deal_receipts: Sequence[BrokerDealReceipt],
+    expected_closed_volume: float,
+    key: str | bytes,
+) -> BrokerClosedTradeReceipt:
+    """Aggregate the exact attributable exit-deal set for one full close."""
+
+    if type(reconciliation_receipt) is not BrokerReconciliationReceipt:
+        raise TypeError("exact BrokerReconciliationReceipt is required")
+    normalized_intent = require_text("intent_id", intent_id)
+    raw_receipts = tuple(deal_receipts)
+    if not raw_receipts or any(
+        type(item) is not BrokerDealReceipt for item in raw_receipts
+    ):
+        raise TypeError("exact BrokerDealReceipt items are required")
+    receipts = tuple(
+        sorted(
+            raw_receipts,
+            key=lambda item: (item.deal_sequence, item.deal_ticket),
+        )
+    )
+    mapping = dict(reconciliation_receipt.closed_intent_deal_tickets)
+    observed_tickets = tuple(sorted(item.deal_ticket for item in receipts))
+    if normalized_intent not in mapping or observed_tickets != mapping[normalized_intent]:
+        raise ValueError("closed trade deal set is omitted, duplicated, or unrelated")
+    first = receipts[0]
+    expected_volume = require_finite(
+        "expected_closed_volume", expected_closed_volume, positive=True
+    )
+    if (
+        math.fsum(item.volume for item in receipts) != expected_volume
+        or any(
+            item.intent_id != normalized_intent
+            or item.reconciliation_receipt_sha256
+            != reconciliation_receipt.content_sha256
+            or item.account_id_sha256 != first.account_id_sha256
+            or item.server != first.server
+            or item.environment != first.environment
+            or item.journal_sha256 != first.journal_sha256
+            or item.source_sequence != first.source_sequence
+            or item.canonical_symbol != first.canonical_symbol
+            or item.broker_symbol != first.broker_symbol
+            or item.account_currency != first.account_currency
+            or item.entry_side != first.entry_side
+            or item.position_ticket != first.position_ticket
+            for item in receipts
+        )
+    ):
+        raise ValueError("closed trade deal bindings or final volume mismatch")
+    hashes = tuple(item.content_sha256 for item in receipts)
+    aggregate_digest = canonical_sha256(
+        {
+            "intent_id": normalized_intent,
+            "deal_receipt_sha256s": hashes,
+        }
+    )
+    unsigned = BrokerClosedTradeReceipt(
+        receipt_id=(
+            f"broker-closed-trade-{reconciliation_receipt.source_sequence}-"
+            f"{aggregate_digest[:16]}"
+        ),
+        trade_id=(
+            f"trade-{reconciliation_receipt.source_sequence}-"
+            f"{aggregate_digest[:24]}"
+        ),
+        intent_id=normalized_intent,
+        account_id_sha256=first.account_id_sha256,
+        server=first.server,
+        environment=first.environment,
+        journal_sha256=first.journal_sha256,
+        reconciliation_receipt_sha256=reconciliation_receipt.content_sha256,
+        source_sequence=reconciliation_receipt.source_sequence,
+        canonical_symbol=first.canonical_symbol,
+        broker_symbol=first.broker_symbol,
+        account_currency=first.account_currency,
+        entry_side=first.entry_side,
+        position_ticket=first.position_ticket,
+        deal_receipts=receipts,
+        deal_receipt_sha256s=hashes,
+        deal_tickets=observed_tickets,
+        final_closed_volume=expected_volume,
+        closed_at_utc=max(item.deal_time_utc for item in receipts),
+        profit_account_currency=math.fsum(
+            item.profit_account_currency for item in receipts
+        ),
+        commission_account_currency=math.fsum(
+            item.commission_account_currency for item in receipts
+        ),
+        swap_account_currency=math.fsum(
+            item.swap_account_currency for item in receipts
+        ),
+        fee_account_currency=math.fsum(
+            item.fee_account_currency for item in receipts
+        ),
+        realized_net_pnl_account_currency=math.fsum(
+            item.realized_net_pnl_account_currency for item in receipts
+        ),
+        provider_id=first.provider_id,
+        key_id=first.key_id,
+        signature_hmac_sha256="",
+        _seal=_BROKER_CLOSED_TRADE_RECEIPT_SEAL,
+    )
+    signature = hmac.new(
+        _receipt_secret(key),
+        _BROKER_CLOSED_TRADE_HMAC_DOMAIN
+        + canonical_json(unsigned.signing_dict()).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return replace(
+        unsigned,
+        signature_hmac_sha256=signature,
+        _seal=_BROKER_CLOSED_TRADE_RECEIPT_SEAL,
+    )
+
+
+def verify_broker_closed_trade_receipt(
+    receipt: BrokerClosedTradeReceipt,
+    *,
+    reconciliation_receipt: BrokerReconciliationReceipt,
+    expected_intent_id: str,
+    key_provider: Callable[[str], str | bytes],
+) -> BrokerClosedTradeReceipt:
+    """Verify the aggregate and every nested deal against one observation."""
+
+    if type(receipt) is not BrokerClosedTradeReceipt:
+        raise TypeError("exact BrokerClosedTradeReceipt is required")
+    if type(reconciliation_receipt) is not BrokerReconciliationReceipt:
+        raise TypeError("exact BrokerReconciliationReceipt is required")
+    mapping = dict(reconciliation_receipt.closed_intent_deal_tickets)
+    if (
+        receipt.intent_id != expected_intent_id
+        or receipt.reconciliation_receipt_sha256
+        != reconciliation_receipt.content_sha256
+        or receipt.source_sequence != reconciliation_receipt.source_sequence
+        or receipt.deal_tickets != mapping.get(expected_intent_id)
+    ):
+        raise ValueError("broker closed-trade receipt binding mismatch")
+    for deal in receipt.deal_receipts:
+        verify_broker_deal_receipt(
+            deal,
+            reconciliation_receipt=reconciliation_receipt,
+            expected_intent_id=expected_intent_id,
+            key_provider=key_provider,
+        )
+    expected_signature = hmac.new(
+        _receipt_secret(key_provider(receipt.key_id)),
+        _BROKER_CLOSED_TRADE_HMAC_DOMAIN
+        + canonical_json(receipt.signing_dict()).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected_signature, receipt.signature_hmac_sha256):
+        raise ValueError("broker closed-trade receipt signature mismatch")
+    return receipt
 
 
 @dataclass(frozen=True)
@@ -436,7 +1329,13 @@ def reconcile_broker_state(
                     source="RECONCILIATION",
                     occurred_at=occurred_at,
                 )
-                matched_orders = []
+                # A comment/ticket match only identifies a candidate.  Once any
+                # immutable broker fact fails validation, that candidate must not
+                # bind a ticket or mutate journal state in this reconciliation
+                # cycle.  The latched kill switch and uncertain result preserve
+                # the evidence for operator review without trusting it.
+                uncertain.append(record.intent_id)
+                continue
 
         if matched_positions:
             position = matched_positions[0]
@@ -478,6 +1377,11 @@ def reconcile_broker_state(
                     source="RECONCILIATION",
                     occurred_at=occurred_at,
                 )
+            if fact_failures or not protected:
+                # Never persist ticket, volume, protection, or state from a
+                # position that failed binding, sizing, or protection checks.
+                uncertain.append(record.intent_id)
+                continue
             try:
                 _apply_broker_evidence(
                     journal,
@@ -540,6 +1444,11 @@ def reconcile_broker_state(
                     source="RECONCILIATION",
                     occurred_at=occurred_at,
                 )
+                # Invalid exit-deal candidates cannot close, rebind, or otherwise
+                # advance the durable intent.  Keep the prior state intact until
+                # unambiguous broker evidence is observed.
+                uncertain.append(record.intent_id)
+                continue
             else:
                 _apply_broker_evidence(
                     journal,

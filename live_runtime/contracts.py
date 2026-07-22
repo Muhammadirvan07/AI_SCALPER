@@ -23,6 +23,7 @@ _HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
 _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 _DECISION_SNAPSHOT_SEAL = object()
 _EXECUTION_RECEIPT_SEAL = object()
+_SUBMISSION_CONSUMPTION_PROOF_SEAL = object()
 _M15_SECONDS = 15 * 60
 DECISION_TIMEFRAME_SECONDS = {"M5": 5 * 60, "M15": _M15_SECONDS}
 
@@ -539,6 +540,11 @@ class ExecutionReceipt(CanonicalContract):
     received_at: datetime
     broker_retcode: str
     message: str
+    journal_sha256: str
+    execution_gate_sha256: str
+    authorization_sha256: str
+    broker_request_sha256: str
+    submission_consumed_at: datetime
     order_ticket: str | None = None
     deal_ticket: str | None = None
     requested_price: float | None = None
@@ -598,6 +604,20 @@ class ExecutionReceipt(CanonicalContract):
         )
         object.__setattr__(self, "message", str(self.message or "").strip())
         for name in (
+            "journal_sha256",
+            "execution_gate_sha256",
+            "authorization_sha256",
+            "broker_request_sha256",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                require_hash(name, getattr(self, name)),
+            )
+        require_utc("submission_consumed_at", self.submission_consumed_at)
+        if self.submission_consumed_at > self.received_at:
+            raise ValueError("submission consumption cannot occur after broker receipt")
+        for name in (
             "requested_price",
             "fill_price",
             "stop_loss",
@@ -635,10 +655,62 @@ class ExecutionReceipt(CanonicalContract):
         return f"receipt_{self.content_sha256[:32]}"
 
 
-def _mint_execution_receipt(**values: Any) -> ExecutionReceipt:
-    """Internal broker-adapter boundary; direct receipt construction is denied."""
+@dataclass(frozen=True)
+class SubmissionConsumptionProof(CanonicalContract):
+    """Sealed capability proving durable final-send authorization consumption."""
 
-    return ExecutionReceipt(**values, _seal=_EXECUTION_RECEIPT_SEAL)
+    journal_sha256: str
+    intent_id: str
+    execution_gate_sha256: str
+    authorization_sha256: str
+    broker_request_sha256: str
+    consumed_at: datetime
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _SUBMISSION_CONSUMPTION_PROOF_SEAL:
+            raise TypeError(
+                "submission consumption proofs can only be minted by ExecutionJournal"
+            )
+        object.__setattr__(self, "intent_id", require_text("intent_id", self.intent_id))
+        for name in (
+            "journal_sha256",
+            "execution_gate_sha256",
+            "authorization_sha256",
+            "broker_request_sha256",
+        ):
+            object.__setattr__(self, name, require_hash(name, getattr(self, name)))
+        require_utc("consumed_at", self.consumed_at)
+
+
+def _mint_submission_consumption_proof(**values: Any) -> SubmissionConsumptionProof:
+    """Internal journal boundary for the one-use final-send capability."""
+
+    return SubmissionConsumptionProof(
+        **values,
+        _seal=_SUBMISSION_CONSUMPTION_PROOF_SEAL,
+    )
+
+
+def _mint_execution_receipt(*, submission_proof: object, **values: Any) -> ExecutionReceipt:
+    """Mint an adapter receipt from an exact durable-consumption capability."""
+
+    if type(submission_proof) is not SubmissionConsumptionProof:
+        raise TypeError("exact sealed SubmissionConsumptionProof is required")
+    intent_id = str(values.get("intent_id") or "")
+    if intent_id != submission_proof.intent_id:
+        raise ValueError("submission proof intent does not match execution receipt")
+    bound = {
+        "journal_sha256": submission_proof.journal_sha256,
+        "execution_gate_sha256": submission_proof.execution_gate_sha256,
+        "authorization_sha256": submission_proof.authorization_sha256,
+        "broker_request_sha256": submission_proof.broker_request_sha256,
+        "submission_consumed_at": submission_proof.consumed_at,
+    }
+    for name, expected in bound.items():
+        if name in values and values[name] != expected:
+            raise ValueError(f"{name} conflicts with sealed submission proof")
+    return ExecutionReceipt(**values, **bound, _seal=_EXECUTION_RECEIPT_SEAL)
 
 
 __all__ = [
@@ -647,6 +719,7 @@ __all__ = [
     "DECISION_TIMEFRAME_SECONDS",
     "DecisionSnapshot",
     "ExecutionReceipt",
+    "SubmissionConsumptionProof",
     "ENTRY_WINDOW_SECONDS",
     "SCHEMA_VERSION",
     "TradeIntent",

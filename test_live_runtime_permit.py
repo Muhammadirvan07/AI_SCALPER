@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, replace
 from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
 import unittest
 
 from live_runtime.permit import (
     KillSwitchResetPermit,
     LIVE_ALLOWED,
+    PROMOTION_PERMIT_MAX_TTL,
     PermitValidation,
     SAFE_TO_DEMO_AUTO_ORDER,
     PromotionPermit,
@@ -39,7 +42,7 @@ def unsigned_permit(**changes: object) -> PromotionPermit:
         "config_sha256": CONFIG,
         "model_artifact_sha256": MODEL_ARTIFACT,
         "issued_at": NOW,
-        "expires_at": NOW + timedelta(minutes=30),
+        "expires_at": NOW + timedelta(minutes=4),
         "nonce": "review-0001",
     }
     values.update(changes)
@@ -139,6 +142,60 @@ class PromotionPermitTests(unittest.TestCase):
         self.assertEqual(unsigned.permit_id, signed.permit_id)
         with self.assertRaises(FrozenInstanceError):
             signed.server = "other"  # type: ignore[misc]
+
+    def test_maximum_ttl_boundary_is_valid(self) -> None:
+        permit = unsigned_permit(
+            expires_at=NOW + PROMOTION_PERMIT_MAX_TTL,
+        ).sign(SECRET)
+        result = validate(permit)
+        self.assertTrue(result.valid, result.reason_codes)
+        self.assertTrue(result.time_valid)
+
+    def test_oversized_ttl_is_rejected_at_construction(self) -> None:
+        with self.assertRaisesRegex(ValueError, "maximum lifetime"):
+            unsigned_permit(
+                expires_at=(
+                    NOW
+                    + PROMOTION_PERMIT_MAX_TTL
+                    + timedelta(microseconds=1)
+                )
+            )
+
+    def test_oversized_ttl_is_rejected_again_at_sign_and_validation_boundaries(
+        self,
+    ) -> None:
+        unsigned = unsigned_permit()
+        object.__setattr__(
+            unsigned,
+            "expires_at",
+            NOW + PROMOTION_PERMIT_MAX_TTL + timedelta(seconds=1),
+        )
+        with self.assertRaisesRegex(ValueError, "maximum lifetime"):
+            unsigned.sign(SECRET)
+
+        # Simulate a legacy/externally deserialized artifact whose HMAC is valid
+        # but whose lifetime predates this policy boundary.  Validation must
+        # reject the TTL independently of signature verification.
+        signed = unsigned_permit()
+        object.__setattr__(
+            signed,
+            "expires_at",
+            NOW + PROMOTION_PERMIT_MAX_TTL + timedelta(seconds=1),
+        )
+        object.__setattr__(
+            signed,
+            "signature",
+            hmac.new(
+                SECRET.encode("utf-8"),
+                signed.signing_payload,
+                hashlib.sha256,
+            ).hexdigest(),
+        )
+        result = validate(signed)
+        self.assertFalse(result.valid)
+        self.assertTrue(result.signature_valid)
+        self.assertFalse(result.time_valid)
+        self.assertIn("PERMIT_TTL_EXCEEDED", result.reason_codes)
 
     def test_tampering_invalidates_hmac_and_binding(self) -> None:
         signed = unsigned_permit().sign(SECRET)

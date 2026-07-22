@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import InitVar, dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 from typing import Callable, Iterable, Mapping
@@ -20,6 +20,7 @@ from .contracts import (
 LIVE_ALLOWED = False
 SAFE_TO_DEMO_AUTO_ORDER = False
 PERMIT_SCHEMA_VERSION = "1.0"
+PROMOTION_PERMIT_MAX_TTL = timedelta(minutes=5)
 _PERMIT_VALIDATION_SEAL = object()
 _KILL_SWITCH_RESET_AUTHORIZATION_SEAL = object()
 RESET_PERMIT_SCHEMA_VERSION = "2.0"
@@ -88,6 +89,21 @@ def _normalize_symbols(symbols: Iterable[str]) -> tuple[str, ...]:
     return normalized
 
 
+def _require_promotion_permit_window(
+    issued_at: datetime,
+    expires_at: datetime,
+) -> None:
+    require_utc("issued_at", issued_at)
+    require_utc("expires_at", expires_at)
+    lifetime = expires_at - issued_at
+    if lifetime <= timedelta(0):
+        raise ValueError("expires_at must be after issued_at")
+    if lifetime > PROMOTION_PERMIT_MAX_TTL:
+        raise ValueError(
+            "promotion permit validity window exceeds maximum lifetime of 5 minutes"
+        )
+
+
 @dataclass(frozen=True)
 class PromotionPermit(CanonicalContract):
     """Signed evidence binding a reviewed build to a narrow deployment lane."""
@@ -136,10 +152,7 @@ class PromotionPermit(CanonicalContract):
             "model_artifact_sha256",
             require_hash("model_artifact_sha256", self.model_artifact_sha256),
         )
-        require_utc("issued_at", self.issued_at)
-        require_utc("expires_at", self.expires_at)
-        if self.expires_at <= self.issued_at:
-            raise ValueError("expires_at must be after issued_at")
+        _require_promotion_permit_window(self.issued_at, self.expires_at)
         object.__setattr__(self, "nonce", require_text("nonce", self.nonce))
         object.__setattr__(
             self,
@@ -183,6 +196,7 @@ class PromotionPermit(CanonicalContract):
         return f"permit_{digest[:32]}"
 
     def sign(self, secret: str | bytes) -> PromotionPermit:
+        _require_promotion_permit_window(self.issued_at, self.expires_at)
         signature = hmac.new(
             _secret_bytes(secret),
             self.signing_payload,
@@ -640,7 +654,13 @@ def validate_permit(
         reasons.append("PERMIT_NOT_YET_VALID")
     if now >= permit.expires_at:
         reasons.append("PERMIT_EXPIRED")
-    time_valid = permit.issued_at <= now < permit.expires_at
+    permit_lifetime = permit.expires_at - permit.issued_at
+    permit_ttl_valid = timedelta(0) < permit_lifetime <= PROMOTION_PERMIT_MAX_TTL
+    if permit_lifetime > PROMOTION_PERMIT_MAX_TTL:
+        reasons.append("PERMIT_TTL_EXCEEDED")
+    elif permit_lifetime <= timedelta(0):
+        reasons.append("PERMIT_TIME_WINDOW_INVALID")
+    time_valid = permit_ttl_valid and permit.issued_at <= now < permit.expires_at
 
     bindings = (
         (permit.mode == mode, "MODE_BINDING_MISMATCH"),
@@ -717,6 +737,7 @@ __all__ = [
     "PERMIT_SCHEMA_VERSION",
     "NO_PROMOTION_EVIDENCE_SHA256",
     "NO_JOURNAL_SHA256",
+    "PROMOTION_PERMIT_MAX_TTL",
     "PermitValidation",
     "PromotionPermit",
     "RESET_CLOCK_ASSERTION_TOLERANCE_SECONDS",

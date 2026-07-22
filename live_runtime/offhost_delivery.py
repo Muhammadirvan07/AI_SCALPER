@@ -480,6 +480,31 @@ class DeliveryOutbox:
             ),
         }
 
+    def records(self) -> tuple[dict[str, Any], ...]:
+        """Return immutable envelopes with their durable delivery state."""
+
+        with self._reader() as connection:
+            rows = connection.execute(
+                """SELECT envelope_json, state, acknowledgement_json
+                FROM delivery_outbox ORDER BY rowid"""
+            ).fetchall()
+        return tuple(
+            {
+                "envelope": DeliveryEnvelope.from_dict(
+                    json.loads(row["envelope_json"])
+                ),
+                "state": row["state"],
+                "acknowledgement": (
+                    None
+                    if row["acknowledgement_json"] is None
+                    else DeliveryAcknowledgement.from_dict(
+                        json.loads(row["acknowledgement_json"])
+                    )
+                ),
+            }
+            for row in rows
+        )
+
     def verify_records(
         self,
         remote_key_provider: Callable[[str], str | bytes],

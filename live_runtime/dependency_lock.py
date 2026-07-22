@@ -1694,6 +1694,11 @@ def _verify_distribution_record(
         "record_size": record_size,
         "hashed_file_count": hashed_files,
         "generated_file_count": generated_files,
+        # Keep the exact RECORD-owned site files in the sealed installed
+        # environment receipt.  Runtime module attestation uses this list to
+        # prove that an imported extension/package origin is owned by the
+        # wheel that passed the full RECORD and wheel-tree verification above.
+        "owned_site_files": tuple(original_site_files),
     }
 
 
@@ -2037,6 +2042,7 @@ def verify_installed_lock(path: str | Path) -> dict[str, object]:
         "pyvenv_sha256": pyvenv_receipt["sha256"],
         "site_packages": str(site_packages),
         "installed_environment_sha256": hashlib.sha256(canonical_receipt).hexdigest(),
+        "distribution_receipts": tuple(distribution_receipts),
     }
 
 

@@ -12,6 +12,7 @@ from live_runtime.contracts import (
     _mint_decision_snapshot,
     _mint_execution_receipt,
 )
+from test_fixtures.execution_receipt import mint_submission_consumption_proof
 
 
 UTC = timezone.utc
@@ -151,11 +152,21 @@ class ContractTests(unittest.TestCase):
             "broker_retcode": "10009",
             "message": "ok",
         }
+        proof = mint_submission_consumption_proof(
+            intent_id=common["intent_id"],
+            consumed_at=NOW,
+        )
         with self.assertRaises(TypeError):
             ExecutionReceipt(state="ACKNOWLEDGED", filled_volume=0.0, **common)
         with self.assertRaises(ValueError):
-            _mint_execution_receipt(state="FILLED", filled_volume=0.0, **common)
+            _mint_execution_receipt(
+                submission_proof=proof,
+                state="FILLED",
+                filled_volume=0.0,
+                **common,
+            )
         partial = _mint_execution_receipt(
+            submission_proof=proof,
             state="PARTIAL",
             filled_volume=0.001,
             fill_price=1.10001,
@@ -164,6 +175,7 @@ class ContractTests(unittest.TestCase):
         )
         self.assertEqual(partial.state, "PARTIAL")
         acknowledged = _mint_execution_receipt(
+            submission_proof=proof,
             state="ACKNOWLEDGED",
             filled_volume=0.0,
             order_ticket="42",
@@ -172,6 +184,7 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(acknowledged.receipt_id.startswith("receipt_"))
         for state in ("PREFLIGHT_PASSED", "UNCERTAIN", "CLOSED"):
             receipt = _mint_execution_receipt(
+                submission_proof=proof,
                 state=state,
                 filled_volume=0.0,
                 **common,

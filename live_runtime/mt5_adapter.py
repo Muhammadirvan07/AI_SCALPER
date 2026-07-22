@@ -51,6 +51,13 @@ from live_runtime.risk import (
 )
 from live_runtime.market_guard import MarketGuardDecision
 from live_runtime.model_governance import ModelBindingDecision
+from live_runtime.risk_context_factory import VerifiedRiskContext
+from live_runtime.mt5_module_attestation import (
+    VerifiedMT5Installation,
+    VerifiedMT5ModuleAttestation,
+    require_clean_mt5_import_namespace,
+    verify_imported_mt5_module,
+)
 
 
 UTC = timezone.utc
@@ -133,10 +140,14 @@ class RuntimeAuthorization:
     risk_decision_id: str
     journal_sha256: str
     broker_spec_sha256: str
+    verified_risk_context_sha256: str
+    verified_risk_context_valid_until_utc: datetime
     preflight_sha256: str
     execution_gate_sha256: str
     environment_arm_sha256: str
     manual_demo_approval_sha256: str
+    max_risk_cash: float
+    max_margin_cash: float
     spread_limit_points: float
     spread_p95_points: float
     spread_median_multiple_limit_points: float
@@ -152,8 +163,24 @@ class RuntimeAuthorization:
             )
         require_utc("checked_at_utc", self.checked_at_utc)
         require_utc("valid_until_utc", self.valid_until_utc)
+        require_utc(
+            "verified_risk_context_valid_until_utc",
+            self.verified_risk_context_valid_until_utc,
+        )
         if self.valid_until_utc <= self.checked_at_utc:
             raise ValueError("authorization validity window is empty")
+        if self.valid_until_utc > self.verified_risk_context_valid_until_utc:
+            raise ValueError("authorization outlives verified risk context")
+        object.__setattr__(
+            self,
+            "max_risk_cash",
+            _finite(self.max_risk_cash, "max_risk_cash", positive=True),
+        )
+        object.__setattr__(
+            self,
+            "max_margin_cash",
+            _finite(self.max_margin_cash, "max_margin_cash", positive=True),
+        )
         object.__setattr__(
             self,
             "spread_limit_points",
@@ -180,6 +207,8 @@ class RuntimeAuthorization:
         )
         for field_name in (
             "journal_sha256",
+            "broker_spec_sha256",
+            "verified_risk_context_sha256",
             "preflight_sha256",
             "execution_gate_sha256",
             "environment_arm_sha256",
@@ -257,6 +286,7 @@ def build_runtime_authorization(
     permit_validation: PermitValidation,
     risk_decision: RiskDecision,
     broker_spec: BrokerSpec,
+    verified_risk_context: VerifiedRiskContext,
     reservation: IntentRecord,
     gate_capability: ExecutionGateCapability,
     journal_sha256: str,
@@ -274,6 +304,8 @@ def build_runtime_authorization(
         raise ExecutionLockedError("an approved independent risk decision is required")
     if not isinstance(broker_spec, BrokerSpec):
         raise TypeError("broker_spec must be a BrokerSpec")
+    if type(verified_risk_context) is not VerifiedRiskContext:
+        raise ExecutionLockedError("sealed verified risk context is required")
     if not isinstance(reservation, IntentRecord):
         raise TypeError("reservation must be an IntentRecord")
     if not isinstance(gate_capability, ExecutionGateCapability):
@@ -355,6 +387,8 @@ def build_runtime_authorization(
         and reserved_payload == intent.to_canonical_dict()
         and reservation.payload.get("broker_spec_sha256")
         == broker_spec.content_sha256
+        and reservation.payload.get("verified_risk_context_sha256")
+        == verified_risk_context.content_sha256
     )
     if not risk_matches or not broker_matches or not reservation_matches:
         raise ExecutionLockedError("risk, broker, or journal reservation binding failed")
@@ -368,9 +402,24 @@ def build_runtime_authorization(
     )
     if not gate_matches:
         raise ExecutionLockedError("execution gate capability is stale or mismatched")
+    if (
+        now < verified_risk_context.evaluated_at_utc
+        or now >= verified_risk_context.valid_until_utc
+        or verified_risk_context.account_id != intent.account_id
+        or verified_risk_context.server != intent.server
+        or verified_risk_context.environment != broker_spec.environment
+        or verified_risk_context.symbol != intent.symbol
+        or verified_risk_context.broker_symbol != broker_spec.broker_symbol
+        or verified_risk_context.mode != intent.mode
+        or verified_risk_context.broker_spec_sha256 != broker_spec.content_sha256
+        or verified_risk_context.journal_sha256 != normalized_journal_sha256
+        or verified_risk_context.permit_id != permit_validation.permit_id
+    ):
+        raise ExecutionLockedError("verified risk context is stale or mismatched")
     authorization_expiry = min(
         permit_validation.expires_at,
         environment_arm_decision.valid_until_utc,
+        verified_risk_context.valid_until_utc,
         now + timedelta(seconds=MAX_AUTHORIZATION_AGE_SECONDS),
     )
     if intent.mode == "DEMO" and manual_demo_approval_validation is not None:
@@ -385,10 +434,16 @@ def build_runtime_authorization(
         risk_decision_id=risk_decision.decision_id,
         journal_sha256=normalized_journal_sha256,
         broker_spec_sha256=broker_spec.content_sha256,
+        verified_risk_context_sha256=verified_risk_context.content_sha256,
+        verified_risk_context_valid_until_utc=(
+            verified_risk_context.valid_until_utc
+        ),
         preflight_sha256=gate_capability.preflight_sha256,
         execution_gate_sha256=gate_capability.content_sha256,
         environment_arm_sha256=environment_arm_decision.content_sha256,
         manual_demo_approval_sha256=manual_approval_sha256,
+        max_risk_cash=risk_decision.max_risk_cash,
+        max_margin_cash=risk_decision.margin_limit_cash,
         spread_limit_points=risk_decision.spread_limit_points,
         spread_p95_points=risk_decision.spread_p95_points,
         spread_median_multiple_limit_points=(
@@ -689,6 +744,10 @@ class MT5Adapter:
         symbol_map: Mapping[str, str],
         usd_account_currency_symbols: Mapping[str, str] | None = None,
         mt5_module: ModuleType | Any | None = None,
+        mt5_installation: VerifiedMT5Installation | None = None,
+        expected_installed_environment_sha256: str | None = None,
+        expected_module_file_sha256: str | None = None,
+        expected_module_relative_path_sha256: str | None = None,
         max_tick_age_seconds: int = DEFAULT_MAX_TICK_AGE_SECONDS,
         magic_number: int = 260615,
         deviation_points: int = 30,
@@ -759,6 +818,58 @@ class MT5Adapter:
             normalized_conversion_symbols
         )
         self.mt5 = mt5_module
+        if mt5_installation is not None:
+            if type(mt5_installation) is not VerifiedMT5Installation:
+                raise TypeError(
+                    "mt5_installation must be exact VerifiedMT5Installation"
+                )
+            if self.mt5 is not None:
+                raise MT5UnavailableError(
+                    "module injection is forbidden with verified MT5 installation"
+                )
+            expected_hashes = (
+                expected_installed_environment_sha256,
+                expected_module_file_sha256,
+                expected_module_relative_path_sha256,
+            )
+            if any(value is None for value in expected_hashes):
+                raise ValueError(
+                    "verified MT5 installation requires every expected module hash"
+                )
+        elif any(
+            value is not None
+            for value in (
+                expected_installed_environment_sha256,
+                expected_module_file_sha256,
+                expected_module_relative_path_sha256,
+            )
+        ):
+            raise ValueError("expected MT5 hashes require verified installation")
+        self._mt5_installation = mt5_installation
+        self._expected_installed_environment_sha256 = (
+            require_hash(
+                "expected_installed_environment_sha256",
+                expected_installed_environment_sha256,
+            )
+            if expected_installed_environment_sha256 is not None
+            else None
+        )
+        self._expected_module_file_sha256 = (
+            require_hash(
+                "expected_module_file_sha256", expected_module_file_sha256
+            )
+            if expected_module_file_sha256 is not None
+            else None
+        )
+        self._expected_module_relative_path_sha256 = (
+            require_hash(
+                "expected_module_relative_path_sha256",
+                expected_module_relative_path_sha256,
+            )
+            if expected_module_relative_path_sha256 is not None
+            else None
+        )
+        self._module_attestation: VerifiedMT5ModuleAttestation | None = None
         self.max_tick_age_seconds = int(max_tick_age_seconds)
         self.magic_number = int(magic_number)
         self.deviation_points = int(deviation_points)
@@ -792,15 +903,61 @@ class MT5Adapter:
         if expected is None or expected != str(broker_symbol or "").strip():
             raise AccountBindingError("canonical/broker symbol is not adapter-allowlisted")
 
-    def initialize(self, **kwargs: Any) -> None:
+    def load_and_attest_module(self) -> VerifiedMT5ModuleAttestation | None:
+        """Import only the official package and attest it without broker I/O."""
+
         if self.mt5 is None:
+            if self._mt5_installation is not None:
+                require_clean_mt5_import_namespace()
             try:
                 import MetaTrader5 as module  # type: ignore[import-not-found]
             except ImportError as exc:
                 raise MT5UnavailableError(
                     "MetaTrader5 is unavailable; use Windows x86-64 live runtime"
                 ) from exc
+            if self._mt5_installation is not None:
+                attestation = verify_imported_mt5_module(
+                    module, self._mt5_installation
+                )
+                self._require_expected_module_attestation(attestation)
+                self._module_attestation = attestation
             self.mt5 = module
+        return self.verify_module_attestation()
+
+    def _require_expected_module_attestation(
+        self,
+        attestation: VerifiedMT5ModuleAttestation,
+    ) -> None:
+        if type(attestation) is not VerifiedMT5ModuleAttestation:
+            raise MT5UnavailableError("MT5 module attestation is not sealed")
+        if (
+            attestation.installed_environment_sha256
+            != self._expected_installed_environment_sha256
+            or attestation.module_file_sha256
+            != self._expected_module_file_sha256
+            or attestation.module_relative_path_sha256
+            != self._expected_module_relative_path_sha256
+        ):
+            raise MT5UnavailableError("MT5 module attestation binding mismatch")
+
+    def verify_module_attestation(
+        self,
+    ) -> VerifiedMT5ModuleAttestation | None:
+        """Recheck the module origin and file before every external proof gate."""
+
+        if self._mt5_installation is None:
+            return None
+        if self.mt5 is None:
+            raise MT5UnavailableError("official MT5 module has not been loaded")
+        current = verify_imported_mt5_module(self.mt5, self._mt5_installation)
+        self._require_expected_module_attestation(current)
+        prior = self._module_attestation
+        if prior is None or current.content_sha256 != prior.content_sha256:
+            raise MT5UnavailableError("MT5 module attestation changed after import")
+        return current
+
+    def initialize(self, **kwargs: Any) -> None:
+        self.load_and_attest_module()
         if not bool(self.mt5.initialize(**kwargs)):
             raise MT5UnavailableError(f"MT5 initialize failed: {self.mt5.last_error()}")
         self._initialized = True
@@ -814,6 +971,7 @@ class MT5Adapter:
     def _require_initialized(self) -> None:
         if not self._initialized or self.mt5 is None:
             raise MT5UnavailableError("MT5 adapter is not initialized")
+        self.verify_module_attestation()
 
     def assert_account_binding(self) -> dict[str, Any]:
         self._require_initialized()
@@ -854,6 +1012,7 @@ class MT5Adapter:
         *,
         now: datetime | None = None,
     ) -> BrokerSpec:
+        self._require_initialized()
         captured_at = self._trusted_now(now)
         self._assert_symbol_binding(canonical_symbol, broker_symbol)
         account = self.assert_account_binding()
@@ -921,6 +1080,7 @@ class MT5Adapter:
     ) -> USDRiskCapConversion:
         """Mint a conservative, sealed USD-to-account-currency broker fact."""
 
+        self._require_initialized()
         captured_at = self._trusted_now(now)
         account = self.assert_account_binding()
         try:
@@ -1041,6 +1201,7 @@ class MT5Adapter:
     ) -> BrokerSizingQuote:
         """Size from MT5 order_calc_profit, never a hard-coded pip value."""
 
+        self._require_initialized()
         now = self._trusted_now(now)
         normalized_side = str(side or "").strip().upper()
         if normalized_side not in {"BUY", "SELL"}:
@@ -1280,6 +1441,7 @@ class MT5Adapter:
         *,
         allowed_deviation_points: int,
     ) -> dict[str, Any]:
+        self._require_initialized()
         info = _asdict(self.mt5.symbol_info(broker_symbol))
         if not info:
             raise MT5AdapterError(f"symbol_info unavailable for {broker_symbol}")
@@ -1312,7 +1474,8 @@ class MT5Adapter:
         allowed_deviation_points: int,
         now: datetime | None = None,
     ) -> MT5Preflight:
-        now = self._trusted_now(now)
+        self._require_initialized()
+        started_at = self._trusted_now(now)
         if isinstance(allowed_deviation_points, bool) or not isinstance(
             allowed_deviation_points, int
         ) or allowed_deviation_points < 0:
@@ -1333,10 +1496,10 @@ class MT5Adapter:
             raise ExecutionLockedError("MT5 execution adapter rejects non-order modes")
         if self.environment != expected_environment:
             raise AccountBindingError("intent mode does not match broker environment")
-        if intent.expires_at <= now:
+        if intent.expires_at <= started_at:
             raise PreflightRejectedError("intent is expired")
         self.assert_account_binding()
-        spec = self.get_broker_spec(intent.symbol, broker_symbol, now=now)
+        spec = self.get_broker_spec(intent.symbol, broker_symbol, now=started_at)
         if intent.requested_lot < spec.volume_min or intent.requested_lot > min(spec.volume_max, 0.01):
             raise PreflightRejectedError("requested lot violates broker or canary bounds")
         steps = intent.requested_lot / spec.volume_step
@@ -1348,7 +1511,7 @@ class MT5Adapter:
         tick = self._first_eligible_tick(
             broker_symbol,
             bar_closed_at=intent.decision.bar_closed_at,
-            now=now,
+            now=started_at,
         )
         tick_entry_reference = float(
             tick["ask"] if intent.side == "BUY" else tick["bid"]
@@ -1384,6 +1547,13 @@ class MT5Adapter:
             broker_symbol,
             entry_price=adverse_entry,
         )
+        completed_at = self._trusted_now()
+        if intent.expires_at <= completed_at:
+            raise PreflightRejectedError("intent expired during broker preflight")
+        valid_until = min(
+            intent.expires_at,
+            completed_at + timedelta(seconds=DEFAULT_PREFLIGHT_TTL_SECONDS),
+        )
         reason = str(check_dict.get("comment", "") or "")
         return _mint_mt5_preflight(
             intent_id=intent.intent_id,
@@ -1395,8 +1565,8 @@ class MT5Adapter:
             request=request,
             request_sha256=canonical_sha256(request),
             broker_retcode=retcode,
-            checked_at_utc=now,
-            valid_until_utc=now + timedelta(seconds=DEFAULT_PREFLIGHT_TTL_SECONDS),
+            checked_at_utc=completed_at,
+            valid_until_utc=valid_until,
             current_bid=float(tick["bid"]),
             current_ask=float(tick["ask"]),
             tick_time_utc=tick["time_utc"],
@@ -1415,7 +1585,7 @@ class MT5Adapter:
     ) -> MT5SubmissionGuard:
         """Refresh broker/account/exposure facts immediately before reservation."""
 
-        now = self._trusted_now(now)
+        started_at = self._trusted_now(now)
         if not isinstance(broker_spec, BrokerSpec):
             raise TypeError("broker_spec must be a BrokerSpec")
         self._assert_symbol_binding(intent.symbol, broker_spec.broker_symbol)
@@ -1433,7 +1603,7 @@ class MT5Adapter:
         current_spec = self.get_broker_spec(
             intent.symbol,
             broker_spec.broker_symbol,
-            now=now,
+            now=started_at,
         )
         bound_fields = (
             "account_id",
@@ -1465,6 +1635,7 @@ class MT5Adapter:
             raise PreflightRejectedError(
                 "broker specification drifted: " + ",".join(drifted)
             )
+        completed_at = self._trusted_now()
         return _mint_mt5_submission_guard(
             intent_id=intent.intent_id,
             account_id=intent.account_id,
@@ -1474,7 +1645,7 @@ class MT5Adapter:
             active_order_count=0,
             active_position_count=0,
             broker_spec_sha256=broker_spec.content_sha256,
-            checked_at_utc=now,
+            checked_at_utc=completed_at,
         )
 
     def submit(
@@ -1486,6 +1657,7 @@ class MT5Adapter:
         *,
         now: datetime | None = None,
     ) -> ExecutionReceipt:
+        self._require_initialized()
         now = self._trusted_now(now)
         if not isinstance(authorization, RuntimeAuthorization):
             raise ExecutionLockedError("sealed runtime authorization is required")
@@ -1545,6 +1717,7 @@ class MT5Adapter:
         ):
             raise PreflightRejectedError("preflight request no longer matches immutable intent")
         with self._authorization_lock:
+            final_stop_risk_cash = preflight.estimated_stop_risk_cash
             final_now = self._trusted_now()
             if (
                 not authorization.allows_order_send(now=final_now)
@@ -1554,8 +1727,9 @@ class MT5Adapter:
                 raise PreflightRejectedError(
                     "authorization, preflight, or intent expired at order_send boundary"
                 )
-            # Account and global exposure are refreshed inside the coordinator's
-            # journal final_submission_guard transaction, immediately before send.
+            # Account and global exposure are refreshed immediately before send.
+            # The durable journal lease has already committed its one-use marker,
+            # so no SQLite transaction remains open across these broker calls.
             account = self.assert_account_binding()
             if not account["trade_allowed"] or not account["trade_expert"]:
                 raise PreflightRejectedError(
@@ -1577,14 +1751,83 @@ class MT5Adapter:
                 raise PreflightRejectedError(
                     "actual broker spread exceeds risk-governor limit"
                 )
+            current_entry = float(
+                tick["ask"] if intent.side == "BUY" else tick["bid"]
+            )
+            requested_entry = float(preflight.request["price"])
+            if intent.side == "BUY":
+                adverse_entry = max(requested_entry, current_entry) + (
+                    preflight.request["deviation"] * authorization.broker_point
+                )
+            else:
+                adverse_entry = min(requested_entry, current_entry) - (
+                    preflight.request["deviation"] * authorization.broker_point
+                )
+            final_stop_risk_cash = self.estimate_stop_risk_cash(
+                intent,
+                preflight.broker_symbol,
+                entry_price=adverse_entry,
+            )
+            final_margin_cash = _finite(
+                self.mt5.order_calc_margin(
+                    preflight.request["type"],
+                    preflight.broker_symbol,
+                    intent.requested_lot,
+                    adverse_entry,
+                ),
+                "final order_calc_margin",
+                positive=True,
+            )
+            if final_stop_risk_cash > authorization.max_risk_cash + 1e-12:
+                raise PreflightRejectedError(
+                    "actual stop risk exceeds risk-governor limit"
+                )
+            if final_margin_cash > authorization.max_margin_cash + 1e-12:
+                raise PreflightRejectedError(
+                    "actual margin exceeds risk-governor limit"
+                )
+            # Broker calculations are synchronous and may block.  Re-sample
+            # the trusted clock after the *last* calculation so an expired
+            # authorization can never be consumed merely because it was fresh
+            # before the broker calls began.
+            send_boundary_now = self._trusted_now()
+            if (
+                not authorization.allows_order_send(now=send_boundary_now)
+                or send_boundary_now >= preflight.valid_until_utc
+                or send_boundary_now >= intent.expires_at
+            ):
+                raise PreflightRejectedError(
+                    "authorization, preflight, or intent expired at final send boundary"
+                )
+            account_age = (
+                send_boundary_now
+                - require_utc(
+                    "final account fact captured_at_utc",
+                    account["captured_at_utc"],
+                )
+            ).total_seconds()
+            tick_age = (
+                send_boundary_now
+                - require_utc("final tick time_utc", tick["time_utc"])
+            ).total_seconds()
+            if (
+                account_age < 0
+                or account_age > MAX_AUTHORIZATION_AGE_SECONDS
+                or tick_age < 0
+                or tick_age > self.max_tick_age_seconds
+            ):
+                raise PreflightRejectedError(
+                    "final account or tick facts are stale at send boundary"
+                )
             # SQLite commits the one-use record before this context is opened.
             # The in-process lease can be consumed once and is deactivated when
             # the journal final guard exits, including on exceptions.
-            submission_lease.consume(
+            submission_proof = submission_lease.consume(
                 journal_sha256=authorization.journal_sha256,
                 intent_id=intent.intent_id,
                 execution_gate_sha256=authorization.execution_gate_sha256,
                 authorization_sha256=canonical_sha256(authorization),
+                broker_request_sha256=preflight.request_sha256,
             )
             try:
                 result = self.mt5.order_send(dict(expected_request))
@@ -1592,7 +1835,11 @@ class MT5Adapter:
                 raise SubmissionUncertainError(
                     "order_send raised after submission began"
                 ) from exc
-            now = final_now
+            # The broker call may block for materially longer than the 50 ms
+            # trusted-clock assertion tolerance.  Receipt time is therefore
+            # sampled after the call returns, never copied from the pre-send
+            # authorization boundary.
+            received_at = self._trusted_now()
         if result is None:
             raise SubmissionUncertainError("order_send returned no result")
         payload = _asdict(result)
@@ -1601,27 +1848,24 @@ class MT5Adapter:
         placed_code = int(getattr(self.mt5, "TRADE_RETCODE_PLACED", 10008))
         partial_code = int(getattr(self.mt5, "TRADE_RETCODE_DONE_PARTIAL", 10010))
         definitive_rejects = {
-            int(getattr(self.mt5, name, fallback))
-            for name, fallback in (
-                ("TRADE_RETCODE_REQUOTE", 10004),
-                ("TRADE_RETCODE_REJECT", 10006),
-                ("TRADE_RETCODE_CANCEL", 10007),
-                ("TRADE_RETCODE_INVALID", 10013),
-                ("TRADE_RETCODE_INVALID_VOLUME", 10014),
-                ("TRADE_RETCODE_INVALID_PRICE", 10015),
-                ("TRADE_RETCODE_INVALID_STOPS", 10016),
-                ("TRADE_RETCODE_TRADE_DISABLED", 10017),
-                ("TRADE_RETCODE_MARKET_CLOSED", 10018),
-                ("TRADE_RETCODE_NO_MONEY", 10019),
-                ("TRADE_RETCODE_PRICE_CHANGED", 10020),
-                ("TRADE_RETCODE_PRICE_OFF", 10021),
-                ("TRADE_RETCODE_INVALID_EXPIRATION", 10022),
-                ("TRADE_RETCODE_ORDER_CHANGED", 10023),
-                ("TRADE_RETCODE_TOO_MANY_REQUESTS", 10024),
-                ("TRADE_RETCODE_INVALID_ORDER", 10035),
-                ("TRADE_RETCODE_LIMIT_ORDERS", 10033),
-                ("TRADE_RETCODE_LIMIT_VOLUME", 10034),
-            )
+            int(getattr(self.mt5, "TRADE_RETCODE_REQUOTE", 10004)),
+            int(getattr(self.mt5, "TRADE_RETCODE_REJECT", 10006)),
+            int(getattr(self.mt5, "TRADE_RETCODE_CANCEL", 10007)),
+            int(getattr(self.mt5, "TRADE_RETCODE_INVALID", 10013)),
+            int(getattr(self.mt5, "TRADE_RETCODE_INVALID_VOLUME", 10014)),
+            int(getattr(self.mt5, "TRADE_RETCODE_INVALID_PRICE", 10015)),
+            int(getattr(self.mt5, "TRADE_RETCODE_INVALID_STOPS", 10016)),
+            int(getattr(self.mt5, "TRADE_RETCODE_TRADE_DISABLED", 10017)),
+            int(getattr(self.mt5, "TRADE_RETCODE_MARKET_CLOSED", 10018)),
+            int(getattr(self.mt5, "TRADE_RETCODE_NO_MONEY", 10019)),
+            int(getattr(self.mt5, "TRADE_RETCODE_PRICE_CHANGED", 10020)),
+            int(getattr(self.mt5, "TRADE_RETCODE_PRICE_OFF", 10021)),
+            int(getattr(self.mt5, "TRADE_RETCODE_INVALID_EXPIRATION", 10022)),
+            int(getattr(self.mt5, "TRADE_RETCODE_ORDER_CHANGED", 10023)),
+            int(getattr(self.mt5, "TRADE_RETCODE_TOO_MANY_REQUESTS", 10024)),
+            int(getattr(self.mt5, "TRADE_RETCODE_INVALID_ORDER", 10035)),
+            int(getattr(self.mt5, "TRADE_RETCODE_LIMIT_ORDERS", 10033)),
+            int(getattr(self.mt5, "TRADE_RETCODE_LIMIT_VOLUME", 10034)),
         }
         requested = intent.requested_lot
         filled = float(payload.get("volume", 0.0) or 0.0)
@@ -1649,6 +1893,7 @@ class MT5Adapter:
         else:
             state = "UNCERTAIN"
         return _mint_execution_receipt(
+            submission_proof=submission_proof,
             intent_id=intent.intent_id,
             state=state,
             account_id=self.account_alias,
@@ -1656,7 +1901,7 @@ class MT5Adapter:
             symbol=intent.symbol,
             requested_volume=requested,
             filled_volume=filled,
-            received_at=now,
+            received_at=received_at,
             broker_retcode=str(retcode),
             message=str(payload.get("comment", "") or ""),
             order_ticket=str(payload.get("order")) if payload.get("order") else None,
@@ -1669,7 +1914,7 @@ class MT5Adapter:
             ),
             stop_loss=intent.stop_loss,
             take_profit=intent.take_profit,
-            actual_risk_cash=preflight.estimated_stop_risk_cash,
+            actual_risk_cash=final_stop_risk_cash,
         )
 
     def orders(self) -> list[dict[str, Any]]:

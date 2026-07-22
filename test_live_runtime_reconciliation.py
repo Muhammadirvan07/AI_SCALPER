@@ -149,7 +149,13 @@ class ReconciliationTests(unittest.TestCase):
         )
         self.assertEqual(result.protection_failures, ("intent-1",))
         self.assertTrue(result.kill_switch_latched)
-        self.assertFalse(self.journal.get_intent("intent-1").protective_sl_tp_confirmed)
+        record = self.journal.get_intent("intent-1")
+        self.assertEqual("SUBMITTING", record.state)
+        self.assertIsNone(record.broker_position_ticket)
+        self.assertEqual(0.0, record.filled_volume)
+        self.assertFalse(record.protective_sl_tp_confirmed)
+        self.assertEqual((), result.matched_intents)
+        self.assertEqual(("intent-1",), result.uncertain_intents)
 
     def test_positive_but_wrong_server_protection_is_not_accepted(self):
         self.create_submitting()
@@ -173,7 +179,107 @@ class ReconciliationTests(unittest.TestCase):
             occurred_at=NOW,
         )
         self.assertEqual(("intent-1",), result.protection_failures)
-        self.assertFalse(self.journal.get_intent("intent-1").protective_sl_tp_confirmed)
+        record = self.journal.get_intent("intent-1")
+        self.assertEqual("SUBMITTING", record.state)
+        self.assertIsNone(record.broker_position_ticket)
+        self.assertEqual(0.0, record.filled_volume)
+        self.assertFalse(record.protective_sl_tp_confirmed)
+
+    def assert_comment_matched_position_failure_is_fail_closed(
+        self,
+        *,
+        position_override,
+        expected_failure,
+        failure_bucket,
+    ):
+        self.create_submitting()
+        position = {
+            "ticket": 42,
+            "magic": MAGIC,
+            "comment": "AIS:abc",
+            "symbol": "GOLD.a",
+            "type": 0,
+            "volume": 0.01,
+            "sl": 2399.5,
+            "tp": 2401.0,
+        }
+        position.update(position_override)
+
+        result = reconcile_broker_state(
+            self.journal,
+            broker_orders=[],
+            broker_positions=[position],
+            broker_deals=[],
+            magic_number=MAGIC,
+            occurred_at=NOW,
+        )
+
+        record = self.journal.get_intent("intent-1")
+        self.assertEqual("SUBMITTING", record.state)
+        self.assertIsNone(record.broker_position_ticket)
+        self.assertEqual(0.0, record.filled_volume)
+        self.assertFalse(record.protective_sl_tp_confirmed)
+        self.assertEqual((), result.matched_intents)
+        self.assertEqual(("intent-1",), result.uncertain_intents)
+        self.assertEqual(("intent-1",), getattr(result, failure_bucket))
+        self.assertTrue(result.kill_switch_latched)
+        self.assertIn(expected_failure, self.journal.kill_switch_status()["reason"])
+
+    def test_comment_match_wrong_position_symbol_does_not_bind_or_advance(self):
+        self.assert_comment_matched_position_failure_is_fail_closed(
+            position_override={"symbol": "EURUSD.a"},
+            expected_failure="BROKER_SYMBOL_MISMATCH",
+            failure_bucket="binding_failures",
+        )
+
+    def test_comment_match_wrong_position_side_does_not_bind_or_advance(self):
+        self.assert_comment_matched_position_failure_is_fail_closed(
+            position_override={"type": 1},
+            expected_failure="POSITION_SIDE_MISMATCH",
+            failure_bucket="binding_failures",
+        )
+
+    def test_comment_match_wrong_position_magic_does_not_bind_or_advance(self):
+        self.assert_comment_matched_position_failure_is_fail_closed(
+            position_override={"magic": MAGIC + 1},
+            expected_failure="MAGIC_NUMBER_MISMATCH",
+            failure_bucket="binding_failures",
+        )
+
+    def test_comment_match_wrong_position_volume_does_not_bind_or_advance(self):
+        self.assert_comment_matched_position_failure_is_fail_closed(
+            position_override={"volume": 0.02},
+            expected_failure="POSITION_VOLUME_EXCEEDS_INTENT",
+            failure_bucket="volume_failures",
+        )
+
+    def test_comment_match_wrong_order_does_not_bind_or_advance(self):
+        self.create_submitting()
+        result = reconcile_broker_state(
+            self.journal,
+            broker_orders=[
+                {
+                    "ticket": 77,
+                    "magic": MAGIC,
+                    "comment": "AIS:abc",
+                    "symbol": "EURUSD.a",
+                    "type": 0,
+                    "volume_current": 0.01,
+                }
+            ],
+            broker_positions=[],
+            broker_deals=[],
+            magic_number=MAGIC,
+            occurred_at=NOW,
+        )
+
+        record = self.journal.get_intent("intent-1")
+        self.assertEqual("SUBMITTING", record.state)
+        self.assertIsNone(record.broker_order_ticket)
+        self.assertEqual((), result.matched_intents)
+        self.assertEqual(("intent-1",), result.uncertain_intents)
+        self.assertEqual(("intent-1",), result.binding_failures)
+        self.assertTrue(result.kill_switch_latched)
 
     def test_external_close_is_reconciled_from_exit_deal(self):
         self.create_submitting()
@@ -232,8 +338,12 @@ class ReconciliationTests(unittest.TestCase):
             magic_number=MAGIC,
             occurred_at=NOW,
         )
-        self.assertEqual("UNCERTAIN", self.journal.get_intent("intent-1").state)
+        record = self.journal.get_intent("intent-1")
+        self.assertEqual("FILLED", record.state)
+        self.assertEqual("42", record.broker_position_ticket)
+        self.assertEqual(0.01, record.filled_volume)
         self.assertEqual((), result.closed_intents)
+        self.assertEqual(("intent-1",), result.uncertain_intents)
         self.assertEqual(("intent-1",), result.binding_failures)
         self.assertEqual(("intent-1",), result.volume_failures)
         self.assertTrue(result.kill_switch_latched)

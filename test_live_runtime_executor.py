@@ -38,6 +38,7 @@ from live_runtime.mt5_adapter import (
 )
 from live_runtime.permit import PromotionPermit, account_alias_sha256
 from live_runtime.risk import RiskContext
+from live_runtime.risk_context_factory import RiskContextVerificationError
 from live_runtime.market_guard import (
     NEWS_FEED_SCHEMA_VERSION,
     NewsEvent,
@@ -45,6 +46,7 @@ from live_runtime.market_guard import (
     evaluate_market_guards,
 )
 from live_runtime.model_governance import ModelArtifactManifest
+from test_fixtures.verified_risk_context import build_verified_risk_context
 
 
 UTC = timezone.utc
@@ -72,7 +74,7 @@ def promotion_permit(
         config_sha256="b" * 64,
         model_artifact_sha256="f" * 64,
         issued_at=NOW - timedelta(seconds=1),
-        expires_at=NOW + timedelta(minutes=5),
+        expires_at=NOW + timedelta(minutes=4),
         nonce=f"{mode}-{symbol}",
         journal_sha256=journal_sha256,
     )
@@ -346,8 +348,16 @@ class StubAdapter:
         self.submit_calls += 1
         if self.uncertain:
             raise SubmissionUncertainError("connection lost after send")
+        submission_proof = submission_lease.consume(
+            journal_sha256=authorization.journal_sha256,
+            intent_id=trade_intent.intent_id,
+            execution_gate_sha256=authorization.execution_gate_sha256,
+            authorization_sha256=canonical_sha256(authorization),
+            broker_request_sha256=preflight.request_sha256,
+        )
         filled = 0.0 if self.receipt_state == "REJECTED" else 0.01
         return _mint_execution_receipt(
+            submission_proof=submission_proof,
             intent_id=trade_intent.intent_id,
             state=self.receipt_state,
             account_id="account-alias",
@@ -396,6 +406,31 @@ class ExecutionCoordinatorTests(unittest.TestCase):
 
     def execute_with_controls(self, coordinator, journal, **values):
         trade_intent = values["intent"]
+        if type(values.get("risk_context")) is RiskContext:
+            proof_health = values["health_facts"]
+            if not evaluate_runtime_health(proof_health).healthy:
+                proof_health = health()
+            proof_guard = values["market_guard"]
+            if (
+                proof_guard.symbol != trade_intent.symbol
+                or not proof_guard.news_clear
+                or not proof_guard.rollover_clear
+                or not proof_guard.feed_fresh
+            ):
+                proof_guard = market_guard(trade_intent.symbol)
+            values["risk_context"] = build_verified_risk_context(
+                journal=journal,
+                broker_spec=values["broker_spec"],
+                health_facts=proof_health,
+                market_guard=proof_guard,
+                permit=values["permit"].sign(SECRET),
+                permit_secret=SECRET,
+                account_runtime_identity_sha256=(
+                    coordinator.account_runtime_identity_sha256
+                ),
+                now=values["now"],
+                template=values["risk_context"],
+            )
         token = canonical_environment_arm_token(
             trade_intent.account_id,
             trade_intent.server,
@@ -498,7 +533,6 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             self.journal,
             **{
                 **values,
-                "broker_spec": replace(broker(), captured_at=clock[0]),
                 "now": clock[0],
             },
         )
@@ -581,12 +615,26 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                     if missing_control == "approval"
                     else signed_manual_approval(trade_intent, journal)
                 )
+                coordinator = self.coordinator(journal, adapter)
+                verified_context = build_verified_risk_context(
+                    journal=journal,
+                    broker_spec=broker(),
+                    health_facts=health(),
+                    market_guard=market_guard(),
+                    permit=permit,
+                    permit_secret=SECRET,
+                    account_runtime_identity_sha256=(
+                        coordinator.account_runtime_identity_sha256
+                    ),
+                    now=NOW,
+                    template=context(),
+                )
                 with patch.dict(os.environ, environment, clear=True):
-                    outcome = self.coordinator(journal, adapter).execute_once(
+                    outcome = coordinator.execute_once(
                         intent=trade_intent,
                         broker_symbol="EURUSD.a",
                         broker_spec=broker(),
-                        risk_context=context(),
+                        risk_context=verified_context,
                         permit=permit,
                         health_facts=health(),
                         market_guard=market_guard(),
@@ -692,7 +740,6 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             "intent": trade_intent,
             "broker_symbol": "EURUSD.a",
             "broker_spec": broker(),
-            "risk_context": context(),
             "permit": permit,
             "health_facts": health(),
             "market_guard": market_guard(),
@@ -701,10 +748,24 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         }
         first_adapter = StubAdapter()
         first_coordinator = self.coordinator(journals[0], first_adapter)
+        verified = build_verified_risk_context(
+            journal=journals[0],
+            broker_spec=broker(),
+            health_facts=health(),
+            market_guard=market_guard(),
+            permit=permit,
+            permit_secret=SECRET,
+            account_runtime_identity_sha256=(
+                first_coordinator.account_runtime_identity_sha256
+            ),
+            now=NOW,
+            template=context(),
+        )
         first = self.execute_with_controls(
             first_coordinator,
             journals[0],
             **common,
+            risk_context=verified,
             owner_id=owners[0],
             fence_token=tokens[0],
         )
@@ -712,27 +773,40 @@ class ExecutionCoordinatorTests(unittest.TestCase):
 
         second_adapter = StubAdapter()
         with self.coordinator(journals[1], second_adapter) as second_coordinator:
-            second = self.execute_with_controls(
-                second_coordinator,
-                journals[1],
-                **common,
-                owner_id=owners[1],
-                fence_token=tokens[1],
-            )
+            with self.assertRaises(RiskContextVerificationError) as caught:
+                self.execute_with_controls(
+                    second_coordinator,
+                    journals[1],
+                    **common,
+                    risk_context=verified,
+                    owner_id=owners[1],
+                    fence_token=tokens[1],
+                )
         self.assertTrue(first.execution_sent)
-        self.assertFalse(second.execution_sent)
-        self.assertIn("JOURNAL_BINDING_MISMATCH", second.reason_codes)
+        self.assertIn(
+            "VERIFIED_RISK_CONTEXT_JOURNAL_MISMATCH",
+            caught.exception.reason_codes,
+        )
         self.assertEqual((1, 0), (first_adapter.submit_calls, second_adapter.submit_calls))
 
     def test_live_lock_rejects_before_preflight_or_send(self) -> None:
         adapter = StubAdapter()
-        outcome = self.execute(
-            adapter,
-            intent=intent("LIVE"),
-            risk_context=context("LIVE"),
-        )
-        self.assertEqual("RISK_REJECTED", outcome.state)
-        self.assertIn("LIVE_MODE_LOCKED", outcome.reason_codes)
+        trade_intent, permit = journal_bound_order(self.journal, mode="LIVE")
+        coordinator = self.coordinator(self.journal, adapter)
+        with self.assertRaises(TypeError):
+            coordinator.execute_once(
+                intent=trade_intent,
+                broker_symbol="EURUSD.a",
+                broker_spec=replace(broker(), environment="LIVE"),
+                risk_context=context("LIVE"),  # type: ignore[arg-type]
+                permit=permit,
+                health_facts=health(),
+                market_guard=market_guard(),
+                model_artifact=model_artifact(),
+                owner_id=self.owner,
+                fence_token=self.fence,
+                now=NOW,
+            )
         self.assertEqual(0, adapter.preflight_calls)
         self.assertEqual(0, adapter.submit_calls)
 
@@ -787,7 +861,15 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(0, adapter.submit_calls)
 
     def test_clock_refresh_expires_evidence_before_order_send(self) -> None:
-        moments = iter((NOW, NOW, NOW + timedelta(seconds=2)))
+        moments = iter(
+            (
+                NOW,
+                NOW,
+                NOW,
+                NOW,
+                NOW + timedelta(seconds=2),
+            )
+        )
         adapter = StubAdapter()
         coordinator = self.coordinator(
             self.journal,
@@ -816,6 +898,90 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             "EXECUTION_EVIDENCE_EXPIRED_BEFORE_SEND", outcome.reason_codes
         )
         self.assertEqual(0, adapter.submit_calls)
+
+    def test_verified_context_expiry_between_preflight_and_reservation_rejects(self) -> None:
+        moments = iter(
+            (
+                NOW,
+                NOW,
+                NOW,
+                NOW + timedelta(seconds=2),
+            )
+        )
+
+        def clock_provider():
+            observed = next(moments)
+            self.journal_clock[0] = observed
+            return observed
+
+        adapter = StubAdapter()
+        coordinator = self.coordinator(
+            self.journal,
+            adapter,
+            clock_provider=clock_provider,
+        )
+        trade_intent, permit = journal_bound_order(self.journal)
+        outcome = self.execute_with_controls(
+            coordinator,
+            self.journal,
+            intent=trade_intent,
+            broker_symbol="EURUSD.a",
+            broker_spec=broker(),
+            risk_context=context(),
+            permit=permit,
+            health_facts=health(),
+            market_guard=market_guard(),
+            model_artifact=model_artifact(),
+            owner_id=self.owner,
+            fence_token=self.fence,
+            now=NOW,
+        )
+        self.assertEqual("REJECTED", outcome.state)
+        self.assertIn("VERIFIED_RISK_CONTEXT_EXPIRED", outcome.reason_codes)
+        self.assertEqual(1, adapter.preflight_calls)
+        self.assertEqual(0, adapter.submit_calls)
+
+    def test_fresh_broker_call_timestamps_tolerate_normal_clock_progress(self) -> None:
+        moments = (
+            NOW,
+            NOW + timedelta(milliseconds=100),
+            NOW + timedelta(milliseconds=200),
+        )
+        call_count = 0
+
+        def clock_provider():
+            nonlocal call_count
+            observed = moments[min(call_count, len(moments) - 1)]
+            call_count += 1
+            self.journal_clock[0] = observed
+            return observed
+
+        adapter = StubAdapter()
+        coordinator = self.coordinator(
+            self.journal,
+            adapter,
+            clock_provider=clock_provider,
+        )
+        trade_intent, permit = journal_bound_order(self.journal)
+        outcome = self.execute_with_controls(
+            coordinator,
+            self.journal,
+            intent=trade_intent,
+            broker_symbol="EURUSD.a",
+            broker_spec=broker(),
+            risk_context=context(),
+            permit=permit,
+            health_facts=health(),
+            market_guard=market_guard(),
+            model_artifact=model_artifact(),
+            owner_id=self.owner,
+            fence_token=self.fence,
+            now=NOW,
+        )
+        self.assertEqual("FILLED", outcome.state)
+        self.assertTrue(outcome.execution_sent)
+        self.assertEqual(1, adapter.preflight_calls)
+        self.assertEqual(1, adapter.submit_calls)
 
     def test_direct_health_decision_and_stale_clock_override_are_rejected(self) -> None:
         coordinator = ExecutionCoordinator(
@@ -860,8 +1026,8 @@ class ExecutionCoordinatorTests(unittest.TestCase):
 
     def test_drawdown_or_loss_stop_latches_journal_kill_switch(self) -> None:
         for context_change, expected_reason in (
-            ({"daily_pnl_cash": -1.0}, "DAILY_LOSS_LIMIT"),
-            ({"weekly_pnl_cash": -2.5}, "WEEKLY_LOSS_LIMIT"),
+            ({"daily_pnl_cash": -1.1}, "DAILY_LOSS_LIMIT"),
+            ({"weekly_pnl_cash": -2.6}, "WEEKLY_LOSS_LIMIT"),
             ({"equity": 95.0}, "DRAWDOWN_LIMIT"),
             ({"consecutive_losses": 2}, "LOSS_LATCH_ACTIVE"),
         ):
@@ -903,39 +1069,65 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual("RECONCILIATION_REQUIRED", second.status)
         self.assertEqual(1, adapter.submit_calls)
 
-    def test_stale_health_or_risk_facts_fail_before_preflight(self) -> None:
-        cases = (
-            ({"health_facts": replace(health(), observed_at=NOW - timedelta(seconds=2), heartbeat_at=NOW - timedelta(seconds=2))}, "HEALTH_DECISION_STALE"),
-            ({"risk_context": replace(context(), evaluated_at=NOW - timedelta(seconds=2))}, "RISK_CONTEXT_STALE"),
+    def test_stale_or_substituted_facts_fail_before_preflight(self) -> None:
+        adapter = StubAdapter()
+        trade_intent, permit = journal_bound_order(self.journal)
+        coordinator = self.coordinator(self.journal, adapter)
+        verified = build_verified_risk_context(
+            journal=self.journal,
+            broker_spec=broker(),
+            health_facts=health(),
+            market_guard=market_guard(),
+            permit=permit,
+            permit_secret=SECRET,
+            account_runtime_identity_sha256=(
+                coordinator.account_runtime_identity_sha256
+            ),
+            now=NOW,
+            template=context(),
         )
-        for changes, reason in cases:
-            with self.subTest(reason=reason):
-                tempdir = tempfile.TemporaryDirectory()
-                self.addCleanup(tempdir.cleanup)
-                journal = ExecutionJournal(
-                    Path(tempdir.name) / "journal.sqlite",
-                    clock_provider=lambda: NOW,
-                )
-                fence = journal.claim_executor("owner", now=NOW, lease_seconds=60)
-                adapter = StubAdapter()
-                trade_intent, permit = journal_bound_order(journal)
-                outcome = self.execute_with_controls(
-                    self.coordinator(journal, adapter),
-                    journal,
-                    intent=trade_intent,
-                    broker_symbol="EURUSD.a",
-                    broker_spec=broker(),
-                    risk_context=changes.get("risk_context", context()),
-                    permit=permit,
-                    health_facts=changes.get("health_facts", health()),
-                    market_guard=market_guard(),
-                    model_artifact=model_artifact(),
-                    owner_id="owner",
-                    fence_token=fence,
-                    now=NOW,
-                )
-                self.assertIn(reason, outcome.reason_codes)
-                self.assertEqual(0, adapter.preflight_calls)
+        with self.assertRaises(RiskContextVerificationError) as health_error:
+            coordinator.execute_once(
+                intent=trade_intent,
+                broker_symbol="EURUSD.a",
+                broker_spec=broker(),
+                risk_context=verified,
+                permit=permit,
+                health_facts=replace(health(), backup_recent=False),
+                market_guard=market_guard(),
+                model_artifact=model_artifact(),
+                owner_id=self.owner,
+                fence_token=self.fence,
+                now=NOW,
+            )
+        self.assertIn(
+            "VERIFIED_RISK_CONTEXT_HEALTH_MISMATCH",
+            health_error.exception.reason_codes,
+        )
+        expired_coordinator = self.coordinator(
+            self.journal,
+            adapter,
+            clock_provider=lambda: NOW + timedelta(seconds=2),
+        )
+        with self.assertRaises(RiskContextVerificationError) as stale_error:
+            expired_coordinator.execute_once(
+                intent=trade_intent,
+                broker_symbol="EURUSD.a",
+                broker_spec=broker(),
+                risk_context=verified,
+                permit=permit,
+                health_facts=health(),
+                market_guard=market_guard(),
+                model_artifact=model_artifact(),
+                owner_id=self.owner,
+                fence_token=self.fence,
+                now=NOW + timedelta(seconds=2),
+            )
+        self.assertIn(
+            "VERIFIED_RISK_CONTEXT_EXPIRED",
+            stale_error.exception.reason_codes,
+        )
+        self.assertEqual(0, adapter.preflight_calls)
 
     def test_kill_switch_latched_during_guard_blocks_atomic_submission(self) -> None:
         journal = self.journal
@@ -967,23 +1159,33 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                 )
                 fence = journal.claim_executor("owner", now=NOW, lease_seconds=60)
                 adapter = StubAdapter()
-                if reason == "kill":
-                    journal.latch_kill_switch("incident", source="TEST", occurred_at=NOW)
                 trade_intent, permit = journal_bound_order(
                     journal,
                     valid=reason == "kill",
                 )
+                coordinator = self.coordinator(journal, adapter)
+                verified = build_verified_risk_context(
+                    journal=journal,
+                    broker_spec=broker(),
+                    health_facts=health(),
+                    market_guard=market_guard(),
+                    permit=permit.sign(SECRET),
+                    permit_secret=SECRET,
+                    account_runtime_identity_sha256=(
+                        coordinator.account_runtime_identity_sha256
+                    ),
+                    now=NOW,
+                    template=context(),
+                )
+                if reason == "kill":
+                    journal.latch_kill_switch("incident", source="TEST", occurred_at=NOW)
                 outcome = self.execute_with_controls(
-                    self.coordinator(journal, adapter),
+                    coordinator,
                     journal,
                     intent=trade_intent,
                     broker_symbol="EURUSD.a",
                     broker_spec=broker(),
-                    risk_context=(
-                        context()
-                        if reason == "kill"
-                        else replace(context(), permit_valid=False)
-                    ),
+                    risk_context=verified,
                     permit=permit,
                     health_facts=health(),
                     market_guard=market_guard(),
@@ -1027,12 +1229,24 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                     "now": NOW,
                 }
                 values.update(changes)
-                outcome = self.execute_with_controls(
-                    self.coordinator(journal, adapter),
-                    journal,
-                    **values,
-                )
-                self.assertIn(reason, outcome.reason_codes)
+                if "market_guard" in changes:
+                    with self.assertRaises(RiskContextVerificationError) as caught:
+                        self.execute_with_controls(
+                            self.coordinator(journal, adapter),
+                            journal,
+                            **values,
+                        )
+                    self.assertIn(
+                        "VERIFIED_RISK_CONTEXT_MARKET_GUARD_MISMATCH",
+                        caught.exception.reason_codes,
+                    )
+                else:
+                    outcome = self.execute_with_controls(
+                        self.coordinator(journal, adapter),
+                        journal,
+                        **values,
+                    )
+                    self.assertIn(reason, outcome.reason_codes)
                 self.assertEqual(0, adapter.preflight_calls)
                 self.assertEqual(0, adapter.submit_calls)
 

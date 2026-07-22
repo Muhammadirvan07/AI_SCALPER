@@ -47,6 +47,7 @@ from live_runtime.market_guard import (
     evaluate_market_guards,
 )
 from live_runtime.model_governance import ModelArtifactManifest, verify_decision_model
+from test_fixtures.verified_risk_context import build_verified_risk_context
 
 
 UTC = timezone.utc
@@ -85,7 +86,9 @@ class FakeMT5:
         self.current_ask = 2400.02
         self.check_retcode = 0
         self.profit_per_lot = 20.0
+        self.small_lot_margin = 0.5
         self.sent_requests = []
+        self.profit_calls = []
         self.orders_result = []
         self.positions_result = []
         self.deals_result = []
@@ -154,9 +157,10 @@ class FakeMT5:
         ]
 
     def order_calc_margin(self, order_type, symbol, lot, price):
-        return 50.0 if lot == 1.0 else 0.5
+        return 50.0 if lot == 1.0 else self.small_lot_margin
 
     def order_calc_profit(self, order_type, symbol, lot, entry, stop):
+        self.profit_calls.append((order_type, symbol, lot, entry, stop))
         return -self.profit_per_lot * lot
 
     def order_check(self, request):
@@ -193,7 +197,7 @@ def promotion_permit(
         config_sha256="b" * 64,
         model_artifact_sha256="f" * 64,
         issued_at=NOW - timedelta(seconds=1),
-        expires_at=NOW + timedelta(minutes=5),
+        expires_at=NOW + timedelta(minutes=4),
         nonce=f"{mode}-{symbol}",
         journal_sha256=journal_sha256,
         promotion_evidence_sha256=PROMOTION_EVIDENCE_SHA256,
@@ -280,10 +284,7 @@ def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
             broker_symbol,
             now=NOW,
         )
-        risk = evaluate_risk(
-            bound_intent,
-            spec,
-            RiskContext(
+        raw_risk_context = RiskContext(
                 evaluated_at=NOW,
                 mode=bound_intent.mode,
                 account_id=bound_intent.account_id,
@@ -309,8 +310,8 @@ def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
                 data_fresh=True,
                 source_aligned=True,
                 permit_valid=validation.valid,
-            ),
-        )
+            )
+        risk = evaluate_risk(bound_intent, spec, raw_risk_context)
         if not risk.allowed:
             raise ExecutionLockedError("independent risk governor denied authorization")
         preflight = adapter.preflight(
@@ -319,8 +320,7 @@ def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
             allowed_deviation_points=2,
             now=NOW,
         )
-        health = evaluate_runtime_health(
-            RuntimeHealthFacts(
+        health_facts = RuntimeHealthFacts(
                 observed_at=NOW,
                 heartbeat_at=NOW,
                 clock_drift_seconds=0.0,
@@ -332,7 +332,7 @@ def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
                 backup_recent=True,
                 kill_switch_latched=False,
             )
-        )
+        health = evaluate_runtime_health(health_facts)
         news_feed = NewsFeed(
             fetched_at=NOW,
             events=(
@@ -356,6 +356,19 @@ def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
             news_feed=news_feed,
             broker_rollover_at=NOW + timedelta(hours=5),
             news_signing_key_provider=lambda key_id: NEWS_SECRET,
+        )
+        verified_risk_context = build_verified_risk_context(
+            journal=journal,
+            broker_spec=spec,
+            health_facts=health_facts,
+            market_guard=market_guard,
+            permit=permit,
+            permit_secret=SECRET,
+            account_runtime_identity_sha256=(
+                adapter.execution_fence_identity()
+            ),
+            now=NOW,
+            template=raw_risk_context,
         )
         model_binding = verify_decision_model(
             bound_intent.decision,
@@ -391,6 +404,9 @@ def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
             payload={
                 "intent": bound_intent.to_canonical_dict(),
                 "broker_spec_sha256": spec.content_sha256,
+                "verified_risk_context_sha256": (
+                    verified_risk_context.content_sha256
+                ),
             },
             created_at=NOW,
         )
@@ -484,6 +500,7 @@ def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
             permit_validation=validation,
             risk_decision=risk,
             broker_spec=spec,
+            verified_risk_context=verified_risk_context,
             reservation=reservation,
             gate_capability=gate_capability,
             journal_sha256=journal.journal_sha256,
@@ -497,6 +514,7 @@ def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
             fence_token=token,
             execution_gate_sha256=runtime_authorization.execution_gate_sha256,
             authorization_sha256=canonical_sha256(runtime_authorization),
+            broker_request_sha256=preflight.request_sha256,
             occurred_at=NOW,
         ) as submission_lease:
             yield bound_intent, preflight, runtime_authorization, submission_lease
@@ -563,6 +581,72 @@ class MT5AdapterTests(unittest.TestCase):
         self.assertEqual(result.request["type_filling"], self.module.ORDER_FILLING_FOK)
         self.module.check_retcode = 10019
         self.assertFalse(self.preflight().passed)
+
+    def test_preflight_receipt_time_is_sampled_after_broker_calculations(self):
+        clock = {"now": NOW}
+        module = FakeMT5()
+        original_margin = module.order_calc_margin
+
+        def delayed_margin(order_type, symbol, lot, price):
+            value = original_margin(order_type, symbol, lot, price)
+            clock["now"] = NOW + timedelta(seconds=1)
+            return value
+
+        module.order_calc_margin = delayed_margin
+        adapter = MT5Adapter(
+            account_alias="account-alias",
+            broker_legal_name="Example Broker Ltd",
+            expected_login=12345,
+            expected_server="Broker-Demo",
+            environment="DEMO",
+            session_calendar_sha256="d" * 64,
+            symbol_map={"EURUSD": "EURUSD.a"},
+            mt5_module=module,
+            clock_provider=lambda: clock["now"],
+        )
+        adapter.initialize()
+
+        result = adapter.preflight(
+            intent(),
+            "EURUSD.a",
+            allowed_deviation_points=2,
+            now=NOW,
+        )
+
+        self.assertEqual(NOW + timedelta(seconds=1), result.checked_at_utc)
+        self.assertEqual(NOW + timedelta(seconds=4), result.valid_until_utc)
+
+    def test_preflight_rejects_intent_that_expires_during_broker_calls(self):
+        clock = {"now": NOW}
+        module = FakeMT5()
+        original_margin = module.order_calc_margin
+
+        def delayed_margin(order_type, symbol, lot, price):
+            value = original_margin(order_type, symbol, lot, price)
+            clock["now"] = NOW + timedelta(seconds=10)
+            return value
+
+        module.order_calc_margin = delayed_margin
+        adapter = MT5Adapter(
+            account_alias="account-alias",
+            broker_legal_name="Example Broker Ltd",
+            expected_login=12345,
+            expected_server="Broker-Demo",
+            environment="DEMO",
+            session_calendar_sha256="d" * 64,
+            symbol_map={"EURUSD": "EURUSD.a"},
+            mt5_module=module,
+            clock_provider=lambda: clock["now"],
+        )
+        adapter.initialize()
+
+        with self.assertRaisesRegex(PreflightRejectedError, "expired during"):
+            adapter.preflight(
+                intent(),
+                "EURUSD.a",
+                allowed_deviation_points=2,
+                now=NOW,
+            )
 
     def test_preflight_rejects_first_tick_price_drift_from_decision_snapshot(self):
         self.module.copy_ticks_range = lambda symbol, start, end, flags: [
@@ -890,6 +974,153 @@ class MT5AdapterTests(unittest.TestCase):
                     now=NOW,
                 )
         self.assertEqual([], self.module.sent_requests)
+
+    def test_final_guard_recalculates_stop_risk_and_margin_before_order_send(self):
+        trade_intent = intent()
+
+        with submission_bundle(
+            trade_intent, self.adapter
+        ) as (bound_intent, preflight, runtime_authorization, submission_lease):
+            self.module.profit_per_lot = 30.0
+            with self.assertRaises(PreflightRejectedError):
+                self.adapter.submit(
+                    bound_intent,
+                    preflight,
+                    runtime_authorization,
+                    submission_lease,
+                    now=NOW,
+                )
+        self.assertEqual([], self.module.sent_requests)
+
+    def test_slow_final_broker_math_expires_before_lease_consume_or_send(self):
+        clock = {"now": NOW}
+        module = FakeMT5()
+        adapter = MT5Adapter(
+            account_alias="account-alias",
+            broker_legal_name="Example Broker Ltd",
+            expected_login=12345,
+            expected_server="Broker-Demo",
+            environment="DEMO",
+            session_calendar_sha256="d" * 64,
+            symbol_map={"EURUSD": "EURUSD.a"},
+            mt5_module=module,
+            clock_provider=lambda: clock["now"],
+        )
+        adapter.initialize()
+        trade_intent = intent()
+        with submission_bundle(
+            trade_intent, adapter
+        ) as (bound_intent, preflight, runtime_authorization, submission_lease):
+            original_margin = module.order_calc_margin
+
+            def delayed_margin(*args):
+                result = original_margin(*args)
+                clock["now"] = NOW + timedelta(seconds=2)
+                return result
+
+            module.order_calc_margin = delayed_margin
+            with patch.object(
+                submission_lease,
+                "consume",
+                wraps=submission_lease.consume,
+            ) as consume:
+                with self.assertRaisesRegex(
+                    PreflightRejectedError,
+                    "expired at final send boundary",
+                ):
+                    adapter.submit(
+                        bound_intent,
+                        preflight,
+                        runtime_authorization,
+                        submission_lease,
+                        now=NOW,
+                    )
+                consume.assert_not_called()
+        self.assertEqual([], module.sent_requests)
+
+    def test_final_risk_uses_worst_of_requested_and_current_entry(self):
+        trade_intent = intent()
+        with submission_bundle(
+            trade_intent, self.adapter
+        ) as (bound_intent, preflight, runtime_authorization, submission_lease):
+            self.module.current_bid = 2399.88
+            self.module.current_ask = 2399.90
+            self.adapter.submit(
+                bound_intent,
+                preflight,
+                runtime_authorization,
+                submission_lease,
+                now=NOW,
+            )
+
+        self.assertAlmostEqual(2400.04, self.module.profit_calls[-1][3])
+
+    def test_execution_receipt_time_is_sampled_after_order_send_returns(self):
+        clock = {"now": NOW}
+        module = FakeMT5()
+        adapter = MT5Adapter(
+            account_alias="account-alias",
+            broker_legal_name="Example Broker Ltd",
+            expected_login=12345,
+            expected_server="Broker-Demo",
+            environment="DEMO",
+            session_calendar_sha256="d" * 64,
+            symbol_map={"EURUSD": "EURUSD.a"},
+            mt5_module=module,
+            clock_provider=lambda: clock["now"],
+        )
+        adapter.initialize()
+        original_send = module.order_send
+
+        def delayed_send(request):
+            result = original_send(request)
+            clock["now"] = NOW + timedelta(seconds=1)
+            return result
+
+        module.order_send = delayed_send
+        trade_intent = intent()
+        with submission_bundle(
+            trade_intent, adapter
+        ) as (bound_intent, preflight, runtime_authorization, submission_lease):
+            receipt = adapter.submit(
+                bound_intent,
+                preflight,
+                runtime_authorization,
+                submission_lease,
+                now=NOW,
+            )
+
+        self.assertEqual(NOW + timedelta(seconds=1), receipt.received_at)
+
+        self.module.profit_per_lot = 20.0
+        with submission_bundle(
+            trade_intent, self.adapter
+        ) as (bound_intent, preflight, runtime_authorization, submission_lease):
+            self.module.small_lot_margin = 11.0
+            with self.assertRaises(PreflightRejectedError):
+                self.adapter.submit(
+                    bound_intent,
+                    preflight,
+                    runtime_authorization,
+                    submission_lease,
+                    now=NOW,
+                )
+        self.assertEqual([], self.module.sent_requests)
+
+    def test_execution_receipt_records_final_boundary_stop_risk(self):
+        trade_intent = intent()
+        with submission_bundle(
+            trade_intent, self.adapter
+        ) as (bound_intent, preflight, runtime_authorization, submission_lease):
+            self.module.profit_per_lot = 22.0
+            receipt = self.adapter.submit(
+                bound_intent,
+                preflight,
+                runtime_authorization,
+                submission_lease,
+                now=NOW,
+            )
+        self.assertAlmostEqual(0.22, receipt.actual_risk_cash)
 
 
 if __name__ == "__main__":
