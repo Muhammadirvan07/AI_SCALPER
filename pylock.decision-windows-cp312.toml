@@ -1,0 +1,45 @@
+lock-version = "1.0"
+created-by = "AI_SCALPER reviewed decision-process lock"
+requires-python = ">=3.12"
+
+[tool.ai_scalper]
+target-python = "3.12"
+target-implementation = "CPython"
+target-platform = "win_amd64"
+target-architecture = "x86_64"
+source-manifests = ["requirements-decision-windows.txt"]
+
+[[packages]]
+name = "numpy"
+version = "2.5.1"
+wheels = [{ url = "https://files.pythonhosted.org/packages/65/66/53f31807a48a750f9d748da273bc3fcedd12b27ff1f3e373bfec55ef2dc0/numpy-2.5.1-cp312-cp312-win_amd64.whl", hashes = { sha256 = "f7d60026c0bdb1380e83bfa7a0419c4577ee4b9a08880afcb6dadeb74c649fa2" } }]
+
+[[packages]]
+name = "pandas"
+version = "2.3.3"
+wheels = [{ url = "https://files.pythonhosted.org/packages/86/41/585a168330ff063014880a80d744219dbf1dd7a1c706e75ab3425a987384/pandas-2.3.3-cp312-cp312-win_amd64.whl", hashes = { sha256 = "a16dcec078a01eeef8ee61bf64074b4e524a2a3f4b3be9326420cabe59c4778b" } }]
+
+[[packages]]
+name = "python-dateutil"
+version = "2.9.0.post0"
+wheels = [{ url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hashes = { sha256 = "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427" } }]
+
+[[packages]]
+name = "pytz"
+version = "2026.2"
+wheels = [{ url = "https://files.pythonhosted.org/packages/ec/dd/96da98f892250475bdf2328112d7468abdd4acc7b902b6af23f4ed958ea0/pytz-2026.2-py2.py3-none-any.whl", hashes = { sha256 = "04156e608bee23d3792fd45c94ae47fae1036688e75032eea2e3bf0323d1f126" } }]
+
+[[packages]]
+name = "six"
+version = "1.17.0"
+wheels = [{ url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hashes = { sha256 = "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274" } }]
+
+[[packages]]
+name = "ta"
+version = "0.11.0"
+wheels = [{ path = "vendor/wheels/ta-0.11.0-py3-none-any.whl", hashes = { sha256 = "acd933756f0badbe6b1cc28d5db42dc0d9b0ac5877956f5cf8f304ece3f50b0d" } }]
+
+[[packages]]
+name = "tzdata"
+version = "2026.3"
+wheels = [{ url = "https://files.pythonhosted.org/packages/e5/6d/b53b99a9f2766d095985947a5782f1702cabb129a34f7a802d7197af832f/tzdata-2026.3-py2.py3-none-any.whl", hashes = { sha256 = "dc096730c87af6cab1b171c9d532be840741ff5d459015e7f6947bd7d7e54931" } }]

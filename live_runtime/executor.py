@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 import math
 from typing import Any, Callable
 
+import execution_policy
 from execution_policy import (
     LIVE_ALLOWED,
     SAFE_TO_DEMO_AUTO_ORDER,
@@ -33,8 +34,16 @@ from .contracts import (
 from .controls import (
     ManualDemoApproval,
     ManualDemoApprovalValidation,
+    manual_demo_account_sha256,
     read_environment_arm,
     validate_manual_demo_approval,
+)
+from .decision_ipc import VerifiedDecisionIPCEnvelope
+from .demo_auto_ipc_consumer import DemoAutoIPCRiskIntentInput
+from .demo_auto_session_capability import (
+    DemoAutoSessionCapabilityStore,
+    DemoAutoSessionDispatchVerification,
+    DemoAutoSessionLease,
 )
 from .health import RuntimeHealthDecision, RuntimeHealthFacts, evaluate_runtime_health
 from .journal import (
@@ -87,6 +96,96 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _demo_auto_control_reasons(
+    *,
+    intent: TradeIntent,
+    ipc_input: DemoAutoIPCRiskIntentInput | None,
+    session_lease: DemoAutoSessionLease | None,
+    session_store: DemoAutoSessionCapabilityStore | None,
+    session_dispatch_verification: DemoAutoSessionDispatchVerification | None,
+    now: datetime,
+    journal_sha256: str,
+) -> tuple[str, ...]:
+    """Validate dormant DEMO_AUTO-only capabilities without granting authority."""
+
+    if type(ipc_input) is not DemoAutoIPCRiskIntentInput:
+        return ("DEMO_AUTO_IPC_INPUT_REQUIRED",)
+    if type(session_lease) is not DemoAutoSessionLease:
+        return ("DEMO_AUTO_SESSION_LEASE_REQUIRED",)
+    if type(session_store) is not DemoAutoSessionCapabilityStore:
+        return ("DEMO_AUTO_SESSION_STORE_REQUIRED",)
+    if type(session_dispatch_verification) is not DemoAutoSessionDispatchVerification:
+        return ("DEMO_AUTO_SESSION_DISPATCH_VERIFICATION_REQUIRED",)
+    reasons: list[str] = []
+    try:
+        verified_dispatch = session_store.verify_dispatch_verification(
+            session_dispatch_verification,
+            session_lease,
+            expected_intent_id=intent.intent_id,
+        )
+    except Exception:
+        return ("DEMO_AUTO_SESSION_LEASE_INVALID",)
+    if verified_dispatch is not session_dispatch_verification:
+        reasons.append("DEMO_AUTO_SESSION_LEASE_INVALID")
+    envelope = ipc_input.verified_envelope
+    if type(envelope) is not VerifiedDecisionIPCEnvelope:
+        reasons.append("DEMO_AUTO_IPC_CONSUMPTION_INVALID")
+    decision = ipc_input.decision
+    expected_account_sha256 = manual_demo_account_sha256(intent.account_id)
+    if (
+        intent.mode != "DEMO_AUTO"
+        or decision.content_sha256 != intent.decision.content_sha256
+        or decision.snapshot_id != intent.decision.snapshot_id
+        or ipc_input.supervisor_binding.content_sha256
+        != session_lease.supervisor_binding_sha256
+        or ipc_input.stage_binding.binding_sha256
+        != session_lease.stage_binding_sha256
+        or ipc_input.stage_binding.lane_id != session_lease.lane_id
+        or session_store.binding.content_sha256
+        != session_dispatch_verification.binding_sha256
+        or session_dispatch_verification.lease_sha256
+        != session_lease.content_sha256
+        or session_dispatch_verification.intent_id != intent.intent_id
+        or expected_account_sha256 != session_lease.account_alias_sha256
+        or intent.server != session_lease.server
+        or journal_sha256 != session_lease.journal_sha256
+        or intent.decision.commit_sha != session_lease.commit_sha
+        or intent.decision.config_sha256 != session_lease.config_sha256
+        or intent.decision.model_artifact_sha256
+        != session_lease.model_artifact_sha256
+        or ipc_input.permit.permit_id != intent.permit_id
+        or ipc_input.permit_validation.permit_id != intent.permit_id
+        or ipc_input.permit_validation.journal_sha256 != journal_sha256
+        or ipc_input.permit_validation.symbols != (intent.symbol,)
+        or ipc_input.permit_validation.mode != "DEMO_AUTO"
+    ):
+        reasons.append("DEMO_AUTO_CONTROL_BINDING_MISMATCH")
+    if (
+        not ipc_input.permit_validation.valid
+        or not ipc_input.environment_arm.is_fresh(now)
+        or not ipc_input.consumed_at_utc <= now < ipc_input.valid_until_utc
+        or not session_lease.issued_at_utc <= now < session_lease.expires_at_utc
+        or not session_dispatch_verification.verified_at_utc
+        <= now
+        < session_dispatch_verification.valid_until_utc
+    ):
+        reasons.append("DEMO_AUTO_CONTROL_STALE")
+    if (
+        ipc_input.live_allowed
+        or ipc_input.safe_to_demo_auto_order
+        or ipc_input.execution_authorized
+        or ipc_input.activation_authorized
+        or ipc_input.order_capability != "DISABLED"
+        or session_lease.live_allowed
+        or session_lease.safe_to_demo_auto_order
+        or session_lease.execution_authorized
+        or session_lease.activation_authorized
+        or session_lease.order_capability != "DISABLED"
+    ):
+        reasons.append("DEMO_AUTO_CONTROL_ESCALATION_DETECTED")
+    return tuple(sorted(set(reasons)))
+
+
 @dataclass(frozen=True)
 class ExecutionOutcome(CanonicalContract):
     intent_id: str
@@ -126,8 +225,8 @@ class ExecutionCoordinator:
         expected_manual_approval_key_id: str | None = None,
         clock_provider: Callable[[], datetime] = _utc_now,
     ):
-        if not isinstance(journal, ExecutionJournal):
-            raise TypeError("journal must be an ExecutionJournal")
+        if type(journal) is not ExecutionJournal:
+            raise TypeError("journal must be exact ExecutionJournal")
         if not all(
             (
                 callable(getattr(adapter, "preflight", None)),
@@ -259,6 +358,61 @@ class ExecutionCoordinator:
             risk=risk,
         )
 
+    def _settle_demo_auto_dispatch(
+        self,
+        store: DemoAutoSessionCapabilityStore,
+        verification: DemoAutoSessionDispatchVerification,
+    ) -> bool:
+        """Close or quarantine one reservation from sealed journal evidence."""
+
+        try:
+            settlement = self.journal.demo_auto_dispatch_settlement(
+                verification.intent_id,
+                dispatch_verification_sha256=verification.content_sha256,
+            )
+            store.apply_dispatch_journal_settlement(settlement)
+            return True
+        except Exception as exc:
+            self.journal.latch_kill_switch(
+                "DEMO_AUTO dispatch settlement failed for "
+                f"{verification.intent_id}: {type(exc).__name__}",
+                source="EXECUTION",
+                occurred_at=self._trusted_now(),
+            )
+            return False
+
+    def _abort_demo_auto_before_send(
+        self,
+        *,
+        intent: TradeIntent,
+        store: DemoAutoSessionCapabilityStore,
+        verification: DemoAutoSessionDispatchVerification,
+        reason_code: str,
+        risk: RiskDecision | None,
+        occurred_at: datetime | None = None,
+    ) -> ExecutionOutcome:
+        rejected = self.journal.record_submission_not_sent(
+            intent.intent_id,
+            dispatch_verification_sha256=verification.content_sha256,
+            reason_code=reason_code,
+            occurred_at=occurred_at,
+        )
+        settled = self._settle_demo_auto_dispatch(store, verification)
+        return self._outcome(
+            rejected,
+            status=(
+                "SUBMISSION_HELD_BEFORE_SEND"
+                if settled
+                else "DEMO_AUTO_SETTLEMENT_FAILED"
+            ),
+            reasons=(
+                (reason_code,)
+                if settled
+                else tuple(sorted((reason_code, "DEMO_AUTO_SETTLEMENT_FAILED")))
+            ),
+            risk=risk,
+        )
+
     def _existing_intent_outcome(
         self,
         intent: TradeIntent,
@@ -310,23 +464,29 @@ class ExecutionCoordinator:
         fence_token: int,
         manual_demo_approval: ManualDemoApproval | None = None,
         promotion_evidence: PromotionEvidenceReceipt | None = None,
+        demo_auto_ipc_input: DemoAutoIPCRiskIntentInput | None = None,
+        demo_auto_session_lease: DemoAutoSessionLease | None = None,
+        demo_auto_session_store: DemoAutoSessionCapabilityStore | None = None,
+        demo_auto_session_dispatch_verification: (
+            DemoAutoSessionDispatchVerification | None
+        ) = None,
         now: datetime | None = None,
     ) -> ExecutionOutcome:
         """Evaluate, preflight, and at most once submit one immutable intent."""
 
         now = self._trusted_now(now)
-        if not isinstance(intent, TradeIntent) or not isinstance(broker_spec, BrokerSpec):
-            raise TypeError("validated intent and broker_spec are required")
+        if type(intent) is not TradeIntent or type(broker_spec) is not BrokerSpec:
+            raise TypeError("exact validated intent and broker_spec are required")
         if type(risk_context) is not VerifiedRiskContext:
             raise TypeError("risk_context must be an exact sealed VerifiedRiskContext")
-        if not isinstance(permit, PromotionPermit):
-            raise TypeError("permit must be a signed PromotionPermit")
-        if not isinstance(health_facts, RuntimeHealthFacts):
-            raise TypeError("health_facts must be RuntimeHealthFacts")
-        if not isinstance(market_guard, MarketGuardDecision):
-            raise TypeError("market_guard must come from evaluate_market_guards")
-        if not isinstance(model_artifact, ModelArtifactManifest):
-            raise TypeError("model_artifact must be ModelArtifactManifest")
+        if type(permit) is not PromotionPermit:
+            raise TypeError("permit must be an exact signed PromotionPermit")
+        if type(health_facts) is not RuntimeHealthFacts:
+            raise TypeError("health_facts must be exact RuntimeHealthFacts")
+        if type(market_guard) is not MarketGuardDecision:
+            raise TypeError("market_guard must be an exact evaluated decision")
+        if type(model_artifact) is not ModelArtifactManifest:
+            raise TypeError("model_artifact must be exact ModelArtifactManifest")
         trusted_context = require_verified_risk_context(
             risk_context,
             now=now,
@@ -369,7 +529,7 @@ class ExecutionCoordinator:
         manual_validation: ManualDemoApprovalValidation | None = None
         if (
             intent.mode == "DEMO"
-            and isinstance(manual_demo_approval, ManualDemoApproval)
+            and type(manual_demo_approval) is ManualDemoApproval
             and self.manual_approval_key_provider is not None
             and self.expected_manual_approver_id
             and self.expected_manual_approval_key_id
@@ -390,7 +550,7 @@ class ExecutionCoordinator:
         promotion_required = intent.mode in {"DEMO_AUTO", "LIVE"}
         if (
             promotion_required
-            and isinstance(promotion_evidence, PromotionEvidenceReceipt)
+            and type(promotion_evidence) is PromotionEvidenceReceipt
             and self.promotion_evidence_key_provider is not None
         ):
             promotion_validation = validate_promotion_evidence_receipt(
@@ -414,6 +574,22 @@ class ExecutionCoordinator:
             if promotion_validation is not None and promotion_validation.valid
             else None
         )
+        mode_policy_allowed, mode_policy_reasons = (
+            execution_policy.execution_mode_policy_decision(intent.mode)
+        )
+        demo_auto_control_reasons: tuple[str, ...] = ()
+        if intent.mode == "DEMO_AUTO" and mode_policy_allowed:
+            demo_auto_control_reasons = _demo_auto_control_reasons(
+                intent=intent,
+                ipc_input=demo_auto_ipc_input,
+                session_lease=demo_auto_session_lease,
+                session_store=demo_auto_session_store,
+                session_dispatch_verification=(
+                    demo_auto_session_dispatch_verification
+                ),
+                now=now,
+                journal_sha256=self.journal.journal_sha256,
+            )
 
         try:
             permit_validation = validate_permit(
@@ -454,6 +630,38 @@ class ExecutionCoordinator:
             "promotion_evidence_sha256": promotion_evidence_sha256,
             "verified_risk_context_sha256": risk_context.content_sha256,
             "verified_risk_context": risk_context.provenance_metadata(),
+            "demo_auto_ipc_input_sha256": (
+                demo_auto_ipc_input.content_sha256
+                if type(demo_auto_ipc_input) is DemoAutoIPCRiskIntentInput
+                else None
+            ),
+            "demo_auto_ipc_consumption_hmac_sha256": (
+                demo_auto_ipc_input.verified_envelope.consumption_hmac_sha256
+                if type(demo_auto_ipc_input) is DemoAutoIPCRiskIntentInput
+                else None
+            ),
+            "demo_auto_ipc_post_checkpoint_sha256": (
+                demo_auto_ipc_input.verified_envelope.post_checkpoint_sha256
+                if type(demo_auto_ipc_input) is DemoAutoIPCRiskIntentInput
+                else None
+            ),
+            "demo_auto_session_lease_sha256": (
+                demo_auto_session_lease.content_sha256
+                if type(demo_auto_session_lease) is DemoAutoSessionLease
+                else None
+            ),
+            "demo_auto_session_store_binding_sha256": (
+                demo_auto_session_store.binding.content_sha256
+                if type(demo_auto_session_store)
+                is DemoAutoSessionCapabilityStore
+                else None
+            ),
+            "demo_auto_session_dispatch_verification_sha256": (
+                demo_auto_session_dispatch_verification.content_sha256
+                if type(demo_auto_session_dispatch_verification)
+                is DemoAutoSessionDispatchVerification
+                else None
+            ),
         }
         try:
             record = self.journal.create_intent(
@@ -482,10 +690,9 @@ class ExecutionCoordinator:
             return self._existing_intent_outcome(intent, record, now=now)
 
         safety_reasons: list[str] = []
-        if intent.mode == "LIVE":
-            safety_reasons.append("LIVE_MODE_LOCKED")
-        if intent.mode == "DEMO_AUTO":
-            safety_reasons.append("DEMO_AUTO_ORDER_LOCKED")
+        if not mode_policy_allowed:
+            safety_reasons.extend(mode_policy_reasons)
+        safety_reasons.extend(demo_auto_control_reasons)
         if not arm_decision.armed:
             safety_reasons.extend(arm_decision.reason_codes)
         if intent.mode == "DEMO":
@@ -697,10 +904,19 @@ class ExecutionCoordinator:
                 occurred_at=now,
             )
 
+        refreshed_mode_policy_allowed, _mode_policy_reasons = (
+            execution_policy.execution_mode_policy_decision(intent.mode)
+        )
         mode_policy_allows = arm_decision.armed and (
-            (intent.mode == "DEMO" and manual_validation is not None and manual_validation.valid)
-            or (intent.mode == "LIVE" and LIVE_ALLOWED)
-            or (intent.mode == "DEMO_AUTO" and SAFE_TO_DEMO_AUTO_ORDER)
+            (
+                intent.mode == "DEMO"
+                and manual_validation is not None
+                and manual_validation.valid
+            )
+            or (
+                intent.mode in {"LIVE", "DEMO_AUTO"}
+                and refreshed_mode_policy_allowed
+            )
         )
         if not mode_policy_allows:
             return self._reject(
@@ -767,7 +983,7 @@ class ExecutionCoordinator:
         refreshed_manual_validation: ManualDemoApprovalValidation | None = None
         if (
             intent.mode == "DEMO"
-            and isinstance(manual_demo_approval, ManualDemoApproval)
+            and type(manual_demo_approval) is ManualDemoApproval
             and self.manual_approval_key_provider is not None
             and self.expected_manual_approver_id
             and self.expected_manual_approval_key_id
@@ -802,7 +1018,34 @@ class ExecutionCoordinator:
             )
         except (TypeError, ValueError):
             refreshed_validation = None
+        refreshed_promotion_validation: PromotionEvidenceValidation | None = None
+        if (
+            promotion_required
+            and type(promotion_evidence) is PromotionEvidenceReceipt
+            and self.promotion_evidence_key_provider is not None
+        ):
+            refreshed_promotion_validation = validate_promotion_evidence_receipt(
+                promotion_evidence,
+                self.promotion_evidence_key_provider,
+                now=reserve_now,
+                expected_mode=intent.mode,
+                expected_account_alias=intent.account_id,
+                expected_server=intent.server,
+                expected_journal_sha256=self.journal.journal_sha256,
+                expected_symbol=intent.symbol,
+                expected_strategy=intent.decision.strategy,
+                expected_commit_sha=intent.decision.commit_sha,
+                expected_config_sha256=intent.decision.config_sha256,
+                expected_model_artifact_sha256=(
+                    intent.decision.model_artifact_sha256
+                ),
+            )
         refreshed_reasons: list[str] = []
+        refreshed_mode_allowed, refreshed_mode_reasons = (
+            execution_policy.execution_mode_policy_decision(intent.mode)
+        )
+        if not refreshed_mode_allowed:
+            refreshed_reasons.extend(refreshed_mode_reasons)
         if not refreshed_arm_decision.armed:
             refreshed_reasons.extend(refreshed_arm_decision.reason_codes)
         if intent.mode == "DEMO" and (
@@ -814,6 +1057,27 @@ class ExecutionCoordinator:
             refreshed_reasons.append("PERMIT_STALE_AT_RESERVATION")
         elif refreshed_validation.permit_id != intent.permit_id:
             refreshed_reasons.append("PERMIT_ID_MISMATCH_AT_RESERVATION")
+        if promotion_required and (
+            refreshed_promotion_validation is None
+            or not refreshed_promotion_validation.valid
+            or refreshed_promotion_validation.receipt_sha256
+            != promotion_evidence_sha256
+        ):
+            refreshed_reasons.append("PROMOTION_EVIDENCE_STALE_AT_RESERVATION")
+        if intent.mode == "DEMO_AUTO" and refreshed_mode_allowed:
+            refreshed_reasons.extend(
+                _demo_auto_control_reasons(
+                    intent=intent,
+                    ipc_input=demo_auto_ipc_input,
+                    session_lease=demo_auto_session_lease,
+                    session_store=demo_auto_session_store,
+                    session_dispatch_verification=(
+                        demo_auto_session_dispatch_verification
+                    ),
+                    now=reserve_now,
+                    journal_sha256=self.journal.journal_sha256,
+                )
+            )
         if reserve_now >= intent.expires_at:
             refreshed_reasons.append("INTENT_EXPIRED_AT_RESERVATION")
         for observed_at, reason in (
@@ -847,6 +1111,160 @@ class ExecutionCoordinator:
                 now=reserve_now,
                 risk=risk,
             )
+        # The execution journal deliberately treats SUBMITTING as broker-exposed.
+        # Therefore every DEMO_AUTO authority that can fail without broker facts
+        # is rechecked while the intent is still PREFLIGHT_PASSED.  Only a fully
+        # current control set may acquire the global submission reservation.
+        if intent.mode == "DEMO_AUTO":
+            final_check_now = self._trusted_now()
+            final_reasons: list[str] = list(
+                _demo_auto_control_reasons(
+                    intent=intent,
+                    ipc_input=demo_auto_ipc_input,
+                    session_lease=demo_auto_session_lease,
+                    session_store=demo_auto_session_store,
+                    session_dispatch_verification=(
+                        demo_auto_session_dispatch_verification
+                    ),
+                    now=final_check_now,
+                    journal_sha256=self.journal.journal_sha256,
+                )
+            )
+            final_mode_allowed, final_mode_reasons = (
+                execution_policy.execution_mode_policy_decision(intent.mode)
+            )
+            if not final_mode_allowed:
+                final_reasons.extend(final_mode_reasons)
+            final_arm = read_environment_arm(
+                intent.account_id,
+                intent.server,
+                intent.mode,
+                final_check_now,
+                self.journal.journal_sha256,
+            )
+            if (
+                not final_arm.armed
+                or final_arm.binding_sha256
+                != refreshed_arm_decision.binding_sha256
+                or final_arm.observed_value_sha256
+                != refreshed_arm_decision.observed_value_sha256
+            ):
+                final_reasons.append("DEMO_AUTO_ARM_STALE_BEFORE_RESERVATION")
+            try:
+                final_permit_validation = validate_permit(
+                    permit,
+                    self.permit_secret_provider(),
+                    now=final_check_now,
+                    expected_mode=intent.mode,
+                    expected_account_alias=intent.account_id,
+                    expected_server=intent.server,
+                    expected_symbols=(intent.symbol,),
+                    expected_commit_sha=intent.decision.commit_sha,
+                    expected_config_sha256=intent.decision.config_sha256,
+                    expected_model_artifact_sha256=(
+                        intent.decision.model_artifact_sha256
+                    ),
+                    expected_journal_sha256=self.journal.journal_sha256,
+                    expected_promotion_evidence_sha256=(
+                        promotion_evidence_sha256
+                    ),
+                )
+            except (TypeError, ValueError):
+                final_permit_validation = None
+            if (
+                final_permit_validation is None
+                or not final_permit_validation.valid
+                or final_permit_validation.permit_id != intent.permit_id
+            ):
+                final_reasons.append("DEMO_AUTO_PERMIT_STALE_BEFORE_RESERVATION")
+            final_promotion_validation = None
+            if (
+                type(promotion_evidence) is PromotionEvidenceReceipt
+                and self.promotion_evidence_key_provider is not None
+            ):
+                final_promotion_validation = validate_promotion_evidence_receipt(
+                    promotion_evidence,
+                    self.promotion_evidence_key_provider,
+                    now=final_check_now,
+                    expected_mode=intent.mode,
+                    expected_account_alias=intent.account_id,
+                    expected_server=intent.server,
+                    expected_journal_sha256=self.journal.journal_sha256,
+                    expected_symbol=intent.symbol,
+                    expected_strategy=intent.decision.strategy,
+                    expected_commit_sha=intent.decision.commit_sha,
+                    expected_config_sha256=intent.decision.config_sha256,
+                    expected_model_artifact_sha256=(
+                        intent.decision.model_artifact_sha256
+                    ),
+                )
+            if (
+                final_promotion_validation is None
+                or not final_promotion_validation.valid
+                or final_promotion_validation.receipt_sha256
+                != promotion_evidence_sha256
+            ):
+                final_reasons.append(
+                    "DEMO_AUTO_PROMOTION_EVIDENCE_STALE_BEFORE_RESERVATION"
+                )
+            final_record = self.journal.get_intent(intent.intent_id)
+            if (
+                final_record is None
+                or final_record.decision_id != intent.decision.snapshot_id
+                or final_record.state != "PREFLIGHT_PASSED"
+                or final_record.payload.get("demo_auto_ipc_input_sha256")
+                != (
+                    demo_auto_ipc_input.content_sha256
+                    if type(demo_auto_ipc_input) is DemoAutoIPCRiskIntentInput
+                    else None
+                )
+                or final_record.payload.get("demo_auto_session_lease_sha256")
+                != (
+                    demo_auto_session_lease.content_sha256
+                    if type(demo_auto_session_lease) is DemoAutoSessionLease
+                    else None
+                )
+                or final_record.payload.get(
+                    "demo_auto_session_store_binding_sha256"
+                )
+                != (
+                    demo_auto_session_store.binding.content_sha256
+                    if type(demo_auto_session_store)
+                    is DemoAutoSessionCapabilityStore
+                    else None
+                )
+                or final_record.payload.get(
+                    "demo_auto_session_dispatch_verification_sha256"
+                )
+                != (
+                    demo_auto_session_dispatch_verification.content_sha256
+                    if type(demo_auto_session_dispatch_verification)
+                    is DemoAutoSessionDispatchVerification
+                    else None
+                )
+            ):
+                final_reasons.append("DEMO_AUTO_JOURNAL_BINDING_MISMATCH")
+            if final_reasons:
+                reason_codes = tuple(sorted(set(final_reasons)))
+                rejected = self.journal.transition(
+                    intent.intent_id,
+                    "REJECTED",
+                    expected_state="PREFLIGHT_PASSED",
+                    details={
+                        "reason_codes": list(reason_codes),
+                        "retry_allowed": False,
+                        "broker_submit_called": False,
+                        "reconciliation_required": False,
+                    },
+                    occurred_at=final_check_now,
+                    last_error="DEMO_AUTO_FINAL_DISPATCH_REJECTED",
+                )
+                return self._outcome(
+                    rejected,
+                    status="SUBMISSION_HELD_BEFORE_SEND",
+                    reasons=reason_codes,
+                    risk=risk,
+                )
         permit_validation = refreshed_validation
         try:
             submission_evidence = self.journal.authorize_submission_evidence(
@@ -864,6 +1282,26 @@ class ExecutionCoordinator:
                 now=reserve_now,
                 risk=risk,
             )
+        if intent.mode == "DEMO_AUTO":
+            try:
+                assert type(demo_auto_session_store) is DemoAutoSessionCapabilityStore
+                assert type(demo_auto_session_lease) is DemoAutoSessionLease
+                assert (
+                    type(demo_auto_session_dispatch_verification)
+                    is DemoAutoSessionDispatchVerification
+                )
+                demo_auto_session_store.reserve_dispatch_verification(
+                    demo_auto_session_dispatch_verification,
+                    demo_auto_session_lease,
+                    expected_intent_id=intent.intent_id,
+                )
+            except Exception:
+                return self._reject(
+                    record,
+                    ("DEMO_AUTO_SESSION_RESERVATION_FAILED",),
+                    now=reserve_now,
+                    risk=risk,
+                )
         try:
             record = self.journal.reserve_submission(
                 intent.intent_id,
@@ -874,24 +1312,54 @@ class ExecutionCoordinator:
                 occurred_at=reserve_now,
             )
         except KillSwitchLatchedError:
-            return self._reject(
-                record,
-                ("KILL_SWITCH_LATCHED_AT_SUBMISSION",),
-                now=reserve_now,
-                risk=risk,
-            )
+            reasons = ("KILL_SWITCH_LATCHED_AT_SUBMISSION",)
         except SubmissionLimitError as exc:
-            return self._reject(
-                record,
-                (exc.reason_code,),
-                now=reserve_now,
-                risk=risk,
-            )
+            reasons = (exc.reason_code,)
         except ExecutorFenceError:
+            reasons = ("EXECUTOR_FENCE_LOST",)
+        except Exception as exc:
+            reasons = (f"SUBMISSION_RESERVATION_{type(exc).__name__.upper()}",)
+        else:
+            reasons = ()
+        if reasons:
+            if intent.mode != "DEMO_AUTO":
+                if reasons == ("EXECUTOR_FENCE_LOST",):
+                    return self._outcome(
+                        record,
+                        status="EXECUTOR_FENCE_LOST_BEFORE_SUBMISSION",
+                        reasons=reasons,
+                        risk=risk,
+                    )
+                return self._reject(
+                    record,
+                    reasons,
+                    now=reserve_now,
+                    risk=risk,
+                )
+            assert type(demo_auto_session_store) is DemoAutoSessionCapabilityStore
+            assert (
+                type(demo_auto_session_dispatch_verification)
+                is DemoAutoSessionDispatchVerification
+            )
+            settled = self._settle_demo_auto_dispatch(
+                demo_auto_session_store,
+                demo_auto_session_dispatch_verification,
+            )
+            current = self.journal.get_intent(intent.intent_id)
+            if current is None:
+                raise RuntimeError("journal intent disappeared during dispatch abort")
             return self._outcome(
-                record,
-                status="EXECUTOR_FENCE_LOST_BEFORE_SUBMISSION",
-                reasons=("EXECUTOR_FENCE_LOST",),
+                current,
+                status=(
+                    "SUBMISSION_HELD_BEFORE_SEND"
+                    if settled
+                    else "DEMO_AUTO_SETTLEMENT_FAILED"
+                ),
+                reasons=(
+                    reasons
+                    if settled
+                    else tuple(sorted((*reasons, "DEMO_AUTO_SETTLEMENT_FAILED")))
+                ),
                 risk=risk,
             )
         try:
@@ -920,8 +1388,59 @@ class ExecutionCoordinator:
                 environment_arm_decision=refreshed_arm_decision,
                 manual_demo_approval_validation=refreshed_manual_validation,
                 now=reserve_now,
+                additional_valid_until_utc=(
+                    min(
+                        demo_auto_ipc_input.valid_until_utc,
+                        demo_auto_session_lease.expires_at_utc,
+                        demo_auto_session_dispatch_verification.valid_until_utc,
+                        refreshed_promotion_validation.expires_at,
+                    )
+                    if intent.mode == "DEMO_AUTO"
+                    and type(demo_auto_ipc_input) is DemoAutoIPCRiskIntentInput
+                    and type(demo_auto_session_lease) is DemoAutoSessionLease
+                    and type(demo_auto_session_dispatch_verification)
+                    is DemoAutoSessionDispatchVerification
+                    and type(refreshed_promotion_validation)
+                    is PromotionEvidenceValidation
+                    else None
+                ),
             )
         except (ExecutionLockedError, TypeError, ValueError) as exc:
+            if intent.mode == "DEMO_AUTO":
+                assert type(demo_auto_session_store) is DemoAutoSessionCapabilityStore
+                assert (
+                    type(demo_auto_session_dispatch_verification)
+                    is DemoAutoSessionDispatchVerification
+                )
+                rejected = self.journal.record_submission_not_sent(
+                    intent.intent_id,
+                    dispatch_verification_sha256=(
+                        demo_auto_session_dispatch_verification.content_sha256
+                    ),
+                    reason_code="EXECUTION_CAPABILITY_BINDING_FAILED",
+                    occurred_at=reserve_now,
+                )
+                settled = self._settle_demo_auto_dispatch(
+                    demo_auto_session_store,
+                    demo_auto_session_dispatch_verification,
+                )
+                return self._outcome(
+                    rejected,
+                    status=(
+                        "SUBMISSION_HELD_BEFORE_SEND"
+                        if settled
+                        else "DEMO_AUTO_SETTLEMENT_FAILED"
+                    ),
+                    reasons=(
+                        ("EXECUTION_CAPABILITY_BINDING_FAILED",)
+                        if settled
+                        else (
+                            "DEMO_AUTO_SETTLEMENT_FAILED",
+                            "EXECUTION_CAPABILITY_BINDING_FAILED",
+                        )
+                    ),
+                    risk=risk,
+                )
             uncertain = self.journal.transition(
                 intent.intent_id,
                 "UNCERTAIN",
@@ -946,6 +1465,41 @@ class ExecutionCoordinator:
             or submission_now >= preflight.valid_until_utc
             or submission_now >= intent.expires_at
         ):
+            if intent.mode == "DEMO_AUTO":
+                assert type(demo_auto_session_store) is DemoAutoSessionCapabilityStore
+                assert (
+                    type(demo_auto_session_dispatch_verification)
+                    is DemoAutoSessionDispatchVerification
+                )
+                rejected = self.journal.record_submission_not_sent(
+                    intent.intent_id,
+                    dispatch_verification_sha256=(
+                        demo_auto_session_dispatch_verification.content_sha256
+                    ),
+                    reason_code="EXECUTION_EVIDENCE_EXPIRED_BEFORE_SEND",
+                    occurred_at=None,
+                )
+                settled = self._settle_demo_auto_dispatch(
+                    demo_auto_session_store,
+                    demo_auto_session_dispatch_verification,
+                )
+                return self._outcome(
+                    rejected,
+                    status=(
+                        "SUBMISSION_HELD_BEFORE_SEND"
+                        if settled
+                        else "DEMO_AUTO_SETTLEMENT_FAILED"
+                    ),
+                    reasons=(
+                        ("EXECUTION_EVIDENCE_EXPIRED_BEFORE_SEND",)
+                        if settled
+                        else (
+                            "DEMO_AUTO_SETTLEMENT_FAILED",
+                            "EXECUTION_EVIDENCE_EXPIRED_BEFORE_SEND",
+                        )
+                    ),
+                    risk=risk,
+                )
             uncertain = self.journal.transition(
                 intent.intent_id,
                 "UNCERTAIN",
@@ -977,6 +1531,119 @@ class ExecutionCoordinator:
                 broker_request_sha256=preflight.request_sha256,
                 occurred_at=submission_now,
             ) as submission_lease:
+                if intent.mode == "DEMO_AUTO":
+                    assert (
+                        type(demo_auto_session_store)
+                        is DemoAutoSessionCapabilityStore
+                    )
+                    assert type(demo_auto_session_lease) is DemoAutoSessionLease
+                    assert (
+                        type(demo_auto_session_dispatch_verification)
+                        is DemoAutoSessionDispatchVerification
+                    )
+                    send_now = self._trusted_now()
+                    send_reasons = list(
+                        _demo_auto_control_reasons(
+                            intent=intent,
+                            ipc_input=demo_auto_ipc_input,
+                            session_lease=demo_auto_session_lease,
+                            session_store=demo_auto_session_store,
+                            session_dispatch_verification=(
+                                demo_auto_session_dispatch_verification
+                            ),
+                            now=send_now,
+                            journal_sha256=self.journal.journal_sha256,
+                        )
+                    )
+                    try:
+                        demo_auto_session_store.verify_reserved_dispatch(
+                            demo_auto_session_dispatch_verification,
+                            demo_auto_session_lease,
+                            expected_intent_id=intent.intent_id,
+                        )
+                        send_permit = validate_permit(
+                            permit,
+                            self.permit_secret_provider(),
+                            now=send_now,
+                            expected_mode=intent.mode,
+                            expected_account_alias=intent.account_id,
+                            expected_server=intent.server,
+                            expected_symbols=(intent.symbol,),
+                            expected_commit_sha=intent.decision.commit_sha,
+                            expected_config_sha256=(
+                                intent.decision.config_sha256
+                            ),
+                            expected_model_artifact_sha256=(
+                                intent.decision.model_artifact_sha256
+                            ),
+                            expected_journal_sha256=self.journal.journal_sha256,
+                            expected_promotion_evidence_sha256=(
+                                promotion_evidence_sha256
+                            ),
+                        )
+                        send_promotion = (
+                            validate_promotion_evidence_receipt(
+                                promotion_evidence,
+                                self.promotion_evidence_key_provider,
+                                now=send_now,
+                                expected_mode=intent.mode,
+                                expected_account_alias=intent.account_id,
+                                expected_server=intent.server,
+                                expected_journal_sha256=(
+                                    self.journal.journal_sha256
+                                ),
+                                expected_symbol=intent.symbol,
+                                expected_strategy=intent.decision.strategy,
+                                expected_commit_sha=intent.decision.commit_sha,
+                                expected_config_sha256=(
+                                    intent.decision.config_sha256
+                                ),
+                                expected_model_artifact_sha256=(
+                                    intent.decision.model_artifact_sha256
+                                ),
+                            )
+                            if type(promotion_evidence)
+                            is PromotionEvidenceReceipt
+                            and self.promotion_evidence_key_provider is not None
+                            else None
+                        )
+                        send_arm = read_environment_arm(
+                            intent.account_id,
+                            intent.server,
+                            intent.mode,
+                            send_now,
+                            self.journal.journal_sha256,
+                        )
+                    except Exception:
+                        send_reasons.append(
+                            "DEMO_AUTO_FINAL_AUTHORITY_REVALIDATION_FAILED"
+                        )
+                    else:
+                        if not send_permit.valid:
+                            send_reasons.append(
+                                "DEMO_AUTO_PERMIT_STALE_AT_SEND"
+                            )
+                        if (
+                            send_promotion is None
+                            or not send_promotion.valid
+                            or send_promotion.receipt_sha256
+                            != promotion_evidence_sha256
+                        ):
+                            send_reasons.append(
+                                "DEMO_AUTO_PROMOTION_STALE_AT_SEND"
+                            )
+                        if (
+                            not send_arm.armed
+                            or send_arm.binding_sha256
+                            != refreshed_arm_decision.binding_sha256
+                            or send_arm.observed_value_sha256
+                            != refreshed_arm_decision.observed_value_sha256
+                        ):
+                            send_reasons.append("DEMO_AUTO_ARM_STALE_AT_SEND")
+                    if send_reasons:
+                        raise ExecutionLockedError(
+                            ",".join(sorted(set(send_reasons)))
+                        )
                 receipt = self.adapter.submit(
                     intent,
                     preflight,
@@ -985,6 +1652,20 @@ class ExecutionCoordinator:
                     now=submission_now,
                 )
         except KillSwitchLatchedError as exc:
+            if intent.mode == "DEMO_AUTO":
+                assert type(demo_auto_session_store) is DemoAutoSessionCapabilityStore
+                assert (
+                    type(demo_auto_session_dispatch_verification)
+                    is DemoAutoSessionDispatchVerification
+                )
+                return self._abort_demo_auto_before_send(
+                    intent=intent,
+                    store=demo_auto_session_store,
+                    verification=demo_auto_session_dispatch_verification,
+                    reason_code="KILL_SWITCH_LATCHED_AT_FINAL_GUARD",
+                    risk=risk,
+                    occurred_at=None,
+                )
             event_now = self._trusted_now()
             uncertain = self.journal.transition(
                 intent.intent_id,
@@ -1004,6 +1685,25 @@ class ExecutionCoordinator:
                 risk=risk,
             )
         except (ExecutorFenceError, SubmissionLimitError) as exc:
+            if intent.mode == "DEMO_AUTO":
+                assert type(demo_auto_session_store) is DemoAutoSessionCapabilityStore
+                assert (
+                    type(demo_auto_session_dispatch_verification)
+                    is DemoAutoSessionDispatchVerification
+                )
+                reason = (
+                    exc.reason_code
+                    if isinstance(exc, SubmissionLimitError)
+                    else "EXECUTOR_FENCE_LOST_AT_FINAL_GUARD"
+                )
+                return self._abort_demo_auto_before_send(
+                    intent=intent,
+                    store=demo_auto_session_store,
+                    verification=demo_auto_session_dispatch_verification,
+                    reason_code=reason,
+                    risk=risk,
+                    occurred_at=None,
+                )
             return self._outcome(
                 self.journal.get_intent(intent.intent_id),
                 status="FINAL_SUBMISSION_GUARD_REJECTED",
@@ -1024,14 +1724,46 @@ class ExecutionCoordinator:
                 occurred_at=event_now,
                 last_error=str(exc),
             )
+            settlement_failed = False
+            if intent.mode == "DEMO_AUTO":
+                assert type(demo_auto_session_store) is DemoAutoSessionCapabilityStore
+                assert (
+                    type(demo_auto_session_dispatch_verification)
+                    is DemoAutoSessionDispatchVerification
+                )
+                settlement_failed = not self._settle_demo_auto_dispatch(
+                    demo_auto_session_store,
+                    demo_auto_session_dispatch_verification,
+                )
             return self._outcome(
                 uncertain,
                 status="SUBMISSION_UNCERTAIN",
-                reasons=("RECONCILIATION_REQUIRED_BEFORE_RETRY",),
+                reasons=(
+                    (
+                        "DEMO_AUTO_SETTLEMENT_FAILED",
+                        "RECONCILIATION_REQUIRED_BEFORE_RETRY",
+                    )
+                    if settlement_failed
+                    else ("RECONCILIATION_REQUIRED_BEFORE_RETRY",)
+                ),
                 execution_sent=True,
                 risk=risk,
             )
         except (ExecutionLockedError, PreflightRejectedError, AccountBindingError) as exc:
+            if intent.mode == "DEMO_AUTO":
+                assert type(demo_auto_session_store) is DemoAutoSessionCapabilityStore
+                assert (
+                    type(demo_auto_session_dispatch_verification)
+                    is DemoAutoSessionDispatchVerification
+                )
+                return self._abort_demo_auto_before_send(
+                    intent=intent,
+                    store=demo_auto_session_store,
+                    verification=demo_auto_session_dispatch_verification,
+                    reason_code=type(exc).__name__.upper(),
+                    risk=risk,
+                    occurred_at=None,
+                )
             event_now = self._trusted_now()
             uncertain = self.journal.transition(
                 intent.intent_id,
@@ -1039,6 +1771,8 @@ class ExecutionCoordinator:
                 expected_state="SUBMITTING",
                 details={
                     "error": type(exc).__name__,
+                    "broker_submit_called": False,
+                    "reconciliation_required": True,
                     "retry_allowed": False,
                 },
                 occurred_at=event_now,
@@ -1060,10 +1794,28 @@ class ExecutionCoordinator:
                 occurred_at=event_now,
                 last_error=str(exc),
             )
+            settlement_failed = False
+            if intent.mode == "DEMO_AUTO":
+                assert type(demo_auto_session_store) is DemoAutoSessionCapabilityStore
+                assert (
+                    type(demo_auto_session_dispatch_verification)
+                    is DemoAutoSessionDispatchVerification
+                )
+                settlement_failed = not self._settle_demo_auto_dispatch(
+                    demo_auto_session_store,
+                    demo_auto_session_dispatch_verification,
+                )
             return self._outcome(
                 uncertain,
                 status="SUBMISSION_UNCERTAIN",
-                reasons=("UNKNOWN_SUBMISSION_OUTCOME",),
+                reasons=(
+                    (
+                        "DEMO_AUTO_SETTLEMENT_FAILED",
+                        "UNKNOWN_SUBMISSION_OUTCOME",
+                    )
+                    if settlement_failed
+                    else ("UNKNOWN_SUBMISSION_OUTCOME",)
+                ),
                 execution_sent=True,
                 risk=risk,
             )
@@ -1074,6 +1826,35 @@ class ExecutionCoordinator:
             # journal independently timestamps the durable state transition.
             occurred_at=None,
         )
+        session_completion_failed = False
+        if intent.mode == "DEMO_AUTO":
+            try:
+                assert (
+                    type(demo_auto_session_store)
+                    is DemoAutoSessionCapabilityStore
+                )
+                assert type(demo_auto_session_lease) is DemoAutoSessionLease
+                assert (
+                    type(demo_auto_session_dispatch_verification)
+                    is DemoAutoSessionDispatchVerification
+                )
+                settlement = self.journal.demo_auto_dispatch_settlement(
+                    intent.intent_id,
+                    dispatch_verification_sha256=(
+                        demo_auto_session_dispatch_verification.content_sha256
+                    ),
+                )
+                demo_auto_session_store.apply_dispatch_journal_settlement(
+                    settlement
+                )
+            except Exception:
+                session_completion_failed = True
+                self.journal.latch_kill_switch(
+                    "DEMO_AUTO session reservation completion failed for "
+                    f"{intent.intent_id}",
+                    source="EXECUTION",
+                    occurred_at=self._trusted_now(),
+                )
         next_state = updated.state
         realized_slippage_points = (
             max(0.0, float(receipt.slippage_price or 0.0)) / broker_spec.point
@@ -1094,7 +1875,17 @@ class ExecutionCoordinator:
                 if next_state != "REJECTED"
                 else "BROKER_REJECTED"
             ),
-            reasons=("REALIZED_SLIPPAGE_LIMIT_BREACH",) if slippage_breach else (),
+            reasons=tuple(
+                reason
+                for reason, active in (
+                    ("REALIZED_SLIPPAGE_LIMIT_BREACH", slippage_breach),
+                    (
+                        "DEMO_AUTO_SESSION_RESERVATION_COMPLETION_FAILED",
+                        session_completion_failed,
+                    ),
+                )
+                if active
+            ),
             execution_sent=True,
             risk=risk,
             receipt_id=receipt.receipt_id,

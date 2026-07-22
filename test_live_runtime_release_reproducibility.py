@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import fields
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -18,6 +19,7 @@ from build_windows_release import (
 from live_runtime.release_reproducibility import (
     ReproducibilityError,
     ReproducibilityObservation,
+    WindowsReproducibilityReceipt,
     issue_reproducibility_receipt,
     verify_reproducibility_receipt,
 )
@@ -126,6 +128,34 @@ class ReleaseReproducibilityTests(unittest.TestCase):
         self.assertFalse(receipt.live_allowed)
         self.assertFalse(receipt.safe_to_demo_auto_order)
         self.assertFalse(receipt.promotion_eligible)
+
+    def test_receipt_subclass_cannot_override_release_verification(self):
+        class ForgedReceipt(WindowsReproducibilityReceipt):
+            def verify(self, secret):  # type: ignore[no-untyped-def]
+                return True
+
+        signed = issue_reproducibility_receipt(
+            observation("build-a"),
+            observation("build-b"),
+            issued_at=NOW + timedelta(minutes=2),
+            signer_key_id="release-review-key",
+            secret=KEY,
+        )
+        forged = ForgedReceipt(
+            **{
+                field.name: getattr(signed, field.name)
+                for field in fields(WindowsReproducibilityReceipt)
+            }
+        )
+        with self.assertRaisesRegex(
+            TypeError,
+            "exact WindowsReproducibilityReceipt",
+        ):
+            verify_reproducibility_receipt(
+                forged,
+                key_provider=lambda key_id: KEY,
+                checked_at=NOW + timedelta(minutes=3),
+            )
 
     def test_ac12_mismatch_and_replay_are_rejected(self):
         with self.assertRaisesRegex(ReproducibilityError, "FULL_HASH_REQUIRED"):

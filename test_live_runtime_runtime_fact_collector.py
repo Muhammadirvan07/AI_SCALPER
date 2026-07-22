@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
@@ -8,11 +8,13 @@ import unittest
 
 from live_runtime.contracts import BrokerSpec
 from live_runtime.health import MIN_FREE_DISK_BYTES
+from live_runtime.health import RuntimeHealthDecision
 from live_runtime.journal import ExecutionJournal
 from live_runtime.runtime_fact_collector import (
     RUNTIME_FACT_RECEIPT_MAX_AGE_SECONDS,
     RuntimeFactCollectionError,
     RuntimeFactCollector,
+    RuntimeFactReceipt,
     RuntimeFactVerificationError,
     verify_runtime_fact_receipt,
 )
@@ -196,6 +198,42 @@ class RuntimeFactCollectorTests(unittest.TestCase):
         self.assertFalse(receipt.safe_to_demo_auto_order)
         self.assertTrue(receipt.verify_signature(SECRET))
         self.assertIs(receipt, self.verify(receipt))
+
+    def test_receipt_subclass_cannot_override_signature_verification(self):
+        class ForgedRuntimeFactReceipt(RuntimeFactReceipt):
+            def verify_signature(self, secret):  # type: ignore[no-untyped-def]
+                return True
+
+        unsigned = self.collector().collect(
+            symbol=SYMBOL,
+            broker_symbol=BROKER_SYMBOL,
+        )
+        forged = ForgedRuntimeFactReceipt(
+            **{
+                field.name: getattr(unsigned, field.name)
+                for field in fields(RuntimeFactReceipt)
+            }
+        )
+        with self.assertRaisesRegex(TypeError, "exact RuntimeFactReceipt"):
+            self.verify(forged)
+
+    def test_nested_health_decision_subclass_is_rejected(self):
+        class ForgedHealthDecision(RuntimeHealthDecision):
+            pass
+
+        receipt = self.collector().collect(
+            symbol=SYMBOL,
+            broker_symbol=BROKER_SYMBOL,
+        )
+        forged_decision = object.__new__(ForgedHealthDecision)
+        for field in fields(RuntimeHealthDecision):
+            object.__setattr__(
+                forged_decision,
+                field.name,
+                getattr(receipt.health_decision, field.name),
+            )
+        with self.assertRaisesRegex(TypeError, "exact RuntimeHealthDecision"):
+            replace(receipt, health_decision=forged_decision)
 
     def test_observed_unhealthy_facts_mint_signed_deny_receipt(self):
         journal = JournalView(

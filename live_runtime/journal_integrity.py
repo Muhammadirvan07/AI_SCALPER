@@ -278,6 +278,359 @@ def _read_rows(
     return [_row_dict(row) for row in rows]
 
 
+def _require_sha256_value(value: object, field: str) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise JournalIntegrityError(f"{field} is not a lowercase SHA-256 hash")
+    return value
+
+
+def _validate_demo_auto_terminal_payload(
+    intent_row: Mapping[str, object],
+    payload: Mapping[str, object],
+    transitions: list[Mapping[str, object]],
+    journal_sha256: str,
+) -> None:
+    """Validate the non-executable journal domain before checkpointing it."""
+
+    kind = payload.get("kind")
+    if kind not in {
+        "LOCKED_DEMO_AUTO_INTENT_PREPARATION",
+        "DEMO_AUTO_SAFE_LOSS",
+    }:
+        return
+    common = {
+        "kind": kind,
+        "non_executable": True,
+        "execution_authorized": False,
+        "activation_authorized": False,
+        "order_capability": "DISABLED",
+        "live_allowed": False,
+        "safe_to_demo_auto_order": False,
+    }
+    if any(payload.get(name) != expected for name, expected in common.items()):
+        raise JournalIntegrityError("DEMO_AUTO terminal payload grants authority")
+    filled_volume = intent_row.get("filled_volume")
+    if (
+        intent_row.get("broker_order_ticket") is not None
+        or intent_row.get("broker_position_ticket") is not None
+        or isinstance(filled_volume, bool)
+        or not isinstance(filled_volume, (int, float))
+        or not math.isfinite(float(filled_volume))
+        or float(filled_volume) != 0.0
+        or intent_row.get("protective_sl_tp_confirmed") != 0
+    ):
+        raise JournalIntegrityError("DEMO_AUTO terminal binding contains broker facts")
+    ipc_sha = _require_sha256_value(
+        payload.get("ipc_input_sha256"),
+        "IPC input hash",
+    )
+    decision_sha = _require_sha256_value(
+        payload.get("decision_snapshot_sha256"),
+        "decision snapshot hash",
+    )
+
+    if kind == "LOCKED_DEMO_AUTO_INTENT_PREPARATION":
+        expected_keys = {
+            "schema_version",
+            "kind",
+            "non_executable",
+            "execution_authorized",
+            "activation_authorized",
+            "order_capability",
+            "live_allowed",
+            "safe_to_demo_auto_order",
+            "ipc_input_sha256",
+            "decision_snapshot_sha256",
+            "prepared_intent_sha256",
+            "intent",
+            "risk_decision_sha256",
+            "risk_decision",
+            "broker_spec_sha256",
+            "verified_risk_context_sha256",
+            "verified_risk_provenance",
+            "health_facts_sha256",
+            "market_guard_decision_sha256",
+            "model_binding_sha256",
+            "risk_basis",
+        }
+        if set(payload) != expected_keys:
+            raise JournalIntegrityError("locked DEMO_AUTO payload fields drifted")
+        prepared_sha = _require_sha256_value(
+            payload.get("prepared_intent_sha256"),
+            "prepared intent hash",
+        )
+        risk_sha = _require_sha256_value(
+            payload.get("risk_decision_sha256"),
+            "risk decision hash",
+        )
+        for field in (
+            "broker_spec_sha256",
+            "verified_risk_context_sha256",
+            "health_facts_sha256",
+            "market_guard_decision_sha256",
+            "model_binding_sha256",
+        ):
+            _require_sha256_value(payload.get(field), field)
+        prepared = payload.get("intent")
+        risk = payload.get("risk_decision")
+        risk_provenance = payload.get("verified_risk_provenance")
+        if (
+            not isinstance(prepared, Mapping)
+            or not isinstance(risk, Mapping)
+            or not isinstance(risk_provenance, Mapping)
+        ):
+            raise JournalIntegrityError("locked DEMO_AUTO evidence must be objects")
+        expected_provenance_fields = {
+            "schema_version",
+            "verified_risk_context_sha256",
+            "account_id",
+            "server",
+            "environment",
+            "symbol",
+            "broker_symbol",
+            "mode",
+            "account_runtime_identity_sha256",
+            "journal_sha256",
+            "broker_spec_sha256",
+            "health_facts_sha256",
+            "health_decision_sha256",
+            "permit_id",
+            "permit_symbols",
+            "evaluated_at_utc",
+            "valid_until_utc",
+            "risk_state_receipt_sha256",
+            "runtime_fact_receipt_sha256",
+            "exposure_receipt_sha256",
+            "calibration_receipt_sha256",
+            "market_guard_decision_sha256",
+            "permit_validation_sha256",
+            "conversion_sha256",
+            "live_allowed",
+            "safe_to_demo_auto_order",
+        }
+        if set(risk_provenance) != expected_provenance_fields:
+            raise JournalIntegrityError("verified risk provenance fields drifted")
+        for field in (
+            "verified_risk_context_sha256",
+            "account_runtime_identity_sha256",
+            "journal_sha256",
+            "broker_spec_sha256",
+            "health_facts_sha256",
+            "health_decision_sha256",
+            "risk_state_receipt_sha256",
+            "runtime_fact_receipt_sha256",
+            "exposure_receipt_sha256",
+            "calibration_receipt_sha256",
+            "market_guard_decision_sha256",
+            "permit_validation_sha256",
+            "conversion_sha256",
+        ):
+            _require_sha256_value(risk_provenance.get(field), field)
+        provenance_evaluated = _parse_utc(
+            risk_provenance.get("evaluated_at_utc"),
+            "verified risk provenance evaluated_at",
+        )
+        provenance_valid_until = _parse_utc(
+            risk_provenance.get("valid_until_utc"),
+            "verified risk provenance valid_until",
+        )
+        if provenance_valid_until <= provenance_evaluated:
+            raise JournalIntegrityError("verified risk provenance window is empty")
+        decision = prepared.get("decision")
+        if not isinstance(decision, Mapping):
+            raise JournalIntegrityError("prepared intent lacks an exact decision")
+        requested_lot = prepared.get("requested_lot")
+        prepared_at = _parse_utc(
+            prepared.get("created_at"),
+            "locked DEMO_AUTO intent created_at",
+        )
+        prepared_until = _parse_utc(
+            prepared.get("expires_at"),
+            "locked DEMO_AUTO intent expires_at",
+        )
+        risk_numbers: dict[str, float] = {}
+        for field in (
+            "max_risk_cash",
+            "normalized_lot",
+            "estimated_risk_cash",
+            "estimated_margin_cash",
+            "margin_limit_cash",
+            "spread_points",
+            "spread_limit_points",
+            "spread_p95_points",
+            "spread_median_multiple_limit_points",
+            "slippage_points",
+            "slippage_limit_points",
+            "absolute_risk_cap_usd",
+            "usd_to_account_currency_rate",
+            "absolute_risk_cap_account_currency",
+        ):
+            value = risk.get(field)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+                or float(value) < 0
+            ):
+                raise JournalIntegrityError(
+                    f"locked DEMO_AUTO risk field {field} is invalid"
+                )
+            risk_numbers[field] = float(value)
+        risk_evaluated_at = _parse_utc(
+            risk.get("evaluated_at"),
+            "locked DEMO_AUTO risk evaluated_at",
+        )
+        _require_sha256_value(
+            risk.get("conversion_quote_sha256"),
+            "locked DEMO_AUTO conversion quote hash",
+        )
+        if (
+            canonical_sha256(prepared) != prepared_sha
+            or canonical_sha256(decision) != decision_sha
+            or canonical_sha256(risk) != risk_sha
+            or intent_row.get("intent_id") != f"intent_{prepared_sha[:32]}"
+            or intent_row.get("decision_id") != f"decision_{decision_sha[:32]}"
+            or intent_row.get("symbol") != prepared.get("symbol")
+            or prepared.get("symbol") != decision.get("symbol")
+            or intent_row.get("state") != "RISK_REJECTED"
+            or intent_row.get("last_error") != "DEMO_AUTO_ORDER_LOCKED"
+            or prepared.get("mode") != "DEMO_AUTO"
+            or isinstance(requested_lot, bool)
+            or not isinstance(requested_lot, (int, float))
+            or not math.isfinite(float(requested_lot))
+            or not 0 < float(requested_lot) <= 0.01
+            or not timedelta(0) < prepared_until - prepared_at <= timedelta(seconds=1)
+            or risk.get("allowed") is not False
+            or risk.get("reason_codes") != ["DEMO_AUTO_ORDER_LOCKED"]
+            or risk.get("symbol") != prepared.get("symbol")
+            or risk.get("normalized_lot") != prepared.get("requested_lot")
+            or risk_evaluated_at != prepared_at
+            or risk_numbers["max_risk_cash"] <= 0
+            or risk_numbers["estimated_risk_cash"] <= 0
+            or risk_numbers["estimated_risk_cash"]
+            > risk_numbers["max_risk_cash"] + 1e-12
+            or risk_numbers["estimated_margin_cash"]
+            > risk_numbers["margin_limit_cash"] + 1e-12
+            or risk_numbers["spread_points"] >= risk_numbers["spread_p95_points"]
+            or risk_numbers["spread_points"]
+            > risk_numbers["spread_median_multiple_limit_points"]
+            or risk_numbers["slippage_points"]
+            > risk_numbers["slippage_limit_points"]
+            or risk.get("open_position_count") != 0
+            or risk.get("exposure_symbols") != []
+            or risk.get("news_clear") is not True
+            or risk.get("rollover_clear") is not True
+            or risk.get("data_fresh") is not True
+            or risk.get("source_aligned") is not True
+            or not isinstance(risk.get("account_currency"), str)
+            or not risk.get("account_currency")
+            or risk_numbers["absolute_risk_cap_usd"] <= 0
+            or risk_numbers["usd_to_account_currency_rate"] <= 0
+            or risk_numbers["absolute_risk_cap_account_currency"] <= 0
+            or risk_provenance.get("verified_risk_context_sha256")
+            != payload.get("verified_risk_context_sha256")
+            or risk_provenance.get("broker_spec_sha256")
+            != payload.get("broker_spec_sha256")
+            or risk_provenance.get("journal_sha256") != journal_sha256
+            or risk_provenance.get("health_facts_sha256")
+            != payload.get("health_facts_sha256")
+            or risk_provenance.get("market_guard_decision_sha256")
+            != payload.get("market_guard_decision_sha256")
+            or risk_provenance.get("account_id") != prepared.get("account_id")
+            or risk_provenance.get("server") != prepared.get("server")
+            or risk_provenance.get("environment") != "DEMO"
+            or risk_provenance.get("symbol") != prepared.get("symbol")
+            or risk_provenance.get("mode") != "DEMO_AUTO"
+            or risk_provenance.get("permit_id") != prepared.get("permit_id")
+            or not isinstance(risk_provenance.get("broker_symbol"), str)
+            or not risk_provenance.get("broker_symbol")
+            or not isinstance(risk_provenance.get("permit_symbols"), list)
+            or prepared.get("symbol") not in risk_provenance.get("permit_symbols", [])
+            or risk_provenance.get("schema_version") != "verified-risk-context-v1"
+            or risk_provenance.get("live_allowed") is not False
+            or risk_provenance.get("safe_to_demo_auto_order") is not False
+            or payload.get("risk_basis")
+            != "BROKER_SPEC_ESTIMATE_REQUIRES_FRESH_BROKER_RESIZING"
+            or len(transitions) != 2
+            or transitions[0].get("from_state") is not None
+            or transitions[0].get("to_state") != "CREATED"
+            or transitions[0].get("details_json") != "{}"
+            or transitions[1].get("from_state") != "CREATED"
+            or transitions[1].get("to_state") != "RISK_REJECTED"
+            or _parse_canonical_json(
+                transitions[1].get("details_json"),
+                "locked DEMO_AUTO transition details",
+            )
+            != {
+                "locked_preparation": True,
+                "reason_codes": ["DEMO_AUTO_ORDER_LOCKED"],
+            }
+        ):
+            raise JournalIntegrityError("locked DEMO_AUTO binding is inconsistent")
+        if payload.get("schema_version") != "demo-auto-locked-intent-journal-v1":
+            raise JournalIntegrityError("locked DEMO_AUTO schema is invalid")
+        return
+
+    expected_keys = {
+        "schema_version",
+        "kind",
+        "non_executable",
+        "execution_authorized",
+        "activation_authorized",
+        "order_capability",
+        "live_allowed",
+        "safe_to_demo_auto_order",
+        "ipc_input_sha256",
+        "decision_snapshot_sha256",
+        "decision",
+        "prepared_intent_sha256",
+        "intent",
+        "reason_codes",
+    }
+    if set(payload) != expected_keys:
+        raise JournalIntegrityError("DEMO_AUTO safe-loss fields drifted")
+    decision = payload.get("decision")
+    reasons = payload.get("reason_codes")
+    expected_tombstone_id = "demo_auto_loss_" + canonical_sha256(
+        {
+            "decision_snapshot_id": f"decision_{decision_sha[:32]}",
+            "ipc_input_sha256": ipc_sha,
+        }
+    )[:32]
+    if (
+        not isinstance(decision, Mapping)
+        or canonical_sha256(decision) != decision_sha
+        or intent_row.get("intent_id") != expected_tombstone_id
+        or intent_row.get("decision_id") != f"decision_{decision_sha[:32]}"
+        or intent_row.get("symbol") != decision.get("symbol")
+        or intent_row.get("state") != "EXPIRED"
+        or payload.get("prepared_intent_sha256") is not None
+        or payload.get("intent") is not None
+        or not isinstance(reasons, list)
+        or not reasons
+        or reasons != sorted(set(reasons))
+        or any(not isinstance(reason, str) or reason != reason.strip().upper() for reason in reasons)
+        or intent_row.get("last_error") != ",".join(reasons)
+        or payload.get("schema_version") != "demo-auto-safe-loss-journal-v1"
+        or len(transitions) != 2
+        or transitions[0].get("from_state") is not None
+        or transitions[0].get("to_state") != "CREATED"
+        or transitions[0].get("details_json") != "{}"
+        or transitions[1].get("from_state") != "CREATED"
+        or transitions[1].get("to_state") != "EXPIRED"
+        or _parse_canonical_json(
+            transitions[1].get("details_json"),
+            "DEMO_AUTO safe-loss transition details",
+        )
+        != {"reason_codes": reasons, "safe_loss": True}
+    ):
+        raise JournalIntegrityError("DEMO_AUTO safe-loss binding is inconsistent")
+
+
 def _validate_semantics(tables: Mapping[str, list[dict[str, object]]], journal_sha256: str) -> None:
     intents = {str(row["intent_id"]): row for row in tables["intents"]}
     transitions: dict[str, list[dict[str, object]]] = {intent_id: [] for intent_id in intents}
@@ -289,10 +642,18 @@ def _validate_semantics(tables: Mapping[str, list[dict[str, object]]], journal_s
         _parse_utc(row["occurred_at_utc"], "transition occurred_at")
         transitions[intent_id].append(row)
     for intent_id, intent in intents.items():
-        _parse_canonical_json(intent["payload_json"], "intent payload")
+        parsed_payload = _parse_canonical_json(intent["payload_json"], "intent payload")
+        if not isinstance(parsed_payload, Mapping):
+            raise JournalIntegrityError("intent payload must be an object")
         created_at = _parse_utc(intent["created_at_utc"], "intent created_at")
         updated_at = _parse_utc(intent["updated_at_utc"], "intent updated_at")
         chain = transitions[intent_id]
+        _validate_demo_auto_terminal_payload(
+            intent,
+            parsed_payload,
+            chain,
+            journal_sha256,
+        )
         if not chain or chain[0]["from_state"] is not None or chain[0]["to_state"] != "CREATED":
             raise JournalIntegrityError("intent transition chain does not start at CREATED")
         prior_state: str | None = None
@@ -527,8 +888,8 @@ def create_execution_journal_checkpoint(
 ) -> ExecutionJournalCheckpoint:
     """Create a deny-only signed checkpoint after semantic/prefix validation."""
 
-    if not isinstance(journal, ExecutionJournal):
-        raise TypeError("journal must be ExecutionJournal")
+    if type(journal) is not ExecutionJournal:
+        raise TypeError("journal must be exact ExecutionJournal")
     if not callable(key_provider) or not callable(clock_provider):
         raise TypeError("key_provider and clock_provider are required")
     expected_binding = {
@@ -600,6 +961,8 @@ def verify_execution_journal_checkpoint(
 ) -> None:
     """Fail unless the signed checkpoint is fresh and matches current state."""
 
+    if type(journal) is not ExecutionJournal:
+        raise TypeError("journal must be exact ExecutionJournal")
     reasons: list[str] = []
     now = require_utc("now", now)
     mode = require_text("execution_mode", execution_mode, upper=True)

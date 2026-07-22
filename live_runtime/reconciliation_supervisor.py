@@ -330,10 +330,10 @@ class ReconciliationSupervisor:
     ) -> None:
         if not callable(getattr(service, "reconcile_once", None)):
             raise TypeError("service must expose reconcile_once")
-        if not isinstance(getattr(service, "journal", None), ExecutionJournal):
+        if type(getattr(service, "journal", None)) is not ExecutionJournal:
             raise TypeError("service must expose its ExecutionJournal")
-        if not isinstance(store, ReconciliationSupervisorStore):
-            raise TypeError("store must be ReconciliationSupervisorStore")
+        if type(store) is not ReconciliationSupervisorStore:
+            raise TypeError("store must be exact ReconciliationSupervisorStore")
         if not callable(clock_provider) or not callable(sleep_provider):
             raise TypeError("clock_provider and sleep_provider must be callable")
         if (
@@ -392,7 +392,7 @@ class ReconciliationSupervisor:
                     history_start_utc=started - self.history_lookback,
                     now=started,
                 )
-                if not isinstance(outcome, ReconciliationResult):
+                if type(outcome) is not ReconciliationResult:
                     raise TypeError("reconcile_once returned an invalid result")
                 if outcome.status not in {
                     "RECONCILIATION_COMPLETE",

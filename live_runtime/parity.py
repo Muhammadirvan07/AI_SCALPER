@@ -41,12 +41,12 @@ class ParityFixture(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "lane_id", require_text("lane_id", self.lane_id))
-        if not isinstance(self.decision, DecisionSnapshot):
-            raise TypeError("decision must be a DecisionSnapshot")
-        if not isinstance(self.intent, TradeIntent):
-            raise TypeError("intent must be a TradeIntent")
-        if not isinstance(self.risk_decision, RiskDecision):
-            raise TypeError("risk_decision must be a RiskDecision")
+        if type(self.decision) is not DecisionSnapshot:
+            raise TypeError("decision must be an exact DecisionSnapshot")
+        if type(self.intent) is not TradeIntent:
+            raise TypeError("intent must be an exact TradeIntent")
+        if type(self.risk_decision) is not RiskDecision:
+            raise TypeError("risk_decision must be an exact RiskDecision")
         if self.intent.decision != self.decision:
             raise ValueError("intent must reference the exact decision snapshot")
         if self.risk_decision.symbol != self.decision.symbol:
@@ -122,8 +122,8 @@ def compare_parity(
 ) -> ParityReport:
     """Compare every deterministic leaf with exact canonical semantics."""
 
-    if not isinstance(replay, ParityFixture) or not isinstance(runtime, ParityFixture):
-        raise TypeError("replay and runtime must be ParityFixture instances")
+    if type(replay) is not ParityFixture or type(runtime) is not ParityFixture:
+        raise TypeError("replay and runtime must be exact ParityFixture values")
     require_utc("compared_at", compared_at)
     if replay.lane_id != runtime.lane_id:
         raise ValueError("cannot compare different lanes")

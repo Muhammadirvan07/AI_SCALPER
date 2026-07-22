@@ -74,7 +74,7 @@ This is a fail-closed software contract, not proof that Task Scheduler restart,
 MT5 recovery, network partition handling, or Windows watchdog drills have
 passed on the target VPS.
 
-## Release trust is still non-production
+## Release trust has a public-key verification path
 
 The repository contains a signed release-trust receipt verifier that binds the
 release identity, full Git commit/tree, reviewed profile, hashed host/service
@@ -85,9 +85,31 @@ also mint a forged trust receipt.
 
 Therefore `SIGNED_RELEASE_TRUST_ENABLED=false` and
 `HMAC_RELEASE_TRUST_PRODUCTION_READY=false`. Do not use the HMAC receipt as
-production authority. A later reviewed release must use asymmetric public-key
-verification or consume an attestation from an external trusted launcher with
-policy pinned outside the release.
+production authority.
+
+`asymmetric_release_trust.py` now supplies a verification-only RSA-3072 path.
+Before importing the provider factory, the runner requires a short-lived
+externally signed launcher attestation and an ACL-protected public policy whose
+SHA-256 is independently pinned in the Task Scheduler launcher. The private key
+must remain offline/outside the VPS and repository. Both external documents
+must be stable regular files outside the mutable release root. The attestation
+binds the exact release, host, service account, and task definition and is
+rechecked after factory materialization.
+
+Example shape after an offline authority has issued the reviewed files:
+
+```powershell
+python -B .\run_windows_gated_execution_service.py `
+  --factory-manifest C:\AI_SCALPER_PRIVATE\factory-manifest.json `
+  --release-root C:\AI_SCALPER_RELEASES\execution-v1 `
+  --expected-release-identity-sha256 <PINNED_RELEASE_SHA256> `
+  --release-trust-policy C:\AI_SCALPER_PRIVATE\launcher-policy.json `
+  --expected-release-trust-policy-sha256 <PINNED_POLICY_SHA256> `
+  --release-attestation C:\AI_SCALPER_PRIVATE\launcher-attestation.json
+```
+
+This verification proves provenance only. It does not grant stage, permit,
+environment-arm, DEMO_AUTO, promotion, or live authority.
 
 ## Demo-auto IPC remains inert
 
@@ -104,6 +126,86 @@ The consumer has no MT5 adapter, `order_send`, or executor callback and is not
 wired into the production bootstrap. `SAFE_TO_DEMO_AUTO_ORDER` remains false;
 the supervisor continues to reject `DEMO_AUTO`.
 
+The execution bundle now also contains the locked
+`demo_auto_risk_intent_pipeline.py` boundary. It consumes only the sealed IPC
+risk/intent input, creates a conservative proposal, and binds the exact
+decision to one terminal `RISK_REJECTED`/`EXPIRED` journal record. Its exported
+`ORDER_CAPABILITY` is `DISABLED`; it cannot submit or promote the proposal.
+
+`demo_auto_session_capability.py` provides a dormant renewable session lease
+with SQLite WAL/FULL replay protection and external CAS custody. The repository
+contains the state machine, but the independent custody/provider is still an
+external requirement. The validator reports that requirement as
+`EXTERNAL_DEMO_AUTO_SESSION_CUSTODY_REQUIRED`.
+
+`demo_auto_soak_projection.py` dan exact dependency `soak_tracker.py` juga
+termasuk di execution release. Projection hanya menerima broker facts yang
+terautentikasi, mengikatnya ke session/checkpoint custody eksternal, lalu
+menghasilkan accounting evidence deny-only. Keduanya tidak mempunyai adapter,
+dispatch callback, atau activation authority; projection mengekspor
+`ORDER_CAPABILITY=DISABLED`, `LIVE_ALLOWED=false`, dan
+`SAFE_TO_DEMO_AUTO_ORDER=false`.
+
+The session reservation is now joined durably to the execution journal. A
+before-send abort requires privileged proof that the one-use submission lease
+was never consumed. A consumed or indeterminate lease remains
+`RECONCILIATION_REQUIRED` across restart and cannot be renewed or resent until
+exact broker reconciliation settles it. Startup replays the sealed journal
+settlement into the session store.
+
+`demo_auto_soak_cohort.py` verifies the complete signed projection checkpoint
+chain and exact broker-deal closure evidence across the one reviewed DEMO
+account cohort. It calculates the 30-day/50-fill/20-XAU criteria without
+granting promotion or activation and rejects restart forks, disappearing deals,
+symbol/spec/currency drift, and incident-generation rollback.
+
+Ambang 30 clean days, 50 closed fills, dan 20 closed XAUUSD fills adalah output
+yang dinilai setelah DEMO_AUTO diaktifkan secara sah. Ambang tersebut bukan
+prasyarat untuk memasuki DEMO_AUTO; hasilnya dipakai untuk menilai soak dan
+promotion menuju live. Dengan demikian sistem tidak membuat siklus mustahil
+yang meminta hasil soak sebelum soak boleh dimulai.
+
+Readiness blockers are classified through the deny-by-default
+`live_grade_gate_catalog.py` catalog. The report remains
+`production_execution_ready=false`; categorization is not a promotion receipt.
+Manifest, validator, dan validate-only runner menerbitkan seluruh pending gate
+catalog dalam tiga kelompok non-local yang eksplisit:
+`EXTERNAL_CONFIGURATION`, `TEMPORAL_EVIDENCE`, dan `MANUAL_APPROVAL`. Tidak ada
+readiness percentage atau score karena jumlah gate bukan bukti kesiapan.
+
+The brokerless M15 decision producer is deliberately a separate decision
+process and is **not** a member of this executor bundle. Its finalized-data,
+trusted-clock, IPC-key, and cursor-custody configuration remains external and
+is reported as `EXTERNAL_DECISION_DATA_PROVIDER_REQUIRED`.
+
+## Reviewed factory template is static only
+
+`windows_service_factory_template.py` now defines the exact external provider
+surface required by `ProductionRuntimePorts` and the service heartbeat result.
+Each provider is bound to a release-local interface-contract hash, an external
+implementation hash, and a non-secret configuration hash. Secret-bearing
+providers may reference only a purpose-matched `AI_SCALPER/WINDOWS_SERVICE/*`
+Windows Credential Manager target; raw credential values are outside the
+schema.
+
+The same template binds the expected release identity to one hashed Task
+Scheduler definition, host, release root, launcher, ACL policy, service-account
+SID/principal, limited run level, service-account logon type, and single-instance
+policy. Generation and validation are canonical and deterministic. Static
+validation does not import a factory/provider, read Credential Manager,
+initialize MT5, create a bootstrap, or materialize any broker component.
+
+This closes the generic software-foundation gap only. The narrower blocker is
+now `EXTERNAL_FACTORY_PROVIDER_CONFIGURATION_REQUIRED`: external provider
+implementations, configuration, Task Scheduler registration, Credential
+Manager ACL/custody, and runtime attestations still have to be supplied and
+reviewed on the target Windows host.
+
+The template also binds the exact runtime mode. A `DEMO_AUTO` template must
+contain every IPC, session, permit, promotion, environment-arm,
+execution-cycle, and promotion-key provider; only an exact `DEMO` template may
+omit that dormant provider set.
+
 ## What remains externally blocked
 
 - Windows Credential Manager provider and account-bound credential receipt;
@@ -114,9 +216,14 @@ the supervisor continues to reject `DEMO_AUTO`.
 - off-host immutable/WORM audit exporter;
 - provisioned installed-environment/module hashes for the exact Windows venv;
 - signed runtime receipts;
-- asymmetric public-key release verification or an external trusted launcher;
-- reviewed wiring for the inert decision IPC consumer, including the durable
-  one-decision-to-one-intent journal constraint;
+- externally issued RSA launcher policy/attestation, offline private-key
+  custody, and Task Scheduler pinning/ACL evidence;
+- external exact-hash factory/provider configuration and Task Scheduler/
+  service-identity registration attestation;
+- reviewed decision-IPC configuration and independent renewable session
+  custody;
+- reviewed finalized-M15 data configuration for the separate brokerless
+  decision process;
 
 The concrete bootstrap and bounded supervisor loop are now included. Static
 validation never resolves credentials or contacts MT5. Raw account alias,
@@ -145,6 +252,6 @@ The import namespace rule intentionally permits one verified MT5 adapter per
 process. Starting a second verified adapter in the same process fails closed;
 service isolation is the supported production topology.
 
-Local regression on 2026-07-22 completed 1,033 tests without failure on the
+Local regression on 2026-07-23 completed 1,164 tests without failure on the
 development Mac. Exact Windows/Python/MT5/NTFS acceptance and all operational
 gates remain outstanding.

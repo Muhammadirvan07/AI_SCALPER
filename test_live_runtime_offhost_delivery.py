@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import fields
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -148,6 +149,32 @@ class OffHostDeliveryTests(unittest.TestCase):
                 )
                 self.assertEqual(report.failed, (item.envelope_id,))
                 self.assertEqual(outbox.get(item.envelope_id)["state"], "PENDING")
+
+    def test_ack_subclass_cannot_override_remote_signature_verification(self):
+        class ForgedAcknowledgement(DeliveryAcknowledgement):
+            def verify(self, secret):  # type: ignore[no-untyped-def]
+                return True
+
+        outbox = self._outbox()
+        item = envelope()
+        outbox.enqueue(item)
+        unsigned = acknowledgement(item, secret=b"x" * 32)
+        forged = ForgedAcknowledgement(
+            **{
+                field.name: getattr(unsigned, field.name)
+                for field in fields(DeliveryAcknowledgement)
+            }
+        )
+        supervisor = OffHostDeliverySupervisor(
+            outbox=outbox,
+            remote_key_provider=lambda key_id: REMOTE_KEY,
+        )
+        report = supervisor.deliver_pending(
+            Transport(forged),
+            attempted_at=NOW + timedelta(seconds=1),
+        )
+        self.assertEqual(report.failed, (item.envelope_id,))
+        self.assertEqual(outbox.get(item.envelope_id)["state"], "PENDING")
 
     def test_directory_drop_is_create_exclusive_and_requires_remote_ack(self):
         with tempfile.TemporaryDirectory() as temporary:

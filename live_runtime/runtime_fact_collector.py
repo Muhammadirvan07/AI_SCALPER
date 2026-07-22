@@ -296,16 +296,16 @@ class RuntimeFactReceipt(CanonicalContract):
         lifetime = self.valid_until_utc - self.observed_at_utc
         if not timedelta(0) < lifetime <= RUNTIME_FACT_RECEIPT_MAX_AGE:
             raise ValueError("runtime fact receipt lifetime exceeds one second")
-        if not isinstance(self.account_fact, RuntimeAccountFact):
-            raise TypeError("account_fact must be RuntimeAccountFact")
-        if not isinstance(self.broker_spec, BrokerSpec):
-            raise TypeError("broker_spec must be BrokerSpec")
-        if not isinstance(self.tick, RuntimeTickFact):
-            raise TypeError("tick must be RuntimeTickFact")
-        if not isinstance(self.health_facts, RuntimeHealthFacts):
-            raise TypeError("health_facts must be RuntimeHealthFacts")
-        if not isinstance(self.health_decision, RuntimeHealthDecision):
-            raise TypeError("health_decision must be RuntimeHealthDecision")
+        if type(self.account_fact) is not RuntimeAccountFact:
+            raise TypeError("account_fact must be an exact RuntimeAccountFact")
+        if type(self.broker_spec) is not BrokerSpec:
+            raise TypeError("broker_spec must be an exact BrokerSpec")
+        if type(self.tick) is not RuntimeTickFact:
+            raise TypeError("tick must be an exact RuntimeTickFact")
+        if type(self.health_facts) is not RuntimeHealthFacts:
+            raise TypeError("health_facts must be exact RuntimeHealthFacts")
+        if type(self.health_decision) is not RuntimeHealthDecision:
+            raise TypeError("health_decision must be an exact RuntimeHealthDecision")
         expected_decision = evaluate_runtime_health(self.health_facts)
         if expected_decision != self.health_decision:
             raise ValueError("health decision does not match runtime health facts")
@@ -675,8 +675,10 @@ def verify_runtime_fact_receipt(
 ) -> RuntimeFactReceipt:
     """Return the receipt only when HMAC, freshness, and all bindings match."""
 
-    if not isinstance(receipt, RuntimeFactReceipt):
-        raise TypeError("receipt must be RuntimeFactReceipt")
+    # Runtime facts authorize the final risk path. An exact-type check keeps
+    # an attacker-provided subclass from overriding ``verify_signature``.
+    if type(receipt) is not RuntimeFactReceipt:
+        raise TypeError("receipt must be exact RuntimeFactReceipt")
     if not callable(key_provider):
         raise RuntimeFactVerificationError(["VERIFICATION_KEY_PROVIDER_INVALID"])
     if not callable(clock_provider):

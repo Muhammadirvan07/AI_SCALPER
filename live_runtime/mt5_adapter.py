@@ -233,10 +233,11 @@ class RuntimeAuthorization:
         mode = self.mode.strip().upper()
         if now >= self.valid_until_utc:
             return False
-        if mode == "LIVE":
-            return execution_policy.LIVE_ALLOWED is True
-        if mode == "DEMO_AUTO":
-            return execution_policy.SAFE_TO_DEMO_AUTO_ORDER is True
+        if mode in {"LIVE", "DEMO_AUTO"}:
+            allowed, _reason_codes = (
+                execution_policy.execution_mode_policy_decision(mode)
+            )
+            return allowed
         if mode == "DEMO":
             return self.manual_demo_approval_sha256 != "0" * 64
         return False
@@ -293,22 +294,23 @@ def build_runtime_authorization(
     environment_arm_decision: EnvironmentArmDecision,
     manual_demo_approval_validation: ManualDemoApprovalValidation | None,
     now: datetime,
+    additional_valid_until_utc: datetime | None = None,
 ) -> RuntimeAuthorization:
     """Mint a short-lived capability from an HMAC-verified permit result."""
 
-    if not isinstance(intent, TradeIntent):
-        raise TypeError("intent must be a TradeIntent")
-    if not isinstance(permit_validation, PermitValidation):
+    if type(intent) is not TradeIntent:
+        raise TypeError("intent must be an exact TradeIntent")
+    if type(permit_validation) is not PermitValidation:
         raise TypeError("permit_validation must come from validate_permit")
-    if not isinstance(risk_decision, RiskDecision) or not risk_decision.allowed:
+    if type(risk_decision) is not RiskDecision or not risk_decision.allowed:
         raise ExecutionLockedError("an approved independent risk decision is required")
-    if not isinstance(broker_spec, BrokerSpec):
+    if type(broker_spec) is not BrokerSpec:
         raise TypeError("broker_spec must be a BrokerSpec")
     if type(verified_risk_context) is not VerifiedRiskContext:
         raise ExecutionLockedError("sealed verified risk context is required")
-    if not isinstance(reservation, IntentRecord):
+    if type(reservation) is not IntentRecord:
         raise TypeError("reservation must be an IntentRecord")
-    if not isinstance(gate_capability, ExecutionGateCapability):
+    if type(gate_capability) is not ExecutionGateCapability:
         raise ExecutionLockedError("sealed execution gate capability is required")
     normalized_journal_sha256 = str(journal_sha256 or "").lower()
     if len(normalized_journal_sha256) != 64 or any(
@@ -316,7 +318,7 @@ def build_runtime_authorization(
     ):
         raise ValueError("journal_sha256 must be a lowercase SHA-256 hash")
     now = require_utc("now", now)
-    if not isinstance(environment_arm_decision, EnvironmentArmDecision):
+    if type(environment_arm_decision) is not EnvironmentArmDecision:
         raise ExecutionLockedError("sealed environment arm decision is required")
     expected_arm_binding = environment_arm_binding_sha256(
         intent.account_id,
@@ -336,7 +338,7 @@ def build_runtime_authorization(
     if intent.mode == "DEMO":
         validation = manual_demo_approval_validation
         manual_validation_bound = (
-            isinstance(validation, ManualDemoApprovalValidation)
+            type(validation) is ManualDemoApprovalValidation
             and validation.is_fresh(now)
             and validation.intent_id == intent.intent_id
             and validation.account_id_sha256
@@ -422,6 +424,20 @@ def build_runtime_authorization(
         verified_risk_context.valid_until_utc,
         now + timedelta(seconds=MAX_AUTHORIZATION_AGE_SECONDS),
     )
+    if intent.mode == "DEMO_AUTO":
+        if additional_valid_until_utc is None:
+            raise ExecutionLockedError(
+                "DEMO_AUTO authorization requires the aggregate control expiry"
+            )
+        aggregate_expiry = require_utc(
+            "additional_valid_until_utc",
+            additional_valid_until_utc,
+        )
+        if aggregate_expiry <= now:
+            raise ExecutionLockedError(
+                "DEMO_AUTO aggregate control expiry is stale"
+            )
+        authorization_expiry = min(authorization_expiry, aggregate_expiry)
     if intent.mode == "DEMO" and manual_demo_approval_validation is not None:
         authorization_expiry = min(
             authorization_expiry,
@@ -573,19 +589,19 @@ def _mint_execution_gate_capability(
     """Join outputs from independent gates after the durable reservation."""
 
     now = require_utc("now", now)
-    if not isinstance(risk_decision, RiskDecision) or not risk_decision.allowed:
+    if type(risk_decision) is not RiskDecision or not risk_decision.allowed:
         raise ExecutionLockedError("approved risk evaluator output is required")
-    if not isinstance(health_decision, RuntimeHealthDecision) or not health_decision.healthy:
+    if type(health_decision) is not RuntimeHealthDecision or not health_decision.healthy:
         raise ExecutionLockedError("healthy runtime evaluator output is required")
     if (
-        not isinstance(market_guard_decision, MarketGuardDecision)
+        type(market_guard_decision) is not MarketGuardDecision
         or not market_guard_decision.news_clear
         or not market_guard_decision.rollover_clear
         or market_guard_decision.symbol != intent.symbol
     ):
         raise ExecutionLockedError("clear sealed market guard output is required")
     if (
-        not isinstance(model_binding_decision, ModelBindingDecision)
+        type(model_binding_decision) is not ModelBindingDecision
         or not model_binding_decision.bound
         or model_binding_decision.role != "CHAMPION"
         or model_binding_decision.decision_snapshot_id != intent.decision.snapshot_id
@@ -593,9 +609,9 @@ def _mint_execution_gate_capability(
         != intent.decision.model_artifact_sha256
     ):
         raise ExecutionLockedError("exact sealed champion binding is required")
-    if not isinstance(preflight, MT5Preflight) or not preflight.passed:
+    if type(preflight) is not MT5Preflight or not preflight.passed:
         raise ExecutionLockedError("sealed passed MT5 preflight is required")
-    if not isinstance(reservation, IntentRecord) or reservation.state != "SUBMITTING":
+    if type(reservation) is not IntentRecord or reservation.state != "SUBMITTING":
         raise ExecutionLockedError("durable SUBMITTING reservation is required")
     normalized_journal_sha256 = str(journal_sha256 or "").lower()
     if len(normalized_journal_sha256) != 64 or any(
@@ -613,7 +629,7 @@ def _mint_execution_gate_capability(
         raise ExecutionLockedError("execution gate evidence is stale")
     if now >= model_binding_decision.valid_until:
         raise ExecutionLockedError("champion binding expired")
-    if not isinstance(submission_guard, MT5SubmissionGuard):
+    if type(submission_guard) is not MT5SubmissionGuard:
         raise ExecutionLockedError("sealed MT5 submission guard is required")
     guard_age = (
         now
@@ -1586,7 +1602,7 @@ class MT5Adapter:
         """Refresh broker/account/exposure facts immediately before reservation."""
 
         started_at = self._trusted_now(now)
-        if not isinstance(broker_spec, BrokerSpec):
+        if type(broker_spec) is not BrokerSpec:
             raise TypeError("broker_spec must be a BrokerSpec")
         self._assert_symbol_binding(intent.symbol, broker_spec.broker_symbol)
         account = self.assert_account_binding()
@@ -1659,9 +1675,9 @@ class MT5Adapter:
     ) -> ExecutionReceipt:
         self._require_initialized()
         now = self._trusted_now(now)
-        if not isinstance(authorization, RuntimeAuthorization):
+        if type(authorization) is not RuntimeAuthorization:
             raise ExecutionLockedError("sealed runtime authorization is required")
-        if not isinstance(submission_lease, DurableSubmissionLease):
+        if type(submission_lease) is not DurableSubmissionLease:
             raise ExecutionLockedError(
                 "durable one-use journal submission lease is required"
             )
@@ -1672,7 +1688,7 @@ class MT5Adapter:
             or authorization.permit_id != intent.permit_id
         ):
             raise ExecutionLockedError("runtime authorization does not allow order_send")
-        if not isinstance(preflight, MT5Preflight):
+        if type(preflight) is not MT5Preflight:
             raise PreflightRejectedError("validated MT5 preflight is required")
         if (
             not preflight.passed

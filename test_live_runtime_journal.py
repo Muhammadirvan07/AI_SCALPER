@@ -24,6 +24,7 @@ from live_runtime.mt5_adapter import (
     _mint_mt5_submission_guard,
 )
 from live_runtime.permit import (
+    KillSwitchResetAuthorization,
     KillSwitchResetPermit,
     authorize_kill_switch_reset,
     reset_reason_sha256,
@@ -954,6 +955,24 @@ class ExecutionJournalTests(unittest.TestCase):
             restarted.reset_kill_switch(
                 authorization=authorization,
                 reason=reset_reason,
+                occurred_at=self.now,
+            )
+
+    def test_kill_switch_reset_rejects_authorization_subclasses(self):
+        self.journal.latch_kill_switch(
+            "orphan position",
+            source="RECONCILIATION",
+            occurred_at=self.now,
+        )
+
+        class ForgedAuthorization(KillSwitchResetAuthorization):
+            pass
+
+        forged = object.__new__(ForgedAuthorization)
+        with self.assertRaisesRegex(PermissionError, "sealed dual-control"):
+            self.journal.reset_kill_switch(
+                authorization=forged,
+                reason="pretend reviewed",
                 occurred_at=self.now,
             )
 

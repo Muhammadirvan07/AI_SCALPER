@@ -145,6 +145,17 @@ class IndependentPromotionIssuerTests(unittest.TestCase):
                 ruleset_drift_detected=False,
             )
 
+    def test_validation_observation_subclass_is_rejected(self):
+        class ForgedValidationReceipt(ValidationReceiptObservation):
+            pass
+
+        forged = object.__new__(ForgedValidationReceipt)
+        with self.assertRaisesRegex(
+            TypeError,
+            "exact ValidationReceiptObservation",
+        ):
+            complete_corpus(validation_receipt=forged)
+
     def test_ac8_complete_evidence_keeps_all_locks_closed(self):
         assessment = evaluate_promotion_corpus(complete_corpus(), bootstrap_seed=17)
         self.assertTrue(assessment.readiness.evidence_complete)

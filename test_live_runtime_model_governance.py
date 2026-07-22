@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, replace
+from dataclasses import asdict, fields, replace
 from datetime import datetime, timedelta, timezone
 import unittest
 
@@ -63,6 +63,20 @@ class ModelGovernanceTests(unittest.TestCase):
         result = verify_decision_model(decision(), artifact("CHALLENGER"), checked_at=NOW)
         self.assertFalse(result.bound)
         self.assertIn("CHALLENGER_SHADOW_ONLY", result.reason_codes)
+
+    def test_manifest_subclass_is_rejected_at_model_trust_boundary(self):
+        class ForgedManifest(ModelArtifactManifest):
+            pass
+
+        original = artifact()
+        forged = ForgedManifest(
+            **{
+                field.name: getattr(original, field.name)
+                for field in fields(ModelArtifactManifest)
+            }
+        )
+        with self.assertRaisesRegex(TypeError, "exact ModelArtifactManifest"):
+            verify_decision_model(decision(), forged, checked_at=NOW)
 
     def test_model_drift_is_reported(self):
         values = asdict(decision())

@@ -481,8 +481,8 @@ class TradeIntent(CanonicalContract):
         require_utc("expires_at", self.expires_at)
         if self.expires_at <= self.created_at:
             raise ValueError("expires_at must be after created_at")
-        if not isinstance(self.decision, DecisionSnapshot):
-            raise TypeError("decision must be a DecisionSnapshot")
+        if type(self.decision) is not DecisionSnapshot:
+            raise TypeError("decision must be an exact DecisionSnapshot")
         if self.decision.timeframe != "M15":
             raise ValueError("TradeIntent accepts only M15 decision snapshots")
         if self.symbol != self.decision.symbol or self.side != self.decision.side:

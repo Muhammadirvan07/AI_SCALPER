@@ -253,8 +253,10 @@ def validate_promotion_evidence_receipt(
     expected_config_sha256: str,
     expected_model_artifact_sha256: str,
 ) -> PromotionEvidenceValidation:
-    if not isinstance(receipt, PromotionEvidenceReceipt):
-        raise TypeError("receipt must be PromotionEvidenceReceipt")
+    # This is a signed trust-boundary value. Accepting subclasses would let a
+    # caller override ``verify_signature`` without possessing the signing key.
+    if type(receipt) is not PromotionEvidenceReceipt:
+        raise TypeError("receipt must be exact PromotionEvidenceReceipt")
     if not callable(key_provider):
         raise TypeError("key_provider must be callable")
     require_utc("now", now)

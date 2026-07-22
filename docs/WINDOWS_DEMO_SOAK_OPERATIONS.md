@@ -36,12 +36,15 @@ The two process definitions are intentionally required to include
 `--deny-orders`. The executor/reconciler definition proves process separation and
 future composition shape, while remaining reconciliation-only in this version.
 
-The future demo-auto decision IPC consumer is also inert in this version. It
+The demo-auto decision IPC consumer remains policy-locked in this version. It
 can consume and verify one signed decision/stage/permit/environment-arm set and
 produce a sealed risk/intent input through a sealed consume-only port, but it
-has no publish/signing-provider surface, broker adapter, or order callback and
-is not composed into the executor. A passing consumer test does not start the
-soak.
+has no publish/signing-provider surface or broker adapter. The dormant
+composition seam can reach the existing executor only after every sealed
+authority passes. Session dispatch is journal-bound and restart-safe; uncertain
+broker submission remains reconciliation-required and cannot be resent. A
+passing consumer/dispatch test still does not start the soak while the central
+policy lock is false.
 
 ## Required Windows layout
 
@@ -110,9 +113,9 @@ does not enable demo-auto or live trading.
 Before demo-auto soak can begin, the exact Windows host still needs reviewed task
 installation, provisioned Credential Manager references, real provider adapters,
 signed delivery acknowledgements, clock/disk/Event Log/backup attestations, ten
-clean manual-demo orders, asymmetric release verification or an external
-trusted launcher, reviewed IPC-to-journal/executor wiring, independent approval,
-and a short-lived promotion control. After that, the soak itself must still
+clean manual-demo orders, an offline-issued RSA launcher policy/attestation,
+reviewed IPC/session/projection provider wiring, independent approval, and a
+short-lived promotion control. After that, the soak itself must still
 achieve 30 days, 50 fills, at least 20 XAU fills, and zero critical incidents.
 
 Risk feasibility is also an acceptance input. With `0.01` lot and the locked

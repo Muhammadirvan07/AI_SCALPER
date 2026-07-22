@@ -384,26 +384,8 @@ class DemoAutoIPCConsumerTests(unittest.TestCase):
         with self.assertRaises(DecisionIPCEmpty):
             self.queue.consume_next(consumed_at_utc=self.run_at)
 
-    def test_stage_must_be_current_before_and_after_durable_consume(self) -> None:
-        self.queue.publish(
-            decision=self.decision(),
-            issued_at_utc=self.run_at - timedelta(milliseconds=50),
-        )
-        stage_expiry = self.authorization.request.expires_at
-        self.clock_values = [stage_expiry, stage_expiry]
-        with patch.dict(os.environ, self.arm(), clear=False):
-            with self.assertRaisesRegex(
-                DemoAutoIPCControlError,
-                "DEMO_AUTO_STAGE_NOT_CURRENT",
-            ):
-                self.consumer().consume_for_risk_intent_pipeline(
-                    permit=self.permit(
-                        expires_at=stage_expiry + timedelta(minutes=1)
-                    )
-                )
-        self.assertEqual(self.queue.current_checkpoint().consumed_count, 0)
-
-        short_expiry = self.run_at + timedelta(milliseconds=300)
+    def test_stage_expiry_is_startup_only_for_fresh_signed_ipc(self) -> None:
+        short_expiry = self.run_at + timedelta(milliseconds=100)
         short_request = self.stage._request(
             expires_at=short_expiry,
             nonce="short-stage-request-nonce-001",
@@ -414,19 +396,21 @@ class DemoAutoIPCConsumerTests(unittest.TestCase):
             self.stage._registry(self.root, "short-stage-replay.sqlite3"),
             now=self.run_at - timedelta(milliseconds=25),
         )
+        self.queue.publish(
+            decision=self.decision(),
+            issued_at_utc=self.run_at - timedelta(milliseconds=50),
+        )
         self.clock_values = [
-            self.run_at,
             short_expiry + timedelta(milliseconds=1),
+            short_expiry + timedelta(milliseconds=10),
         ]
         with patch.dict(os.environ, self.arm(), clear=False):
-            with self.assertRaisesRegex(
-                DemoAutoIPCControlError,
-                "DEMO_AUTO_STAGE_EXPIRED_DURING_CONSUME",
-            ):
-                self.consumer(
-                    stage_authorization=short_authorization,
-                    stage_validation=short_validation,
-                ).consume_for_risk_intent_pipeline(permit=self.permit())
+            result = self.consumer(
+                stage_authorization=short_authorization,
+                stage_validation=short_validation,
+            ).consume_for_risk_intent_pipeline(permit=self.permit())
+        self.assertIs(type(result), DemoAutoIPCRiskIntentInput)
+        self.assertGreater(result.consumed_at_utc, short_expiry)
         self.assertEqual(self.queue.current_checkpoint().consumed_count, 1)
 
     def test_stage_expiry_caps_returned_input_validity(self) -> None:
@@ -451,7 +435,16 @@ class DemoAutoIPCConsumerTests(unittest.TestCase):
                 stage_validation=short_validation,
             ).consume_for_risk_intent_pipeline(permit=self.permit())
         self.assertIs(type(result), DemoAutoIPCRiskIntentInput)
-        self.assertEqual(result.valid_until_utc, stage_expiry)
+        self.assertGreater(result.valid_until_utc, stage_expiry)
+        self.assertEqual(
+            result.valid_until_utc,
+            min(
+                result.verified_envelope.envelope.expires_at_utc,
+                result.permit_validation.expires_at,
+                result.pre_consume_environment_arm.valid_until_utc,
+                result.environment_arm.valid_until_utc,
+            ),
+        )
 
     def test_environment_arm_is_reread_and_must_not_change_during_cas(self) -> None:
         self.queue.publish(

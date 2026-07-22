@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import execution_policy
 from live_runtime.contracts import (
     DecisionSnapshot,
     TradeIntent,
@@ -30,7 +31,11 @@ from live_runtime.mt5_adapter import (
 )
 from live_runtime.health import RuntimeHealthFacts, evaluate_runtime_health
 from live_runtime.permit import PromotionPermit, account_alias_sha256, validate_permit
-from live_runtime.journal import ExecutionJournal, SubmissionLimitError
+from live_runtime.journal import (
+    DurableSubmissionLease,
+    ExecutionJournal,
+    SubmissionLimitError,
+)
 from live_runtime.controls import (
     DEFAULT_ENVIRONMENT_ARM_VARIABLE,
     ManualDemoApproval,
@@ -506,6 +511,11 @@ def submission_bundle(trade_intent, adapter, *, arm=True, manual=True):
             journal_sha256=journal.journal_sha256,
             environment_arm_decision=environment_arm_decision,
             manual_demo_approval_validation=manual_validation,
+            additional_valid_until_utc=(
+                NOW + timedelta(minutes=1)
+                if bound_intent.mode == "DEMO_AUTO"
+                else None
+            ),
             now=NOW,
         )
         with journal.final_submission_guard(
@@ -535,6 +545,27 @@ class MT5AdapterTests(unittest.TestCase):
             clock_provider=lambda: NOW,
         )
         self.adapter.initialize()
+
+    def test_demo_auto_authorization_uses_central_execution_policy(self):
+        trade_intent = intent(mode="DEMO_AUTO")
+        with patch.object(
+            execution_policy,
+            "SAFE_TO_DEMO_AUTO_ORDER",
+            True,
+        ), submission_bundle(trade_intent, self.adapter) as bundle:
+            authorization = bundle[2]
+            with patch.object(
+                execution_policy,
+                "execution_mode_policy_decision",
+                return_value=(False, ("CENTRAL_POLICY_DENIED",)),
+            ):
+                self.assertFalse(authorization.allows_order_send(now=NOW))
+            with patch.object(
+                execution_policy,
+                "execution_mode_policy_decision",
+                return_value=(True, ()),
+            ):
+                self.assertTrue(authorization.allows_order_send(now=NOW))
 
     def test_uninitialized_adapter_fails_closed_with_domain_error(self):
         adapter = MT5Adapter(
@@ -755,6 +786,51 @@ class MT5AdapterTests(unittest.TestCase):
                     now=NOW,
                 )
         self.assertEqual(1, len(self.module.sent_requests))
+
+    def test_capability_subclasses_cannot_override_send_authority(self):
+        class ForgedAuthorization(RuntimeAuthorization):
+            def allows_order_send(self, *, now):
+                return True
+
+        class ForgedLease(DurableSubmissionLease):
+            def consume(self, **_kwargs):
+                raise AssertionError("forged lease consume must never be called")
+
+        trade_intent = intent()
+        with submission_bundle(
+            trade_intent, self.adapter
+        ) as (bound_intent, preflight, authorization, lease):
+            forged_authorization = object.__new__(ForgedAuthorization)
+            forged_authorization.__dict__.update(authorization.__dict__)
+            with self.assertRaisesRegex(
+                ExecutionLockedError,
+                "sealed runtime authorization",
+            ):
+                self.adapter.submit(
+                    bound_intent,
+                    preflight,
+                    forged_authorization,
+                    lease,
+                    now=NOW,
+                )
+
+        with submission_bundle(
+            intent(), self.adapter
+        ) as (bound_intent, preflight, authorization, lease):
+            forged_lease = object.__new__(ForgedLease)
+            forged_lease.__dict__.update(lease.__dict__)
+            with self.assertRaisesRegex(
+                ExecutionLockedError,
+                "durable one-use journal submission lease",
+            ):
+                self.adapter.submit(
+                    bound_intent,
+                    preflight,
+                    authorization,
+                    forged_lease,
+                    now=NOW,
+                )
+        self.assertEqual([], self.module.sent_requests)
 
     def test_preflight_request_is_immutable_and_forgery_is_rejected(self):
         trade_intent = intent()

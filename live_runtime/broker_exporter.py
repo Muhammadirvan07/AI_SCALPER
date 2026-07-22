@@ -459,7 +459,7 @@ class BrokerExportResult(CanonicalContract):
             raise ValueError("raw tick and finalized bar receipts must be paired")
         if has_raw != (status == "FINALIZED_EVIDENCE_APPENDED"):
             raise ValueError("receipt presence is inconsistent with export status")
-        if has_raw != isinstance(self.paired_commit_receipt, PairedAppendCommitReceipt):
+        if has_raw != (type(self.paired_commit_receipt) is PairedAppendCommitReceipt):
             raise ValueError("paired append commit receipt is required exactly for evidence")
 
         if not isinstance(self.coverage_metadata, Mapping):

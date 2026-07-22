@@ -38,6 +38,7 @@ MAX_JOURNAL_CALLER_RECORDING_DELAY_SECONDS = 5.0
 MAX_EXECUTION_RECEIPT_RECORDING_DELAY_SECONDS = 5.0
 _SUBMISSION_LEASE_SEAL = object()
 _SUBMISSION_EVIDENCE_SEAL = object()
+_DEMO_AUTO_DISPATCH_SETTLEMENT_SEAL = object()
 
 # States that may represent broker exposure or an order whose broker outcome is
 # not yet conclusively known.  The check is repeated inside the same IMMEDIATE
@@ -96,6 +97,8 @@ PRIVILEGED_RECEIPT_TYPES = frozenset(
         "SUBMISSION_GUARD",
         "EXECUTION_RECEIPT",
         "RECONCILIATION_RECEIPT",
+        "SUBMISSION_LEASE_NOT_CONSUMED",
+        "SUBMISSION_NOT_SENT",
     }
 )
 
@@ -137,6 +140,82 @@ class IntentRecord:
     created_at_utc: datetime
     updated_at_utc: datetime
     last_error: str | None
+
+
+@dataclass(frozen=True)
+class DemoAutoDispatchJournalSettlement:
+    """Sealed journal proof used only to close a session dispatch reservation.
+
+    The proof never grants submission authority.  ``ABORTED_BEFORE_SEND`` is
+    minted only after the journal has made future submission impossible;
+    outcomes with any possible broker I/O remain reconciliation-required.
+    """
+
+    journal_sha256: str
+    intent_id: str
+    dispatch_verification_sha256: str
+    journal_state: str
+    settlement_state: str
+    evidence_sha256: str
+    broker_submit_called: bool
+    final_submission_guard_present: bool
+    execution_receipt_present: bool
+    reconciliation_receipt_present: bool
+    submission_lease_not_consumed_receipt_present: bool
+    submission_not_sent_receipt_present: bool
+    issued_at_utc: datetime
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _DEMO_AUTO_DISPATCH_SETTLEMENT_SEAL:
+            raise TypeError(
+                "dispatch settlements can only be minted by ExecutionJournal"
+            )
+        for name in (
+            "journal_sha256",
+            "dispatch_verification_sha256",
+            "evidence_sha256",
+        ):
+            value = str(getattr(self, name) or "").strip().lower()
+            if len(value) != 64 or any(
+                character not in "0123456789abcdef" for character in value
+            ):
+                raise ValueError(f"{name} must be a lowercase SHA-256 hash")
+            object.__setattr__(self, name, value)
+        if not str(self.intent_id or "").strip():
+            raise ValueError("dispatch settlement intent_id is required")
+        journal_state = str(self.journal_state or "").strip().upper()
+        settlement_state = str(self.settlement_state or "").strip().upper()
+        if journal_state not in EXECUTION_STATES:
+            raise ValueError("dispatch settlement journal state is invalid")
+        if settlement_state not in {
+            "ABORTED_BEFORE_SEND",
+            "COMPLETED",
+            "RECONCILIATION_REQUIRED",
+            "RECONCILED",
+        }:
+            raise ValueError("dispatch settlement state is invalid")
+        object.__setattr__(self, "journal_state", journal_state)
+        object.__setattr__(self, "settlement_state", settlement_state)
+        for name in (
+            "broker_submit_called",
+            "final_submission_guard_present",
+            "execution_receipt_present",
+            "reconciliation_receipt_present",
+            "submission_lease_not_consumed_receipt_present",
+            "submission_not_sent_receipt_present",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise TypeError(f"{name} must be bool")
+        if settlement_state == "ABORTED_BEFORE_SEND" and (
+            self.broker_submit_called or self.execution_receipt_present
+        ):
+            raise ValueError("before-send abort cannot contain broker evidence")
+        if settlement_state == "COMPLETED" and not self.execution_receipt_present:
+            raise ValueError("completed dispatch requires an execution receipt")
+        if settlement_state == "RECONCILED" and not self.reconciliation_receipt_present:
+            raise ValueError("reconciled dispatch requires reconciliation evidence")
+        require_aware_utc(self.issued_at_utc, "dispatch settlement issued_at_utc")
 
 
 @dataclass(frozen=True)
@@ -268,9 +347,11 @@ class DurableSubmissionLease:
                 consumed_at=consumed_at,
             )
 
-    def _deactivate(self) -> None:
+    def _deactivate(self) -> bool:
         with self._lock:
+            consumed = self._used
             self._active = False
+            return consumed
 
 
 class ExecutionJournal:
@@ -558,6 +639,333 @@ class ExecutionJournal:
                 "SELECT * FROM intents WHERE intent_id = ?", (intent_id,)
             ).fetchone()
         return self._row_to_record(row)
+
+    def record_locked_demo_auto_preparation(
+        self,
+        *,
+        intent: object,
+        risk_decision: object,
+        ipc_input_sha256: str,
+        broker_spec_sha256: str,
+        verified_risk_context_sha256: str,
+        verified_risk_provenance: Mapping[str, object],
+        health_facts_sha256: str,
+        market_guard_decision_sha256: str,
+        model_binding_sha256: str,
+        occurred_at: datetime,
+    ) -> tuple[IntentRecord, bool]:
+        """Atomically bind one consumed decision to a terminal preparation.
+
+        This is deliberately *not* the normal ``create_intent`` path.  A
+        DEMO_AUTO preparation is written directly to ``RISK_REJECTED`` in the
+        same SQLite transaction as its two transition rows.  Therefore no
+        restart or concurrent reader can ever observe it in an executable
+        state while the DEMO_AUTO policy lock is closed.
+
+        The boolean return value is true only for the transaction that created
+        the binding.  A racing/restarted caller receives the already durable
+        decision binding and must treat it as consumed.
+        """
+
+        import execution_policy
+
+        from .contracts import TradeIntent, require_hash
+        from .risk import RiskDecision
+
+        if type(intent) is not TradeIntent:
+            raise TypeError("intent must be an exact TradeIntent")
+        if type(risk_decision) is not RiskDecision:
+            raise TypeError("risk_decision must be an exact RiskDecision")
+        if (
+            execution_policy.LIVE_ALLOWED is not False
+            or execution_policy.SAFE_TO_DEMO_AUTO_ORDER is not False
+        ):
+            raise JournalError("locked DEMO_AUTO preparation requires closed policy locks")
+        if (
+            intent.mode != "DEMO_AUTO"
+            or risk_decision.allowed
+            or risk_decision.reason_codes != ("DEMO_AUTO_ORDER_LOCKED",)
+            or risk_decision.symbol != intent.symbol
+            or abs(risk_decision.normalized_lot - intent.requested_lot) > 1e-12
+            or intent.requested_lot > 0.01
+            or intent.decision.timeframe != "M15"
+        ):
+            raise ValueError("risk decision is not an exact locked DEMO_AUTO result")
+        for name, value in (
+            ("ipc_input_sha256", ipc_input_sha256),
+            ("broker_spec_sha256", broker_spec_sha256),
+            ("verified_risk_context_sha256", verified_risk_context_sha256),
+            ("health_facts_sha256", health_facts_sha256),
+            ("market_guard_decision_sha256", market_guard_decision_sha256),
+            ("model_binding_sha256", model_binding_sha256),
+        ):
+            require_hash(name, value)
+        if not isinstance(verified_risk_provenance, Mapping):
+            raise TypeError("verified_risk_provenance must be a mapping")
+        risk_provenance = dict(verified_risk_provenance)
+        expected_provenance_fields = {
+            "schema_version",
+            "verified_risk_context_sha256",
+            "account_id",
+            "server",
+            "environment",
+            "symbol",
+            "broker_symbol",
+            "mode",
+            "account_runtime_identity_sha256",
+            "journal_sha256",
+            "broker_spec_sha256",
+            "health_facts_sha256",
+            "health_decision_sha256",
+            "permit_id",
+            "permit_symbols",
+            "evaluated_at_utc",
+            "valid_until_utc",
+            "risk_state_receipt_sha256",
+            "runtime_fact_receipt_sha256",
+            "exposure_receipt_sha256",
+            "calibration_receipt_sha256",
+            "market_guard_decision_sha256",
+            "permit_validation_sha256",
+            "conversion_sha256",
+            "live_allowed",
+            "safe_to_demo_auto_order",
+        }
+        if (
+            set(risk_provenance) != expected_provenance_fields
+            or risk_provenance.get("schema_version") != "verified-risk-context-v1"
+            or risk_provenance.get("verified_risk_context_sha256")
+            != verified_risk_context_sha256
+            or risk_provenance.get("broker_spec_sha256") != broker_spec_sha256
+            or risk_provenance.get("health_facts_sha256") != health_facts_sha256
+            or risk_provenance.get("market_guard_decision_sha256")
+            != market_guard_decision_sha256
+            or risk_provenance.get("journal_sha256") != self.journal_sha256
+            or risk_provenance.get("account_id") != intent.account_id
+            or risk_provenance.get("server") != intent.server
+            or risk_provenance.get("environment") != "DEMO"
+            or risk_provenance.get("symbol") != intent.symbol
+            or risk_provenance.get("mode") != "DEMO_AUTO"
+            or risk_provenance.get("permit_id") != intent.permit_id
+            or not isinstance(risk_provenance.get("permit_symbols"), (list, tuple))
+            or intent.symbol not in risk_provenance.get("permit_symbols", ())
+            or risk_provenance.get("live_allowed") is not False
+            or risk_provenance.get("safe_to_demo_auto_order") is not False
+        ):
+            raise ValueError("verified risk provenance does not match locked intent")
+
+        now = self._trusted_now(occurred_at)
+        if (
+            now != intent.created_at
+            or intent.expires_at > now + timedelta(seconds=1)
+        ):
+            raise ValueError("locked preparation timing is invalid")
+        timestamp = _iso(now)
+        payload = {
+            "schema_version": "demo-auto-locked-intent-journal-v1",
+            "kind": "LOCKED_DEMO_AUTO_INTENT_PREPARATION",
+            "non_executable": True,
+            "execution_authorized": False,
+            "activation_authorized": False,
+            "order_capability": "DISABLED",
+            "live_allowed": False,
+            "safe_to_demo_auto_order": False,
+            "ipc_input_sha256": ipc_input_sha256,
+            "decision_snapshot_sha256": intent.decision.content_sha256,
+            "prepared_intent_sha256": intent.content_sha256,
+            "intent": intent.to_canonical_dict(),
+            "risk_decision_sha256": risk_decision.content_sha256,
+            "risk_decision": risk_decision.to_canonical_dict(),
+            "broker_spec_sha256": broker_spec_sha256,
+            "verified_risk_context_sha256": verified_risk_context_sha256,
+            "verified_risk_provenance": risk_provenance,
+            "health_facts_sha256": health_facts_sha256,
+            "market_guard_decision_sha256": market_guard_decision_sha256,
+            "model_binding_sha256": model_binding_sha256,
+            "risk_basis": "BROKER_SPEC_ESTIMATE_REQUIRES_FRESH_BROKER_RESIZING",
+        }
+        payload_json = _canonical_json(payload)
+
+        with self._transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM intents WHERE decision_id=?",
+                (intent.decision.snapshot_id,),
+            ).fetchone()
+            if existing is not None:
+                return self._row_to_record(existing), False
+            existing_id = connection.execute(
+                "SELECT * FROM intents WHERE intent_id=?",
+                (intent.intent_id,),
+            ).fetchone()
+            if existing_id is not None:
+                if (
+                    existing_id["decision_id"] != intent.decision.snapshot_id
+                    or existing_id["payload_json"] != payload_json
+                ):
+                    raise DuplicateIntentError(
+                        f"intent_id {intent.intent_id!r} already has another binding"
+                    )
+                return self._row_to_record(existing_id), False
+            connection.execute(
+                """
+                INSERT INTO intents(
+                    intent_id, decision_id, symbol, state, payload_json,
+                    created_at_utc, updated_at_utc, last_error
+                ) VALUES(?, ?, ?, 'RISK_REJECTED', ?, ?, ?, ?)
+                """,
+                (
+                    intent.intent_id,
+                    intent.decision.snapshot_id,
+                    intent.symbol,
+                    payload_json,
+                    timestamp,
+                    timestamp,
+                    "DEMO_AUTO_ORDER_LOCKED",
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO transitions(
+                    intent_id, from_state, to_state, occurred_at_utc, details_json
+                ) VALUES(?, NULL, 'CREATED', ?, '{}')
+                """,
+                (intent.intent_id, timestamp),
+            )
+            connection.execute(
+                """
+                INSERT INTO transitions(
+                    intent_id, from_state, to_state, occurred_at_utc, details_json
+                ) VALUES(?, 'CREATED', 'RISK_REJECTED', ?, ?)
+                """,
+                (
+                    intent.intent_id,
+                    timestamp,
+                    _canonical_json(
+                        {
+                            "locked_preparation": True,
+                            "reason_codes": ["DEMO_AUTO_ORDER_LOCKED"],
+                        }
+                    ),
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM intents WHERE intent_id=?",
+                (intent.intent_id,),
+            ).fetchone()
+        return self._row_to_record(row), True
+
+    def record_demo_auto_safe_loss(
+        self,
+        *,
+        decision: object,
+        ipc_input_sha256: str,
+        reason_codes: tuple[str, ...],
+        occurred_at: datetime,
+    ) -> tuple[IntentRecord, bool]:
+        """Atomically tombstone a consumed IPC candidate without an intent.
+
+        The unique ``decision_id`` index makes the tombstone a permanent
+        safe-loss boundary across restart and concurrency.  No later call can
+        turn the consumed decision into an execution intent.
+        """
+
+        import execution_policy
+
+        from .contracts import DecisionSnapshot, canonical_sha256, require_hash, require_text
+
+        if type(decision) is not DecisionSnapshot:
+            raise TypeError("decision must be an exact DecisionSnapshot")
+        if (
+            execution_policy.LIVE_ALLOWED is not False
+            or execution_policy.SAFE_TO_DEMO_AUTO_ORDER is not False
+        ):
+            raise JournalError("DEMO_AUTO safe loss requires closed policy locks")
+        require_hash("ipc_input_sha256", ipc_input_sha256)
+        reasons = tuple(
+            sorted({require_text("reason_code", item, upper=True) for item in reason_codes})
+        )
+        if not reasons:
+            raise ValueError("safe loss requires at least one reason code")
+        now = self._trusted_now(occurred_at)
+        timestamp = _iso(now)
+        tombstone_id = "demo_auto_loss_" + canonical_sha256(
+            {
+                "decision_snapshot_id": decision.snapshot_id,
+                "ipc_input_sha256": ipc_input_sha256,
+            }
+        )[:32]
+        payload = {
+            "schema_version": "demo-auto-safe-loss-journal-v1",
+            "kind": "DEMO_AUTO_SAFE_LOSS",
+            "non_executable": True,
+            "execution_authorized": False,
+            "activation_authorized": False,
+            "order_capability": "DISABLED",
+            "live_allowed": False,
+            "safe_to_demo_auto_order": False,
+            "ipc_input_sha256": ipc_input_sha256,
+            "decision_snapshot_sha256": decision.content_sha256,
+            "decision": decision.to_canonical_dict(),
+            "prepared_intent_sha256": None,
+            "intent": None,
+            "reason_codes": list(reasons),
+        }
+        payload_json = _canonical_json(payload)
+
+        with self._transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM intents WHERE decision_id=?",
+                (decision.snapshot_id,),
+            ).fetchone()
+            if existing is not None:
+                return self._row_to_record(existing), False
+            connection.execute(
+                """
+                INSERT INTO intents(
+                    intent_id, decision_id, symbol, state, payload_json,
+                    created_at_utc, updated_at_utc, last_error
+                ) VALUES(?, ?, ?, 'EXPIRED', ?, ?, ?, ?)
+                """,
+                (
+                    tombstone_id,
+                    decision.snapshot_id,
+                    decision.symbol,
+                    payload_json,
+                    timestamp,
+                    timestamp,
+                    ",".join(reasons),
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO transitions(
+                    intent_id, from_state, to_state, occurred_at_utc, details_json
+                ) VALUES(?, NULL, 'CREATED', ?, '{}')
+                """,
+                (tombstone_id, timestamp),
+            )
+            connection.execute(
+                """
+                INSERT INTO transitions(
+                    intent_id, from_state, to_state, occurred_at_utc, details_json
+                ) VALUES(?, 'CREATED', 'EXPIRED', ?, ?)
+                """,
+                (
+                    tombstone_id,
+                    timestamp,
+                    _canonical_json(
+                        {
+                            "safe_loss": True,
+                            "reason_codes": list(reasons),
+                        }
+                    ),
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM intents WHERE intent_id=?",
+                (tombstone_id,),
+            ).fetchone()
+        return self._row_to_record(row), True
 
     @staticmethod
     def _transition_locked(
@@ -893,7 +1301,44 @@ class ExecutionJournal:
         try:
             yield submission_lease
         finally:
-            submission_lease._deactivate()
+            consumed = submission_lease._deactivate()
+            if not consumed:
+                # This receipt is the durable proof that the adapter never
+                # crossed the one-use submission boundary.  A process crash
+                # before this write remains reconciliation-required.
+                unused_at = self._trusted_now()
+                with self._transaction() as connection:
+                    row = connection.execute(
+                        "SELECT state FROM intents WHERE intent_id=?",
+                        (intent_id,),
+                    ).fetchone()
+                    if row is None or row["state"] != "SUBMITTING":
+                        raise InvalidTransitionError(
+                            "unused submission lease lost its journal binding"
+                        )
+                    execution_receipt = connection.execute(
+                        """SELECT 1 FROM receipts
+                           WHERE intent_id=? AND receipt_type='EXECUTION_RECEIPT'
+                           LIMIT 1""",
+                        (intent_id,),
+                    ).fetchone()
+                    if execution_receipt is not None:
+                        raise InvalidTransitionError(
+                            "unused submission lease conflicts with broker receipt"
+                        )
+                    self._store_privileged_receipt_locked(
+                        connection,
+                        intent_id=intent_id,
+                        receipt_type="SUBMISSION_LEASE_NOT_CONSUMED",
+                        occurred_at_utc=_iso(unused_at),
+                        payload={
+                            "intent_id": intent_id,
+                            "execution_gate_sha256": execution_gate_sha256,
+                            "authorization_sha256": authorization_sha256,
+                            "broker_request_sha256": broker_request_sha256,
+                            "broker_submit_called": False,
+                        },
+                    )
 
     @staticmethod
     def _store_privileged_receipt_locked(
@@ -1279,6 +1724,280 @@ class ExecutionJournal:
                 protective_sl_tp_confirmed=False,
             )
         return self._row_to_record(updated)
+
+    def record_submission_not_sent(
+        self,
+        intent_id: str,
+        *,
+        dispatch_verification_sha256: str,
+        reason_code: str,
+        occurred_at: datetime | None = None,
+    ) -> IntentRecord:
+        """Durably prove that a reserved submission never reached the broker.
+
+        This is a deny-only terminal operation.  It is used only by branches
+        that know the MT5 adapter was not called (or rejected before its
+        ``order_send`` boundary).  Any broker receipt or reconciliation proof
+        makes the operation fail closed.
+        """
+
+        from .contracts import canonical_sha256
+
+        verification_sha256 = str(dispatch_verification_sha256 or "").lower()
+        if len(verification_sha256) != 64 or any(
+            character not in "0123456789abcdef"
+            for character in verification_sha256
+        ):
+            raise ValueError("dispatch_verification_sha256 must be SHA-256")
+        reason = str(reason_code or "").strip().upper()
+        if not reason:
+            raise ValueError("reason_code is required")
+        trusted_now = self._trusted_now(occurred_at)
+        timestamp = _iso(trusted_now)
+        with self._transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM intents WHERE intent_id=?", (intent_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(intent_id)
+            immutable_payload = json.loads(row["payload_json"])
+            if immutable_payload.get(
+                "demo_auto_session_dispatch_verification_sha256"
+            ) != verification_sha256:
+                raise InvalidTransitionError(
+                    "dispatch verification does not bind the journal intent"
+                )
+            if row["state"] not in {"SUBMITTING", "UNCERTAIN"}:
+                raise InvalidTransitionError(
+                    "submission-not-sent requires SUBMITTING or UNCERTAIN"
+                )
+            broker_evidence = connection.execute(
+                """SELECT receipt_type FROM receipts
+                   WHERE intent_id=? AND receipt_type IN
+                   ('EXECUTION_RECEIPT','RECONCILIATION_RECEIPT') LIMIT 1""",
+                (intent_id,),
+            ).fetchone()
+            if broker_evidence is not None:
+                raise InvalidTransitionError(
+                    "broker evidence prevents a before-send terminal proof"
+                )
+            guard_count = int(
+                connection.execute(
+                    """SELECT COUNT(*) FROM receipts
+                       WHERE intent_id=? AND receipt_type='FINAL_SUBMISSION_GUARD'""",
+                    (intent_id,),
+                ).fetchone()[0]
+            )
+            authorization_count = int(
+                connection.execute(
+                    """SELECT COUNT(*) FROM authorization_consumptions
+                       WHERE intent_id=?""",
+                    (intent_id,),
+                ).fetchone()[0]
+            )
+            unused_lease_count = int(
+                connection.execute(
+                    """SELECT COUNT(*) FROM receipts
+                       WHERE intent_id=?
+                         AND receipt_type='SUBMISSION_LEASE_NOT_CONSUMED'""",
+                    (intent_id,),
+                ).fetchone()[0]
+            )
+            if (
+                guard_count > 1
+                or authorization_count > 1
+                or unused_lease_count > 1
+                or ((guard_count or authorization_count) and unused_lease_count != 1)
+            ):
+                raise InvalidTransitionError(
+                    "journal cannot prove that the final submission lease was unused"
+                )
+            payload = {
+                "intent_id": intent_id,
+                "dispatch_verification_sha256": verification_sha256,
+                "reason_code": reason,
+                "broker_submit_called": False,
+                "journal_payload_sha256": canonical_sha256(immutable_payload),
+            }
+            connection.execute(
+                """INSERT INTO receipts(
+                       intent_id, receipt_type, occurred_at_utc, payload_json
+                   ) VALUES(?, 'SUBMISSION_NOT_SENT', ?, ?)""",
+                (intent_id, timestamp, _canonical_json(payload)),
+            )
+            updated = self._transition_locked(
+                connection,
+                row,
+                "REJECTED",
+                timestamp=timestamp,
+                details={
+                    "reason_codes": [reason],
+                    "broker_submit_called": False,
+                    "reconciliation_required": False,
+                    "retry_allowed": False,
+                },
+                last_error=reason,
+            )
+        return self._row_to_record(updated)
+
+    def demo_auto_dispatch_settlement(
+        self,
+        intent_id: str,
+        *,
+        dispatch_verification_sha256: str,
+        occurred_at: datetime | None = None,
+    ) -> DemoAutoDispatchJournalSettlement:
+        """Mint an exact deny-only settlement proof for session recovery.
+
+        If no final submission guard/authorization/broker evidence exists, the
+        method first makes the journal intent terminal.  Therefore a returned
+        ``ABORTED_BEFORE_SEND`` proof cannot race a later order submission.
+        """
+
+        from .contracts import canonical_sha256
+
+        verification_sha256 = str(dispatch_verification_sha256 or "").lower()
+        if len(verification_sha256) != 64 or any(
+            character not in "0123456789abcdef"
+            for character in verification_sha256
+        ):
+            raise ValueError("dispatch_verification_sha256 must be SHA-256")
+        trusted_now = self._trusted_now(occurred_at)
+        timestamp = _iso(trusted_now)
+        with self._transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM intents WHERE intent_id=?", (intent_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(intent_id)
+            immutable_payload = json.loads(row["payload_json"])
+            if immutable_payload.get(
+                "demo_auto_session_dispatch_verification_sha256"
+            ) != verification_sha256:
+                raise InvalidTransitionError(
+                    "dispatch verification does not bind the journal intent"
+                )
+            receipt_rows = connection.execute(
+                """SELECT receipt_type, payload_json FROM receipts
+                   WHERE intent_id=? ORDER BY receipt_id""",
+                (intent_id,),
+            ).fetchall()
+            receipt_types = {str(item["receipt_type"]) for item in receipt_rows}
+            receipt_hashes = tuple(
+                (
+                    str(item["receipt_type"]),
+                    canonical_sha256(json.loads(item["payload_json"])),
+                )
+                for item in receipt_rows
+            )
+            authorization_count = int(
+                connection.execute(
+                    """SELECT COUNT(*) FROM authorization_consumptions
+                       WHERE intent_id=?""",
+                    (intent_id,),
+                ).fetchone()[0]
+            )
+            final_guard = "FINAL_SUBMISSION_GUARD" in receipt_types
+            execution_receipt = "EXECUTION_RECEIPT" in receipt_types
+            reconciliation_receipt = "RECONCILIATION_RECEIPT" in receipt_types
+            lease_not_consumed = (
+                "SUBMISSION_LEASE_NOT_CONSUMED" in receipt_types
+            )
+            not_sent = "SUBMISSION_NOT_SENT" in receipt_types
+            no_send_boundary = (
+                (not final_guard and authorization_count == 0)
+                or lease_not_consumed
+            )
+
+            if not_sent:
+                if execution_receipt or reconciliation_receipt:
+                    raise InvalidTransitionError(
+                        "submission-not-sent conflicts with broker evidence"
+                    )
+                if row["state"] != "REJECTED":
+                    raise InvalidTransitionError(
+                        "submission-not-sent intent is not terminal"
+                    )
+                settlement_state = "ABORTED_BEFORE_SEND"
+                broker_submit_called = False
+            elif no_send_boundary:
+                if execution_receipt or reconciliation_receipt:
+                    raise InvalidTransitionError(
+                        "unused submission boundary conflicts with broker evidence"
+                    )
+                if row["state"] in {"PREFLIGHT_PASSED", "SUBMITTING", "UNCERTAIN"}:
+                    updated = self._transition_locked(
+                        connection,
+                        row,
+                        "REJECTED",
+                        timestamp=timestamp,
+                        details={
+                            "reason_codes": [
+                                "DEMO_AUTO_RECOVERY_ABORTED_BEFORE_SEND"
+                            ],
+                            "broker_submit_called": False,
+                            "reconciliation_required": False,
+                            "retry_allowed": False,
+                        },
+                        last_error="DEMO_AUTO_RECOVERY_ABORTED_BEFORE_SEND",
+                    )
+                    row = updated
+                elif row["state"] not in {
+                    "RISK_REJECTED",
+                    "REJECTED",
+                    "EXPIRED",
+                }:
+                    raise InvalidTransitionError(
+                        "journal state cannot prove a before-send abort"
+                    )
+                settlement_state = "ABORTED_BEFORE_SEND"
+                broker_submit_called = False
+            elif reconciliation_receipt and row["state"] not in {
+                "SUBMITTING",
+                "UNCERTAIN",
+            }:
+                settlement_state = "RECONCILED"
+                broker_submit_called = True
+            elif execution_receipt and row["state"] not in {
+                "SUBMITTING",
+                "UNCERTAIN",
+            }:
+                settlement_state = "COMPLETED"
+                broker_submit_called = True
+            else:
+                settlement_state = "RECONCILIATION_REQUIRED"
+                broker_submit_called = True
+
+            journal_state = str(row["state"])
+            evidence_payload = {
+                "journal_sha256": self.journal_sha256,
+                "intent_id": intent_id,
+                "dispatch_verification_sha256": verification_sha256,
+                "journal_state": journal_state,
+                "settlement_state": settlement_state,
+                "immutable_payload_sha256": canonical_sha256(immutable_payload),
+                "receipt_hashes": receipt_hashes,
+                "authorization_consumption_count": authorization_count,
+                "issued_at_utc": timestamp,
+            }
+        return DemoAutoDispatchJournalSettlement(
+            journal_sha256=self.journal_sha256,
+            intent_id=intent_id,
+            dispatch_verification_sha256=verification_sha256,
+            journal_state=journal_state,
+            settlement_state=settlement_state,
+            evidence_sha256=canonical_sha256(evidence_payload),
+            broker_submit_called=broker_submit_called,
+            final_submission_guard_present=final_guard,
+            execution_receipt_present=execution_receipt,
+            reconciliation_receipt_present=reconciliation_receipt,
+            submission_lease_not_consumed_receipt_present=(
+                lease_not_consumed
+            ),
+            submission_not_sent_receipt_present=not_sent,
+            issued_at_utc=trusted_now,
+            _seal=_DEMO_AUTO_DISPATCH_SETTLEMENT_SEAL,
+        )
 
     def apply_reconciliation(
         self,
@@ -1763,7 +2482,7 @@ class ExecutionJournal:
         reason: str,
         occurred_at: datetime | None = None,
     ) -> None:
-        if not isinstance(authorization, KillSwitchResetAuthorization):
+        if type(authorization) is not KillSwitchResetAuthorization:
             raise PermissionError(
                 "kill switch reset requires sealed dual-control authorization"
             )

@@ -152,8 +152,8 @@ class LiveRuntimeService:
             )
         if not callable(getattr(coordinator, "execute_once", None)):
             raise TypeError("coordinator must expose execute_once")
-        if not isinstance(journal, ExecutionJournal):
-            raise TypeError("journal must be an ExecutionJournal")
+        if type(journal) is not ExecutionJournal:
+            raise TypeError("journal must be an exact ExecutionJournal")
         coordinator_journal = getattr(coordinator, "journal", None)
         if coordinator_journal is not journal:
             raise ValueError("execution and reconciliation must share one journal")
@@ -274,29 +274,28 @@ class LiveRuntimeService:
         """Size, build, and delegate at most one immutable trade intent."""
 
         now = self._trusted_now(now)
-        if not isinstance(decision, DecisionSnapshot):
-            raise TypeError("decision must be a sealed DecisionSnapshot")
-        if not isinstance(broker_spec, BrokerSpec):
-            raise TypeError("broker_spec must be a BrokerSpec")
+        if type(decision) is not DecisionSnapshot:
+            raise TypeError("decision must be an exact sealed DecisionSnapshot")
+        if type(broker_spec) is not BrokerSpec:
+            raise TypeError("broker_spec must be an exact BrokerSpec")
         if type(risk_context) is not VerifiedRiskContext:
             raise TypeError("risk_context must be an exact sealed VerifiedRiskContext")
-        if not isinstance(permit, PromotionPermit):
-            raise TypeError("permit must be a signed PromotionPermit")
-        if not isinstance(health_facts, RuntimeHealthFacts):
-            raise TypeError("health_facts must be RuntimeHealthFacts")
-        if not isinstance(market_guard, MarketGuardDecision):
-            raise TypeError("market_guard must be a sealed MarketGuardDecision")
-        if not isinstance(model_artifact, ModelArtifactManifest):
-            raise TypeError("model_artifact must be a ModelArtifactManifest")
+        if type(permit) is not PromotionPermit:
+            raise TypeError("permit must be an exact signed PromotionPermit")
+        if type(health_facts) is not RuntimeHealthFacts:
+            raise TypeError("health_facts must be exact RuntimeHealthFacts")
+        if type(market_guard) is not MarketGuardDecision:
+            raise TypeError("market_guard must be an exact sealed MarketGuardDecision")
+        if type(model_artifact) is not ModelArtifactManifest:
+            raise TypeError("model_artifact must be exact ModelArtifactManifest")
         if (
             manual_demo_approval_provider is not None
             and not callable(manual_demo_approval_provider)
         ):
             raise TypeError("manual_demo_approval_provider must be callable or None")
-        if promotion_evidence is not None and not isinstance(
-            promotion_evidence,
-            PromotionEvidenceReceipt,
-        ):
+        if promotion_evidence is not None and type(
+            promotion_evidence
+        ) is not PromotionEvidenceReceipt:
             raise TypeError(
                 "promotion_evidence must be a PromotionEvidenceReceipt or None"
             )
@@ -721,7 +720,7 @@ class LiveRuntimeService:
                     intent=intent,
                 )
             approval_reasons: list[str] = []
-            if not isinstance(manual_demo_approval, ManualDemoApproval):
+            if type(manual_demo_approval) is not ManualDemoApproval:
                 approval_reasons.append("MANUAL_DEMO_APPROVAL_INVALID_TYPE")
             else:
                 approval_bindings = (

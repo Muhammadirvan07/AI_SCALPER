@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -29,8 +30,10 @@ from live_runtime.signed_release_trust import (
 )
 from run_windows_gated_execution_service import (
     SERVICE_READINESS_BLOCKERS,
+    _read_external_trust_document,
     main as service_main,
 )
+from live_runtime.windows_service_entrypoint import WindowsServiceError
 from build_windows_release import MANIFEST_MEMBER
 from validate_windows_gated_execution_service import (
     main as validate_main,
@@ -80,9 +83,65 @@ class WindowsExecutionReleaseBuilderTests(unittest.TestCase):
         (root / "live_runtime" / "demo_auto_ipc_consumer.py").write_text(
             "class DemoAutoDecisionIPCConsumer:\n    pass\n", encoding="utf-8"
         )
+        (root / "live_runtime" / "demo_auto_risk_intent_pipeline.py").write_text(
+            "ORDER_CAPABILITY = 'DISABLED'\n"
+            "class DemoAutoLockedRiskIntentPipeline:\n    pass\n",
+            encoding="utf-8",
+        )
+        (root / "live_runtime" / "demo_auto_session_capability.py").write_text(
+            "ORDER_CAPABILITY = 'DISABLED'\n"
+            "LIVE_ALLOWED = False\n"
+            "SAFE_TO_DEMO_AUTO_ORDER = False\n"
+            "class DemoAutoSessionCapabilityStore:\n    pass\n",
+            encoding="utf-8",
+        )
+        (root / "live_runtime" / "demo_auto_soak_projection.py").write_text(
+            "ORDER_CAPABILITY = 'DISABLED'\n"
+            "LIVE_ALLOWED = False\n"
+            "SAFE_TO_DEMO_AUTO_ORDER = False\n"
+            "class DemoAutoSoakProjection:\n    pass\n",
+            encoding="utf-8",
+        )
+        (root / "live_runtime" / "demo_auto_soak_cohort.py").write_text(
+            "ORDER_CAPABILITY = 'DISABLED'\n"
+            "LIVE_ALLOWED = False\n"
+            "SAFE_TO_DEMO_AUTO_ORDER = False\n"
+            "class DemoAutoSoakCohortBinding:\n    pass\n"
+            "class DemoAutoSoakCohortReceipt:\n    pass\n"
+            "def aggregate_demo_auto_soak_cohort():\n    pass\n"
+            "def verify_demo_auto_soak_cohort_receipt():\n    pass\n",
+            encoding="utf-8",
+        )
+        (root / "live_runtime" / "soak_tracker.py").write_text(
+            "MINIMUM_CLEAN_DAYS = 30\n"
+            "MINIMUM_CLOSED_FILLS = 50\n"
+            "MINIMUM_XAUUSD_CLOSED_FILLS = 20\n"
+            "class DemoAutoSoakTracker:\n    pass\n",
+            encoding="utf-8",
+        )
+        (root / "live_runtime" / "live_grade_gate_catalog.py").write_text(
+            "ORDER_CAPABILITY = 'DISABLED'\n"
+            "LIVE_ALLOWED = False\n"
+            "SAFE_TO_DEMO_AUTO_ORDER = False\n"
+            "MAX_LOT = 0.01\n",
+            encoding="utf-8",
+        )
         (root / "live_runtime" / "signed_release_trust.py").write_text(
             "SIGNED_RELEASE_TRUST_ENABLED = False\n"
             "HMAC_RELEASE_TRUST_PRODUCTION_READY = False\n",
+            encoding="utf-8",
+        )
+        (root / "live_runtime" / "asymmetric_release_trust.py").write_text(
+            "ORDER_CAPABILITY = 'DISABLED'\n"
+            "LIVE_ALLOWED = False\n"
+            "SAFE_TO_DEMO_AUTO_ORDER = False\n"
+            "EXECUTION_AUTHORITY_GRANTED = False\n"
+            "MINIMUM_RSA_BITS = 3072\n",
+            encoding="utf-8",
+        )
+        (root / "live_runtime" / "windows_service_factory_template.py").write_text(
+            "FACTORY_MATERIALIZATION_ENABLED = False\n"
+            "ORDER_CAPABILITY = 'DISABLED'\n",
             encoding="utf-8",
         )
         (root / "validate_windows_gated_execution_service.py").write_text(
@@ -115,11 +174,19 @@ version = "1.0"
         )
         files = [
             "config/windows_execution_service_allowlist.v1.json",
+            "live_runtime/asymmetric_release_trust.py",
             "live_runtime/mt5_adapter.py",
             "live_runtime/demo_auto_ipc_consumer.py",
+            "live_runtime/demo_auto_risk_intent_pipeline.py",
+            "live_runtime/demo_auto_session_capability.py",
+            "live_runtime/demo_auto_soak_cohort.py",
+            "live_runtime/demo_auto_soak_projection.py",
+            "live_runtime/live_grade_gate_catalog.py",
             "live_runtime/mt5_module_attestation.py",
             "live_runtime/production_bootstrap.py",
             "live_runtime/signed_release_trust.py",
+            "live_runtime/soak_tracker.py",
+            "live_runtime/windows_service_factory_template.py",
             "pylock.windows-cp312.toml",
             "requirements-live-windows.txt",
             "requirements-windows-cp312.lock.txt",
@@ -167,11 +234,19 @@ version = "1.0"
                         MANIFEST_MEMBER,
                         "config/windows_execution_service_allowlist.v1.json",
                         "helper.py",
+                        "live_runtime/asymmetric_release_trust.py",
                         "live_runtime/demo_auto_ipc_consumer.py",
+                        "live_runtime/demo_auto_risk_intent_pipeline.py",
+                        "live_runtime/demo_auto_session_capability.py",
+                        "live_runtime/demo_auto_soak_cohort.py",
+                        "live_runtime/demo_auto_soak_projection.py",
+                        "live_runtime/live_grade_gate_catalog.py",
                         "live_runtime/mt5_adapter.py",
                         "live_runtime/mt5_module_attestation.py",
                         "live_runtime/production_bootstrap.py",
                         "live_runtime/signed_release_trust.py",
+                        "live_runtime/soak_tracker.py",
+                        "live_runtime/windows_service_factory_template.py",
                         "pylock.windows-cp312.toml",
                         "requirements-live-windows.txt",
                         "requirements-windows-cp312.lock.txt",
@@ -185,12 +260,85 @@ version = "1.0"
             self.assertFalse(manifest["production_execution_ready"])
             self.assertEqual(list(READINESS_BLOCKERS), manifest["readiness_blockers"])
             self.assertEqual(
+                sorted(READINESS_BLOCKERS),
+                manifest["readiness_blockers_by_category"][
+                    "EXTERNAL_CONFIGURATION"
+                ],
+            )
+            self.assertEqual(
+                [],
+                manifest["readiness_blockers_by_category"]["LOCAL_FOUNDATION"],
+            )
+            self.assertEqual(
                 "PRESENT_NON_EXECUTABLE_EXTERNAL_CONFIGURATION_REQUIRED",
                 manifest["foundation_status"]["demo_auto_ipc_consumer"],
             )
             self.assertIn(
+                "ONE_USE_JOURNAL_BOUND",
+                manifest["foundation_status"][
+                    "demo_auto_risk_intent_pipeline"
+                ],
+            )
+            self.assertIn(
+                "EXTERNAL_CAS_CUSTODY_REQUIRED",
+                manifest["foundation_status"][
+                    "demo_auto_session_capability"
+                ],
+            )
+            self.assertIn(
+                "OUTPUT_ONLY",
+                manifest["foundation_status"]["demo_auto_soak_projection"],
+            )
+            self.assertIn(
+                "POST_ACTIVATION",
+                manifest["foundation_status"]["demo_auto_soak_tracker"],
+            )
+            self.assertIn(
+                "ACCOUNT_LEVEL_30_DAY_50_FILL_20_XAU",
+                manifest["foundation_status"]["demo_auto_soak_cohort"],
+            )
+            self.assertFalse(
+                manifest["demo_auto_gate_semantics"][
+                    "soak_output_is_demo_auto_entry_prerequisite"
+                ]
+            )
+            full_catalog = manifest["full_pending_gate_catalog"]
+            self.assertEqual(
+                {
+                    "EXTERNAL_CONFIGURATION",
+                    "TEMPORAL_EVIDENCE",
+                    "MANUAL_APPROVAL",
+                },
+                set(full_catalog["pending_by_category"]),
+            )
+            self.assertIn(
+                "DEMO_AUTO_SOAK_30_DAYS_REQUIRED",
+                full_catalog["pending_by_category"]["TEMPORAL_EVIDENCE"],
+            )
+            self.assertFalse(full_catalog["production_execution_ready"])
+            self.assertNotIn("readiness_percentage", manifest)
+            self.assertNotIn("readiness_score", manifest)
+            self.assertEqual(
+                "SEPARATE_NOT_INCLUDED",
+                manifest["decision_process"]["bundle_membership"],
+            )
+            self.assertNotIn(
+                "live_runtime/brokerless_decision_producer.py",
+                {item["path"] for item in manifest["source_files"]},
+            )
+            self.assertIn(
                 "HMAC_LOCAL_TEST_ONLY",
                 manifest["foundation_status"]["signed_release_trust"],
+            )
+            self.assertIn(
+                "RSA3072_PUBLIC_VERIFY",
+                manifest["foundation_status"]["asymmetric_release_trust"],
+            )
+            self.assertIn(
+                "STATIC_NON_MATERIALIZING",
+                manifest["foundation_status"][
+                    "windows_service_factory_template"
+                ],
             )
             self.assertEqual(
                 {
@@ -466,6 +614,34 @@ def hidden_sender(self, name):
             set(allowlist["files"]),
         )
         self.assertEqual(set(allowlist["files"]), set(sources))
+        self.assertIn(
+            "live_runtime/demo_auto_risk_intent_pipeline.py",
+            allowlist["files"],
+        )
+        self.assertIn(
+            "live_runtime/demo_auto_session_capability.py",
+            allowlist["files"],
+        )
+        self.assertIn(
+            "live_runtime/demo_auto_soak_projection.py",
+            allowlist["files"],
+        )
+        self.assertIn(
+            "live_runtime/demo_auto_soak_cohort.py",
+            allowlist["files"],
+        )
+        self.assertIn(
+            "live_runtime/soak_tracker.py",
+            allowlist["files"],
+        )
+        self.assertIn(
+            "live_runtime/live_grade_gate_catalog.py",
+            allowlist["files"],
+        )
+        self.assertNotIn(
+            "live_runtime/brokerless_decision_producer.py",
+            allowlist["files"],
+        )
         self.assertEqual(
             ["order_check", "order_send"],
             [item["primitive"] for item in inventory],
@@ -486,15 +662,79 @@ def hidden_sender(self, name):
         )
         self.assertNotIn(
             "DEMO_AUTO_DECISION_IPC_CONSUMER_REQUIRED",
-            report["readiness_blockers"],
+            sorted(report["readiness_blockers"]),
         )
         self.assertIn(
             "EXTERNAL_DEMO_AUTO_IPC_CONFIGURATION_REQUIRED",
             report["readiness_blockers"],
         )
         self.assertIn(
+            "EXTERNAL_DEMO_AUTO_SESSION_CUSTODY_REQUIRED",
+            report["readiness_blockers"],
+        )
+        self.assertIn(
+            "EXTERNAL_DECISION_DATA_PROVIDER_REQUIRED",
+            report["readiness_blockers"],
+        )
+        self.assertIn(
+            "EXTERNAL_FACTORY_PROVIDER_CONFIGURATION_REQUIRED",
+            report["readiness_blockers"],
+        )
+        self.assertNotIn(
+            "REVIEWED_WINDOWS_SERVICE_FACTORY_REQUIRED",
+            report["readiness_blockers"],
+        )
+        self.assertIn(
+            "STATIC_NON_MATERIALIZING",
+            report["foundation_status"][
+                "windows_service_factory_template"
+            ],
+        )
+        self.assertNotIn(
             "DOWNSTREAM_DECISION_TO_INTENT_ONE_USE_JOURNAL_BINDING_REQUIRED",
             report["readiness_blockers"],
+        )
+        self.assertIn(
+            "ONE_USE_JOURNAL_BOUND",
+            report["foundation_status"]["demo_auto_risk_intent_pipeline"],
+        )
+        self.assertIn(
+            "EXTERNAL_CAS_CUSTODY_REQUIRED",
+            report["foundation_status"]["demo_auto_session_capability"],
+        )
+        self.assertIn(
+            "OUTPUT_ONLY",
+            report["foundation_status"]["demo_auto_soak_projection"],
+        )
+        self.assertIn(
+            "POST_ACTIVATION",
+            report["foundation_status"]["demo_auto_soak_tracker"],
+        )
+        self.assertIn(
+            "ACCOUNT_LEVEL_30_DAY_50_FILL_20_XAU",
+            report["foundation_status"]["demo_auto_soak_cohort"],
+        )
+        self.assertFalse(
+            report["demo_auto_gate_semantics"][
+                "soak_output_is_demo_auto_entry_prerequisite"
+            ]
+        )
+        self.assertIn(
+            "DEMO_AUTO_SOAK_50_CLOSED_FILLS_REQUIRED",
+            report["full_pending_gate_catalog"]["pending_by_category"]
+            ["TEMPORAL_EVIDENCE"],
+        )
+        self.assertNotIn("readiness_percentage", report)
+        self.assertNotIn("readiness_score", report)
+        self.assertEqual(
+            sorted(report["readiness_blockers"]),
+            report["readiness_blockers_by_category"][
+                "EXTERNAL_CONFIGURATION"
+            ],
+        )
+        self.assertEqual(
+            "SEPARATE_NOT_INCLUDED",
+            report["decision_process"]["bundle_membership"],
         )
         self.assertIn(
             PRODUCTION_RELEASE_TRUST_REQUIREMENT,
@@ -510,12 +750,28 @@ def hidden_sender(self, name):
             self.assertEqual(3, validate_main([]))
             self.assertEqual(0, validate_main(["--allow-blocked-report"]))
 
-    def test_service_is_hard_blocked_before_factory_load_by_nonproduction_hmac_trust(self):
+    def test_service_is_hard_blocked_before_factory_load_without_external_trust(self):
         self.assertFalse(SIGNED_RELEASE_TRUST_ENABLED)
         self.assertFalse(HMAC_RELEASE_TRUST_PRODUCTION_READY)
         self.assertIn(PRODUCTION_RELEASE_TRUST_REQUIREMENT, SERVICE_READINESS_BLOCKERS)
         self.assertNotIn(
             "DEMO_AUTO_DECISION_IPC_CONSUMER_REQUIRED", SERVICE_READINESS_BLOCKERS
+        )
+        self.assertIn(
+            "EXTERNAL_FACTORY_PROVIDER_CONFIGURATION_REQUIRED",
+            SERVICE_READINESS_BLOCKERS,
+        )
+        self.assertIn(
+            "EXTERNAL_DEMO_AUTO_SESSION_CUSTODY_REQUIRED",
+            SERVICE_READINESS_BLOCKERS,
+        )
+        self.assertIn(
+            "EXTERNAL_DECISION_DATA_PROVIDER_REQUIRED",
+            SERVICE_READINESS_BLOCKERS,
+        )
+        self.assertNotIn(
+            "REVIEWED_WINDOWS_SERVICE_FACTORY_REQUIRED",
+            SERVICE_READINESS_BLOCKERS,
         )
         with patch(
             "run_windows_gated_execution_service.load_reviewed_windows_service_factory",
@@ -532,6 +788,99 @@ def hidden_sender(self, name):
         self.assertEqual(2, result)
         self.assertIn(PRODUCTION_RELEASE_TRUST_REQUIREMENT, stderr.getvalue())
 
+    def test_external_trust_document_rejects_release_members_and_symlinks(self):
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            release_root = base / "release"
+            release_root.mkdir()
+            internal = release_root / "policy.json"
+            internal.write_text("{}", encoding="utf-8")
+            external = base / "policy.json"
+            external.write_text("{}", encoding="utf-8")
+
+            self.assertEqual(
+                b"{}",
+                _read_external_trust_document(
+                    str(external),
+                    release_root=str(release_root),
+                    label="release_trust_policy",
+                ),
+            )
+            with self.assertRaisesRegex(
+                WindowsServiceError, "RELEASE_TRUST_POLICY_MUST_BE_EXTERNAL"
+            ):
+                _read_external_trust_document(
+                    str(internal),
+                    release_root=str(release_root),
+                    label="release_trust_policy",
+                )
+
+            linked = base / "linked-policy.json"
+            try:
+                linked.symlink_to(external)
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+            with self.assertRaisesRegex(
+                WindowsServiceError, "RELEASE_TRUST_POLICY_INVALID"
+            ):
+                _read_external_trust_document(
+                    str(linked),
+                    release_root=str(release_root),
+                    label="release_trust_policy",
+                )
+
+    def test_validate_only_service_reports_full_pending_catalog_and_soak_semantics(self):
+        manifest = SimpleNamespace(
+            release_profile="WINDOWS_GATED_EXECUTION_SERVICE_V1",
+            factory_contract_sha256="a" * 64,
+            bootstrap_binding_sha256="b" * 64,
+        )
+        stdout = io.StringIO()
+        with patch(
+            "run_windows_gated_execution_service."
+            "validate_reviewed_windows_service_factory_manifest",
+            return_value=(manifest, object(), object()),
+        ), patch(
+            "run_windows_gated_execution_service._read_external_trust_document",
+            side_effect=AssertionError("validate-only must not read trust documents"),
+        ), contextlib.redirect_stdout(stdout):
+            result = service_main(
+                [
+                    "--factory-manifest",
+                    "reviewed.json",
+                    "--expected-release-identity-sha256",
+                    "c" * 64,
+                    "--validate-only",
+                ]
+            )
+        self.assertEqual(0, result)
+        report = json.loads(stdout.getvalue())
+        self.assertFalse(report["production_execution_ready"])
+        self.assertFalse(
+            report["demo_auto_gate_semantics"][
+                "soak_output_is_demo_auto_entry_prerequisite"
+            ]
+        )
+        self.assertIn(
+            "DEMO_AUTO_SOAK_20_XAUUSD_CLOSED_FILLS_REQUIRED",
+            report["full_pending_gate_catalog"]["pending_by_category"]
+            ["TEMPORAL_EVIDENCE"],
+        )
+        self.assertEqual(
+            {
+                "EXTERNAL_CONFIGURATION",
+                "TEMPORAL_EVIDENCE",
+                "MANUAL_APPROVAL",
+            },
+            set(
+                report["full_pending_gate_catalog"]["pending_by_category"]
+            ),
+        )
+        self.assertNotIn("readiness_percentage", report)
+        self.assertNotIn("readiness_score", report)
+        self.assertFalse(report["broker_component_materialized"])
+        self.assertFalse(report["broker_mutation_performed"])
+
     def test_validator_fails_closed_when_execution_policy_drifts(self):
         with patch("execution_policy.EXECUTION_MAX_LOT", 0.02):
             report = validate_gated_execution_ports()
@@ -541,6 +890,43 @@ def hidden_sender(self, name):
             report["missing_ports"],
         )
         self.assertFalse(report["production_execution_ready"])
+
+    def test_validator_fails_closed_when_new_foundation_safety_drifts(self):
+        cases = (
+            (
+                "live_runtime.demo_auto_risk_intent_pipeline.ORDER_CAPABILITY",
+                "GATED_PRESENT",
+                "live_runtime.demo_auto_risk_intent_pipeline:"
+                "ORDER_CAPABILITY_DISABLED",
+            ),
+            (
+                "live_runtime.demo_auto_session_capability.LIVE_ALLOWED",
+                True,
+                "live_runtime.demo_auto_session_capability:LIVE_ALLOWED_FALSE",
+            ),
+            (
+                "live_runtime.demo_auto_soak_projection.ORDER_CAPABILITY",
+                "GATED_PRESENT",
+                "live_runtime.demo_auto_soak_projection:"
+                "ORDER_CAPABILITY_DISABLED",
+            ),
+            (
+                "live_runtime.soak_tracker.MINIMUM_CLEAN_DAYS",
+                29,
+                "live_runtime.soak_tracker:MINIMUM_CLEAN_DAYS_30",
+            ),
+            (
+                "live_runtime.live_grade_gate_catalog.MAX_LOT",
+                0.02,
+                "live_runtime.live_grade_gate_catalog:MAX_LOT_0_01",
+            ),
+        )
+        for target, value, expected in cases:
+            with self.subTest(target=target), patch(target, value):
+                report = validate_gated_execution_ports()
+            self.assertEqual("FAIL", report["port_validation"])
+            self.assertIn(expected, report["missing_ports"])
+            self.assertFalse(report["production_execution_ready"])
 
     def test_validator_reports_missing_foundation_instead_of_crashing(self):
         original_import = __import__(

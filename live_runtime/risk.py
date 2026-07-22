@@ -251,9 +251,9 @@ class RiskContext(CanonicalContract):
             "permit_valid",
         ):
             _require_bool(name, getattr(self, name))
-        if self.usd_risk_cap_conversion is not None and not isinstance(
-            self.usd_risk_cap_conversion,
-            USDRiskCapConversion,
+        if (
+            self.usd_risk_cap_conversion is not None
+            and type(self.usd_risk_cap_conversion) is not USDRiskCapConversion
         ):
             raise TypeError(
                 "usd_risk_cap_conversion must be a sealed USDRiskCapConversion or None"
@@ -483,12 +483,12 @@ def evaluate_risk(
     validated ``RiskContext`` requires them.
     """
 
-    if not isinstance(intent, TradeIntent):
-        raise TypeError("intent must be a TradeIntent")
-    if not isinstance(broker, BrokerSpec):
-        raise TypeError("broker must be a BrokerSpec")
-    if not isinstance(context, RiskContext):
-        raise TypeError("context must be a RiskContext")
+    if type(intent) is not TradeIntent:
+        raise TypeError("intent must be an exact TradeIntent")
+    if type(broker) is not BrokerSpec:
+        raise TypeError("broker must be an exact BrokerSpec")
+    if type(context) is not RiskContext:
+        raise TypeError("context must be an exact RiskContext")
 
     reasons: list[str] = []
     symbol_allowed, _ = execution_policy.validate_execution_symbol(intent.symbol)
@@ -500,8 +500,11 @@ def evaluate_risk(
         else:
             reasons.append("SYMBOL_NOT_EXECUTION_APPROVED")
     _append(reasons, context.mode != intent.mode, "MODE_MISMATCH")
-    _append(reasons, intent.mode == "LIVE", "LIVE_MODE_LOCKED")
-    _append(reasons, intent.mode == "DEMO_AUTO", "DEMO_AUTO_ORDER_LOCKED")
+    mode_allowed, mode_reasons = execution_policy.execution_mode_policy_decision(
+        intent.mode
+    )
+    if not mode_allowed:
+        reasons.extend(mode_reasons)
     _append(reasons, not context.permit_valid, "PERMIT_INVALID")
 
     account_matches = (

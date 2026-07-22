@@ -180,10 +180,10 @@ def issue_reproducibility_receipt(
     signer_key_id: str,
     secret: str | bytes,
 ) -> WindowsReproducibilityReceipt:
-    if not isinstance(first, ReproducibilityObservation) or not isinstance(
-        second, ReproducibilityObservation
-    ):
-        raise TypeError("two ReproducibilityObservation values are required")
+    if type(first) is not ReproducibilityObservation or type(
+        second
+    ) is not ReproducibilityObservation:
+        raise TypeError("two exact ReproducibilityObservation values are required")
     if first.build_id == second.build_id:
         raise ReproducibilityError("BUILD_ID_REPLAY")
     comparisons = (
@@ -224,8 +224,9 @@ def verify_reproducibility_receipt(
     key_provider: Callable[[str], str | bytes],
     checked_at: datetime,
 ) -> bool:
-    if not isinstance(receipt, WindowsReproducibilityReceipt):
-        raise TypeError("receipt must be WindowsReproducibilityReceipt")
+    # A subclass could otherwise replace ``verify`` and forge release trust.
+    if type(receipt) is not WindowsReproducibilityReceipt:
+        raise TypeError("receipt must be exact WindowsReproducibilityReceipt")
     if not callable(key_provider):
         raise TypeError("key_provider must be callable")
     checked = require_utc("checked_at", checked_at)

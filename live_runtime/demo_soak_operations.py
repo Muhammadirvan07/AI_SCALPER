@@ -960,8 +960,8 @@ def issue_failure_drill_observation(
     observer_key_id: str,
     secret: str | bytes,
 ) -> FailureDrillObservation:
-    if not isinstance(manifest, FailureDrillManifest):
-        raise TypeError("manifest must be FailureDrillManifest")
+    if type(manifest) is not FailureDrillManifest:
+        raise TypeError("manifest must be exact FailureDrillManifest")
     observed = require_utc("observed_at_utc", observed_at_utc)
     if observed < manifest.issued_at_utc:
         raise DemoSoakOperationsError("DRILL_OBSERVED_BEFORE_MANIFEST")
@@ -1002,11 +1002,15 @@ class FailureDrillTracker:
         manifest: FailureDrillManifest,
         observations: Iterable[FailureDrillObservation] = (),
     ) -> None:
-        if not isinstance(manifest, FailureDrillManifest):
-            raise TypeError("manifest must be FailureDrillManifest")
+        if type(manifest) is not FailureDrillManifest:
+            raise TypeError("manifest must be exact FailureDrillManifest")
         values = tuple(observations)
-        if any(not isinstance(item, FailureDrillObservation) for item in values):
-            raise TypeError("observations must contain FailureDrillObservation values")
+        # Observations are signed gate evidence.  Exact types prevent a
+        # subclass from replacing ``verify`` and fabricating a passed drill.
+        if any(type(item) is not FailureDrillObservation for item in values):
+            raise TypeError(
+                "observations must contain exact FailureDrillObservation values"
+            )
         ids = [item.observation_id for item in values]
         if len(ids) != len(set(ids)):
             raise DemoSoakOperationsError("FAILURE_DRILL_OBSERVATION_REPLAY")

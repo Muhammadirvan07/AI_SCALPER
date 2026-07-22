@@ -19,6 +19,7 @@ import sqlite3
 from typing import Any, Callable, Iterator, Mapping, Sequence
 import uuid
 
+import execution_policy
 from execution_policy import LIVE_ALLOWED, SAFE_TO_DEMO_AUTO_ORDER
 
 from .contracts import (
@@ -90,7 +91,9 @@ _NEWS_GUARD_SEAL = object()
 _EXECUTION_RESULT_SEAL = object()
 _RECONCILIATION_RESULT_SEAL = object()
 _ALLOWED_MODES = frozenset({"SHADOW", "DEMO", "DEMO_AUTO", "LIVE"})
-_ALLOWED_DECISION_ACTIONS = frozenset({"NO_ACTION", "MANUAL_DEMO_EXECUTE"})
+_ALLOWED_DECISION_ACTIONS = frozenset(
+    {"NO_ACTION", "MANUAL_DEMO_EXECUTE", "DEMO_AUTO_EXECUTE"}
+)
 SUPERVISOR_CHECKPOINT_SCHEMA_VERSION = "runtime-supervisor-checkpoint-v2"
 SUPERVISOR_CHECKPOINT_CAS_ACK_SCHEMA_VERSION = (
     "runtime-supervisor-checkpoint-cas-ack-v1"
@@ -501,7 +504,7 @@ class RuntimeSupervisorDecision(CanonicalContract):
             "decision_payload_sha256",
             require_hash("decision_payload_sha256", self.decision_payload_sha256),
         )
-        if action == "MANUAL_DEMO_EXECUTE":
+        if action in {"MANUAL_DEMO_EXECUTE", "DEMO_AUTO_EXECUTE"}:
             object.__setattr__(
                 self, "intent_id", require_text("intent_id", self.intent_id)
             )
@@ -576,6 +579,343 @@ def seal_runtime_manual_demo_execution_result(
         entry_source_receipt=entry_source_receipt,
         _seal=_EXECUTION_RESULT_SEAL,
     )
+
+
+@dataclass(frozen=True)
+class RuntimeDemoAutoExecutionResult(CanonicalContract):
+    """Sealed one-shot DEMO_AUTO dispatch and risk-ingestion evidence.
+
+    The result deliberately stores immutable hashes for every authority and
+    pre-dispatch high-water mark.  It can only be created by the sealing
+    factory below, which accepts the exact sealed objects.  The checked-in
+    release cannot reach that factory because the centralized DEMO_AUTO policy
+    remains disabled.
+    """
+
+    execution_receipt: ExecutionReceipt
+    entry_event: EntryRiskEvent
+    entry_source_receipt: RiskSourceReceipt
+    decision_id: str
+    decision_payload_sha256: str
+    ipc_input_sha256: str
+    session_store_binding_sha256: str
+    session_lease_sha256: str
+    session_checkpoint_sha256: str
+    session_dispatch_verification_sha256: str
+    permit_validation_sha256: str
+    promotion_validation_sha256: str
+    environment_arm_sha256: str
+    supervisor_checkpoint_sha256: str
+    journal_checkpoint_sha256: str
+    risk_receipt_sha256: str
+    reconciliation_receipt_sha256: str
+    schema_version: str = "runtime-demo-auto-execution-result-v1"
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _EXECUTION_RESULT_SEAL:
+            raise TypeError("DEMO_AUTO execution results require the sealing factory")
+        if type(self.execution_receipt) is not ExecutionReceipt:
+            raise TypeError("exact sealed ExecutionReceipt is required")
+        if type(self.entry_event) is not EntryRiskEvent:
+            raise TypeError("exact EntryRiskEvent is required")
+        if type(self.entry_source_receipt) is not RiskSourceReceipt:
+            raise TypeError("exact sealed RiskSourceReceipt is required")
+        object.__setattr__(self, "decision_id", require_text("decision_id", self.decision_id))
+        for name in (
+            "decision_payload_sha256",
+            "ipc_input_sha256",
+            "session_store_binding_sha256",
+            "session_lease_sha256",
+            "session_checkpoint_sha256",
+            "session_dispatch_verification_sha256",
+            "permit_validation_sha256",
+            "promotion_validation_sha256",
+            "environment_arm_sha256",
+            "supervisor_checkpoint_sha256",
+            "journal_checkpoint_sha256",
+            "risk_receipt_sha256",
+            "reconciliation_receipt_sha256",
+        ):
+            object.__setattr__(self, name, require_hash(name, getattr(self, name)))
+        receipt = self.execution_receipt
+        event = self.entry_event
+        source = self.entry_source_receipt
+        if (
+            receipt.state not in {"PARTIAL", "FILLED", "RECONCILED"}
+            or event.entry_id != receipt.intent_id
+            or event.symbol != receipt.symbol
+            or event.occurred_at_utc != receipt.received_at
+            or event.binding.account_id_sha256
+            != manual_demo_account_sha256(receipt.account_id)
+            or event.binding.server != receipt.server
+            or event.binding.journal_sha256 != receipt.journal_sha256
+            or source.binding != event.binding
+            or source.source_kind != "ENTRY"
+            or source.event_sha256 != event.content_sha256
+            or source.upstream_receipt_type != "EXECUTION_RECEIPT"
+            or source.upstream_receipt_sha256 != receipt.content_sha256
+        ):
+            raise ValueError("DEMO_AUTO execution/risk evidence is not exact")
+        if self.schema_version != "runtime-demo-auto-execution-result-v1":
+            raise ValueError("unsupported DEMO_AUTO execution result schema")
+
+
+def seal_runtime_demo_auto_execution_result(
+    *,
+    execution_receipt: ExecutionReceipt,
+    entry_event: EntryRiskEvent,
+    entry_source_receipt: RiskSourceReceipt,
+    decision: RuntimeSupervisorDecision,
+    ipc_input: object,
+    session_store: object,
+    session_lease: object,
+    session_checkpoint: object,
+    session_dispatch_verification: object,
+    permit_validation: object,
+    promotion_validation: object,
+    environment_arm: object,
+    supervisor_checkpoint: RuntimeSupervisorCheckpoint,
+    journal_checkpoint: ExecutionJournalCheckpoint,
+    risk_receipt: RiskStateReceipt,
+    reconciliation: RuntimeReconciliationRiskResult,
+) -> RuntimeDemoAutoExecutionResult:
+    """Seal exact DEMO_AUTO authority and custody inputs without granting them."""
+
+    from .controls import EnvironmentArmDecision
+    from .demo_auto_ipc_consumer import DemoAutoIPCRiskIntentInput
+    from .demo_auto_session_capability import (
+        DemoAutoSessionCapabilityStore,
+        DemoAutoSessionCheckpoint,
+        DemoAutoSessionDispatchVerification,
+        DemoAutoSessionLease,
+    )
+    from .permit import PermitValidation
+    from .promotion_evidence import PromotionEvidenceValidation
+
+    exact = (
+        (decision, RuntimeSupervisorDecision, "decision"),
+        (ipc_input, DemoAutoIPCRiskIntentInput, "ipc_input"),
+        (session_store, DemoAutoSessionCapabilityStore, "session_store"),
+        (session_lease, DemoAutoSessionLease, "session_lease"),
+        (session_checkpoint, DemoAutoSessionCheckpoint, "session_checkpoint"),
+        (
+            session_dispatch_verification,
+            DemoAutoSessionDispatchVerification,
+            "session_dispatch_verification",
+        ),
+        (permit_validation, PermitValidation, "permit_validation"),
+        (promotion_validation, PromotionEvidenceValidation, "promotion_validation"),
+        (environment_arm, EnvironmentArmDecision, "environment_arm"),
+        (supervisor_checkpoint, RuntimeSupervisorCheckpoint, "supervisor_checkpoint"),
+        (journal_checkpoint, ExecutionJournalCheckpoint, "journal_checkpoint"),
+        (risk_receipt, RiskStateReceipt, "risk_receipt"),
+        (reconciliation, RuntimeReconciliationRiskResult, "reconciliation"),
+    )
+    for value, expected, label in exact:
+        if type(value) is not expected:
+            raise TypeError(f"{label} must be exact {expected.__name__}")
+    return RuntimeDemoAutoExecutionResult(
+        execution_receipt=execution_receipt,
+        entry_event=entry_event,
+        entry_source_receipt=entry_source_receipt,
+        decision_id=decision.decision_id,
+        decision_payload_sha256=decision.decision_payload_sha256,
+        ipc_input_sha256=ipc_input.content_sha256,
+        session_store_binding_sha256=session_store.binding.content_sha256,
+        session_lease_sha256=session_lease.content_sha256,
+        session_checkpoint_sha256=session_checkpoint.content_sha256,
+        session_dispatch_verification_sha256=(
+            session_dispatch_verification.content_sha256
+        ),
+        permit_validation_sha256=permit_validation.content_sha256,
+        promotion_validation_sha256=promotion_validation.content_sha256,
+        environment_arm_sha256=environment_arm.content_sha256,
+        supervisor_checkpoint_sha256=supervisor_checkpoint.content_sha256,
+        journal_checkpoint_sha256=journal_checkpoint.content_sha256,
+        risk_receipt_sha256=risk_receipt.content_sha256,
+        reconciliation_receipt_sha256=reconciliation.content_sha256,
+        _seal=_EXECUTION_RESULT_SEAL,
+    )
+
+
+def _verify_demo_auto_dispatch_controls(
+    *,
+    binding: RuntimeSupervisorBinding,
+    decision: RuntimeSupervisorDecision,
+    ipc_input: object,
+    session_store: object,
+    session_lease: object,
+    session_checkpoint: object,
+    session_dispatch_verification: object,
+    permit_validation: object,
+    promotion_validation: object,
+    environment_arm: object,
+    supervisor_checkpoint: RuntimeSupervisorCheckpoint,
+    checked_at: datetime,
+) -> None:
+    """Verify the exact one-use DEMO_AUTO authority chain at dispatch time."""
+
+    from .controls import EnvironmentArmDecision
+    from .demo_auto_ipc_consumer import DemoAutoIPCRiskIntentInput
+    from .demo_auto_session_capability import (
+        DemoAutoSessionCapabilityStore,
+        DemoAutoSessionCheckpoint,
+        DemoAutoSessionDispatchVerification,
+        DemoAutoSessionLease,
+    )
+    from .permit import PermitValidation
+    from .promotion_evidence import PromotionEvidenceValidation
+
+    exact = (
+        (ipc_input, DemoAutoIPCRiskIntentInput, "ipc_input"),
+        (session_store, DemoAutoSessionCapabilityStore, "session_store"),
+        (session_lease, DemoAutoSessionLease, "session_lease"),
+        (session_checkpoint, DemoAutoSessionCheckpoint, "session_checkpoint"),
+        (
+            session_dispatch_verification,
+            DemoAutoSessionDispatchVerification,
+            "session_dispatch_verification",
+        ),
+        (permit_validation, PermitValidation, "permit_validation"),
+        (promotion_validation, PromotionEvidenceValidation, "promotion_validation"),
+        (environment_arm, EnvironmentArmDecision, "environment_arm"),
+        (supervisor_checkpoint, RuntimeSupervisorCheckpoint, "supervisor_checkpoint"),
+    )
+    for value, expected, label in exact:
+        if type(value) is not expected:
+            raise RuntimeSupervisorCriticalError(
+                f"DEMO_AUTO_{label.upper()}_INVALID"
+            )
+    try:
+        verified_dispatch = session_store.verify_dispatch_verification(
+            session_dispatch_verification,
+            session_lease,
+            expected_intent_id=decision.intent_id,
+        )
+    except Exception as exc:
+        raise RuntimeSupervisorCriticalError(
+            "DEMO_AUTO_SESSION_VERIFICATION_FAILED"
+        ) from exc
+    if verified_dispatch is not session_dispatch_verification:
+        raise RuntimeSupervisorIntegrityError(
+            "DEMO_AUTO_SESSION_STORE_DID_NOT_RETURN_EXACT_VERIFICATION"
+        )
+    now = require_utc("checked_at", checked_at)
+    envelope = ipc_input.verified_envelope.envelope
+    snapshot = envelope.decision
+    stage = ipc_input.stage_binding
+    permit = ipc_input.permit
+    queue_binding = envelope.binding
+    symbol_allowed, _symbol_reason = execution_policy.validate_execution_symbol(
+        snapshot.symbol
+    )
+    if (
+        binding.mode != "DEMO_AUTO"
+        or binding.environment != "DEMO"
+        or decision.action != "DEMO_AUTO_EXECUTE"
+        or snapshot.snapshot_id != decision.decision_id
+        or snapshot.content_sha256 != decision.decision_payload_sha256
+        or decision.intent_id is None
+        or not symbol_allowed
+        or stage.symbol != snapshot.symbol
+        or queue_binding.environment != "DEMO"
+        or ipc_input.supervisor_binding != binding
+        or stage.binding_sha256 != binding.stage_binding_sha256
+        or stage.account_alias_sha256 != binding.account_id_sha256
+        or stage.server != binding.server
+        or stage.journal_sha256 != binding.journal_sha256
+        or stage.commit_sha != binding.commit_sha
+        or stage.config_sha256 != binding.config_sha256
+        or not ipc_input.consumed_at_utc <= now < ipc_input.valid_until_utc
+    ):
+        raise RuntimeSupervisorCriticalError("DEMO_AUTO_IPC_BINDING_INVALID")
+    if (
+        not permit_validation.valid
+        or permit_validation.permit_id != permit.permit_id
+        or permit_validation.mode != "DEMO_AUTO"
+        or permit_validation.account_alias_sha256 != binding.account_id_sha256
+        or permit_validation.server != binding.server
+        or permit_validation.symbols != (snapshot.symbol,)
+        or permit_validation.commit_sha != binding.commit_sha
+        or permit_validation.config_sha256 != binding.config_sha256
+        or permit_validation.model_artifact_sha256 != stage.model_artifact_sha256
+        or permit_validation.journal_sha256 != binding.journal_sha256
+        or permit_validation.checked_at > now
+        or (now - permit_validation.checked_at).total_seconds()
+        > MAX_DECISION_AGE_SECONDS
+        or not permit_validation.issued_at <= now < permit_validation.expires_at
+    ):
+        raise RuntimeSupervisorCriticalError("DEMO_AUTO_PERMIT_VALIDATION_FAILED")
+    if (
+        not promotion_validation.valid
+        or promotion_validation.mode != "DEMO_AUTO"
+        or promotion_validation.lane_id != stage.lane_id
+        or promotion_validation.symbol != snapshot.symbol
+        or promotion_validation.commit_sha != binding.commit_sha
+        or promotion_validation.config_sha256 != binding.config_sha256
+        or promotion_validation.model_artifact_sha256 != stage.model_artifact_sha256
+        or promotion_validation.receipt_sha256
+        != permit_validation.promotion_evidence_sha256
+        or promotion_validation.checked_at > now
+        or (now - promotion_validation.checked_at).total_seconds()
+        > MAX_DECISION_AGE_SECONDS
+        or not now < promotion_validation.expires_at
+    ):
+        raise RuntimeSupervisorCriticalError(
+            "DEMO_AUTO_PROMOTION_EVIDENCE_VALIDATION_FAILED"
+        )
+    if (
+        not environment_arm.armed
+        or not environment_arm.is_fresh(now)
+        or environment_arm.journal_sha256 != binding.journal_sha256
+        or environment_arm.observed_value_sha256 is None
+        or environment_arm.binding_sha256
+        != ipc_input.environment_arm.binding_sha256
+        or environment_arm.observed_value_sha256
+        != ipc_input.environment_arm.observed_value_sha256
+    ):
+        raise RuntimeSupervisorCriticalError("DEMO_AUTO_ENVIRONMENT_ARM_INVALID")
+    if (
+        session_lease.stage_binding_sha256 != stage.binding_sha256
+        or session_lease.stage_authorization_id
+        != ipc_input.stage_authorization.authorization_id
+        or session_lease.stage_authorization_sha256
+        != ipc_input.stage_authorization.content_sha256
+        or session_lease.stage_validation_sha256
+        != ipc_input.stage_validation.content_sha256
+        or session_lease.account_alias_sha256 != binding.account_id_sha256
+        or session_lease.server != binding.server
+        or session_lease.lane_id != stage.lane_id
+        or session_lease.journal_sha256 != binding.journal_sha256
+        or session_lease.commit_sha != binding.commit_sha
+        or session_lease.config_sha256 != binding.config_sha256
+        or session_lease.dependency_lock_sha256 != stage.dependency_lock_sha256
+        or session_lease.runtime_profile_sha256 != stage.runtime_profile_sha256
+        or session_lease.model_artifact_sha256 != stage.model_artifact_sha256
+        or session_lease.supervisor_binding_sha256 != binding.content_sha256
+        or session_lease.supervisor_checkpoint_sha256
+        != supervisor_checkpoint.content_sha256
+        or session_lease.supervisor_checkpoint_event_count
+        != supervisor_checkpoint.event_count
+        or not session_lease.issued_at_utc <= now < session_lease.expires_at_utc
+        or session_checkpoint.ledger_id != session_lease.ledger_id
+        or session_checkpoint.session_id != session_lease.session_id
+        or session_checkpoint.current_lease_sha256 != session_lease.content_sha256
+        or session_checkpoint.event_count != session_lease.sequence
+        or session_checkpoint.issued_at_utc > now
+        or session_store.binding.content_sha256
+        != session_dispatch_verification.binding_sha256
+        or session_dispatch_verification.lease_sha256
+        != session_lease.content_sha256
+        or session_dispatch_verification.checkpoint_sha256
+        != session_checkpoint.content_sha256
+        or session_dispatch_verification.intent_id != decision.intent_id
+        or not session_dispatch_verification.verified_at_utc
+        <= now
+        < session_dispatch_verification.valid_until_utc
+    ):
+        raise RuntimeSupervisorCriticalError("DEMO_AUTO_SESSION_BINDING_INVALID")
 
 
 @dataclass(frozen=True)
@@ -2017,6 +2357,28 @@ class RuntimeSupervisor:
             BrokerClosedTradeReceipt,
         ]
         | None = None,
+        demo_auto_ipc_input_provider: Callable[
+            [RuntimeSupervisorDecision], object
+        ]
+        | None = None,
+        demo_auto_session_lease_provider: Callable[
+            [RuntimeSupervisorDecision, object], object
+        ]
+        | None = None,
+        demo_auto_session_store: object | None = None,
+        demo_auto_permit_validation_provider: Callable[
+            [RuntimeSupervisorDecision, object], object
+        ]
+        | None = None,
+        demo_auto_promotion_validation_provider: Callable[
+            [RuntimeSupervisorDecision, object], object
+        ]
+        | None = None,
+        demo_auto_environment_arm_provider: Callable[
+            [RuntimeSupervisorDecision, object], object
+        ]
+        | None = None,
+        demo_auto_execution_service: Callable[..., object] | None = None,
     ) -> None:
         if type(binding) is not RuntimeSupervisorBinding:
             raise TypeError("binding must be RuntimeSupervisorBinding")
@@ -2051,6 +2413,17 @@ class RuntimeSupervisor:
         self.manual_approval_provider = manual_approval_provider
         self.manual_demo_policy_callback = manual_demo_policy_callback
         self.execution_service = execution_service
+        self.demo_auto_ipc_input_provider = demo_auto_ipc_input_provider
+        self.demo_auto_session_lease_provider = demo_auto_session_lease_provider
+        self.demo_auto_session_store = demo_auto_session_store
+        self.demo_auto_permit_validation_provider = (
+            demo_auto_permit_validation_provider
+        )
+        self.demo_auto_promotion_validation_provider = (
+            demo_auto_promotion_validation_provider
+        )
+        self.demo_auto_environment_arm_provider = demo_auto_environment_arm_provider
+        self.demo_auto_execution_service = demo_auto_execution_service
         self.clock_provider = clock_provider
         self.supervisor_checkpoint_provider = supervisor_checkpoint_provider
         self.supervisor_checkpoint_exporter = supervisor_checkpoint_exporter
@@ -2180,6 +2553,45 @@ class RuntimeSupervisor:
                 raise TypeError("DEMO stage modes require explicit stage authorization ports")
         elif stage_authorization_ports is not None:
             raise ValueError("stage authorization ports are restricted to DEMO stage modes")
+        demo_auto_ports = (
+            ("demo_auto_ipc_input_provider", demo_auto_ipc_input_provider),
+            ("demo_auto_session_lease_provider", demo_auto_session_lease_provider),
+            (
+                "demo_auto_permit_validation_provider",
+                demo_auto_permit_validation_provider,
+            ),
+            (
+                "demo_auto_promotion_validation_provider",
+                demo_auto_promotion_validation_provider,
+            ),
+            ("demo_auto_environment_arm_provider", demo_auto_environment_arm_provider),
+            ("demo_auto_execution_service", demo_auto_execution_service),
+        )
+        if binding.mode == "DEMO_AUTO" and execution_policy.demo_auto_execution_policy_enabled():
+            missing = tuple(name for name, value in demo_auto_ports if not callable(value))
+            from .demo_auto_session_capability import DemoAutoSessionCapabilityStore
+
+            if type(demo_auto_session_store) is not DemoAutoSessionCapabilityStore:
+                missing += ("demo_auto_session_store",)
+            if missing:
+                raise TypeError(
+                    "enabled DEMO_AUTO mode requires all dispatch ports: "
+                    + ", ".join(missing)
+                )
+        else:
+            for name, value in demo_auto_ports:
+                if value is not None and not callable(value):
+                    raise TypeError(f"{name} must be callable or None")
+            if demo_auto_session_store is not None:
+                from .demo_auto_session_capability import (
+                    DemoAutoSessionCapabilityStore,
+                )
+
+                if type(demo_auto_session_store) is not DemoAutoSessionCapabilityStore:
+                    raise TypeError(
+                        "demo_auto_session_store must be exact "
+                        "DemoAutoSessionCapabilityStore or None"
+                    )
         try:
             self.store = _SupervisorStore(
                 database,
@@ -2626,7 +3038,7 @@ class RuntimeSupervisor:
 
     def _append_entry_risk_event(
         self,
-        result: RuntimeManualDemoExecutionResult,
+        result: RuntimeManualDemoExecutionResult | RuntimeDemoAutoExecutionResult,
         before: RiskStateReceipt,
     ) -> RiskStateReceipt:
         receipt = result.execution_receipt
@@ -2642,7 +3054,7 @@ class RuntimeSupervisor:
             or source.upstream_receipt_sha256 != receipt.content_sha256
         ):
             raise RuntimeSupervisorIntegrityError(
-                "manual execution entry evidence binding mismatch"
+                "execution entry evidence binding mismatch"
             )
         try:
             appended = self.risk_ledger.append_entry(
@@ -2652,7 +3064,7 @@ class RuntimeSupervisor:
             )
         except Exception as exc:
             raise RuntimeSupervisorIntegrityError(
-                "manual execution ENTRY risk append failed"
+                "execution ENTRY risk append failed"
             ) from exc
         if (
             type(appended) is not RiskStateReceipt
@@ -2664,7 +3076,7 @@ class RuntimeSupervisor:
             or appended.current_equity != before.current_equity
         ):
             raise RuntimeSupervisorIntegrityError(
-                "manual execution ENTRY risk high-water did not advance exactly once"
+                "execution ENTRY risk high-water did not advance exactly once"
             )
         current = self._verify_risk_with_source(source)
         if (
@@ -2676,7 +3088,7 @@ class RuntimeSupervisor:
             or source.upstream_receipt_sha256 != receipt.content_sha256
         ):
             raise RuntimeSupervisorIntegrityError(
-                "manual execution ENTRY risk receipt verification failed"
+                "execution ENTRY risk receipt verification failed"
             )
         return current
 
@@ -3235,10 +3647,14 @@ class RuntimeSupervisor:
     ] | None:
         if self.binding.mode == "SHADOW":
             return None
-        if self.binding.mode == "LIVE":
-            raise RuntimeSupervisorCriticalError("LIVE_MODE_POLICY_LOCKED")
-        if self.binding.mode == "DEMO_AUTO" and not SAFE_TO_DEMO_AUTO_ORDER:
-            raise RuntimeSupervisorCriticalError("DEMO_AUTO_MODE_POLICY_LOCKED")
+        if self.binding.mode in {"LIVE", "DEMO_AUTO"}:
+            mode_allowed, _reason_codes = (
+                execution_policy.execution_mode_policy_decision(self.binding.mode)
+            )
+            if not mode_allowed:
+                raise RuntimeSupervisorCriticalError(
+                    f"{self.binding.mode}_MODE_POLICY_LOCKED"
+                )
         ports = self.stage_authorization_ports
         if type(ports) is not RuntimeStageAuthorizationPorts:
             raise RuntimeSupervisorCriticalError("STAGE_AUTHORIZATION_PORTS_MISSING")
@@ -3388,10 +3804,16 @@ class RuntimeSupervisor:
                 lease_seconds=self.lease_seconds,
                 now=self._now(),
             )
-            if self.binding.mode == "LIVE":
-                raise RuntimeSupervisorCriticalError("LIVE_MODE_POLICY_LOCKED")
-            if self.binding.mode == "DEMO_AUTO" and not SAFE_TO_DEMO_AUTO_ORDER:
-                raise RuntimeSupervisorCriticalError("DEMO_AUTO_MODE_POLICY_LOCKED")
+            if self.binding.mode in {"LIVE", "DEMO_AUTO"}:
+                mode_allowed, _reason_codes = (
+                    execution_policy.execution_mode_policy_decision(
+                        self.binding.mode
+                    )
+                )
+                if not mode_allowed:
+                    raise RuntimeSupervisorCriticalError(
+                        f"{self.binding.mode}_MODE_POLICY_LOCKED"
+                    )
             journal_checkpoint, risk, reconciliation, facts, guard = self._startup_checks()
             stage_evidence = self._verify_stage_authorization()
             owner, fence = self._lease()
@@ -3440,6 +3862,271 @@ class RuntimeSupervisor:
             )
             self._latch_and_stop(reason, exc=exc)
             raise AssertionError("unreachable")
+
+    def _execute_demo_auto_decision(
+        self,
+        *,
+        cycle_id: str,
+        decision: RuntimeSupervisorDecision,
+        reconciliation: RuntimeReconciliationRiskResult,
+        journal_checkpoint: ExecutionJournalCheckpoint,
+        risk: RiskStateReceipt,
+        facts: tuple[RuntimeFactReceipt, ...],
+        guard: RuntimeNewsGuard | RuntimeNewsGuardReceipt,
+    ) -> tuple[
+        str,
+        RiskStateReceipt,
+        ExecutionJournalCheckpoint,
+        RuntimeNewsGuardReceipt,
+    ]:
+        """Dispatch one dormant DEMO_AUTO decision under exact fresh custody."""
+
+        if self.binding.mode != "DEMO_AUTO" or self.binding.environment != "DEMO":
+            raise RuntimeSupervisorCriticalError("DEMO_AUTO_EXECUTION_MODE_DENIED")
+        mode_allowed, reason_codes = execution_policy.execution_mode_policy_decision(
+            "DEMO_AUTO"
+        )
+        if not mode_allowed:
+            raise RuntimeSupervisorCriticalError(reason_codes[0])
+        required_ports = (
+            self.demo_auto_ipc_input_provider,
+            self.demo_auto_session_lease_provider,
+            self.demo_auto_permit_validation_provider,
+            self.demo_auto_promotion_validation_provider,
+            self.demo_auto_environment_arm_provider,
+            self.demo_auto_execution_service,
+        )
+        if any(not callable(port) for port in required_ports):
+            raise RuntimeSupervisorCriticalError("DEMO_AUTO_EXECUTION_PORTS_MISSING")
+        from .demo_auto_session_capability import DemoAutoSessionCapabilityStore
+
+        if type(self.demo_auto_session_store) is not DemoAutoSessionCapabilityStore:
+            raise RuntimeSupervisorCriticalError("DEMO_AUTO_SESSION_STORE_MISSING")
+        assert self.demo_auto_ipc_input_provider is not None
+        assert self.demo_auto_session_lease_provider is not None
+        assert self.demo_auto_permit_validation_provider is not None
+        assert self.demo_auto_promotion_validation_provider is not None
+        assert self.demo_auto_environment_arm_provider is not None
+        assert self.demo_auto_execution_service is not None
+        session_store = self.demo_auto_session_store
+
+        # Record the exact decision before the one-use IPC consume.  If the
+        # process dies after the queue CAS but before PRE_DISPATCH, restart has
+        # an auditable safe-loss marker and can never replay the consumed
+        # envelope into a second broker attempt.
+        owner, fence = self._lease()
+        self._append_and_checkpoint(
+            owner_id=owner,
+            fence_token=fence,
+            cycle_id=f"{cycle_id}-preconsume",
+            phase="PRE_CONSUME",
+            status="AWAITING_ONE_USE_IPC",
+            occurred_at=self._now(),
+            reconciliation_status=reconciliation.reconciliation.status,
+            journal_checkpoint_sha256=journal_checkpoint.content_sha256,
+            risk_receipt_hmac_sha256=risk.receipt_hmac_sha256,
+            runtime_fact_receipt_sha256s=tuple(
+                item.content_sha256 for item in facts
+            ),
+            **self._news_store_fields(guard),
+            decision_id=decision.decision_id,
+            decision_payload_sha256=decision.decision_payload_sha256,
+        )
+
+        # The IPC provider must durably consume the candidate exactly once.
+        ipc_input = self.demo_auto_ipc_input_provider(decision)
+        owner, fence = self._lease()
+        self._append_and_checkpoint(
+            owner_id=owner,
+            fence_token=fence,
+            cycle_id=f"{cycle_id}-predispatch",
+            phase="PRE_DISPATCH",
+            status="AWAITING_DEMO_AUTO_CONTROLS",
+            occurred_at=self._now(),
+            reconciliation_status=reconciliation.reconciliation.status,
+            journal_checkpoint_sha256=journal_checkpoint.content_sha256,
+            risk_receipt_hmac_sha256=risk.receipt_hmac_sha256,
+            runtime_fact_receipt_sha256s=tuple(
+                item.content_sha256 for item in facts
+            ),
+            **self._news_store_fields(guard),
+            decision_id=decision.decision_id,
+            decision_payload_sha256=decision.decision_payload_sha256,
+        )
+
+        # Refresh every mutable safety fact after the one-use IPC consumption.
+        self._require_decision_fresh(
+            decision,
+            reason_code="DECISION_EXPIRED_DURING_DISPATCH",
+        )
+        supervisor_checkpoint = self._verify_external_supervisor_checkpoint()
+        if self.store.critical_state()["critical_latched"] is True:
+            raise RuntimeSupervisorCriticalError("SUPERVISOR_CRITICAL_LATCHED")
+        self._verify_journal()
+        refreshed_journal = self._verify_journal_checkpoint()
+        if refreshed_journal.content_sha256 != journal_checkpoint.content_sha256:
+            raise RuntimeSupervisorCriticalError(
+                "JOURNAL_STATE_CHANGED_BEFORE_DISPATCH"
+            )
+        refreshed_risk = self._verify_risk()
+        if refreshed_risk.content_sha256 != risk.content_sha256:
+            raise RuntimeSupervisorCriticalError(
+                "RISK_STATE_CHANGED_BEFORE_DISPATCH"
+            )
+        risk = refreshed_risk
+        self._reverify_runtime_facts(facts)
+        self._verify_reconciliation_snapshot_facts(reconciliation, risk, facts)
+        self._require_cycle_evidence_fresh(journal_checkpoint, risk, facts)
+        self._require_execution_account_snapshot(
+            risk,
+            facts,
+            evidence=reconciliation.account_snapshot_evidence,
+        )
+        final_guard = self._verify_news_guard()
+        if (
+            type(final_guard) is not RuntimeNewsGuardReceipt
+            or type(guard) is not RuntimeNewsGuardReceipt
+            or final_guard.content_sha256 == guard.content_sha256
+            or final_guard.feed_sequence <= guard.feed_sequence
+            or final_guard.previous_receipt_sha256 != guard.content_sha256
+        ):
+            raise RuntimeSupervisorCriticalError(
+                "PREDISPATCH_NEWS_GUARD_REFRESH_REQUIRED"
+            )
+
+        # A renewable session lease is requested only after PRE_DISPATCH is
+        # durably checkpointed, so it must bind that exact supervisor head.
+        session_lease = self.demo_auto_session_lease_provider(decision, ipc_input)
+        session_checkpoint = session_store.current_checkpoint()
+        permit_validation = self.demo_auto_permit_validation_provider(
+            decision, ipc_input
+        )
+        promotion_validation = self.demo_auto_promotion_validation_provider(
+            decision, ipc_input
+        )
+        environment_arm = self.demo_auto_environment_arm_provider(
+            decision, ipc_input
+        )
+        session_dispatch_verification = session_store.issue_dispatch_verification(
+            session_lease,
+            intent_id=decision.intent_id,
+            valid_until_utc=min(
+                ipc_input.valid_until_utc,
+                session_lease.expires_at_utc,
+                permit_validation.expires_at,
+                promotion_validation.expires_at,
+                environment_arm.expires_at_utc,
+            ),
+        )
+
+        # Final boundary: no authorization callbacks are permitted after this
+        # verification and before the execution service receives control.
+        dispatch_at = self._now()
+        mode_allowed, reason_codes = execution_policy.execution_mode_policy_decision(
+            "DEMO_AUTO"
+        )
+        if not mode_allowed:
+            raise RuntimeSupervisorCriticalError(reason_codes[0])
+        current_supervisor = self._verify_external_supervisor_checkpoint()
+        if current_supervisor.content_sha256 != supervisor_checkpoint.content_sha256:
+            raise RuntimeSupervisorCriticalError(
+                "SUPERVISOR_CHECKPOINT_CHANGED_BEFORE_DISPATCH"
+            )
+        self._verify_journal()
+        current_journal = self._verify_journal_checkpoint()
+        if current_journal.content_sha256 != journal_checkpoint.content_sha256:
+            raise RuntimeSupervisorCriticalError(
+                "JOURNAL_STATE_CHANGED_BEFORE_DISPATCH"
+            )
+        current_risk = self._verify_risk()
+        if current_risk.content_sha256 != risk.content_sha256:
+            raise RuntimeSupervisorCriticalError(
+                "RISK_STATE_CHANGED_BEFORE_DISPATCH"
+            )
+        self._reverify_runtime_facts(facts)
+        self._require_execution_account_snapshot(
+            current_risk,
+            facts,
+            evidence=reconciliation.account_snapshot_evidence,
+        )
+        self._require_news_guard_current(final_guard, checked_at=dispatch_at)
+        self._require_cycle_evidence_fresh(
+            current_journal,
+            current_risk,
+            facts,
+            checked_at=dispatch_at,
+        )
+        self._require_decision_fresh(
+            decision,
+            reason_code="DECISION_EXPIRED_DURING_DISPATCH",
+            checked_at=dispatch_at,
+        )
+        self._lease()
+        _verify_demo_auto_dispatch_controls(
+            binding=self.binding,
+            decision=decision,
+            ipc_input=ipc_input,
+            session_store=session_store,
+            session_lease=session_lease,
+            session_checkpoint=session_checkpoint,
+            session_dispatch_verification=session_dispatch_verification,
+            permit_validation=permit_validation,
+            promotion_validation=promotion_validation,
+            environment_arm=environment_arm,
+            supervisor_checkpoint=current_supervisor,
+            checked_at=dispatch_at,
+        )
+
+        result = self.demo_auto_execution_service(
+            decision,
+            ipc_input,
+            session_store,
+            session_lease,
+            session_checkpoint,
+            session_dispatch_verification,
+            permit_validation,
+            promotion_validation,
+            environment_arm,
+            current_supervisor,
+            current_journal,
+            current_risk,
+            reconciliation,
+        )
+        if type(result) is not RuntimeDemoAutoExecutionResult:
+            raise RuntimeSupervisorCriticalError(
+                "DEMO_AUTO_EXECUTION_RESULT_EVIDENCE_INVALID"
+            )
+        expected_hashes = (
+            result.decision_id == decision.decision_id,
+            result.decision_payload_sha256 == decision.decision_payload_sha256,
+            result.ipc_input_sha256 == ipc_input.content_sha256,
+            result.session_store_binding_sha256
+            == session_store.binding.content_sha256,
+            result.session_lease_sha256 == session_lease.content_sha256,
+            result.session_checkpoint_sha256 == session_checkpoint.content_sha256,
+            result.session_dispatch_verification_sha256
+            == session_dispatch_verification.content_sha256,
+            result.permit_validation_sha256 == permit_validation.content_sha256,
+            result.promotion_validation_sha256
+            == promotion_validation.content_sha256,
+            result.environment_arm_sha256 == environment_arm.content_sha256,
+            result.supervisor_checkpoint_sha256
+            == current_supervisor.content_sha256,
+            result.journal_checkpoint_sha256 == current_journal.content_sha256,
+            result.risk_receipt_sha256 == current_risk.content_sha256,
+            result.reconciliation_receipt_sha256
+            == reconciliation.content_sha256,
+            result.execution_receipt.intent_id == decision.intent_id,
+        )
+        if not all(expected_hashes):
+            raise RuntimeSupervisorCriticalError(
+                "DEMO_AUTO_EXECUTION_RESULT_BINDING_INVALID"
+            )
+        risk = self._append_entry_risk_event(result, current_risk)
+        self._verify_journal()
+        journal_checkpoint = self._verify_journal_checkpoint()
+        self._require_cycle_evidence_fresh(journal_checkpoint, risk, facts)
+        return result.content_sha256, risk, journal_checkpoint, final_guard
 
     def run_cycle(self) -> RuntimeSupervisorCycleReceipt:
         if self._state != "READY" or self._stopped:
@@ -3623,6 +4310,22 @@ class RuntimeSupervisor:
                     risk,
                     facts,
                 )
+            elif decision.action == "DEMO_AUTO_EXECUTE":
+                (
+                    execution_result_sha,
+                    risk,
+                    journal_checkpoint,
+                    guard,
+                ) = self._execute_demo_auto_decision(
+                    cycle_id=cycle_id,
+                    decision=decision,
+                    reconciliation=reconciliation,
+                    journal_checkpoint=journal_checkpoint,
+                    risk=risk,
+                    facts=facts,
+                    guard=guard,
+                )
+                execution_called = True
             owner, fence = self._lease()
             return self._append_and_checkpoint(
                 owner_id=owner,
@@ -3753,6 +4456,7 @@ __all__ = [
     "RuntimeSupervisorCriticalError",
     "RuntimeSupervisorCycleReceipt",
     "RuntimeSupervisorDecision",
+    "RuntimeDemoAutoExecutionResult",
     "RuntimeManualDemoExecutionResult",
     "RuntimeClosedTradeRiskEvidence",
     "RuntimeReconciliationRiskResult",
@@ -3766,6 +4470,7 @@ __all__ = [
     "SAFE_TO_DEMO_AUTO_ORDER",
     "issue_runtime_news_guard_receipt",
     "runtime_news_guard_trust_sha256",
+    "seal_runtime_demo_auto_execution_result",
     "seal_runtime_manual_demo_execution_result",
     "seal_runtime_reconciliation_risk_result",
     "verify_runtime_news_guard_receipt",

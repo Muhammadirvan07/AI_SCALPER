@@ -473,8 +473,10 @@ def validate_manual_demo_approval(
 ) -> ManualDemoApprovalValidation:
     """Verify one manual-demo approval using only trusted time and key sources."""
 
-    if not isinstance(approval, ManualDemoApproval):
-        raise TypeError("approval must be a ManualDemoApproval")
+    # Approval objects cross an authorization boundary. Subclass polymorphism
+    # is forbidden because a subclass can replace ``verify_signature``.
+    if type(approval) is not ManualDemoApproval:
+        raise TypeError("approval must be exact ManualDemoApproval")
     if not callable(clock_provider):
         raise TypeError("clock_provider must be callable")
     if not callable(key_provider):

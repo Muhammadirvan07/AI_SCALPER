@@ -107,10 +107,10 @@ def verify_decision_model(
     *,
     checked_at: datetime,
 ) -> ModelBindingDecision:
-    if not isinstance(decision, DecisionSnapshot):
-        raise TypeError("decision must be DecisionSnapshot")
-    if not isinstance(artifact, ModelArtifactManifest):
-        raise TypeError("artifact must be ModelArtifactManifest")
+    if type(decision) is not DecisionSnapshot:
+        raise TypeError("decision must be exact DecisionSnapshot")
+    if type(artifact) is not ModelArtifactManifest:
+        raise TypeError("artifact must be exact ModelArtifactManifest")
     require_utc("checked_at", checked_at)
     reasons: list[str] = []
     if artifact.role != "CHAMPION":

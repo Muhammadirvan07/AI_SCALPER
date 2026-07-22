@@ -305,8 +305,8 @@ class DirectoryDropTransport:
             raise
 
     def deliver(self, envelope: DeliveryEnvelope) -> DeliveryAcknowledgement:
-        if not isinstance(envelope, DeliveryEnvelope):
-            raise TypeError("envelope must be DeliveryEnvelope")
+        if type(envelope) is not DeliveryEnvelope:
+            raise TypeError("envelope must be exact DeliveryEnvelope")
         envelope_path = self.outbound_directory / f"{envelope.envelope_id}.json"
         acknowledgement_path = (
             self.acknowledgement_directory / f"{envelope.envelope_id}.ack.json"
@@ -385,8 +385,8 @@ class DeliveryOutbox:
         return bool(rows) and all(str(row[0]).lower() == "ok" for row in rows)
 
     def enqueue(self, envelope: DeliveryEnvelope) -> str:
-        if not isinstance(envelope, DeliveryEnvelope):
-            raise TypeError("envelope must be DeliveryEnvelope")
+        if type(envelope) is not DeliveryEnvelope:
+            raise TypeError("envelope must be exact DeliveryEnvelope")
         envelope_json = _canonical(envelope.to_dict())
         with self._transaction() as connection:
             existing = connection.execute(
@@ -582,8 +582,8 @@ class OffHostDeliverySupervisor:
         remote_key_provider: Callable[[str], str | bytes],
         clock_provider: Callable[[], datetime] = _utc_now,
     ) -> None:
-        if not isinstance(outbox, DeliveryOutbox):
-            raise TypeError("outbox must be DeliveryOutbox")
+        if type(outbox) is not DeliveryOutbox:
+            raise TypeError("outbox must be exact DeliveryOutbox")
         if not callable(remote_key_provider):
             raise TypeError("remote_key_provider must be callable")
         if not callable(clock_provider):
@@ -601,7 +601,9 @@ class OffHostDeliverySupervisor:
         acknowledgement: DeliveryAcknowledgement,
         attempted_at: datetime,
     ) -> None:
-        if not isinstance(acknowledgement, DeliveryAcknowledgement):
+        # The transport is an untrusted boundary.  Reject subclasses so they
+        # cannot replace ``verify`` and forge a remote durable acknowledgement.
+        if type(acknowledgement) is not DeliveryAcknowledgement:
             raise OffHostDeliveryError("ACKNOWLEDGEMENT_TYPE_INVALID")
         if acknowledgement.envelope_id != envelope.envelope_id:
             raise OffHostDeliveryError("ACKNOWLEDGEMENT_ENVELOPE_MISMATCH")

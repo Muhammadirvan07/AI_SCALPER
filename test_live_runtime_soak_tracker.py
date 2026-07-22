@@ -184,6 +184,27 @@ class DemoAutoSoakTrackerTests(unittest.TestCase):
             clock_provider=self.clock,
         )
 
+    def test_receipt_subclass_cannot_cross_sealed_source_boundary(self):
+        receipt = self._source_receipt(
+            source_kind="DEMO_AUTO_ACTIVATION",
+            subject_id="demo-auto-activation-forged",
+            occurred_at=NOW,
+            details=(("mode", "DEMO_AUTO"),),
+        )
+
+        class ForgedSoakSourceReceipt(SoakSourceReceipt):
+            pass
+
+        forged = object.__new__(ForgedSoakSourceReceipt)
+        for name in receipt.__dataclass_fields__:
+            if name != "_seal":
+                object.__setattr__(forged, name, getattr(receipt, name))
+        with self.assertRaisesRegex(TypeError, "verified sealed receipt"):
+            self.tracker.start_soak(
+                event_id="forged-start",
+                activation_receipt=forged,
+            )
+
     def _closed_deal_receipt(
         self,
         index: int,

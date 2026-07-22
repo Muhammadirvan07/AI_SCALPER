@@ -6,10 +6,11 @@ supervisor, environment-arm, and permit bindings before it emits a sealed input
 for the existing risk/intent pipeline.
 
 The emitted object is deliberately *not* an execution capability.  This module
-has no broker adapter, no execution callback, and no policy-unlock surface.  It
-is usable only while the repository's DEMO_AUTO and LIVE policy locks remain
-closed; wiring the sealed input to broker mutation requires a separate reviewed
-release after the operational gates are complete.
+has no broker adapter, no execution callback, and no policy-unlock surface.  A
+stage authorization is consumed once to start a renewable session; later IPC
+decisions retain that immutable root binding without inheriting its short
+startup expiry. Broker mutation still requires the current session, permit,
+arm, risk, journal, and independently reviewed execution policy.
 """
 
 from __future__ import annotations
@@ -34,7 +35,6 @@ from .decision_ipc import (
 )
 from .permit import (
     LIVE_ALLOWED,
-    SAFE_TO_DEMO_AUTO_ORDER,
     PermitValidation,
     PromotionPermit,
     account_alias_sha256,
@@ -75,11 +75,10 @@ def _now() -> datetime:
 
 
 def _require_locked_policy() -> None:
-    # The consumer is intentionally only a locked foundation.  An eventual
-    # activation must change the independently reviewed execution boundary,
-    # not silently turn this pre-execution object into an order capability.
-    if LIVE_ALLOWED is not False or SAFE_TO_DEMO_AUTO_ORDER is not False:
-        raise DemoAutoIPCControlError("DEMO_AUTO_CONSUMER_REQUIRES_LOCKED_POLICY")
+    # This object is non-executable and remains valid in a separately reviewed
+    # DEMO_AUTO release. LIVE is a different release boundary.
+    if LIVE_ALLOWED is not False:
+        raise DemoAutoIPCControlError("DEMO_AUTO_CONSUMER_REQUIRES_NON_LIVE_POLICY")
 
 
 def _permit_secret(
@@ -213,8 +212,8 @@ class DemoAutoIPCRiskIntentInput(CanonicalContract):
     consumed_at_utc: datetime
     verified_at_utc: datetime
     valid_until_utc: datetime
-    live_allowed: bool = LIVE_ALLOWED
-    safe_to_demo_auto_order: bool = SAFE_TO_DEMO_AUTO_ORDER
+    live_allowed: bool = False
+    safe_to_demo_auto_order: bool = False
     execution_authorized: bool = False
     activation_authorized: bool = False
     order_capability: str = ORDER_CAPABILITY
@@ -289,7 +288,6 @@ class DemoAutoIPCRiskIntentInput(CanonicalContract):
             != min(
                 envelope.expires_at_utc,
                 self.permit.expires_at,
-                self.stage_authorization.request.expires_at,
                 self.pre_consume_environment_arm.valid_until_utc,
                 self.environment_arm.valid_until_utc,
             )
@@ -322,8 +320,8 @@ class DemoAutoIPCNoActionReceipt(CanonicalContract):
     decision_snapshot_sha256: str
     consumed_at_utc: datetime
     reason_code: str = "WAIT_DECISION"
-    live_allowed: bool = LIVE_ALLOWED
-    safe_to_demo_auto_order: bool = SAFE_TO_DEMO_AUTO_ORDER
+    live_allowed: bool = False
+    safe_to_demo_auto_order: bool = False
     order_capability: str = ORDER_CAPABILITY
     schema_version: str = DEMO_AUTO_IPC_NO_ACTION_SCHEMA_VERSION
     _seal: InitVar[object | None] = None
@@ -401,8 +399,14 @@ class DemoAutoDecisionIPCConsumer:
     def _validate_permit(self, permit: PromotionPermit, now: datetime) -> PermitValidation:
         if type(permit) is not PromotionPermit:
             raise TypeError("permit must be exact PromotionPermit")
-        promotion_sha = self.stage_authorization.request.promotion_evidence_receipt_sha256
-        if promotion_sha is None:
+        # Stage promotion evidence authorizes session startup only.  Each
+        # later decision carries a newly signed permit bound to the current
+        # promotion receipt; the executor verifies that exact receipt before
+        # reservation and again at send.  Reusing the startup receipt hash
+        # here would silently turn a short stage request into a permanent
+        # session cap.
+        promotion_sha = permit.promotion_evidence_sha256
+        if not promotion_sha:
             raise DemoAutoIPCBindingError("PROMOTION_EVIDENCE_BINDING_MISSING")
         try:
             validation = validate_permit(
@@ -471,9 +475,6 @@ class DemoAutoDecisionIPCConsumer:
             account_alias=self.account_alias,
         )
         before = require_utc("trusted consumer clock", self.clock_provider())
-        stage_request = self.stage_authorization.request
-        if not stage_request.issued_at <= before < stage_request.expires_at:
-            raise DemoAutoIPCControlError("DEMO_AUTO_STAGE_NOT_CURRENT")
         permit_validation = self._validate_permit(permit, before)
         pre_arm = read_environment_arm(
             self.account_alias,
@@ -514,8 +515,6 @@ class DemoAutoDecisionIPCConsumer:
             or post_arm.observed_value_sha256 != pre_arm.observed_value_sha256
         ):
             raise DemoAutoIPCControlError("ENVIRONMENT_ARM_CHANGED_DURING_CONSUME")
-        if not stage_request.issued_at <= after < stage_request.expires_at:
-            raise DemoAutoIPCControlError("DEMO_AUTO_STAGE_EXPIRED_DURING_CONSUME")
         if type(consumed) is DiscardedDecisionIPCEnvelope:
             return consumed
         assert type(consumed) is VerifiedDecisionIPCEnvelope
@@ -524,7 +523,6 @@ class DemoAutoDecisionIPCConsumer:
         valid_until = min(
             envelope.expires_at_utc,
             permit.expires_at,
-            stage_request.expires_at,
             pre_arm.valid_until_utc,
             post_arm.valid_until_utc,
         )

@@ -1573,7 +1573,7 @@ class DemoAutoSoakTracker:
         if event_type == "SOAK_STARTED":
             if sequence != 1 or state.event_count != 0 or generation != 1:
                 raise SoakTrackerIntegrityError("soak start must be generation-one genesis")
-            if not isinstance(source_receipt, SoakSourceReceipt):
+            if type(source_receipt) is not SoakSourceReceipt:
                 raise SoakTrackerIntegrityError("soak start source type is invalid")
             if _utc_text("activation time", source_receipt.occurred_at_utc) != observed_text:
                 raise SoakTrackerIntegrityError("soak start timestamp is inconsistent")
@@ -1587,7 +1587,7 @@ class DemoAutoSoakTracker:
                 raise SoakTrackerIntegrityError(
                     "reviewed restart requires an active incident demotion"
                 )
-            if not isinstance(source_receipt, DualReviewReceipt):
+            if type(source_receipt) is not DualReviewReceipt:
                 raise SoakTrackerIntegrityError("reviewed restart source type is invalid")
             if (
                 state.latest_incident_id is None
@@ -1602,7 +1602,7 @@ class DemoAutoSoakTracker:
         elif event_type == "CLOSED_FILL":
             if state.event_count == 0 or generation != state.clean_generation:
                 raise SoakTrackerIntegrityError("closed fill generation is invalid")
-            if not isinstance(source_receipt, SoakSourceReceipt):
+            if type(source_receipt) is not SoakSourceReceipt:
                 raise SoakTrackerIntegrityError("closed fill source type is invalid")
             symbol = str(dict(source_receipt.details).get("symbol", ""))
             if _SYMBOL_RE.fullmatch(symbol) is None:
@@ -1613,7 +1613,7 @@ class DemoAutoSoakTracker:
         else:
             if state.event_count == 0 or generation != state.clean_generation + 1:
                 raise SoakTrackerIntegrityError("incident must advance the clean generation")
-            if not isinstance(source_receipt, SoakSourceReceipt):
+            if type(source_receipt) is not SoakSourceReceipt:
                 raise SoakTrackerIntegrityError("incident source type is invalid")
             incident_id = source_receipt.subject_id
             reason = str(dict(source_receipt.details).get("reason_code", ""))
@@ -1700,7 +1700,7 @@ class DemoAutoSoakTracker:
                     review_restart_count=state.review_restart_count,
                     latest_incident_id=(
                         source_receipt.subject_id
-                        if isinstance(source_receipt, SoakSourceReceipt)
+                        if type(source_receipt) is SoakSourceReceipt
                         else None
                     ),
                     demotion_latched=True,
@@ -1721,7 +1721,7 @@ class DemoAutoSoakTracker:
                         state.xauusd_closed_fills
                         + (
                             1
-                            if isinstance(source_receipt, SoakSourceReceipt)
+                            if type(source_receipt) is SoakSourceReceipt
                             and dict(source_receipt.details)["symbol"] == "XAUUSD"
                             else 0
                         )
@@ -1791,7 +1791,7 @@ class DemoAutoSoakTracker:
         source_receipt: SoakSourceReceipt | DualReviewReceipt,
     ) -> SoakEventReceipt:
         normalized_event_id = _identifier("event_id", event_id)
-        if not isinstance(source_receipt, (SoakSourceReceipt, DualReviewReceipt)):
+        if type(source_receipt) not in {SoakSourceReceipt, DualReviewReceipt}:
             raise TypeError("source_receipt must be a verified sealed receipt")
         verified_source = self._verify_ingestion_receipt(
             event_type,
@@ -1800,7 +1800,7 @@ class DemoAutoSoakTracker:
         )
         if verified_source != source_receipt:
             raise SoakTrackerSourceError("source receipt does not verify exactly")
-        if isinstance(verified_source, DualReviewReceipt):
+        if type(verified_source) is DualReviewReceipt:
             observed_at_utc = verified_source.reviewed_at_utc
             dedup_key = f"SOAK_RESTART:{verified_source.review_receipt_id}"
         elif event_type == "SOAK_STARTED":
@@ -1849,7 +1849,7 @@ class DemoAutoSoakTracker:
             elif (
                 event_type == "SOAK_RESTARTED_AFTER_REVIEW"
                 and (
-                    not isinstance(verified_source, DualReviewReceipt)
+                    type(verified_source) is not DualReviewReceipt
                     or state.latest_incident_id is None
                     or verified_source.incident_id != state.latest_incident_id
                 )
@@ -1939,7 +1939,7 @@ class DemoAutoSoakTracker:
                     review_restart_count=state.review_restart_count,
                     latest_incident_id=(
                         verified_source.subject_id
-                        if isinstance(verified_source, SoakSourceReceipt)
+                        if type(verified_source) is SoakSourceReceipt
                         else None
                     ),
                     demotion_latched=True,
@@ -1960,7 +1960,7 @@ class DemoAutoSoakTracker:
                         state.xauusd_closed_fills
                         + (
                             1
-                            if isinstance(verified_source, SoakSourceReceipt)
+                            if type(verified_source) is SoakSourceReceipt
                             and dict(verified_source.details)["symbol"] == "XAUUSD"
                             else 0
                         )

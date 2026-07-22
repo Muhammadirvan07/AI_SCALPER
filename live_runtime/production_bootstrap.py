@@ -3,8 +3,9 @@
 Importing, constructing, or statically validating this module never connects to
 MetaTrader and never submits an order.  Filesystem materialization, credential
 resolution, MT5 initialization, supervisor startup, and bounded execution are
-separate explicit phases.  The current v1 composition accepts only controlled
-manual ``DEMO`` mode; automatic-demo and live modes remain policy-locked.
+separate explicit phases.  The checked-in release accepts only controlled
+manual ``DEMO`` mode.  A complete ``DEMO_AUTO`` composition exists behind the
+single reviewed execution-policy lock; live mode remains unsupported.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import threading
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, Sequence
 
+import execution_policy
 from execution_policy import LIVE_ALLOWED, SAFE_TO_DEMO_AUTO_ORDER
 
 from .contracts import (
@@ -62,6 +64,7 @@ from .reconciliation import (
 )
 from .runtime_service import LiveRuntimeService
 from .runtime_supervisor import (
+    RuntimeDemoAutoExecutionResult,
     RuntimeManualDemoExecutionResult,
     RuntimeNewsGuardReceipt,
     RuntimeStageAuthorizationPorts,
@@ -192,6 +195,10 @@ class ProductionRuntimeConfig:
     expected_manual_approver_id: str | None = None
     expected_manual_approval_key_id: str | None = None
     manual_approval_key_fingerprint_sha256: str | None = None
+    demo_auto_session_binding_sha256: str | None = None
+    demo_auto_session_ledger_id: str | None = None
+    demo_auto_session_custody_key_id: str | None = None
+    demo_auto_session_custody_key_fingerprint_sha256: str | None = None
     live_allowed: bool = LIVE_ALLOWED
     safe_to_demo_auto_order: bool = SAFE_TO_DEMO_AUTO_ORDER
     order_capability: str = ORDER_CAPABILITY
@@ -218,8 +225,15 @@ class ProductionRuntimeConfig:
         object.__setattr__(self, "server", require_text("server", self.server))
         environment = require_text("environment", self.environment, upper=True)
         mode = require_text("mode", self.mode, upper=True)
-        if environment != "DEMO" or mode != "DEMO":
-            raise ValueError("GATED v1 production bootstrap is restricted to manual DEMO")
+        if environment != "DEMO" or mode not in {"DEMO", "DEMO_AUTO"}:
+            raise ValueError(
+                "GATED v1 production bootstrap is restricted to DEMO stages"
+            )
+        if (
+            mode == "DEMO_AUTO"
+            and not execution_policy.demo_auto_execution_policy_enabled()
+        ):
+            raise ValueError("DEMO_AUTO_MODE_POLICY_LOCKED")
         object.__setattr__(self, "environment", environment)
         object.__setattr__(self, "mode", mode)
         object.__setattr__(
@@ -355,6 +369,62 @@ class ProductionRuntimeConfig:
                 raise ValueError(
                     "manual approval key fingerprint must be trust-domain distinct"
                 )
+        session_trust = (
+            self.demo_auto_session_binding_sha256,
+            self.demo_auto_session_ledger_id,
+            self.demo_auto_session_custody_key_id,
+            self.demo_auto_session_custody_key_fingerprint_sha256,
+        )
+        if self.mode == "DEMO_AUTO":
+            if not all(value is not None for value in session_trust):
+                raise ValueError(
+                    "DEMO_AUTO session trust fields must be complete"
+                )
+            object.__setattr__(
+                self,
+                "demo_auto_session_binding_sha256",
+                require_hash(
+                    "demo_auto_session_binding_sha256",
+                    self.demo_auto_session_binding_sha256,
+                ),
+            )
+            object.__setattr__(
+                self,
+                "demo_auto_session_ledger_id",
+                require_text(
+                    "demo_auto_session_ledger_id",
+                    self.demo_auto_session_ledger_id,
+                ),
+            )
+            object.__setattr__(
+                self,
+                "demo_auto_session_custody_key_id",
+                require_text(
+                    "demo_auto_session_custody_key_id",
+                    self.demo_auto_session_custody_key_id,
+                ),
+            )
+            object.__setattr__(
+                self,
+                "demo_auto_session_custody_key_fingerprint_sha256",
+                require_hash(
+                    "demo_auto_session_custody_key_fingerprint_sha256",
+                    self.demo_auto_session_custody_key_fingerprint_sha256,
+                ),
+            )
+            if self.demo_auto_session_custody_key_id in trust_key_ids:
+                raise ValueError(
+                    "DEMO_AUTO session custody key ID must be trust-domain distinct"
+                )
+            if (
+                self.demo_auto_session_custody_key_fingerprint_sha256
+                in trust_fingerprints
+            ):
+                raise ValueError(
+                    "DEMO_AUTO session custody fingerprint must be trust-domain distinct"
+                )
+        elif any(value is not None for value in session_trust):
+            raise ValueError("DEMO config cannot carry DEMO_AUTO session trust")
         if type(self.live_allowed) is not bool or type(
             self.safe_to_demo_auto_order
         ) is not bool:
@@ -466,6 +536,16 @@ class ProductionRuntimeConfig:
             ),
             "manual_approval_key_fingerprint_sha256": (
                 self.manual_approval_key_fingerprint_sha256
+            ),
+            "demo_auto_session_binding_sha256": (
+                self.demo_auto_session_binding_sha256
+            ),
+            "demo_auto_session_ledger_id": self.demo_auto_session_ledger_id,
+            "demo_auto_session_custody_key_id": (
+                self.demo_auto_session_custody_key_id
+            ),
+            "demo_auto_session_custody_key_fingerprint_sha256": (
+                self.demo_auto_session_custody_key_fingerprint_sha256
             ),
             "live_allowed": self.live_allowed,
             "safe_to_demo_auto_order": self.safe_to_demo_auto_order,
@@ -804,6 +884,21 @@ class ProductionRuntimePorts:
     clock_provider: Callable[[], datetime]
     promotion_evidence_key_provider: Callable[[str], str | bytes] | None = None
     manual_approval_key_provider: Callable[[str], str | bytes] | None = None
+    demo_auto_ipc_input_provider: Callable[[RuntimeSupervisorDecision], object] | None = None
+    demo_auto_session_lease_provider: Callable[
+        [RuntimeSupervisorDecision, object], object
+    ] | None = None
+    demo_auto_session_store: object | None = None
+    demo_auto_permit_validation_provider: Callable[
+        [RuntimeSupervisorDecision, object], object
+    ] | None = None
+    demo_auto_promotion_validation_provider: Callable[
+        [RuntimeSupervisorDecision, object], object
+    ] | None = None
+    demo_auto_environment_arm_provider: Callable[
+        [RuntimeSupervisorDecision, object], object
+    ] | None = None
+    demo_auto_execution_cycle_provider: Callable[..., RuntimeDemoAutoExecutionResult] | None = None
 
     def __post_init__(self) -> None:
         if self.mt5_module is not None:
@@ -847,10 +942,26 @@ class ProductionRuntimePorts:
         for name in (
             "promotion_evidence_key_provider",
             "manual_approval_key_provider",
+            "demo_auto_ipc_input_provider",
+            "demo_auto_session_lease_provider",
+            "demo_auto_permit_validation_provider",
+            "demo_auto_promotion_validation_provider",
+            "demo_auto_environment_arm_provider",
+            "demo_auto_execution_cycle_provider",
         ):
             value = getattr(self, name)
             if value is not None:
                 _callable(name, value)
+        if self.demo_auto_session_store is not None:
+            from .demo_auto_session_capability import (
+                DemoAutoSessionCapabilityStore,
+            )
+
+            if type(self.demo_auto_session_store) is not DemoAutoSessionCapabilityStore:
+                raise TypeError(
+                    "demo_auto_session_store must be exact "
+                    "DemoAutoSessionCapabilityStore or None"
+                )
         if type(self.stage_binding) is not StageBinding:
             raise TypeError("stage_binding must be exact StageBinding")
 
@@ -927,6 +1038,58 @@ def _validate_bindings(
         or risk_binding.account_currency != config.account_currency
     ):
         raise ProductionBootstrapError("RISK_LEDGER_BINDING_MISMATCH")
+    if config.mode == "DEMO_AUTO":
+        from .demo_auto_session_capability import (
+            DemoAutoSessionBinding,
+            DemoAutoSessionCapabilityStore,
+        )
+
+        symbol_allowed, _symbol_reason = execution_policy.validate_execution_symbol(
+            stage.symbol
+        )
+        if not symbol_allowed:
+            raise ProductionBootstrapError("DEMO_AUTO_SYMBOL_POLICY_DENIED")
+        required = (
+            "demo_auto_ipc_input_provider",
+            "demo_auto_session_lease_provider",
+            "demo_auto_permit_validation_provider",
+            "demo_auto_promotion_validation_provider",
+            "demo_auto_environment_arm_provider",
+            "demo_auto_execution_cycle_provider",
+        )
+        missing = tuple(name for name in required if not callable(getattr(ports, name)))
+        if type(ports.demo_auto_session_store) is not DemoAutoSessionCapabilityStore:
+            missing += ("demo_auto_session_store",)
+        if missing:
+            raise ProductionBootstrapError(
+                "DEMO_AUTO_RUNTIME_PORTS_MISSING:" + ",".join(missing)
+            )
+        store = ports.demo_auto_session_store
+        session_binding = store.binding
+        if type(session_binding) is not DemoAutoSessionBinding:
+            raise ProductionBootstrapError(
+                "DEMO_AUTO_SESSION_STORE_BINDING_NOT_SEALED"
+            )
+        if (
+            session_binding.content_sha256
+            != config.demo_auto_session_binding_sha256
+            or session_binding.ledger_id != config.demo_auto_session_ledger_id
+            or session_binding.custody_key_id
+            != config.demo_auto_session_custody_key_id
+            or session_binding.custody_key_fingerprint_sha256
+            != config.demo_auto_session_custody_key_fingerprint_sha256
+            or session_binding.stage_binding != stage
+            or session_binding.supervisor_binding.account_id_sha256
+            != config.account_alias_sha256
+            or session_binding.supervisor_binding.server != config.server
+            or session_binding.supervisor_binding.environment != config.environment
+            or session_binding.supervisor_binding.journal_sha256
+            != config.journal_sha256
+            or session_binding.supervisor_binding.commit_sha != config.commit_sha
+            or session_binding.supervisor_binding.config_sha256
+            != config.config_sha256
+        ):
+            raise ProductionBootstrapError("DEMO_AUTO_SESSION_STORE_BINDING_MISMATCH")
 
 
 def _verify_mt5_installation_against_config(
@@ -980,30 +1143,45 @@ def validate_production_bootstrap_contract(
     """Pure static validation: no provider, filesystem, credential, or broker call."""
 
     _validate_bindings(config, ports)
+    blockers = [
+        "EXTERNAL_CREDENTIAL_SESSION_RECEIPT_REQUIRED",
+        "EXTERNAL_DECISION_DATA_PROVIDER_REQUIRED",
+        "EXTERNAL_JOURNAL_CHECKPOINT_REQUIRED",
+        "EXTERNAL_JOURNAL_CHECKPOINT_CAS_EXPORTER_REQUIRED",
+        "EXTERNAL_JOURNAL_PROVISIONING_RECEIPT_REQUIRED",
+        "EXACT_INSTALLED_MT5_MODULE_ATTESTATION_REQUIRED",
+        "EXTERNAL_PERMIT_SECRET_PROVIDER_REQUIRED",
+        "EXTERNAL_PROMOTION_EVIDENCE_TRUST_REQUIRED",
+        "EXTERNAL_RECONCILIATION_PROVIDER_REQUIRED",
+        "EXTERNAL_RISK_SOURCE_AND_STATE_RECEIPTS_REQUIRED",
+        "EXTERNAL_RISK_CHECKPOINT_CAS_EXPORTER_REQUIRED",
+        "EXTERNAL_RUNTIME_FACT_PROVIDER_REQUIRED",
+        "EXTERNAL_SIGNED_NEWS_RECEIPT_REQUIRED",
+        "EXTERNAL_STAGE_AUTHORIZATION_REQUIRED",
+        "EXTERNAL_SUPERVISOR_CHECKPOINT_REQUIRED",
+        "EXTERNAL_TRUSTED_CLOCK_PROVIDER_REQUIRED",
+        "EXTERNAL_WORM_AUDIT_RECEIPT_REQUIRED",
+    ]
+    if config.mode == "DEMO":
+        blockers.extend(
+            (
+                "EXTERNAL_EXECUTION_CYCLE_PROVIDER_REQUIRED",
+                "EXTERNAL_MANUAL_APPROVAL_PROVIDER_REQUIRED",
+            )
+        )
+    else:
+        blockers.extend(
+            (
+                "DEMO_AUTO_REVIEWED_POLICY_RELEASE_REQUIRED",
+                "DEMO_AUTO_ONE_USE_IPC_REQUIRED",
+                "DEMO_AUTO_CURRENT_SESSION_LEASE_REQUIRED",
+                "DEMO_AUTO_FRESH_PERMIT_PROMOTION_ARM_REQUIRED",
+            )
+        )
     return ProductionBootstrapContractReport(
         contract_valid=True,
         binding_sha256=config.safe_binding_sha256,
-        blockers=(
-            "EXTERNAL_CREDENTIAL_SESSION_RECEIPT_REQUIRED",
-            "EXTERNAL_DECISION_PROVIDER_REQUIRED",
-            "EXTERNAL_EXECUTION_CYCLE_PROVIDER_REQUIRED",
-            "EXTERNAL_JOURNAL_CHECKPOINT_REQUIRED",
-            "EXTERNAL_JOURNAL_CHECKPOINT_CAS_EXPORTER_REQUIRED",
-            "EXTERNAL_JOURNAL_PROVISIONING_RECEIPT_REQUIRED",
-            "EXTERNAL_MANUAL_APPROVAL_PROVIDER_REQUIRED",
-            "EXACT_INSTALLED_MT5_MODULE_ATTESTATION_REQUIRED",
-            "EXTERNAL_PERMIT_SECRET_PROVIDER_REQUIRED",
-            "EXTERNAL_PROMOTION_EVIDENCE_TRUST_REQUIRED",
-            "EXTERNAL_RECONCILIATION_PROVIDER_REQUIRED",
-            "EXTERNAL_RISK_SOURCE_AND_STATE_RECEIPTS_REQUIRED",
-            "EXTERNAL_RISK_CHECKPOINT_CAS_EXPORTER_REQUIRED",
-            "EXTERNAL_RUNTIME_FACT_PROVIDER_REQUIRED",
-            "EXTERNAL_SIGNED_NEWS_RECEIPT_REQUIRED",
-            "EXTERNAL_STAGE_AUTHORIZATION_REQUIRED",
-            "EXTERNAL_SUPERVISOR_CHECKPOINT_REQUIRED",
-            "EXTERNAL_TRUSTED_CLOCK_PROVIDER_REQUIRED",
-            "EXTERNAL_WORM_AUDIT_RECEIPT_REQUIRED",
-        ),
+        blockers=tuple(blockers),
     )
 
 
@@ -1668,6 +1846,22 @@ class ProductionRuntimeBootstrap:
         )
         if journal.journal_sha256 != self.config.journal_sha256:
             raise ProductionBootstrapError("EXECUTION_JOURNAL_BINDING_MISMATCH")
+        if self.config.mode == "DEMO_AUTO":
+            from .demo_auto_session_capability import (
+                DemoAutoSessionCapabilityStore,
+            )
+
+            store = self.ports.demo_auto_session_store
+            if type(store) is not DemoAutoSessionCapabilityStore:
+                raise ProductionBootstrapError(
+                    "DEMO_AUTO_SESSION_STORE_REQUIRED"
+                )
+            try:
+                store.recover_dispatch_reservations(journal)
+            except Exception as exc:
+                raise ProductionBootstrapError(
+                    "DEMO_AUTO_DISPATCH_STARTUP_RECOVERY_FAILED"
+                ) from exc
         try:
             mt5_installation = _verify_mt5_installation_against_config(
                 self.config,
@@ -1790,6 +1984,48 @@ class ProductionRuntimeBootstrap:
                 )
             return result
 
+        def execute_demo_auto_cycle(
+            decision: RuntimeSupervisorDecision,
+            ipc_input: object,
+            session_store: object,
+            session_lease: object,
+            session_checkpoint: object,
+            session_dispatch_verification: object,
+            permit_validation: object,
+            promotion_validation: object,
+            environment_arm: object,
+            supervisor_checkpoint: RuntimeSupervisorCheckpoint,
+            journal_checkpoint: ExecutionJournalCheckpoint,
+            risk_receipt: RiskStateReceipt,
+            reconciliation: RuntimeReconciliationRiskResult,
+        ) -> RuntimeDemoAutoExecutionResult:
+            provider = self.ports.demo_auto_execution_cycle_provider
+            if not callable(provider):
+                raise ProductionBootstrapError(
+                    "DEMO_AUTO_EXECUTION_CYCLE_PROVIDER_REQUIRED"
+                )
+            result = provider(
+                runtime_service,
+                decision,
+                ipc_input,
+                session_store,
+                session_lease,
+                session_checkpoint,
+                session_dispatch_verification,
+                permit_validation,
+                promotion_validation,
+                environment_arm,
+                supervisor_checkpoint,
+                journal_checkpoint,
+                risk_receipt,
+                reconciliation,
+            )
+            if type(result) is not RuntimeDemoAutoExecutionResult:
+                raise ProductionBootstrapError(
+                    "DEMO_AUTO_EXECUTION_CYCLE_RISK_EVIDENCE_INVALID"
+                )
+            return result
+
         def journal_checkpoint_verifier(
             checkpoint: ExecutionJournalCheckpoint,
             prior_checkpoint: ExecutionJournalCheckpoint | None,
@@ -1862,6 +2098,25 @@ class ProductionRuntimeBootstrap:
             manual_approval_provider=self.ports.manual_approval_provider,
             manual_demo_policy_callback=self.ports.manual_demo_policy_callback,
             execution_service=execute_cycle,
+            demo_auto_ipc_input_provider=(
+                self.ports.demo_auto_ipc_input_provider
+            ),
+            demo_auto_session_lease_provider=(
+                self.ports.demo_auto_session_lease_provider
+            ),
+            demo_auto_session_store=self.ports.demo_auto_session_store,
+            demo_auto_permit_validation_provider=(
+                self.ports.demo_auto_permit_validation_provider
+            ),
+            demo_auto_promotion_validation_provider=(
+                self.ports.demo_auto_promotion_validation_provider
+            ),
+            demo_auto_environment_arm_provider=(
+                self.ports.demo_auto_environment_arm_provider
+            ),
+            demo_auto_execution_service=(
+                execute_demo_auto_cycle if self.config.mode == "DEMO_AUTO" else None
+            ),
             key_id=self.config.supervisor_key_id,
             key_provider=supervisor_key_provider,
             supervisor_checkpoint_provider=(

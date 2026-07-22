@@ -279,6 +279,17 @@ class AccountCurrencyRiskTests(unittest.TestCase):
                 captured_at_utc=NOW,
             )
 
+        conversion = _conversion()
+
+        class ForgedConversion(USDRiskCapConversion):
+            pass
+
+        forged = object.__new__(ForgedConversion)
+        for name in conversion.__dataclass_fields__:
+            object.__setattr__(forged, name, getattr(conversion, name))
+        with self.assertRaisesRegex(TypeError, "sealed USDRiskCapConversion"):
+            _context(forged)
+
     def test_direct_and_inverse_quotes_use_conservative_spread_side(self) -> None:
         jpy_module = CurrencyFakeMT5(account_currency="JPY")
         direct = _adapter(

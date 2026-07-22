@@ -30,6 +30,10 @@ from build_windows_release import (
     _verify_local_import_closure,
     _write_exclusive,
 )
+from live_runtime.live_grade_gate_catalog import (
+    catalog_report,
+    classify_gate_codes,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -59,11 +63,11 @@ ACTIVATION_REQUIRES = (
 )
 READINESS_BLOCKERS = (
     "ASYMMETRIC_PUBLIC_VERIFICATION_OR_EXTERNAL_LAUNCHER_ATTESTATION_REQUIRED",
-    "REVIEWED_WINDOWS_SERVICE_FACTORY_REQUIRED",
+    "EXTERNAL_FACTORY_PROVIDER_CONFIGURATION_REQUIRED",
     "EXTERNAL_DEMO_AUTO_IPC_CONFIGURATION_REQUIRED",
-    "DOWNSTREAM_DECISION_TO_INTENT_ONE_USE_JOURNAL_BINDING_REQUIRED",
+    "EXTERNAL_DEMO_AUTO_SESSION_CUSTODY_REQUIRED",
     "EXTERNAL_CREDENTIAL_SESSION_RECEIPT_REQUIRED",
-    "EXTERNAL_DECISION_PROVIDER_REQUIRED",
+    "EXTERNAL_DECISION_DATA_PROVIDER_REQUIRED",
     "EXTERNAL_EXECUTION_CYCLE_PROVIDER_REQUIRED",
     "EXTERNAL_JOURNAL_CHECKPOINT_REQUIRED",
     "EXTERNAL_JOURNAL_CHECKPOINT_CAS_EXPORTER_REQUIRED",
@@ -101,7 +105,21 @@ REQUIRED_SERVICE_ENTRYPOINT = "run_windows_gated_execution_service.py"
 REQUIRED_SERVICE_RUNTIME = "live_runtime/windows_service_entrypoint.py"
 REQUIRED_DECISION_IPC = "live_runtime/decision_ipc.py"
 REQUIRED_DEMO_AUTO_IPC_CONSUMER = "live_runtime/demo_auto_ipc_consumer.py"
+REQUIRED_DEMO_AUTO_RISK_INTENT_PIPELINE = (
+    "live_runtime/demo_auto_risk_intent_pipeline.py"
+)
+REQUIRED_DEMO_AUTO_SESSION_CAPABILITY = (
+    "live_runtime/demo_auto_session_capability.py"
+)
+REQUIRED_DEMO_AUTO_SOAK_PROJECTION = (
+    "live_runtime/demo_auto_soak_projection.py"
+)
+REQUIRED_DEMO_AUTO_SOAK_COHORT = "live_runtime/demo_auto_soak_cohort.py"
+REQUIRED_DEMO_AUTO_SOAK_TRACKER = "live_runtime/soak_tracker.py"
+REQUIRED_LIVE_GRADE_GATE_CATALOG = "live_runtime/live_grade_gate_catalog.py"
 REQUIRED_SIGNED_RELEASE_TRUST = "live_runtime/signed_release_trust.py"
+REQUIRED_ASYMMETRIC_RELEASE_TRUST = "live_runtime/asymmetric_release_trust.py"
+REQUIRED_FACTORY_TEMPLATE = "live_runtime/windows_service_factory_template.py"
 REQUIRED_CONFIG = "config/windows_execution_service_allowlist.v1.json"
 REQUIRED_DEPENDENCY_FILES = {
     "pylock.windows-cp312.toml",
@@ -1088,15 +1106,24 @@ def load_execution_allowlist(path: Path) -> dict[str, Any]:
         REQUIRED_MT5_ATTESTATION,
         REQUIRED_ENTRYPOINT,
         REQUIRED_DEMO_AUTO_IPC_CONSUMER,
+        REQUIRED_DEMO_AUTO_RISK_INTENT_PIPELINE,
+        REQUIRED_DEMO_AUTO_SESSION_CAPABILITY,
+        REQUIRED_DEMO_AUTO_SOAK_COHORT,
+        REQUIRED_DEMO_AUTO_SOAK_PROJECTION,
+        REQUIRED_DEMO_AUTO_SOAK_TRACKER,
+        REQUIRED_LIVE_GRADE_GATE_CATALOG,
         REQUIRED_SIGNED_RELEASE_TRUST,
+        REQUIRED_ASYMMETRIC_RELEASE_TRUST,
+        REQUIRED_FACTORY_TEMPLATE,
         REQUIRED_CONFIG,
         *REQUIRED_DEPENDENCY_FILES,
     }
     if not required.issubset(normalized):
         raise ReleaseBuildError(
             "execution allowlist is missing bootstrap, adapter, MT5 attestation, "
-            "DEMO_AUTO IPC consumer, signed release-trust foundation, validator, "
-            "or embedded config"
+            "DEMO_AUTO IPC/risk-intent/session/soak projection/cohort foundations, "
+            "readiness gate catalog, signed release-trust foundation, static factory template, "
+            "validator, or embedded config"
         )
     result = dict(payload)
     result["files"] = normalized
@@ -1314,6 +1341,21 @@ def build_execution_release(
         root, allowlist["files"], tracked, commit=commit
     )
     dependency_lock_summary = _validate_dependency_lock_set(sources)
+    full_gate_report = catalog_report()
+    full_pending_gate_catalog = {
+        "schema_version": full_gate_report["schema_version"],
+        "pending_gate_count": full_gate_report["pending_gate_count"],
+        "pending_gates": list(full_gate_report["pending_gates"]),
+        "pending_by_category": {
+            category: list(full_gate_report["pending_by_category"][category])
+            for category in (
+                "EXTERNAL_CONFIGURATION",
+                "TEMPORAL_EVIDENCE",
+                "MANUAL_APPROVAL",
+            )
+        },
+        "production_execution_ready": False,
+    }
     try:
         embedded = json.loads(sources[allowlist_relative].decode("utf-8"))
     except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -1338,13 +1380,63 @@ def build_execution_release(
         "dependency_lock_summary": dependency_lock_summary,
         "production_execution_ready": False,
         "readiness_blockers": list(READINESS_BLOCKERS),
+        "readiness_blockers_by_category": {
+            category: list(codes)
+            for category, codes in classify_gate_codes(
+                READINESS_BLOCKERS
+            ).items()
+        },
+        "full_pending_gate_catalog": full_pending_gate_catalog,
+        "demo_auto_gate_semantics": {
+            "soak_output_gate_codes": [
+                "DEMO_AUTO_SOAK_30_DAYS_REQUIRED",
+                "DEMO_AUTO_SOAK_50_CLOSED_FILLS_REQUIRED",
+                "DEMO_AUTO_SOAK_20_XAUUSD_CLOSED_FILLS_REQUIRED",
+            ],
+            "soak_output_is_demo_auto_entry_prerequisite": False,
+            "purpose": "POST_ACTIVATION_SOAK_AND_LIVE_PROMOTION_EVIDENCE",
+        },
+        "decision_process": {
+            "bundle_membership": "SEPARATE_NOT_INCLUDED",
+            "foundation": "BROKERLESS_DECISION_PRODUCER_PRESENT",
+            "external_data_configuration": "REQUIRED",
+        },
         "foundation_status": {
             "demo_auto_ipc_consumer": (
                 "PRESENT_NON_EXECUTABLE_EXTERNAL_CONFIGURATION_REQUIRED"
             ),
+            "demo_auto_risk_intent_pipeline": (
+                "PRESENT_LOCKED_NON_EXECUTABLE_ONE_USE_JOURNAL_BOUND"
+            ),
+            "demo_auto_session_capability": (
+                "PRESENT_DORMANT_RENEWABLE_EXTERNAL_CAS_CUSTODY_REQUIRED"
+            ),
+            "demo_auto_soak_projection": (
+                "PRESENT_NON_AUTHORITY_OUTPUT_ONLY_EXTERNAL_CUSTODY_REQUIRED"
+            ),
+            "demo_auto_soak_cohort": (
+                "PRESENT_DENY_ONLY_ACCOUNT_LEVEL_30_DAY_50_FILL_20_XAU_AGGREGATOR"
+            ),
+            "demo_auto_soak_tracker": (
+                "PRESENT_DENY_ONLY_POST_ACTIVATION_EVIDENCE_ACCOUNTING"
+            ),
+            "live_grade_gate_catalog": (
+                "PRESENT_DENY_BY_DEFAULT_CATEGORY_CLASSIFICATION"
+            ),
+            "brokerless_decision_producer": (
+                "SEPARATE_DECISION_PROCESS_NOT_BUNDLED_"
+                "EXTERNAL_DATA_CONFIGURATION_REQUIRED"
+            ),
             "signed_release_trust": (
                 "PRESENT_HMAC_LOCAL_TEST_ONLY_PRODUCTION_ASYMMETRIC_OR_"
                 "EXTERNAL_LAUNCHER_REQUIRED"
+            ),
+            "asymmetric_release_trust": (
+                "PRESENT_RSA3072_PUBLIC_VERIFY_EXTERNAL_ATTESTATION_REQUIRED"
+            ),
+            "windows_service_factory_template": (
+                "PRESENT_STATIC_NON_MATERIALIZING_EXTERNAL_PROVIDER_"
+                "CONFIGURATION_REQUIRED"
             ),
         },
         "source_files": [

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import datetime, timedelta, timezone
 import unittest
 
@@ -437,6 +437,35 @@ class DemoSoakOperationsTests(unittest.TestCase):
         self.assertFalse(assessment.complete)
         self.assertIn("VPS_REBOOT", assessment.invalid_drills)
         self.assertFalse(assessment.ready_for_demo_auto_soak)
+
+    def test_observation_subclass_cannot_override_signature_verification(self):
+        class ForgedObservation(FailureDrillObservation):
+            def verify(self, secret):  # type: ignore[no-untyped-def]
+                return True
+
+        definition = manifest()
+        unsigned = FailureDrillObservation(
+            drill_id="VPS_REBOOT",
+            manifest_sha256=definition.manifest_sha256,
+            plan_sha256=definition.plan_sha256,
+            release_manifest_sha256=definition.release_manifest_sha256,
+            git_commit=definition.git_commit,
+            candidate_id=definition.candidate_id,
+            server=definition.server,
+            account_alias_sha256=definition.account_alias_sha256,
+            outcome="PASSED",
+            evidence_sha256="a" * 64,
+            observed_at_utc=NOW + timedelta(minutes=1),
+            observer_key_id="ops-review-key",
+        )
+        forged = ForgedObservation(
+            **{
+                field.name: getattr(unsigned, field.name)
+                for field in fields(FailureDrillObservation)
+            }
+        )
+        with self.assertRaisesRegex(TypeError, "exact FailureDrillObservation"):
+            FailureDrillTracker(definition, (forged,))
 
     def test_all_required_signed_passes_complete_drill_gate_only(self):
         definition = manifest()

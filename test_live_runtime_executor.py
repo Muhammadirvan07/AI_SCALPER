@@ -346,8 +346,6 @@ class StubAdapter:
         now,
     ):
         self.submit_calls += 1
-        if self.uncertain:
-            raise SubmissionUncertainError("connection lost after send")
         submission_proof = submission_lease.consume(
             journal_sha256=authorization.journal_sha256,
             intent_id=trade_intent.intent_id,
@@ -355,6 +353,8 @@ class StubAdapter:
             authorization_sha256=canonical_sha256(authorization),
             broker_request_sha256=preflight.request_sha256,
         )
+        if self.uncertain:
+            raise SubmissionUncertainError("connection lost after send")
         filled = 0.0 if self.receipt_state == "REJECTED" else 0.01
         return _mint_execution_receipt(
             submission_proof=submission_proof,

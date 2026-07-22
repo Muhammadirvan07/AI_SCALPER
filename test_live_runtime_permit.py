@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError, fields, replace
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
@@ -135,6 +135,21 @@ class PromotionPermitTests(unittest.TestCase):
                 issued_at=NOW - timedelta(seconds=1),
                 expires_at=NOW + timedelta(minutes=1),
             )
+
+    def test_permit_subclass_cannot_override_signature_verification(self) -> None:
+        class ForgedPermit(PromotionPermit):
+            def verify_signature(self, secret: str | bytes) -> bool:
+                return True
+
+        source = unsigned_permit()
+        forged = ForgedPermit(
+            **{
+                field.name: getattr(source, field.name)
+                for field in fields(PromotionPermit)
+            }
+        )
+        with self.assertRaisesRegex(TypeError, "exact PromotionPermit"):
+            validate(forged)
 
     def test_permit_is_frozen_and_id_is_stable_before_and_after_signing(self) -> None:
         unsigned = unsigned_permit()

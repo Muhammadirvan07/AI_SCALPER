@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError, fields, replace
 from datetime import datetime, timedelta, timezone
 import inspect
 import os
@@ -244,6 +244,21 @@ class ManualDemoApprovalTests(unittest.TestCase):
         self.assertNotIn(ACCOUNT, signed.canonical_json())
         with self.assertRaises(FrozenInstanceError):
             signed.intent_id = "forged"  # type: ignore[misc]
+
+    def test_approval_subclass_cannot_override_signature_verification(self) -> None:
+        class ForgedApproval(ManualDemoApproval):
+            def verify_signature(self, secret):  # type: ignore[no-untyped-def]
+                return True
+
+        unsigned = unsigned_approval()
+        forged = ForgedApproval(
+            **{
+                field.name: getattr(unsigned, field.name)
+                for field in fields(ManualDemoApproval)
+            }
+        )
+        with self.assertRaisesRegex(TypeError, "exact ManualDemoApproval"):
+            validate(forged)
 
     def test_validation_cannot_be_constructed_directly(self) -> None:
         with self.assertRaisesRegex(TypeError, "validate_manual_demo_approval"):

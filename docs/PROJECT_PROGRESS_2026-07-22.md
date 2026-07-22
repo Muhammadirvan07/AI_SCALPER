@@ -56,6 +56,28 @@ Audit jalur broker menemukan dan menutup beberapa trust-boundary gap:
   memverifikasi stage, permit, environment arm sebelum/sesudah queue CAS, lalu
   hanya menghasilkan sealed risk/intent input atau no-action. Ia tidak
   mempunyai adapter, callback, atau primitive pengiriman order;
+- locked demo-auto risk/intent pipeline kini mengikat output consumer ke satu
+  terminal `RISK_REJECTED`/`EXPIRED` journal record. Dormant renewable session
+  capability memakai replay protection serta external CAS custody, sedangkan
+  deny-by-default live-grade gate catalog mengelompokkan blocker lokal,
+  eksternal, temporal, dan manual. Ketiganya tetap mengekspor order capability
+  `DISABLED`, `live_allowed=false`, dan `safe_to_demo_auto_order=false` sesuai
+  kontraknya;
+- brokerless M15 decision producer tersedia sebagai proses terpisah dan tidak
+  dimasukkan ke executor release. Ia sekarang memiliki deterministic
+  `WINDOWS_DECISION_SERVICE_V1` dengan exact allowlist/import closure, pinned
+  dependency lock tanpa broker SDK, non-materializing factory contract, dan
+  validate-only runner. Finalized-data provider, trusted clock, signing/cursor
+  custody, dan Windows service identity/configuration tetap menjadi input
+  eksternal yang harus direview;
+- execution release sekarang menyertakan authenticated broker-fact
+  `demo_auto_soak_projection` beserta exact `soak_tracker` dependency. Keduanya
+  hanya membuat deny-only evidence accounting dan tidak dapat mengaktifkan atau
+  mengirim order. Validator/manifest/validate-only runner menampilkan seluruh
+  pending gate dalam kelompok external configuration, temporal evidence, dan
+  manual approval tanpa readiness percentage. Ambang 30 hari, 50 closed fill,
+  dan 20 XAU closed fill diperlakukan sebagai output post-activation untuk
+  soak/live promotion, bukan prasyarat memasuki DEMO_AUTO;
 - manual-demo supervisor kini membuat signed `PRE_DISPATCH` news checkpoint.
   Setelah callback approval/policy, decision, approval, journal, risk, facts,
   account snapshot, lease, dan signed successor news diperiksa ulang tepat
@@ -64,7 +86,15 @@ Audit jalur broker menemukan dan menutup beberapa trust-boundary gap:
 - signed release-trust HMAC tersedia hanya sebagai fondasi local/test.
   `SIGNED_RELEASE_TRUST_ENABLED=false` dan
   `HMAC_RELEASE_TRUST_PRODUCTION_READY=false`; production tetap membutuhkan
-  asymmetric public-key verification atau external trusted launcher.
+  asymmetric public-key verification atau external trusted launcher;
+- reviewed Windows factory template kini mengunci exact provider contract,
+  implementation/config hash, Credential Manager reference per purpose, serta
+  Task Scheduler host/release/service-account/ACL binding. Generator dan
+  validator bersifat canonical serta non-materializing: tidak mengimpor
+  provider, membaca credential, membuat bootstrap, atau menghubungi broker.
+  Blocker generik factory diganti menjadi
+  `EXTERNAL_FACTORY_PROVIDER_CONFIGURATION_REQUIRED`; konfigurasi/provider dan
+  attestation Windows nyata tetap belum tersedia.
 
 ## Bukti shadow yang tersedia
 
@@ -87,7 +117,7 @@ minggu per lane, ditambah 100 OOS closed trades serta seluruh quality gate.
 | Evidence infrastructure | Tersedia | Phillip profile registration, exact prospective contract, 20 sessions, dan 8-week window belum selesai |
 | Read-only shadow | Berjalan diagnostic | Bukan broker-forward promotion evidence |
 | Manual demo | Komponen, tracker, risk, journal, reconciliation, dan supervisor tersedia | Global readiness receipt, keys, VPS controls, lalu 10 controlled orders belum selesai |
-| Demo-auto soak | Tracker, stage-control, rollback detection, operations plan, failure-drill model, dan inert decision-IPC consumer tersedia | Belum terhubung ke executor dan tetap policy-locked; 30 hari/50 fill/minimal 20 XAU belum dimulai |
+| Demo-auto soak | Tracker, stage-control, rollback detection, operations plan, failure-drill model, inert decision-IPC consumer, locked risk/intent journal pipeline, dormant renewable session capability, deny-by-default gate catalog, deterministic separate Windows decision release, dan static reviewed Windows factory template tersedia | Independent data/key/CAS/session custody, provider configuration, Windows activation, dan policy unlock belum ada; 30 hari/50 fill/minimal 20 XAU belum dimulai |
 | Live canary | Arsitektur executor/risk/reconciliation tersedia dan terkunci | Seluruh lane gate, soak, security/legal, dan manual ship approval belum selesai |
 
 ## Kelayakan risk cap pada lot minimum

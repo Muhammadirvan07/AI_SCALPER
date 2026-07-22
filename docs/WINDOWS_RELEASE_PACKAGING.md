@@ -1,9 +1,9 @@
 # Windows Release Packaging
 
-Status saat ini tetap **READ-ONLY SHADOW / NOT_READY**. Builder mendukung dua
-profile yang terisolasi: deployment/tooling untuk release operator dan minimal
-read-only shadow service. Keduanya tidak membuka manual-demo, demo-auto, atau
-live.
+Status saat ini tetap **READ-ONLY SHADOW / NOT_READY**. Builder mempertahankan
+profile terisolasi untuk deployment/tooling, minimal read-only broker shadow,
+dan brokerless decision-only service. Tidak satu pun profile tersebut membuka
+manual-demo, demo-auto, atau live.
 
 ## Mengapa repository tidak boleh langsung diarsipkan
 
@@ -69,6 +69,15 @@ credential bootstrap, executor, MT5 mutation adapter, atau order primitive.
 Actual clean-checkout build dan two-host/two-build reproducibility receipt tetap
 harus dikumpulkan pada exact Windows target sebelum service dipasang.
 
+Profile `WINDOWS_DECISION_SERVICE_V1` dibangun oleh dedicated
+`build_windows_decision_release.py` dari
+`config/windows_decision_service_allowlist.v1.json`. Profile ini memuat
+brokerless finalized-M15 producer, shared decision core, signed decision IPC,
+exact strategy dependencies, static factory contract, validate-only runner,
+dan dependency lock khusus tanpa MetaTrader5/keyring. Executor, risk, permit,
+reconciliation, broker adapter, credential, data, dan runtime state ditolak.
+Panduan lengkap ada di `docs/WINDOWS_DECISION_SERVICE_RELEASE.md`.
+
 ## Gate builder
 
 Builder menolak release bila:
@@ -121,6 +130,18 @@ python -I -S -B .\build_windows_release.py `
   --allowlist .\config\windows_shadow_service_allowlist.v1.json `
   --output C:\AI_SCALPER_RELEASES\ai-scalper-readonly-shadow-service-v1.zip
 ```
+
+Untuk menghasilkan decision-only service sebagai release yang terpisah:
+
+```powershell
+python -I -S -B .\build_windows_decision_release.py `
+  --allowlist .\config\windows_decision_service_allowlist.v1.json `
+  --output C:\AI_SCALPER_RELEASES\ai-scalper-decision-service-v1.zip
+```
+
+Decision bundle dan executor bundle wajib menggunakan release identity,
+service account, root, state directory, dan external factory manifest yang
+berbeda.
 
 Bangun artefak yang sama pada dua clean Windows CPython 3.12 environments.
 Masukkan kedua observasi exact ke `live_runtime.release_reproducibility`, lalu

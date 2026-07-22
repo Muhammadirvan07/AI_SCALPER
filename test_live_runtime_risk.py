@@ -140,6 +140,49 @@ def context(**changes: object) -> RiskContext:
 
 
 class RiskGovernorTests(unittest.TestCase):
+    @staticmethod
+    def _as_subclass(value, subclass):
+        forged = object.__new__(subclass)
+        for name in value.__dataclass_fields__:
+            object.__setattr__(forged, name, getattr(value, name))
+        return forged
+
+    def test_risk_boundary_rejects_contract_subclasses(self) -> None:
+        class ForgedIntent(TradeIntent):
+            pass
+
+        class ForgedBroker(BrokerSpec):
+            pass
+
+        class ForgedContext(RiskContext):
+            pass
+
+        cases = (
+            (
+                self._as_subclass(intent(), ForgedIntent),
+                broker(),
+                context(),
+                "exact TradeIntent",
+            ),
+            (
+                intent(),
+                self._as_subclass(broker(), ForgedBroker),
+                context(),
+                "exact BrokerSpec",
+            ),
+            (
+                intent(),
+                broker(),
+                self._as_subclass(context(), ForgedContext),
+                "exact RiskContext",
+            ),
+        )
+        for trade_intent, specification, risk_context, message in cases:
+            with self.subTest(message=message), self.assertRaisesRegex(
+                TypeError, message
+            ):
+                evaluate_risk(trade_intent, specification, risk_context)
+
     def test_normalizes_down_to_risk_and_broker_grid(self) -> None:
         result = evaluate_risk(intent(), broker(), context())
         self.assertFalse(result.allowed)

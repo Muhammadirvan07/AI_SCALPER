@@ -9,6 +9,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
+import execution_policy
 from live_runtime.risk_ledger import (
     AccountRiskSnapshot,
     RiskLedgerBinding,
@@ -16,6 +17,12 @@ from live_runtime.risk_ledger import (
     verify_risk_source_receipt,
 )
 from live_runtime.stage_authorization import StageBinding
+from live_runtime.demo_auto_session_capability import (
+    DemoAutoSessionBinding,
+    DemoAutoSessionCapabilityStore,
+    derive_demo_auto_session_identity,
+)
+from live_runtime.runtime_supervisor import RuntimeSupervisorBinding
 from live_runtime.controls import manual_demo_account_sha256
 from live_runtime.contracts import canonical_json
 from live_runtime.production_bootstrap import (
@@ -137,6 +144,21 @@ class ProductionBootstrapTests(unittest.TestCase):
                 "MetaTrader5/__init__.py"
             ),
         }
+        if str(changes.get("mode", "DEMO")).upper() == "DEMO_AUTO":
+            values.update(
+                {
+                    "demo_auto_session_binding_sha256": digest(
+                        "demo-auto-session-binding"
+                    ),
+                    "demo_auto_session_ledger_id": "demo-auto-session-ledger-v1",
+                    "demo_auto_session_custody_key_id": (
+                        "demo-auto-session-custody-key-v1"
+                    ),
+                    "demo_auto_session_custody_key_fingerprint_sha256": digest(
+                        "demo-auto-session-custody-key"
+                    ),
+                }
+            )
         values.update(changes)
         return ProductionRuntimeConfig(**values)
 
@@ -384,6 +406,88 @@ class ProductionBootstrapTests(unittest.TestCase):
         for mode, environment in (("LIVE", "LIVE"), ("DEMO_AUTO", "DEMO")):
             with self.subTest(mode=mode), self.assertRaises(ValueError):
                 self.config(mode=mode, environment=environment)
+
+    def test_demo_auto_contract_exists_only_under_reviewed_policy_patch(self):
+        calls, named = self.provider_calls()
+        values = self.ports(named).__dict__.copy()
+        authorization_id = "demo-auto-stage-authorization-v1"
+        authorization_sha256 = digest("demo-auto-stage-authorization")
+        validation_sha256 = digest("demo-auto-stage-validation")
+        ledger_id, session_id = derive_demo_auto_session_identity(
+            stage_binding_sha256=self.stage_binding.binding_sha256,
+            stage_authorization_id=authorization_id,
+            stage_authorization_sha256=authorization_sha256,
+            stage_validation_sha256=validation_sha256,
+        )
+        custody_fingerprint = digest("demo-auto-session-custody-key")
+        supervisor_binding = RuntimeSupervisorBinding(
+            account_id_sha256=self.account_sha,
+            server=self.stage_binding.server,
+            environment="DEMO",
+            account_currency="JPY",
+            journal_sha256=self.stage_binding.journal_sha256,
+            commit_sha=self.stage_binding.commit_sha,
+            config_sha256=self.stage_binding.config_sha256,
+            mode="DEMO_AUTO",
+            stage_binding_sha256=self.stage_binding.binding_sha256,
+            news_guard_trust_sha256=digest("news-guard-trust"),
+        )
+        session_binding = DemoAutoSessionBinding(
+            ledger_id=ledger_id,
+            session_id=session_id,
+            stage_binding=self.stage_binding,
+            stage_authorization_id=authorization_id,
+            stage_authorization_sha256=authorization_sha256,
+            stage_validation_sha256=validation_sha256,
+            supervisor_binding=supervisor_binding,
+            supervisor_checkpoint_key_id="demo-auto-supervisor-checkpoint-v1",
+            lease_key_id="demo-auto-session-lease-v1",
+            lease_key_fingerprint_sha256=digest("demo-auto-session-lease-key"),
+            custody_issuer_id="demo-auto-session-custody-v1",
+            custody_key_id="demo-auto-session-custody-key-v1",
+            custody_key_fingerprint_sha256=custody_fingerprint,
+        )
+        for field in (
+            "demo_auto_ipc_input_provider",
+            "demo_auto_session_lease_provider",
+            "demo_auto_permit_validation_provider",
+            "demo_auto_promotion_validation_provider",
+            "demo_auto_environment_arm_provider",
+            "demo_auto_execution_cycle_provider",
+        ):
+            values[field] = named(field)
+        store = object.__new__(DemoAutoSessionCapabilityStore)
+        store.binding = session_binding
+        values["demo_auto_session_store"] = store
+        with patch.object(
+            execution_policy,
+            "SAFE_TO_DEMO_AUTO_ORDER",
+            True,
+        ):
+            config = self.config(
+                mode="DEMO_AUTO",
+                demo_auto_session_binding_sha256=session_binding.content_sha256,
+                demo_auto_session_ledger_id=session_binding.ledger_id,
+                demo_auto_session_custody_key_id=session_binding.custody_key_id,
+                demo_auto_session_custody_key_fingerprint_sha256=(
+                    session_binding.custody_key_fingerprint_sha256
+                ),
+            )
+            report = validate_production_bootstrap_contract(
+                config,
+                ProductionRuntimePorts(**values),
+            )
+        self.assertTrue(report.contract_valid)
+        self.assertFalse(report.production_execution_ready)
+        self.assertIn("DEMO_AUTO_ONE_USE_IPC_REQUIRED", report.blockers)
+        self.assertIn("DEMO_AUTO_CURRENT_SESSION_LEASE_REQUIRED", report.blockers)
+        self.assertNotIn("DEMO_AUTO_30_DAY_50_FILL_SOAK_REQUIRED", report.blockers)
+        self.assertNotIn("EXTERNAL_DECISION_PROVIDER_REQUIRED", report.blockers)
+        self.assertIn(
+            "EXTERNAL_DECISION_DATA_PROVIDER_REQUIRED",
+            report.blockers,
+        )
+        self.assertEqual([], calls)
 
     def test_static_contract_validation_never_calls_mt5(self):
         calls, named = self.provider_calls()

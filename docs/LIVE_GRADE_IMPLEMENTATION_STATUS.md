@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-22 menjalankan **1.033 test** tanpa
+Validasi lokal terakhir pada 2026-07-23 menjalankan **1.164 test** tanpa
 kegagalan pada development Mac. Itu adalah software regression evidence, bukan
 Windows host acceptance, broker-forward evidence, atau izin trading.
 
@@ -19,7 +19,7 @@ membuka demo-auto maupun live.
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, byte-derived regulatory review package with two independent HMAC approvals, byte-derived pre-window base-calendar review with a separate human HMAC approval, prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
 | 3. Broker read-only shadow | FBS and Phillip diagnostic bindings observed; evidence not started | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip sanitized discovery-v3 inputs berhasil dibuat dan reviewed regular M15 base schedules tersedia, tetapi profile registration, regulatory approval, 20-session benchmark, broker-forward contract, dan promotion evidence tetap disabled/pending. FINEX tidak dipakai untuk observasi baru. |
 | 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, bounded Windows composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, dan non-mutating readiness report tersedia. Seluruh external gate serta sepuluh order demo belum selesai. |
-| 5. Demo-auto soak | Software boundary implemented but inert; soak not started | Decision IPC consumer, stage binding, tracker, dan operations contract tersedia, tetapi consumer tidak memiliki broker adapter/order callback, belum dikomposisikan ke executor, dan supervisor/policy tetap menolak `DEMO_AUTO`. Belum ada 30 hari, 50 fill, minimal 20 XAU, atau clean incident record. |
+| 5. Demo-auto soak | Local activation foundation complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision release, dan deny-only gate catalog tersedia. External provider/key/CAS custody, exact Windows activation, policy approval/unlock, serta actual soak evidence belum ada. |
 | 6. XAUUSD live canary | Not started | XAUUSD belum execution-approved dan belum memiliki promotion evidence/permit/soak maupun 50 closed live trades. |
 | 7. Pair expansion | Not started | EURUSD, USDJPY, dan AUDUSD harus mengulang seluruh gate per lane; hasil lane lain tidak boleh menutup kegagalan sebuah pair. |
 | 8. Scaling | Out of v1 | Tidak ada auto-scaling lot maupun risk cap. |
@@ -210,6 +210,13 @@ membuka demo-auto maupun live.
   `HMAC_RELEASE_TRUST_PRODUCTION_READY=false`; production membutuhkan
   asymmetric public-key verification atau external trusted-launcher
   attestation dengan policy yang dipin di luar release.
+- `asymmetric_release_trust.py` sekarang menyediakan verifier RSA-3072
+  public-key-only untuk short-lived external launcher attestation. Policy hash
+  dipin oleh launcher, private key tetap di luar VPS/repository, dan attestation
+  mengikat exact release/host/service-account/Task Scheduler. Runner
+  memverifikasi sebelum factory import dan mengecek freshness kembali sesudah
+  materialization. Receipt ini deny-only dan tidak menggantikan stage, permit,
+  arm, risk, atau approval.
 - `DemoAutoDecisionIPCConsumer` terikat `decision-ipc-binding-v2`, exact permit
   key/fingerprint, supervisor/journal/lane, fresh stage request, promotion
   permit, serta real environment arm yang dibaca ulang sesudah queue CAS. Stage
@@ -353,15 +360,32 @@ BTCUSD = shadow-only
     itu ZIP hanya boleh dibuat dari clean checkout commit yang sudah direview.
 13. Bounded Windows service sudah menutup release-root, import-origin,
     heartbeat-chain, lost-deadline, dan exact-once abort gap secara lokal.
-    Service tetap tidak mempunyai production-ready release authority: HMAC
-    trust hanya local/test, actual asymmetric verifier/external launcher,
-    reviewed factory/config, Task Scheduler identity, dan watchdog restart
-    belum dipasang pada target Windows.
-14. Demo-auto decision IPC consumer sudah ada tetapi sengaja inert. Ia belum
-    terhubung ke risk/executor composition dan tidak dapat mengirim order.
-    Stage activation, exact Windows queue custody, durable journal constraint,
-    10 manual demo lifecycle, dan approval manusia tetap harus diselesaikan
-    sebelum soak boleh dimulai.
+    Static reviewed factory template sekarang juga mengikat exact provider
+    contract, implementation/config hash, purpose-matched Windows Credential
+    Manager references, dan Task Scheduler host/release/service-account/ACL
+    identity tanpa mengimpor provider atau materialize broker component.
+    HMAC trust tetap local/test. Public RSA verifier kini tersedia, tetapi
+    externally issued launcher policy/attestation, offline private-key custody,
+    external factory/provider configuration, Task Scheduler registration,
+    Credential Manager custody, dan watchdog restart belum dipasang pada target
+    Windows.
+14. Demo-auto decision IPC consumer sudah ada tetapi sengaja locked. Outputnya
+    dapat diproses oleh risk/intent boundary dan dispatch seam yang memerlukan
+    seluruh sealed authority. Session reservation terikat journal, crash
+    sebelum send hanya boleh ditutup dengan unused-lease proof, sedangkan
+    possible send tetap reconciliation-required lintas restart. Account cohort
+    memverifikasi projection chain dan broker-closed-deal evidence untuk ambang
+    30 hari/50 fill/20 XAU tanpa memberi authority. Dormant renewable session
+    capability dan deny-by-default gate catalog tetap false/disabled.
+    Brokerless M15 decision producer sekarang memiliki
+    deterministic Windows profile tersendiri dengan exact allowlist, pinned
+    dependency closure, static factory contract, dan validate-only runner.
+    Profile itu dipisahkan dari executor bundle dan masih membutuhkan reviewed
+    finalized-data/trusted-clock/key/CAS/provider configuration.
+    Independent session/projection custody, exact Windows queue/provider wiring,
+    externally signed launcher attestation, 10 manual
+    demo lifecycle, dan approval manusia tetap harus diselesaikan sebelum soak
+    boleh dimulai.
 
 Karena batas di atas, kalender yang valid dapat membuat
 `session_calendar_verified=true` dan data grid dapat lengkap secara lokal,
@@ -389,8 +413,8 @@ eksternal belum terpenuhi.
 3. Ekspor chain head/receipt ke Object Lock/WORM di luar VPS, gunakan key
    custody terpisah, dan uji restore serta coordinated-rollback detection.
 4. Provision Windows VPS dengan Credential Manager, least privilege, VPN/MFA,
-   Task Scheduler watchdog, asymmetric release verification atau external
-   trusted launcher, trusted time source, off-host heartbeat, alerting,
+   Task Scheduler watchdog, offline-issued RSA launcher policy/attestation yang
+   SHA-256-nya dipin di task definition, trusted time source, off-host heartbeat, alerting,
    immutable audit export, disk alarm, dan daily backup/restore drill.
 5. Pilih production news provider; provision signing-key custody, coverage/SLA
    monitoring, replay archive, stale-feed drill, dan documented failover yang

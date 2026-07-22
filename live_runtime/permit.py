@@ -525,8 +525,12 @@ def authorize_kill_switch_reset(
 ) -> KillSwitchResetAuthorization:
     """Verify both independent signatures and mint a short-lived reset capability."""
 
-    if not isinstance(permit, KillSwitchResetPermit):
-        raise TypeError("permit must be a KillSwitchResetPermit")
+    # These permits are trust-boundary values whose methods participate in
+    # signature verification.  Accepting a subclass would let caller code
+    # override ``signing_payload`` (or another verification helper) while
+    # retaining fields that pass the binding checks below.
+    if type(permit) is not KillSwitchResetPermit:
+        raise TypeError("permit must be an exact KillSwitchResetPermit")
     trusted_now = _trusted_reset_now(clock_provider, now)
     expected_journal = require_hash(
         "expected_journal_sha256", expected_journal_sha256
@@ -617,8 +621,11 @@ def validate_permit(
 ) -> PermitValidation:
     """Validate HMAC, UTC validity window, and every deployment binding."""
 
-    if not isinstance(permit, PromotionPermit):
-        raise TypeError("permit must be a PromotionPermit")
+    # ``PromotionPermit.verify_signature`` is security-sensitive behavior, not
+    # a polymorphic extension point.  A subclass can otherwise override that
+    # method and turn an unsigned artifact into a valid PermitValidation.
+    if type(permit) is not PromotionPermit:
+        raise TypeError("permit must be an exact PromotionPermit")
     require_utc("now", now)
     mode = require_text("expected_mode", expected_mode, upper=True)
     expected_account_hash = account_alias_sha256(expected_account_alias)

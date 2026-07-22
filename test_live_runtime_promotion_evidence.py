@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import datetime, timedelta, timezone
 import unittest
 
 from live_runtime.promotion_evidence import (
+    PromotionEvidenceReceipt,
     PromotionEvidenceValidation,
     issue_promotion_evidence_receipt,
     validate_promotion_evidence_receipt,
@@ -153,6 +154,21 @@ class PromotionEvidenceTests(unittest.TestCase):
                 model_artifact_sha256="c" * 64,
                 expires_at=NOW + timedelta(minutes=1),
             )
+
+    def test_receipt_subclass_cannot_override_signature_verification(self):
+        class ForgedReceipt(PromotionEvidenceReceipt):
+            def verify_signature(self, secret):  # type: ignore[no-untyped-def]
+                return True
+
+        signed = receipt()
+        forged = ForgedReceipt(
+            **{
+                field.name: getattr(signed, field.name)
+                for field in fields(PromotionEvidenceReceipt)
+            }
+        )
+        with self.assertRaisesRegex(TypeError, "exact PromotionEvidenceReceipt"):
+            validate(forged)
 
 
 if __name__ == "__main__":

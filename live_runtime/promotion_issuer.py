@@ -201,8 +201,10 @@ class PromotionCorpus:
             values = getattr(self, field)
             if type(values) is not tuple or any(type(item) is not item_type for item in values):
                 raise TypeError(f"{field} must be a tuple of {item_type.__name__}")
-        if not isinstance(self.validation_receipt, ValidationReceiptObservation):
-            raise TypeError("validation_receipt must be ValidationReceiptObservation")
+        if type(self.validation_receipt) is not ValidationReceiptObservation:
+            raise TypeError(
+                "validation_receipt must be exact ValidationReceiptObservation"
+            )
         all_trades = self.oos_trades + self.forward_trades
         for trade in all_trades:
             if (
