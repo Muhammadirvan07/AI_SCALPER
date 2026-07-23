@@ -15,6 +15,7 @@ __pycache__/
 runtime_state/
 runtime_snapshots/
 data/*.csv
+/*.json
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal

@@ -56,6 +56,13 @@ python -c 'import decision_engine as engine; engine.UPDATE_DATA_BEFORE_DECISION 
 - no GBPUSD or BTCUSD order reaches the MT5 payload boundary
 - no lot above `0.01` reaches the MT5 payload boundary
 
+All JSON files created in the repository root are untracked legacy runtime
+state, reports, or drafts. Their absence in a clean checkout is valid and must
+fail closed; run the relevant diagnostic to create a fresh local copy. Never
+add those files back to Git. Immutable JSON configuration belongs under
+`config/`, while live-grade state belongs under `runtime_state/` or the
+external evidence store.
+
 ## Stop conditions
 
 Stop the pipeline and investigate if any of these occur:

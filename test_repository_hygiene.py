@@ -88,6 +88,29 @@ class RepositoryHygieneTests(unittest.TestCase):
             "runtime market CSV cache must not be part of the release source tree",
         )
 
+    def test_root_json_runtime_artifacts_are_not_tracked(self):
+        root = Path(__file__).resolve().parent
+        tracked = self._git_paths(root, "ls-files", "-z", "--", "*.json")
+        pending_deletions = self._git_paths(
+            root,
+            "diff",
+            "--name-only",
+            "--diff-filter=D",
+            "-z",
+            "--",
+            "*.json",
+        )
+        tracked_root_json = {
+            path
+            for path in tracked - pending_deletions
+            if "/" not in path
+        }
+        self.assertEqual(
+            set(),
+            tracked_root_json,
+            "root JSON is mutable runtime state; immutable JSON belongs in config/",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -356,10 +356,10 @@ BTCUSD = shadow-only
     reproducibility receipt sudah tersedia lokal, tetapi actual OSV collection,
     independent signing-key custody, clean committed release identity, dan
     clean-checkout build pada exact Windows host belum dilakukan. CSV market
-    cache di `data/` sudah dikeluarkan dari Git dan tetap bukan release input;
-    runtime JSON artifact churn pada development worktree juga bukan release
-    input. Karena itu ZIP hanya boleh dibuat dari clean checkout commit yang
-    sudah direview.
+    cache di `data/` dan seluruh legacy runtime JSON di repository root sudah
+    dikeluarkan dari Git serta tetap bukan release input; immutable JSON
+    configuration hanya boleh berada di `config/`. Karena itu ZIP hanya boleh
+    dibuat dari clean checkout commit yang sudah direview.
 13. Bounded Windows service sudah menutup release-root, import-origin,
     heartbeat-chain, lost-deadline, dan exact-once abort gap secara lokal.
     Static reviewed factory template sekarang juga mengikat exact provider
