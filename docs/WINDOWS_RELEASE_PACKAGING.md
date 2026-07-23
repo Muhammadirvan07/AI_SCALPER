@@ -108,6 +108,13 @@ Git commit/tree, hash raw allowlist, hash dan ukuran setiap source file, safety
 policy, serta `release_identity_sha256`. Manifest sidecar sama persis dengan
 manifest di dalam ZIP.
 
+Source yang masuk ke ZIP dibaca dari immutable Git blob pada exact release
+commit, bukan dari byte worktree. Ini mempertahankan identitas yang sama pada
+checkout Windows yang secara sah mematerialisasi file teks sebagai CRLF,
+sementara commit Git menyimpannya sebagai LF. Git worktree tetap wajib bersih
+sebelum dan sesudah build; symlink, file yang hilang, path tidak tracked, dan
+perubahan commit/tree tetap ditolak.
+
 ## Build
 
 Jalankan dari clean checkout. Tulis output di luar repository:

@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
+import build_windows_decision_release as decision_release_builder
 from build_windows_decision_release import (
     APPROVED_SOURCE_PATHS,
     READINESS_BLOCKERS,
@@ -171,6 +172,63 @@ class WindowsDecisionReleaseBuilderTests(unittest.TestCase):
             (root / "runtime_state/new.json").write_text("{}\n", encoding="utf-8")
             with self.assertRaisesRegex(ReleaseBuildError, "dirty"):
                 build_decision_release(root, allowlist, base / "release.zip")
+
+    def test_clean_crlf_checkout_builds_committed_lf_blobs(self):
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            root, allowlist = self._repo(base)
+            self._git(root, "config", "core.autocrlf", "true")
+            source_path = root / "agents" / "market_status.py"
+            for path in (source_path, allowlist):
+                data = path.read_bytes().replace(b"\r\n", b"\n")
+                path.write_bytes(data.replace(b"\n", b"\r\n"))
+            commit = subprocess.run(
+                ("git", "rev-parse", "HEAD"),
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            tree = subprocess.run(
+                ("git", "rev-parse", "HEAD^{tree}"),
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            tracked = {
+                item
+                for item in subprocess.run(
+                    ("git", "ls-files", "-z"),
+                    cwd=root,
+                    check=True,
+                    capture_output=True,
+                ).stdout.decode("utf-8").split("\0")
+                if item
+            }
+            output = base / "decision-crlf.zip"
+            original_git = decision_release_builder._git
+
+            def windows_git(repo, *args, binary=False):
+                if args and args[0] == "status":
+                    return b"" if binary else ""
+                return original_git(repo, *args, binary=binary)
+
+            with patch.object(
+                decision_release_builder,
+                "_validate_git_release_source",
+                return_value=(commit, tree, tracked),
+            ), patch.object(
+                decision_release_builder,
+                "_git",
+                side_effect=windows_git,
+            ):
+                build_decision_release(root, allowlist, output)
+            with zipfile.ZipFile(output) as archive:
+                self.assertNotIn(
+                    b"\r\n",
+                    archive.read(source_path.relative_to(root).as_posix()),
+                )
 
     def test_allowlist_is_exact_and_rejects_execution_path(self):
         with tempfile.TemporaryDirectory() as raw:

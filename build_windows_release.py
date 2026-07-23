@@ -510,21 +510,22 @@ def _read_release_sources(
             path.resolve(strict=True).relative_to(resolved_root)
         except (OSError, ValueError) as exc:
             raise ReleaseBuildError(f"allowlisted path escapes source root: {path_text}") from exc
-        if metadata.st_size > MAX_SOURCE_FILE_BYTES:
+        if commit is None and metadata.st_size > MAX_SOURCE_FILE_BYTES:
             raise ReleaseBuildError(f"allowlisted file is too large: {path_text}")
-        try:
-            data = path.read_bytes()
-        except OSError as exc:
-            raise ReleaseBuildError(f"allowlisted file cannot be read: {path_text}") from exc
         if commit is not None:
-            committed = bytes(
-                _git(root, "show", f"{commit}:{path_text}", binary=True)
-            )
-            if committed != data:
+            # Package the immutable Git object, not checkout bytes. A clean
+            # Windows checkout may contain CRLF after Git's text conversion
+            # while still representing the exact committed LF blob.
+            data = bytes(_git(root, "show", f"{commit}:{path_text}", binary=True))
+        else:
+            try:
+                data = path.read_bytes()
+            except OSError as exc:
                 raise ReleaseBuildError(
-                    f"allowlisted file does not match the release commit: {path_text}"
-                )
-            data = committed
+                    f"allowlisted file cannot be read: {path_text}"
+                ) from exc
+        if len(data) > MAX_SOURCE_FILE_BYTES:
+            raise ReleaseBuildError(f"allowlisted file is too large: {path_text}")
         total_bytes += len(data)
         if total_bytes > MAX_TOTAL_SOURCE_BYTES:
             raise ReleaseBuildError("release source exceeds the total size limit")
@@ -622,6 +623,9 @@ def build_release(
         tracked,
         commit=commit,
     )
+    # The manifest identity is always bound to committed bytes. The worktree
+    # allowlist may be CRLF-normalized by Git on Windows.
+    allowlist["_raw_sha256"] = _sha256(source_bytes[allowlist_relative])
     try:
         embedded_allowlist = json.loads(
             source_bytes[allowlist_relative].decode("utf-8")

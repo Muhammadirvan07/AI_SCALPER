@@ -1269,18 +1269,22 @@ def _read_execution_sources(
             path.resolve(strict=True).relative_to(resolved_root)
         except (OSError, ValueError) as exc:
             raise ReleaseBuildError(f"allowlisted path escapes source root: {path_text}") from exc
-        if metadata.st_size > MAX_SOURCE_FILE_BYTES:
+        if commit is None and metadata.st_size > MAX_SOURCE_FILE_BYTES:
             raise ReleaseBuildError(f"allowlisted file is too large: {path_text}")
-        try:
-            data = path.read_bytes()
-        except OSError as exc:
-            raise ReleaseBuildError(f"allowlisted file cannot be read: {path_text}") from exc
         if commit is not None:
+            # Build from the immutable Git blob. Git may materialize CRLF in a
+            # clean Windows checkout, so raw worktree equality is neither
+            # portable nor needed for a commit-addressed release.
             data = bytes(_git(root, "show", f"{commit}:{path_text}", binary=True))
-            if data != path.read_bytes():
+        else:
+            try:
+                data = path.read_bytes()
+            except OSError as exc:
                 raise ReleaseBuildError(
-                    f"allowlisted file does not match the release commit: {path_text}"
-                )
+                    f"allowlisted file cannot be read: {path_text}"
+                ) from exc
+        if len(data) > MAX_SOURCE_FILE_BYTES:
+            raise ReleaseBuildError(f"allowlisted file is too large: {path_text}")
         total_bytes += len(data)
         if total_bytes > MAX_TOTAL_SOURCE_BYTES:
             raise ReleaseBuildError("release source exceeds total size limit")
@@ -1340,6 +1344,7 @@ def build_execution_release(
     sources, primitive_inventory = _read_execution_sources(
         root, allowlist["files"], tracked, commit=commit
     )
+    allowlist["_raw_sha256"] = _sha256(sources[allowlist_relative])
     dependency_lock_summary = _validate_dependency_lock_set(sources)
     full_gate_report = catalog_report()
     full_pending_gate_catalog = {

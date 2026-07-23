@@ -452,6 +452,7 @@ def build_decision_release(
         tracked,
         commit=commit,
     )
+    allowlist["_raw_sha256"] = _sha256(sources[allowlist_relative])
     dependency_summary = _validate_dependency_lock_set(sources)
     try:
         embedded = json.loads(sources[allowlist_relative].decode("utf-8"))
