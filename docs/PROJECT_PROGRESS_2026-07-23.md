@@ -3,7 +3,7 @@
 Status: **LOCAL DEMO_AUTO ACTIVATION FOUNDATION COMPLETE / OPERATIONAL
 ACTIVATION BLOCKED / LIVE NOT READY**
 
-Full regression pada development Mac menyelesaikan **1.174 test** tanpa
+Full regression pada development Mac menyelesaikan **1.184 test** tanpa
 kegagalan dalam mode normal dan optimized. Kompilasi seluruh Python source
 yang dilacak Git, dependency check, release-port validator, safety-lock scan,
 dan diff check juga lulus. Pesan penolakan yang tampil dari negative-path tests
@@ -24,6 +24,11 @@ dilakukan.
 - authenticated soak projection dan account-level cohort untuk ambang 30 hari,
   50 closed fill, serta minimal 20 XAUUSD closed fill;
 - mode-aware Windows factory contract untuk `DEMO` dan `DEMO_AUTO`;
+- exact mode-aware execution-symbol policy: legacy tetap EURUSD-only,
+  controlled manual-demo menerima EURUSD/XAUUSD, sedangkan dormant
+  `DEMO_AUTO` dan future live canary hanya XAUUSD; seluruh
+  risk, service, executor, MT5, bootstrap, dan supervisor boundary membawa
+  exact mode tanpa mengubah central safety lock;
 - verifier RSA-3072 public-key-only untuk external launcher attestation sebelum
   provider factory diimpor;
 - deny-by-default live-grade gate catalog dan activation runbook; dan

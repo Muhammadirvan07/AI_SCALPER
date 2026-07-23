@@ -808,7 +808,8 @@ def _verify_demo_auto_dispatch_controls(
     permit = ipc_input.permit
     queue_binding = envelope.binding
     symbol_allowed, _symbol_reason = execution_policy.validate_execution_symbol(
-        snapshot.symbol
+        snapshot.symbol,
+        mode=binding.mode,
     )
     if (
         binding.mode != "DEMO_AUTO"

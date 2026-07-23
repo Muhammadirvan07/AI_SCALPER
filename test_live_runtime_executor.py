@@ -810,8 +810,8 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(0, adapter.preflight_calls)
         self.assertEqual(0, adapter.submit_calls)
 
-    def test_symbol_policy_blocks_xau_gbpusd_and_btcusd_before_broker_io(self) -> None:
-        for symbol in ("XAUUSD", "GBPUSD", "BTCUSD"):
+    def test_symbol_policy_blocks_gbpusd_and_btcusd_before_broker_io(self) -> None:
+        for symbol in ("GBPUSD", "BTCUSD"):
             with self.subTest(symbol=symbol):
                 tempdir = tempfile.TemporaryDirectory()
                 self.addCleanup(tempdir.cleanup)
@@ -845,6 +845,22 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                 self.assertIn("SYMBOL_EXECUTION_POLICY_BLOCKED", outcome.reason_codes)
                 self.assertEqual(0, adapter.preflight_calls)
                 self.assertEqual(0, adapter.submit_calls)
+
+    def test_controlled_manual_demo_accepts_xau_with_every_exact_control(
+        self,
+    ) -> None:
+        adapter = StubAdapter()
+        outcome = self.execute(
+            adapter,
+            intent=intent(symbol="XAUUSD"),
+        )
+        self.assertEqual("FILLED", outcome.state)
+        self.assertTrue(outcome.execution_sent)
+        self.assertTrue(outcome.reconciliation_required)
+        self.assertEqual(1, adapter.preflight_calls)
+        self.assertEqual(1, adapter.submit_calls)
+        self.assertFalse(outcome.live_allowed)
+        self.assertFalse(outcome.safe_to_demo_auto_order)
 
     def test_broker_calculated_risk_over_cap_rejects_before_send(self) -> None:
         adapter = StubAdapter(risk_cash=0.26)

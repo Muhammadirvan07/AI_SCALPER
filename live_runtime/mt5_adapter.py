@@ -1499,7 +1499,10 @@ class MT5Adapter:
         if intent.account_id != self.account_alias or intent.server != self.expected_server:
             raise AccountBindingError("intent account/server does not match adapter binding")
         self._assert_symbol_binding(intent.symbol, broker_symbol)
-        symbol_allowed, symbol_reason = execution_policy.validate_execution_symbol(intent.symbol)
+        symbol_allowed, symbol_reason = execution_policy.validate_execution_symbol(
+            intent.symbol,
+            mode=intent.mode,
+        )
         if not symbol_allowed:
             raise ExecutionLockedError(symbol_reason)
         lot_allowed, lot_reason = execution_policy.validate_execution_lot(
@@ -1705,7 +1708,10 @@ class MT5Adapter:
         if now >= preflight.valid_until_utc or now >= intent.expires_at:
             raise PreflightRejectedError("preflight or intent expired before submission")
         self._assert_symbol_binding(intent.symbol, preflight.broker_symbol)
-        symbol_allowed, symbol_reason = execution_policy.validate_execution_symbol(intent.symbol)
+        symbol_allowed, symbol_reason = execution_policy.validate_execution_symbol(
+            intent.symbol,
+            mode=intent.mode,
+        )
         lot_allowed, lot_reason = execution_policy.validate_execution_lot(
             intent.requested_lot
         )

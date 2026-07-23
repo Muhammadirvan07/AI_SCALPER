@@ -547,7 +547,7 @@ class MT5AdapterTests(unittest.TestCase):
         self.adapter.initialize()
 
     def test_demo_auto_authorization_uses_central_execution_policy(self):
-        trade_intent = intent(mode="DEMO_AUTO")
+        trade_intent = intent(mode="DEMO_AUTO", symbol="XAUUSD")
         with patch.object(
             execution_policy,
             "SAFE_TO_DEMO_AUTO_ORDER",
@@ -946,9 +946,8 @@ class MT5AdapterTests(unittest.TestCase):
                 now=NOW.astimezone(timezone(timedelta(hours=9))),
             )
 
-    def test_blocked_shadow_and_unapproved_symbols_fail_at_adapter_boundary(self):
+    def test_blocked_and_shadow_symbols_fail_at_adapter_boundary(self):
         for symbol, broker_symbol in (
-            ("XAUUSD", "GOLD"),
             ("GBPUSD", "GBPUSD"),
             ("BTCUSD", "BTCUSD"),
         ):
@@ -970,6 +969,19 @@ class MT5AdapterTests(unittest.TestCase):
                             now=NOW,
                         )
 
+    def test_controlled_manual_demo_xau_reaches_preflight_but_not_auto_authority(
+        self,
+    ):
+        result = self.adapter.preflight(
+            intent(symbol="XAUUSD"),
+            "GOLD",
+            allowed_deviation_points=2,
+            now=NOW,
+        )
+        self.assertTrue(result.passed)
+        self.assertFalse(execution_policy.SAFE_TO_DEMO_AUTO_ORDER)
+        self.assertFalse(execution_policy.LIVE_ALLOWED)
+
     def test_live_hard_lock_cannot_be_overridden_by_valid_permit(self):
         module = FakeMT5()
         module.trade_mode = module.ACCOUNT_TRADE_MODE_REAL
@@ -980,12 +992,12 @@ class MT5AdapterTests(unittest.TestCase):
             expected_server="Broker-Demo",
             environment="LIVE",
             session_calendar_sha256="d" * 64,
-            symbol_map={"EURUSD": "EURUSD.a"},
+            symbol_map={"XAUUSD": "GOLD"},
             mt5_module=module,
             clock_provider=lambda: NOW,
         )
         adapter.initialize()
-        live_intent = intent(mode="LIVE")
+        live_intent = intent(mode="LIVE", symbol="XAUUSD")
         with self.assertRaises(ExecutionLockedError):
             with submission_bundle(
                 live_intent, adapter

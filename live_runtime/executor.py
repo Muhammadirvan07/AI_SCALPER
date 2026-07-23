@@ -707,7 +707,10 @@ class ExecutionCoordinator:
                 safety_reasons.extend(promotion_validation.reason_codes)
             if permit.symbols != (intent.symbol,):
                 safety_reasons.append("PROMOTION_PERMIT_MUST_BIND_ONE_LANE")
-        symbol_allowed, _ = validate_execution_symbol(intent.symbol)
+        symbol_allowed, _ = validate_execution_symbol(
+            intent.symbol,
+            mode=intent.mode,
+        )
         if not symbol_allowed:
             safety_reasons.append("SYMBOL_EXECUTION_POLICY_BLOCKED")
         if broker_symbol != broker_spec.broker_symbol:

@@ -96,6 +96,11 @@ The first DEMO_AUTO scope is XAUUSD only on one exact DEMO account. FX remains
 shadow. This preserves the global one-position rule while the separate
 cross-account portfolio-exposure custody gate remains pending.
 
+The repository already encodes this as a dormant mode-specific symbol scope
+at every execution-sensitive boundary. It is not an approval: the checked-in
+central `DEMO_AUTO` lock still rejects before broker I/O, and
+`XAUUSD_EXECUTION_POLICY_APPROVAL_REQUIRED` remains a manual gate.
+
 Before producing a source release that changes the central DEMO_AUTO policy,
 review all of the following together:
 

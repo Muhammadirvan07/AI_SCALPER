@@ -5,9 +5,16 @@ Callers must still apply their own quality, replay, expiry, and duplicate guards
 """
 
 import math
+from types import MappingProxyType
 
 
+# Legacy/manual scope remains deliberately narrow.  The reviewed first
+# DEMO_AUTO and future live canary target XAUUSD, but both modes remain locked
+# independently by the constants below.
 EXECUTION_APPROVED_SYMBOLS = frozenset({"EURUSD"})
+MANUAL_DEMO_EXECUTION_APPROVED_SYMBOLS = frozenset({"EURUSD", "XAUUSD"})
+DEMO_AUTO_EXECUTION_APPROVED_SYMBOLS = frozenset({"XAUUSD"})
+LIVE_CANARY_EXECUTION_APPROVED_SYMBOLS = frozenset({"XAUUSD"})
 EXECUTION_BLOCKED_SYMBOLS = frozenset({"GBPUSD"})
 SHADOW_ONLY_SYMBOLS = frozenset({"BTCUSD"})
 
@@ -17,6 +24,15 @@ LIVE_ALLOWED = False
 SAFE_TO_DEMO_AUTO_ORDER = False
 
 _EXECUTION_MODES = frozenset({"DRY_RUN", "PAPER", "DEMO", "DEMO_AUTO", "LIVE"})
+EXECUTION_APPROVED_SYMBOLS_BY_MODE = MappingProxyType(
+    {
+        "DRY_RUN": EXECUTION_APPROVED_SYMBOLS,
+        "PAPER": EXECUTION_APPROVED_SYMBOLS,
+        "DEMO": MANUAL_DEMO_EXECUTION_APPROVED_SYMBOLS,
+        "DEMO_AUTO": DEMO_AUTO_EXECUTION_APPROVED_SYMBOLS,
+        "LIVE": LIVE_CANARY_EXECUTION_APPROVED_SYMBOLS,
+    }
+)
 
 
 def execution_mode_policy_decision(mode):
@@ -57,6 +73,22 @@ def normalize_symbol(value):
     return str(value or "").strip().upper()
 
 
+def execution_approved_symbols_for_mode(mode):
+    """Return the immutable symbol scope for one exact execution mode.
+
+    ``None`` is the explicit compatibility path for legacy/offline callers
+    that predate mode-aware execution.  Supplying any invalid mode returns an
+    empty set so an execution boundary can only become more restrictive.
+    """
+
+    if mode is None:
+        return EXECUTION_APPROVED_SYMBOLS
+    if type(mode) is not str:
+        return frozenset()
+    normalized_mode = mode.strip().upper()
+    return EXECUTION_APPROVED_SYMBOLS_BY_MODE.get(normalized_mode, frozenset())
+
+
 def to_finite_float(value):
     try:
         result = float(value)
@@ -65,12 +97,22 @@ def to_finite_float(value):
     return result if math.isfinite(result) else None
 
 
-def validate_execution_symbol(symbol, symbol_mt5=None, require_mt5_match=False):
+def validate_execution_symbol(
+    symbol,
+    symbol_mt5=None,
+    require_mt5_match=False,
+    *,
+    mode=None,
+):
     normalized_symbol = normalize_symbol(symbol)
     normalized_mt5 = normalize_symbol(symbol_mt5)
 
     if not normalized_symbol:
         return False, "Execution symbol is missing."
+    if mode is not None and (
+        type(mode) is not str or mode.strip().upper() not in _EXECUTION_MODES
+    ):
+        return False, "Execution mode is unsupported."
 
     if require_mt5_match:
         if not normalized_mt5:
@@ -85,14 +127,19 @@ def validate_execution_symbol(symbol, symbol_mt5=None, require_mt5_match=False):
         return False, f"{normalized_symbol} is blocked by execution policy."
     if normalized_symbol in SHADOW_ONLY_SYMBOLS:
         return False, f"{normalized_symbol} is shadow-only."
-    if normalized_symbol not in EXECUTION_APPROVED_SYMBOLS:
-        return False, f"{normalized_symbol} is not execution-approved."
+    approved_symbols = execution_approved_symbols_for_mode(mode)
+    if normalized_symbol not in approved_symbols:
+        mode_label = "legacy" if mode is None else mode.strip().upper()
+        return (
+            False,
+            f"{normalized_symbol} is not execution-approved for {mode_label} mode.",
+        )
 
     return True, f"{normalized_symbol} passed execution symbol policy."
 
 
-def is_execution_symbol_allowed(symbol):
-    return validate_execution_symbol(symbol)[0]
+def is_execution_symbol_allowed(symbol, *, mode=None):
+    return validate_execution_symbol(symbol, mode=mode)[0]
 
 
 def validate_execution_lot(lot):

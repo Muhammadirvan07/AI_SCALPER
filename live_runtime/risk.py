@@ -491,7 +491,10 @@ def evaluate_risk(
         raise TypeError("context must be an exact RiskContext")
 
     reasons: list[str] = []
-    symbol_allowed, _ = execution_policy.validate_execution_symbol(intent.symbol)
+    symbol_allowed, _ = execution_policy.validate_execution_symbol(
+        intent.symbol,
+        mode=intent.mode,
+    )
     if not symbol_allowed:
         if intent.symbol in execution_policy.EXECUTION_BLOCKED_SYMBOLS:
             reasons.append("SYMBOL_BLOCKED")

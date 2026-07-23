@@ -110,7 +110,12 @@ class ProductionBootstrapTests(unittest.TestCase):
             "environment": "DEMO",
             "account_currency": "JPY",
             "session_calendar_sha256": digest("calendar"),
-            "symbol_map": (("EURUSD", "EURUSD.demo"),),
+            "symbol_map": (
+                (
+                    self.stage_binding.symbol,
+                    f"{self.stage_binding.symbol}.demo",
+                ),
+            ),
             "journal_sha256": self.stage_binding.journal_sha256,
             "broker_spec_sha256": self.risk_binding.broker_spec_sha256,
             "commit_sha": "a" * 40,
@@ -408,6 +413,13 @@ class ProductionBootstrapTests(unittest.TestCase):
                 self.config(mode=mode, environment=environment)
 
     def test_demo_auto_contract_exists_only_under_reviewed_policy_patch(self):
+        self.stage_binding = StageBinding(
+            **{
+                **self.stage_binding.__dict__,
+                "symbol": "XAUUSD",
+                "lane_id": f"XAUUSD:BREAKOUT:{self.config_sha}",
+            }
+        )
         calls, named = self.provider_calls()
         values = self.ports(named).__dict__.copy()
         authorization_id = "demo-auto-stage-authorization-v1"
@@ -463,7 +475,11 @@ class ProductionBootstrapTests(unittest.TestCase):
             execution_policy,
             "SAFE_TO_DEMO_AUTO_ORDER",
             True,
-        ):
+        ), patch.object(
+            execution_policy,
+            "validate_execution_symbol",
+            wraps=execution_policy.validate_execution_symbol,
+        ) as validate_symbol:
             config = self.config(
                 mode="DEMO_AUTO",
                 demo_auto_session_binding_sha256=session_binding.content_sha256,
@@ -477,6 +493,7 @@ class ProductionBootstrapTests(unittest.TestCase):
                 config,
                 ProductionRuntimePorts(**values),
             )
+        validate_symbol.assert_any_call("XAUUSD", mode="DEMO_AUTO")
         self.assertTrue(report.contract_valid)
         self.assertFalse(report.production_execution_ready)
         self.assertIn("DEMO_AUTO_ONE_USE_IPC_REQUIRED", report.blockers)

@@ -39,11 +39,11 @@ PROMOTION_SECRET = "runtime-service-promotion-secret-at-least-32-bytes"
 _DEFAULT_PROVIDER = object()
 
 
-def decision(*, side: str = "BUY") -> DecisionSnapshot:
+def decision(*, side: str = "BUY", symbol: str = "EURUSD") -> DecisionSnapshot:
     is_wait = side == "WAIT"
     return _mint_decision_snapshot(
-        decision_run_id=f"runtime-service-{side.lower()}",
-        symbol="EURUSD",
+        decision_run_id=f"runtime-service-{symbol.lower()}-{side.lower()}",
+        symbol=symbol,
         side=side,
         strategy="MOMENTUM_PULLBACK",
         score=3,
@@ -56,7 +56,7 @@ def decision(*, side: str = "BUY") -> DecisionSnapshot:
         commit_sha="a" * 40,
         config_sha256="b" * 64,
         data_sha256="c" * 64,
-        source_name="Broker-Demo:EURUSD.a",
+        source_name=f"Broker-Demo:{symbol}.a",
         source_aligned=True,
         data_fresh=True,
         bar_closed_at=BAR_CLOSE,
@@ -64,14 +64,19 @@ def decision(*, side: str = "BUY") -> DecisionSnapshot:
     )
 
 
-def broker_spec(*, mode: str = "DEMO", captured_at: datetime = NOW) -> BrokerSpec:
+def broker_spec(
+    *,
+    mode: str = "DEMO",
+    captured_at: datetime = NOW,
+    symbol: str = "EURUSD",
+) -> BrokerSpec:
     return BrokerSpec(
         account_id="account-alias",
         broker_legal_name="Example Broker Ltd",
         server="Broker-Demo",
         environment="LIVE" if mode == "LIVE" else "DEMO",
-        symbol="EURUSD",
-        broker_symbol="EURUSD.a",
+        symbol=symbol,
+        broker_symbol=f"{symbol}.a",
         account_currency="USD",
         digits=2,
         point=0.01,
@@ -89,11 +94,15 @@ def broker_spec(*, mode: str = "DEMO", captured_at: datetime = NOW) -> BrokerSpe
     )
 
 
-def promotion_evidence(journal: ExecutionJournal) -> PromotionEvidenceReceipt:
+def promotion_evidence(
+    journal: ExecutionJournal,
+    *,
+    symbol: str = "EURUSD",
+) -> PromotionEvidenceReceipt:
     return PromotionEvidenceReceipt(
         mode="DEMO_AUTO",
-        lane_id="EURUSD:MOMENTUM_PULLBACK:" + "b" * 64,
-        symbol="EURUSD",
+        lane_id=f"{symbol}:MOMENTUM_PULLBACK:" + "b" * 64,
+        symbol=symbol,
         strategy="MOMENTUM_PULLBACK",
         account_alias_sha256=account_alias_sha256("account-alias"),
         server="Broker-Demo",
@@ -118,18 +127,19 @@ def permit(
     *,
     mode: str = "DEMO",
     evidence: PromotionEvidenceReceipt | None = None,
+    symbol: str = "EURUSD",
 ) -> PromotionPermit:
     return PromotionPermit(
         mode=mode,
         account_alias_sha256=account_alias_sha256("account-alias"),
         server="Broker-Demo",
-        symbols=("EURUSD",),
+        symbols=(symbol,),
         commit_sha="a" * 40,
         config_sha256="b" * 64,
         model_artifact_sha256="f" * 64,
         issued_at=NOW - timedelta(seconds=1),
         expires_at=NOW + timedelta(minutes=4),
-        nonce=f"runtime-service-{mode.lower()}",
+        nonce=f"runtime-service-{mode.lower()}-{symbol.lower()}",
         journal_sha256=journal.journal_sha256,
         promotion_evidence_sha256=(
             evidence.content_sha256 if evidence is not None else "0" * 64
@@ -182,7 +192,7 @@ def health_facts(*, observed_at: datetime = NOW) -> RuntimeHealthFacts:
     )
 
 
-def market_guard(*, evaluated_at: datetime = NOW):
+def market_guard(*, evaluated_at: datetime = NOW, symbol: str = "EURUSD"):
     feed = NewsFeed(
         fetched_at=evaluated_at,
         events=(
@@ -201,7 +211,7 @@ def market_guard(*, evaluated_at: datetime = NOW):
         signing_key_id="news-key-v1",
     ).sign(NEWS_SECRET)
     return evaluate_market_guards(
-        symbol="EURUSD",
+        symbol=symbol,
         now=evaluated_at,
         news_feed=feed,
         broker_rollover_at=evaluated_at + timedelta(hours=5),
@@ -363,10 +373,16 @@ class LiveRuntimeServiceTests(unittest.TestCase):
             manual_demo_approval_provider = lambda trade_intent: (
                 signed_manual_approval(trade_intent, self.journal)
             )
-        selected_spec = broker_spec(mode=mode)
-        selected_permit = permit(self.journal, mode=mode, evidence=evidence)
+        selected_symbol = selected_decision.symbol
+        selected_spec = broker_spec(mode=mode, symbol=selected_symbol)
+        selected_permit = permit(
+            self.journal,
+            mode=mode,
+            evidence=evidence,
+            symbol=selected_symbol,
+        )
         selected_health = health_facts()
-        selected_guard = market_guard()
+        selected_guard = market_guard(symbol=selected_symbol)
         selected_context = build_verified_risk_context(
             journal=self.journal,
             broker_spec=selected_spec,
@@ -382,7 +398,7 @@ class LiveRuntimeServiceTests(unittest.TestCase):
         )
         return service.execute_once(
             decision=selected_decision,
-            broker_symbol="EURUSD.a",
+            broker_symbol=selected_spec.broker_symbol,
             broker_spec=selected_spec,
             risk_context=selected_context,
             permit=selected_permit,
@@ -787,13 +803,19 @@ class LiveRuntimeServiceTests(unittest.TestCase):
                 )
 
     def test_promotion_evidence_is_passed_to_coordinator_for_demo_auto(self):
-        quote = sizing_quote()
+        quote = sizing_quote(
+            symbol="XAUUSD",
+            broker_symbol="XAUUSD.a",
+            max_risk_cash=0.20,
+            absolute_risk_cap_usd=0.20,
+            absolute_risk_cap_account_currency=0.20,
+        )
         service, _, coordinator = self.service(quote)
-        evidence = promotion_evidence(self.journal)
+        evidence = promotion_evidence(self.journal, symbol="XAUUSD")
 
         result = self.execute(
             service,
-            decision(),
+            decision(symbol="XAUUSD"),
             mode="DEMO_AUTO",
             manual_demo_approval_provider=None,
             evidence=evidence,

@@ -82,6 +82,14 @@ class DemoAutoRiskIntentPipelineTests(unittest.TestCase):
         )
         self.stage.setUp()
         self.stage.t0 = BAR_CLOSED - timedelta(minutes=2)
+        self.stage.binding = replace(
+            self.stage.binding,
+            symbol="XAUUSD",
+            lane_id=(
+                f"XAUUSD:{self.stage.binding.strategy}:"
+                f"{self.stage.binding.config_sha256}"
+            ),
+        )
         self.broker_spec = self._broker_spec()
         self.stage.binding = replace(
             self.stage.binding,
@@ -159,14 +167,14 @@ class DemoAutoRiskIntentPipelineTests(unittest.TestCase):
             broker_legal_name="Phillip Securities Japan, Ltd.",
             server=self.stage.binding.server,
             environment="DEMO",
-            symbol="EURUSD",
-            broker_symbol="EURUSD.ps01",
+            symbol="XAUUSD",
+            broker_symbol="XAUUSD.ps01",
             account_currency="USD",
-            digits=5,
-            point=0.00001,
-            tick_size=0.00001,
+            digits=2,
+            point=0.01,
+            tick_size=0.01,
             tick_value=1.0,
-            contract_size=100000.0,
+            contract_size=100.0,
             volume_min=0.01,
             volume_max=50.0,
             volume_step=0.01,
@@ -187,9 +195,9 @@ class DemoAutoRiskIntentPipelineTests(unittest.TestCase):
             strategy=self.stage.binding.strategy,
             score=5,
             score_components=(("breakout", 5),),
-            entry_reference=1.10000,
-            stop_loss=1.09900 if wide_stop else 1.09999,
-            take_profit=1.10200,
+            entry_reference=2400.00,
+            stop_loss=2399.00 if wide_stop else 2399.90,
+            take_profit=2400.20,
             model_version="rules-v1",
             model_artifact_sha256=self.stage.binding.model_artifact_sha256,
             commit_sha=self.stage.binding.commit_sha,
@@ -288,7 +296,7 @@ class DemoAutoRiskIntentPipelineTests(unittest.TestCase):
             signing_key_id="news-key-v1",
         ).sign(NEWS_KEY)
         return evaluate_market_guards(
-            symbol="EURUSD",
+            symbol="XAUUSD",
             now=PIPELINE_AT,
             news_feed=feed,
             broker_rollover_at=PIPELINE_AT + timedelta(hours=5),

@@ -407,7 +407,10 @@ class LiveRuntimeService:
         expected_environment = "LIVE" if permit.mode == "LIVE" else "DEMO"
         if broker_spec.environment != expected_environment:
             precondition_reasons.append("BROKER_ENVIRONMENT_MISMATCH")
-        symbol_allowed, _ = validate_execution_symbol(decision.symbol)
+        symbol_allowed, _ = validate_execution_symbol(
+            decision.symbol,
+            mode=permit.mode,
+        )
         if not symbol_allowed:
             precondition_reasons.append("SYMBOL_EXECUTION_POLICY_BLOCKED")
         if not permit.signature:

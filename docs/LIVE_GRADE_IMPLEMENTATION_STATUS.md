@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-23 menjalankan **1.174 test** tanpa
+Validasi lokal terakhir pada 2026-07-23 menjalankan **1.184 test** tanpa
 kegagalan pada development Mac. Itu adalah software regression evidence, bukan
 Windows host acceptance, broker-forward evidence, atau izin trading.
 
@@ -19,8 +19,8 @@ membuka demo-auto maupun live.
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, byte-derived regulatory review package with two independent HMAC approvals, byte-derived pre-window base-calendar review with a separate human HMAC approval, prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
 | 3. Broker read-only shadow | FBS and Phillip diagnostic bindings observed; evidence not started | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip sanitized discovery-v3 inputs berhasil dibuat dan reviewed regular M15 base schedules tersedia, tetapi profile registration, regulatory approval, 20-session benchmark, broker-forward contract, dan promotion evidence tetap disabled/pending. FINEX tidak dipakai untuk observasi baru. |
 | 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, bounded Windows composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, dan non-mutating readiness report tersedia. Seluruh external gate serta sepuluh order demo belum selesai. |
-| 5. Demo-auto soak | Local activation foundation complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision release, dan deny-only gate catalog tersedia. External provider/key/CAS custody, exact Windows activation, policy approval/unlock, serta actual soak evidence belum ada. |
-| 6. XAUUSD live canary | Not started | XAUUSD belum execution-approved dan belum memiliki promotion evidence/permit/soak maupun 50 closed live trades. |
+| 5. Demo-auto soak | Local activation foundation complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision release, deny-only gate catalog, serta exact dormant XAUUSD-only symbol scope pada seluruh risk/runtime/executor/MT5/bootstrap/supervisor boundary tersedia. External provider/key/CAS custody, exact Windows activation, policy approval/unlock, serta actual soak evidence belum ada. |
+| 6. XAUUSD live canary | Not started | Dormant XAUUSD-only symbol scope sudah tersedia, tetapi central live lock, execution-policy approval, promotion evidence/permit/soak, dan 50 closed live trades belum ada. |
 | 7. Pair expansion | Not started | EURUSD, USDJPY, dan AUDUSD harus mengulang seluruh gate per lane; hasil lane lain tidak boleh menutup kegagalan sebuah pair. |
 | 8. Scaling | Out of v1 | Tidak ada auto-scaling lot maupun risk cap. |
 
@@ -150,6 +150,14 @@ membuka demo-auto maupun live.
   memakai exact MT5 login + server + environment sehingga dua journal atau dua
   executor tidak dapat menguasai account yang sama secara bersamaan. Pergantian
   journal setelah restart juga ditolak oleh permit lama.
+- Execution-symbol policy sekarang mode-aware. Legacy, dry-run, dan paper
+  tetap EURUSD-only; controlled manual-demo menerima EURUSD dan XAUUSD agar
+  exact XAU account/adapter dapat diuji sebelum aktivasi; dormant `DEMO_AUTO`
+  serta future `LIVE` canary hanya menerima XAUUSD. Pure risk, one-shot service, coordinator,
+  MT5 preflight/submit, production bootstrap, dan final supervisor dispatch
+  semuanya wajib membawa exact mode. Symbol scope ini tidak dapat membuka
+  `SAFE_TO_DEMO_AUTO_ORDER=false` atau `LIVE_ALLOWED=false`, dan manual
+  `XAUUSD_EXECUTION_POLICY_APPROVAL_REQUIRED` tetap pending.
 - Environment arm dibaca langsung dari process environment, terikat pada exact
   account/server/mode/journal, dan berlaku paling lama satu detik. Manual demo
   tidak menerima boolean approval; setiap intent membutuhkan artefak HMAC yang

@@ -1045,7 +1045,8 @@ def _validate_bindings(
         )
 
         symbol_allowed, _symbol_reason = execution_policy.validate_execution_symbol(
-            stage.symbol
+            stage.symbol,
+            mode=config.mode,
         )
         if not symbol_allowed:
             raise ProductionBootstrapError("DEMO_AUTO_SYMBOL_POLICY_DENIED")

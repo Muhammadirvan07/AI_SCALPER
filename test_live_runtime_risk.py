@@ -308,6 +308,47 @@ class RiskGovernorTests(unittest.TestCase):
                 self.assertFalse(result.allowed)
                 self.assertIn(expected, result.reason_codes)
 
+    def test_demo_auto_risk_uses_exact_xau_symbol_scope_while_mode_stays_locked(
+        self,
+    ) -> None:
+        xau_intent = intent(
+            symbol="XAUUSD",
+            mode="DEMO_AUTO",
+            lot=0.01,
+            entry=2400.00,
+            stop=2399.90,
+            target=2400.20,
+        )
+        xau_broker = broker(
+            "XAUUSD",
+            digits=2,
+            point=0.01,
+            tick_size=0.01,
+            tick_value=1.0,
+            contract_size=100.0,
+            volume_min=0.01,
+            volume_step=0.01,
+            stops_level_points=0,
+            freeze_level_points=0,
+        )
+        xau = evaluate_risk(
+            xau_intent,
+            xau_broker,
+            context(mode="DEMO_AUTO"),
+        )
+        self.assertFalse(xau.allowed)
+        self.assertIn("DEMO_AUTO_ORDER_LOCKED", xau.reason_codes)
+        self.assertNotIn("SYMBOL_NOT_EXECUTION_APPROVED", xau.reason_codes)
+
+        eurusd = evaluate_risk(
+            intent(mode="DEMO_AUTO"),
+            broker(),
+            context(mode="DEMO_AUTO"),
+        )
+        self.assertFalse(eurusd.allowed)
+        self.assertIn("DEMO_AUTO_ORDER_LOCKED", eurusd.reason_codes)
+        self.assertIn("SYMBOL_NOT_EXECUTION_APPROVED", eurusd.reason_codes)
+
 
 if __name__ == "__main__":
     unittest.main()

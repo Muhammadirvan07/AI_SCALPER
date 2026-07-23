@@ -113,9 +113,9 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
                 **original.__dict__,
                 "account_alias_sha256": account_alias_sha256(stage.account_alias),
                 "server": "Broker-Demo",
-                "symbol": "EURUSD",
+                "symbol": "XAUUSD",
                 "strategy": "MOMENTUM_PULLBACK",
-                "lane_id": f"EURUSD:MOMENTUM_PULLBACK:{'b' * 64}",
+                "lane_id": f"XAUUSD:MOMENTUM_PULLBACK:{'b' * 64}",
                 "journal_sha256": self.journal.journal_sha256,
                 "commit_sha": "a" * 40,
                 "config_sha256": "b" * 64,
@@ -156,7 +156,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         )
         self.decision = _mint_decision_snapshot(
             decision_run_id="dormant-demo-auto-run-1",
-            symbol="EURUSD",
+            symbol="XAUUSD",
             side="BUY",
             strategy="MOMENTUM_PULLBACK",
             score=5,
@@ -169,7 +169,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
             commit_sha="a" * 40,
             config_sha256="b" * 64,
             data_sha256=digest("broker-finalized-m15"),
-            source_name="Broker-Demo:EURUSD.a",
+            source_name="Broker-Demo:XAUUSD.a",
             source_aligned=True,
             data_fresh=True,
             bar_closed_at=NOW - timedelta(seconds=1),
@@ -397,11 +397,11 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
             else None
         )
         broker_spec = replace(
-            broker(),
+            broker("XAUUSD"),
             account_id=self.stage.account_alias,
             server=self.stage.binding.server,
         )
-        guard = market_guard()
+        guard = market_guard("XAUUSD")
         health_facts = health()
         verified_context = build_verified_risk_context(
             journal=self.journal,
@@ -435,7 +435,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
             ), patch.dict(os.environ, self._arm(), clear=False), reserved_patch:
                 return coordinator.execute_once(
                     intent=intent,
-                    broker_symbol="EURUSD.a",
+                    broker_symbol="XAUUSD.a",
                     broker_spec=broker_spec,
                     risk_context=verified_context,
                     permit=self.permit,
@@ -480,11 +480,11 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
             permit_id=self.permit.permit_id,
         )
         broker_spec = replace(
-            broker(),
+            broker("XAUUSD"),
             account_id=self.stage.account_alias,
             server=self.stage.binding.server,
         )
-        guard = market_guard()
+        guard = market_guard("XAUUSD")
         facts = health()
         verified = build_verified_risk_context(
             journal=self.journal,
@@ -504,7 +504,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         with patch.dict(os.environ, self._arm(), clear=False):
             outcome = coordinator.execute_once(
                 intent=intent,
-                broker_symbol="EURUSD.a",
+                broker_symbol="XAUUSD.a",
                 broker_spec=broker_spec,
                 risk_context=verified,
                 permit=self.permit,
@@ -636,7 +636,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
                     "ticket": 7711,
                     "magic": 260615,
                     "comment": record.payload["broker_comment"],
-                    "symbol": "EURUSD.a",
+                    "symbol": "XAUUSD.a",
                     "type": 0,
                     "volume_current": 0.01,
                 },
@@ -769,7 +769,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         )
         decision = _mint_decision_snapshot(
             decision_run_id="dormant-demo-auto-post-stage-expiry",
-            symbol="EURUSD",
+            symbol="XAUUSD",
             side="BUY",
             strategy="MOMENTUM_PULLBACK",
             score=5,
@@ -782,7 +782,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
             commit_sha="a" * 40,
             config_sha256="b" * 64,
             data_sha256=digest("fresh-post-stage-broker-m15"),
-            source_name="Broker-Demo:EURUSD.a",
+            source_name="Broker-Demo:XAUUSD.a",
             source_aligned=True,
             data_fresh=True,
             bar_closed_at=NOW - timedelta(seconds=1),
