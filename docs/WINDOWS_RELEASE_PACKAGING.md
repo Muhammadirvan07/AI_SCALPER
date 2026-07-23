@@ -2,8 +2,8 @@
 
 Status saat ini tetap **READ-ONLY SHADOW / NOT_READY**. Builder mempertahankan
 profile terisolasi untuk deployment/tooling, minimal read-only broker shadow,
-dan brokerless decision-only service. Tidak satu pun profile tersebut membuka
-manual-demo, demo-auto, atau live.
+brokerless decision-only service, dan external status-only monitor. Tidak satu
+pun profile tersebut membuka manual-demo, demo-auto, atau live.
 
 ## Mengapa repository tidak boleh langsung diarsipkan
 
@@ -77,6 +77,15 @@ exact strategy dependencies, static factory contract, validate-only runner,
 dan dependency lock khusus tanpa MetaTrader5/keyring. Executor, risk, permit,
 reconciliation, broker adapter, credential, data, dan runtime state ditolak.
 Panduan lengkap ada di `docs/WINDOWS_DECISION_SERVICE_RELEASE.md`.
+
+Profile `WINDOWS_EXTERNAL_STATUS_MONITOR_V1` dibangun oleh dedicated
+`build_windows_status_monitor_release.py` dari
+`config/windows_status_monitor_allowlist.v1.json`. Release stdlib-only ini
+memuat status snapshot/assessment/checkpoint/incident contract, static
+12-provider factory template, exact configured-release verifier, public RSA
+launcher verifier, production loader, validator, dan bounded runner. Profile
+ini tidak membawa MetaTrader5, risk, permit, executor, reconciliation,
+credential resolver, process/network tooling, maupun order primitive.
 
 Factory/config/provider deployment-specific tidak boleh disalin ke base
 decision atau execution release setelah ekstraksi. Repository menyediakan
@@ -159,6 +168,14 @@ python -B .\build_windows_decision_release.py `
   --output C:\AI_SCALPER_RELEASES\ai-scalper-decision-service-v1.zip
 ```
 
+Untuk menghasilkan external status-monitor service sebagai release ketiga:
+
+```powershell
+python -B .\build_windows_status_monitor_release.py `
+  --allowlist .\config\windows_status_monitor_allowlist.v1.json `
+  --output C:\AI_SCALPER_RELEASES\ai-scalper-status-monitor-v1.zip
+```
+
 Bangun bundle operator configured-release yang minimal:
 
 ```powershell
@@ -172,10 +189,12 @@ execution-configured ZIP dengan identity baru. Verifikasi keduanya terhadap
 configured identity dan base identity yang dipin off-host. Extract dan jalankan
 configured ZIP; jangan menyalin factory ke base release setelah ekstraksi.
 
-Decision bundle dan executor bundle wajib menggunakan configured release
-identity, service account, root, state directory, dan in-release factory
-manifest yang berbeda. Base identity dipertahankan sebagai provenance, bukan
-identity proses akhir.
+Decision, execution, dan status-monitor bundle wajib menggunakan configured
+release identity, service account, root, state directory, dan in-release
+factory manifest yang berbeda. Monitor juga wajib memakai checkpoint/latch
+custody serta heartbeat/alert destination yang terpisah dari authority
+execution. Base identity dipertahankan sebagai provenance, bukan identity
+proses akhir.
 
 Bangun artefak yang sama pada dua clean Windows CPython 3.12 environments.
 Masukkan kedua observasi exact ke `live_runtime.release_reproducibility`, lalu

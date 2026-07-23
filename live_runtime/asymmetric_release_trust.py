@@ -31,7 +31,18 @@ ORDER_CAPABILITY = "DISABLED"
 LIVE_ALLOWED = False
 SAFE_TO_DEMO_AUTO_ORDER = False
 EXECUTION_AUTHORITY_GRANTED = False
-RELEASE_PROFILE = "WINDOWS_GATED_EXECUTION_SERVICE_V1"
+EXECUTION_RELEASE_PROFILE = "WINDOWS_GATED_EXECUTION_SERVICE_V1"
+DECISION_RELEASE_PROFILE = "WINDOWS_DECISION_SERVICE_V1"
+MONITOR_RELEASE_PROFILE = "WINDOWS_EXTERNAL_STATUS_MONITOR_V1"
+SUPPORTED_RELEASE_PROFILES = frozenset(
+    {
+        EXECUTION_RELEASE_PROFILE,
+        DECISION_RELEASE_PROFILE,
+        MONITOR_RELEASE_PROFILE,
+    }
+)
+# Backward-compatible name for the original execution-service consumer.
+RELEASE_PROFILE = EXECUTION_RELEASE_PROFILE
 POLICY_SCHEMA = "windows-external-launcher-rsa-policy-v1"
 ATTESTATION_SCHEMA = "windows-external-launcher-attestation-v1"
 VERIFIED_SCHEMA = "windows-verified-external-launcher-attestation-v1"
@@ -155,7 +166,7 @@ class ExternalLauncherTrustPolicy(CanonicalContract):
         for name in ("policy_id", "issuer_id", "issuer_key_id"):
             object.__setattr__(self, name, _identifier(name, getattr(self, name)))
         profile = require_text("release_profile", self.release_profile, upper=True)
-        if profile != RELEASE_PROFILE:
+        if profile not in SUPPORTED_RELEASE_PROFILES:
             raise ValueError("release profile is unsupported")
         object.__setattr__(self, "release_profile", profile)
         modulus_hex = require_text("rsa_modulus_hex", self.rsa_modulus_hex)
@@ -233,7 +244,7 @@ class ExternalLauncherAttestation(CanonicalContract):
         for name in ("attestation_id", "issuer_id", "issuer_key_id"):
             object.__setattr__(self, name, _identifier(name, getattr(self, name)))
         profile = require_text("release_profile", self.release_profile, upper=True)
-        if profile != RELEASE_PROFILE:
+        if profile not in SUPPORTED_RELEASE_PROFILES:
             raise ValueError("release profile is unsupported")
         object.__setattr__(self, "release_profile", profile)
         for name in (
@@ -292,6 +303,7 @@ class VerifiedExternalLauncherAttestation(CanonicalContract):
     nonce_sha256: str
     verified_at_utc: datetime
     expires_at_utc: datetime
+    release_profile: str = RELEASE_PROFILE
     live_allowed: bool = LIVE_ALLOWED
     safe_to_demo_auto_order: bool = SAFE_TO_DEMO_AUTO_ORDER
     execution_authority_granted: bool = EXECUTION_AUTHORITY_GRANTED
@@ -313,6 +325,12 @@ class VerifiedExternalLauncherAttestation(CanonicalContract):
         expires = require_utc("expires_at_utc", self.expires_at_utc)
         if verified >= expires:
             raise ValueError("verified launcher attestation is already expired")
+        profile = require_text(
+            "release_profile", self.release_profile, upper=True
+        )
+        if profile not in SUPPORTED_RELEASE_PROFILES:
+            raise ValueError("verified launcher release profile is unsupported")
+        object.__setattr__(self, "release_profile", profile)
         if (
             self.live_allowed
             or self.safe_to_demo_auto_order
@@ -328,6 +346,7 @@ class VerifiedExternalLauncherAttestation(CanonicalContract):
         *,
         now: datetime,
         expected_release_identity_sha256: str,
+        expected_release_profile: str | None = None,
     ) -> bool:
         checked = require_utc("launcher recheck time", now)
         expected = _nonzero_hash(
@@ -336,6 +355,19 @@ class VerifiedExternalLauncherAttestation(CanonicalContract):
         )
         if expected != self.release_identity_sha256:
             raise ExternalLauncherTrustError("VERIFIED_RELEASE_IDENTITY_MISMATCH")
+        if expected_release_profile is not None:
+            expected_profile = require_text(
+                "expected_release_profile",
+                expected_release_profile,
+                upper=True,
+            )
+            if (
+                expected_profile not in SUPPORTED_RELEASE_PROFILES
+                or expected_profile != self.release_profile
+            ):
+                raise ExternalLauncherTrustError(
+                    "VERIFIED_RELEASE_PROFILE_MISMATCH"
+                )
         if checked < self.verified_at_utc:
             raise ExternalLauncherTrustError("TRUSTED_CLOCK_REGRESSION")
         if checked >= self.expires_at_utc:
@@ -411,6 +443,7 @@ def verify_external_launcher_attestation(
     policy_payload: str | bytes,
     expected_policy_sha256: str,
     expected_release_identity_sha256: str,
+    expected_release_profile: str | None = None,
     clock_provider,
 ) -> VerifiedExternalLauncherAttestation:
     """Authenticate one short-lived external provenance assertion."""
@@ -423,6 +456,22 @@ def verify_external_launcher_attestation(
     )
     if policy.content_sha256 != expected_policy:
         raise ExternalLauncherTrustError("EXTERNAL_POLICY_PIN_MISMATCH")
+    expected_profile = (
+        policy.release_profile
+        if expected_release_profile is None
+        else require_text(
+            "expected_release_profile",
+            expected_release_profile,
+            upper=True,
+        )
+    )
+    if (
+        expected_profile not in SUPPORTED_RELEASE_PROFILES
+        or policy.release_profile != expected_profile
+    ):
+        raise ExternalLauncherTrustError(
+            "EXPECTED_RELEASE_PROFILE_MISMATCH"
+        )
     attestation = decode_external_launcher_attestation(attestation_payload)
     expected_release = _nonzero_hash(
         "expected_release_identity_sha256", expected_release_identity_sha256
@@ -478,24 +527,29 @@ def verify_external_launcher_attestation(
         nonce_sha256=attestation.nonce_sha256,
         verified_at_utc=completed,
         expires_at_utc=attestation.expires_at_utc,
+        release_profile=attestation.release_profile,
         _seal=_VERIFIED_SEAL,
     )
 
 
 __all__ = [
     "ATTESTATION_SCHEMA",
+    "DECISION_RELEASE_PROFILE",
     "EXECUTION_AUTHORITY_GRANTED",
+    "EXECUTION_RELEASE_PROFILE",
     "ExternalLauncherAttestation",
     "ExternalLauncherTrustError",
     "ExternalLauncherTrustPolicy",
     "LIVE_ALLOWED",
     "MAXIMUM_ATTESTATION_TTL",
     "MINIMUM_RSA_BITS",
+    "MONITOR_RELEASE_PROFILE",
     "ORDER_CAPABILITY",
     "POLICY_SCHEMA",
     "RELEASE_PROFILE",
     "SAFE_TO_DEMO_AUTO_ORDER",
     "SIGNATURE_ALGORITHM",
+    "SUPPORTED_RELEASE_PROFILES",
     "VerifiedExternalLauncherAttestation",
     "decode_external_launcher_attestation",
     "decode_external_launcher_trust_policy",

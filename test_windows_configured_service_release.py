@@ -26,8 +26,10 @@ from live_runtime.windows_service_entrypoint import (
 
 EXECUTION_PROFILE = "WINDOWS_GATED_EXECUTION_SERVICE_V1"
 DECISION_PROFILE = "WINDOWS_DECISION_SERVICE_V1"
+MONITOR_PROFILE = "WINDOWS_EXTERNAL_STATUS_MONITOR_V1"
 EXECUTION_SCHEMA = "ai-scalper-windows-execution-service-manifest-v1"
 DECISION_SCHEMA = "ai-scalper-windows-decision-service-manifest-v1"
+MONITOR_SCHEMA = "ai-scalper-windows-status-monitor-manifest-v1"
 ZERO = "0" * 64
 
 
@@ -61,7 +63,7 @@ class WindowsConfiguredServiceReleaseTests(unittest.TestCase):
                 "max_lot": 0.01,
                 "order_capability": "GATED_PRESENT",
             }
-        else:
+        elif profile == DECISION_PROFILE:
             schema = DECISION_SCHEMA
             safety = {
                 "live_allowed": False,
@@ -69,6 +71,16 @@ class WindowsConfiguredServiceReleaseTests(unittest.TestCase):
                 "max_lot": 0.01,
                 "order_capability": "DISABLED",
             }
+        elif profile == MONITOR_PROFILE:
+            schema = MONITOR_SCHEMA
+            safety = {
+                "live_allowed": False,
+                "safe_to_demo_auto_order": False,
+                "max_lot": 0.01,
+                "order_capability": "DISABLED",
+            }
+        else:
+            raise AssertionError(f"unsupported fixture profile: {profile}")
         if safety_override is not None:
             safety = safety_override
         sources = {
@@ -302,6 +314,26 @@ class WindowsConfiguredServiceReleaseTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(DECISION_PROFILE, report.release_profile)
+            self.assertEqual("DISABLED", report.order_capability)
+            self.assertFalse(report.production_execution_ready)
+
+    def test_monitor_profile_preserves_status_only_disabled_capability(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            _base, manifest, _overlay, _descriptor, output, result = self._build(
+                root,
+                profile=MONITOR_PROFILE,
+            )
+            report = verify_configured_service_release(
+                output,
+                expected_release_identity_sha256=result[
+                    "release_identity_sha256"
+                ],
+                expected_base_release_identity_sha256=manifest[
+                    "release_identity_sha256"
+                ],
+            )
+            self.assertEqual(MONITOR_PROFILE, report.release_profile)
             self.assertEqual("DISABLED", report.order_capability)
             self.assertFalse(report.production_execution_ready)
 

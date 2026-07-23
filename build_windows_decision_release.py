@@ -56,7 +56,12 @@ REQUIRED_USAGE_POLICY = {
     "broker_mutation_capability": False,
     "ipc_publish_capability": "SIGNED_DECISION_SNAPSHOT_ONLY",
     "production_service_execution_allowed": False,
-    "runtime_materialization_required": False,
+    "configured_service_runtime_supported": True,
+    "runtime_materialization_required": True,
+    "launcher_attestation_required": (
+        "RSA3072_EXTERNAL_DECISION_PROFILE"
+    ),
+    "runtime_entrypoint": "run_windows_decision_service.py",
     "session_calendar_capability": "SIGNED_EXACT_CLOSURE_RECEIPTS_ONLY",
     "session_calendar_verifier_provider": (
         "EXACT_IMPLEMENTATION_AND_CONFIGURATION_HASH_REQUIRED"
@@ -73,10 +78,12 @@ APPROVED_SOURCE_PATHS = frozenset(
         "agents/supervisor_agent.py",
         "config/windows_decision_service_allowlist.v1.json",
         "live_runtime/__init__.py",
+        "live_runtime/asymmetric_release_trust.py",
         "live_runtime/brokerless_decision_producer.py",
         "live_runtime/contracts.py",
         "live_runtime/decision_core.py",
         "live_runtime/decision_ipc.py",
+        "live_runtime/windows_decision_service_entrypoint.py",
         "live_runtime/windows_decision_service_factory_template.py",
         "market_data_quality.py",
         "market_regime_filter.py",
@@ -145,6 +152,9 @@ READINESS_BLOCKERS = (
     "EXTERNAL_DECISION_CURSOR_ACK_VERIFIER_REQUIRED",
     "EXTERNAL_DECISION_FACTORY_PROVIDER_CONFIGURATION_REQUIRED",
     "EXTERNAL_WINDOWS_DECISION_SERVICE_IDENTITY_ATTESTATION_REQUIRED",
+    "EXTERNAL_RSA_LAUNCHER_ATTESTATION_REQUIRED",
+    "EXTERNAL_STATUS_MONITOR_CONFIGURED_RELEASE_ACCEPTANCE_REQUIRED",
+    "EXACT_WINDOWS_DECISION_SERVICE_ACCEPTANCE_REQUIRED",
 )
 
 FORBIDDEN_IMPORT_PREFIXES = (
@@ -476,7 +486,8 @@ def build_decision_release(
         "dependency_lock_summary": dependency_summary,
         "production_execution_ready": False,
         "readiness_blockers": list(READINESS_BLOCKERS),
-        "runtime_factory": "EXTERNAL_NOT_BUNDLED",
+        "runtime_factory": "CONFIGURED_RELEASE_OVERLAY_REQUIRED",
+        "runtime_loader": "RELEASE_LOCAL_CONFIGURED_ONLY",
         "required_factory_provider_contracts": provider_contracts(),
         "trust_boundaries": {
             "session_calendar_continuity": (

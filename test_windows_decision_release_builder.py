@@ -144,7 +144,14 @@ class WindowsDecisionReleaseBuilderTests(unittest.TestCase):
             )
             self.assertFalse(manifest["production_execution_ready"])
             self.assertEqual(list(READINESS_BLOCKERS), manifest["readiness_blockers"])
-            self.assertEqual("EXTERNAL_NOT_BUNDLED", manifest["runtime_factory"])
+            self.assertEqual(
+                "CONFIGURED_RELEASE_OVERLAY_REQUIRED",
+                manifest["runtime_factory"],
+            )
+            self.assertEqual(
+                "RELEASE_LOCAL_CONFIGURED_ONLY",
+                manifest["runtime_loader"],
+            )
             self.assertEqual(
                 "SEALED_BINDING_PINNED_HMAC_VERIFIER_PORT",
                 manifest["trust_boundaries"][
@@ -154,6 +161,14 @@ class WindowsDecisionReleaseBuilderTests(unittest.TestCase):
             self.assertEqual("DISABLED", first_result["order_capability"])
             paths = {item["path"] for item in manifest["source_files"]}
             self.assertIn("live_runtime/brokerless_decision_producer.py", paths)
+            self.assertIn(
+                "live_runtime/windows_decision_service_entrypoint.py",
+                paths,
+            )
+            self.assertIn(
+                "live_runtime/asymmetric_release_trust.py",
+                paths,
+            )
             for forbidden in (
                 "execution_policy.py",
                 "live_runtime/executor.py",
@@ -363,7 +378,7 @@ class WindowsDecisionReleaseBuilderTests(unittest.TestCase):
             report["trust_boundaries"]["session_calendar_continuity"],
         )
 
-    def test_runner_validate_only_checks_release_without_runtime_effects(self):
+    def test_runner_rejects_base_release_and_external_factory_manifest(self):
         with tempfile.TemporaryDirectory() as raw:
             base = Path(raw)
             root, allowlist = self._repo(base)
@@ -395,7 +410,7 @@ class WindowsDecisionReleaseBuilderTests(unittest.TestCase):
                         "--validate-only",
                     ]
                 )
-            self.assertEqual(0, status)
+            self.assertEqual(2, status)
 
             source = extracted / "agents/supervisor_agent.py"
             source.write_text(source.read_text(encoding="utf-8") + "\n", encoding="utf-8")

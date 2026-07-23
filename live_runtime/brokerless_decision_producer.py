@@ -1855,6 +1855,12 @@ class BrokerlessDecisionProducerService:
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("decision producer service is immutable")
 
+    @property
+    def binding(self) -> DecisionProducerBinding:
+        """Return the immutable binding used by runtime factory verification."""
+
+        return self.__binding
+
     def _build_snapshot(
         self,
         observation: FinalizedM15DecisionInput,

@@ -1,0 +1,36 @@
+{
+  "schema_version": "ai-scalper-windows-status-monitor-allowlist-v1",
+  "release_profile": "WINDOWS_EXTERNAL_STATUS_MONITOR_V1",
+  "safety": {
+    "live_allowed": false,
+    "safe_to_demo_auto_order": false,
+    "max_lot": 0.01,
+    "order_capability": "DISABLED"
+  },
+  "usage_policy": {
+    "bundle_class": "STATUS_ONLY_EXTERNAL_MONITOR",
+    "execution_context": "DISTINCT_WINDOWS_TASK_SCHEDULER_SERVICE_ACCOUNT",
+    "network_capable_tooling_present": false,
+    "broker_mutation_capability": false,
+    "monitor_capability": "SIGNED_HEARTBEAT_ALERT_AND_STATUS_CHECKPOINT_ONLY",
+    "production_service_execution_allowed": false,
+    "configured_service_runtime_supported": true,
+    "runtime_materialization_required": true,
+    "launcher_attestation_required": "RSA3072_EXTERNAL_MONITOR_PROFILE",
+    "runtime_entrypoint": "run_windows_external_status_monitor.py",
+    "validation_entrypoint": "validate_windows_external_status_monitor.py"
+  },
+  "files": [
+    "config/windows_status_monitor_allowlist.v1.json",
+    "live_runtime/__init__.py",
+    "live_runtime/asymmetric_release_trust.py",
+    "live_runtime/configured_service_release.py",
+    "live_runtime/contracts.py",
+    "live_runtime/offhost_delivery.py",
+    "live_runtime/windows_external_status_monitor.py",
+    "live_runtime/windows_external_status_monitor_entrypoint.py",
+    "live_runtime/windows_external_status_monitor_factory_template.py",
+    "run_windows_external_status_monitor.py",
+    "validate_windows_external_status_monitor.py"
+  ]
+}

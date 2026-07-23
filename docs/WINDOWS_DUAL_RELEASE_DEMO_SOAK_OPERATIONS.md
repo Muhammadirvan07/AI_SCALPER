@@ -6,14 +6,18 @@ The current Windows topology is now represented by a strict v2 review contract:
 
 - one deterministic `WINDOWS_DECISION_SERVICE_V1` release;
 - one deterministic `WINDOWS_GATED_EXECUTION_SERVICE_V1` release;
+- one deterministic `WINDOWS_EXTERNAL_STATUS_MONITOR_V1` release operated
+  under a third identity;
 - one separate CPython 3.12 environment and least-privilege identity per
   release;
 - one explicitly bound `decision-ipc-binding-v2` boundary; and
-- one separately reviewed external monitor reference.
+- one separately reviewed configured monitor/provider and off-host delivery
+  boundary.
 
 The v2 contract does not reuse a release root, Python environment, or service
-identity. It does not invent a release-local watchdog: no production watchdog
-entrypoint currently exists in either service release.
+identity. The status-monitor release and runtime loader now exist, but the v2
+review artifact does not install or claim acceptance of its configured
+provider overlay, launcher, task, or real off-host acknowledgements.
 
 The legacy v1 operations artifact remains readable for audit history, but its
 single-release/fictitious-entrypoint model is not an accepted demo-auto host
@@ -106,7 +110,7 @@ remaining external facts:
 1. materialized and reviewed decision/execution provider factories;
 2. external launcher attestations and configured immutable releases;
 3. decision IPC key/CAS/acknowledgement custody;
-4. an implemented external monitor/watchdog and off-host delivery;
+4. reviewed configured monitor/provider acceptance and real off-host delivery;
 5. exact Task Scheduler/ACL/service-identity acceptance on Windows;
 6. Windows hardening and all signed failure drills;
 7. broker-native XAUUSD `0.01` minimum-lot risk feasibility; and

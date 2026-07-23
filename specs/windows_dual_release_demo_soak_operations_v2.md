@@ -7,12 +7,18 @@ This specification replaces the single-release deployment assumptions in
 The v1 schema remains readable as a legacy review artifact, but it MUST NOT be
 used as the operational contract for a demo-auto host.
 
-The current architecture has two deterministic releases and two dependency
-environments:
+The current architecture has three deterministic service releases and three
+separate service identities:
 
 1. `WINDOWS_DECISION_SERVICE_V1`, which has no broker or order capability; and
 2. `WINDOWS_GATED_EXECUTION_SERVICE_V1`, which contains the exact gated MT5
-   boundary.
+   boundary; and
+3. `WINDOWS_EXTERNAL_STATUS_MONITOR_V1`, which observes status and off-host
+   delivery without broker, risk, permit, or order authority.
+
+This v2 operations schema binds the decision/execution pair and references the
+third monitor as an independently accepted external service. It intentionally
+does not install or render any of the three runtime tasks.
 
 This v2 contract remains review-only. It does not install tasks, materialize
 providers, read credentials, initialize MT5, activate demo-auto, or submit an
@@ -56,8 +62,10 @@ Decision and execution MUST bind distinct absolute `python.exe` paths, exact
 CPython 3.12 patch versions, executable hashes, dependency-lock hashes, and SBOM
 hashes. They MUST use distinct least-privilege Windows service identities.
 
-A third distinct monitor identity is required as an external reference. The
-contract does not claim that the monitor implementation or task exists.
+A third distinct monitor identity is required as an external reference. A
+deterministic monitor release and runtime loader exist, but this contract does
+not claim that its configured provider overlay, launcher attestation, task, or
+off-host acknowledgements have been accepted.
 
 ### FR-3 — XAUUSD-only initial scope
 
@@ -85,11 +93,12 @@ material.
 
 ### FR-5 — External monitor boundary
 
-There is no release-local production watchdog entrypoint today. The plan MUST
-therefore bind a separately reviewed external status-only monitor by provider
-ID, implementation/configuration/task-definition hashes, and the distinct
-monitor service identity. It MUST bind the same off-host heartbeat and alert
-destination IDs used by the operations plan.
+The plan MUST bind the separately reviewed external status-only monitor by
+provider ID, implementation/configuration/task-definition hashes, and the
+distinct monitor service identity. It MUST bind the same off-host heartbeat and
+alert destination IDs used by the operations plan. Its configured release,
+provider sources, launcher trust, and task acceptance remain separate reviewed
+artifacts.
 
 The local plan MUST NOT render a fictitious watchdog command or claim the
 monitor is installed.
@@ -148,7 +157,7 @@ external blockers for:
 - execution provider factory materialization;
 - independent launcher attestations;
 - decision/execution IPC custody;
-- external monitor/watchdog implementation;
+- configured status-monitor provider/release and off-host delivery acceptance;
 - exact Windows task/ACL installation acceptance;
 - Windows hardening and signed failure drills; and
 - ten controlled manual-demo orders.
@@ -175,7 +184,8 @@ Tests MUST prove:
 - rejection of single-release reuse, runtime reuse, service-account reuse,
   cross-commit releases, fictitious entrypoints, IPC mismatch, path collision,
   non-XAU scope, and embedded secrets;
-- exactly two validation-only scheduler definitions and no watchdog fiction;
+- exactly two validation-only scheduler definitions and no claim that the
+  third runtime task is installed;
 - immutable input/bundle parsing, reconstruction, tamper detection, and
   create-exclusive CLI output;
 - zero credential/task/process/network/MT5/broker side effects; and
@@ -186,5 +196,6 @@ Tests MUST prove:
 This contract closes only the local architecture mismatch. Demo-auto soak still
 cannot begin until reviewed provider implementations, configured releases,
 offline launcher attestations, Windows Credential Manager references, IPC/CAS
-custody, monitor implementation, task/ACL acceptance, hardening/failure drills,
-minimum-lot risk feasibility, and ten clean manual-demo lifecycles are proven.
+custody, configured monitor provider/release acceptance, real off-host
+acknowledgements, task/ACL acceptance, hardening/failure drills, minimum-lot
+risk feasibility, and ten clean manual-demo lifecycles are proven.

@@ -37,6 +37,7 @@ FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 EXECUTION_PROFILE = "WINDOWS_GATED_EXECUTION_SERVICE_V1"
 DECISION_PROFILE = "WINDOWS_DECISION_SERVICE_V1"
+MONITOR_PROFILE = "WINDOWS_EXTERNAL_STATUS_MONITOR_V1"
 _PROFILE_POLICY = {
     EXECUTION_PROFILE: {
         "manifest_schema": "ai-scalper-windows-execution-service-manifest-v1",
@@ -44,6 +45,10 @@ _PROFILE_POLICY = {
     },
     DECISION_PROFILE: {
         "manifest_schema": "ai-scalper-windows-decision-service-manifest-v1",
+        "order_capability": "DISABLED",
+    },
+    MONITOR_PROFILE: {
+        "manifest_schema": "ai-scalper-windows-status-monitor-manifest-v1",
         "order_capability": "DISABLED",
     },
 }

@@ -33,8 +33,8 @@ below are complete.
 
 ## 1. Build and validate clean releases
 
-Use a clean reviewed commit on Windows and build the decision and execution
-packages separately:
+Use a clean reviewed commit on Windows and build the decision, execution, and
+status-monitor packages separately:
 
 ```powershell
 python -B .\build_windows_decision_release.py `
@@ -43,12 +43,16 @@ python -B .\build_windows_decision_release.py `
 python -B .\build_windows_execution_release.py `
   --output C:\AI_SCALPER_RELEASES\execution-base.zip
 
+python -B .\build_windows_status_monitor_release.py `
+  --output C:\AI_SCALPER_RELEASES\status-monitor-base.zip
+
 python -B .\build_windows_configured_release_tooling.py `
   --output C:\AI_SCALPER_RELEASES\configured-release-tooling-v1.zip
 ```
 
-Supply two separately reviewed, secret-free overlays and canonical descriptors
-outside the repository. Build a new configured identity for each process:
+Supply three separately reviewed, secret-free overlays and canonical
+descriptors outside the repository. Build a new configured identity for each
+process:
 
 ```powershell
 python -I -S -B .\build_windows_configured_service_release.py `
@@ -62,6 +66,12 @@ python -I -S -B .\build_windows_configured_service_release.py `
   --overlay-root C:\AI_SCALPER_PRIVATE\execution-overlay `
   --descriptor C:\AI_SCALPER_PRIVATE\execution-overlay.json `
   --output C:\AI_SCALPER_RELEASES\execution-configured.zip
+
+python -I -S -B .\build_windows_configured_service_release.py `
+  --base-release C:\AI_SCALPER_RELEASES\status-monitor-base.zip `
+  --overlay-root C:\AI_SCALPER_PRIVATE\status-monitor-overlay `
+  --descriptor C:\AI_SCALPER_PRIVATE\status-monitor-overlay.json `
+  --output C:\AI_SCALPER_RELEASES\status-monitor-configured.zip
 ```
 
 Independently verify each configured ZIP against configured and base identities
@@ -78,13 +88,16 @@ and must fail exact-inventory verification. Mutable databases must live under
 python -B .\validate_windows_decision_service.py
 python -B .\validate_windows_gated_execution_service.py `
   --allow-blocked-report
+python -B .\validate_windows_external_status_monitor.py `
+  --allow-blocked-report
 ```
 
 A port pass with `production_execution_ready=false` is expected until the
 external facts below are supplied. It is not an activation approval.
-The current decision runner remains validate-only even after configured
-packaging; it still requires a separately reviewed production loader and
-launcher boundary.
+Operational decision and monitor loaders now exist, but both still require an
+exact configured release, separately reviewed provider implementation, and
+externally issued launcher policy/attestation. Their existence is not an
+activation approval.
 
 Before any Task Scheduler review, create and verify the current dual-release v2
 operations bundle:
@@ -96,9 +109,10 @@ python -B .\prepare_windows_dual_release_demo_soak_operations.py `
   --output C:\AI_SCALPER_PRIVATE\operations\dual-release-review-v2.json
 ```
 
-The bundle renders exactly two static validation tasks. It deliberately does
-not render runtime launchers or a fictitious watchdog. The legacy v1
-single-release operations bundle is not acceptable for this topology.
+The bundle renders exactly two static decision/execution validation tasks. It
+deliberately does not install runtime tasks or imply that the separately
+configured monitor task is accepted. The legacy v1 single-release operations
+bundle is not acceptable for this topology.
 
 ## 2. Supply external authorities
 
@@ -114,6 +128,8 @@ Provision and independently review:
 - current runtime facts, reconciliation, signed news, stage authorization,
   promotion evidence, permit, and process environment-arm providers;
 - WORM audit/heartbeat delivery and acknowledgement providers;
+- a separately reviewed status-monitor provider overlay with independent
+  snapshot/checkpoint/latch custody and distinct heartbeat/alert destinations;
 - exact Python 3.12, `MetaTrader5==5.0.5735`, terminal, broker account, symbol,
   calendar, model, release, dependency, and service-account attestations; and
 - an RSA-3072 launcher policy issued outside the VPS, with policy SHA-256 pinned

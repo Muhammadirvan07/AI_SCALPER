@@ -36,6 +36,9 @@ READINESS_BLOCKERS = (
     "EXTERNAL_DECISION_CURSOR_ACK_VERIFIER_REQUIRED",
     "EXTERNAL_DECISION_FACTORY_PROVIDER_CONFIGURATION_REQUIRED",
     "EXTERNAL_WINDOWS_DECISION_SERVICE_IDENTITY_ATTESTATION_REQUIRED",
+    "EXTERNAL_RSA_LAUNCHER_ATTESTATION_REQUIRED",
+    "EXTERNAL_STATUS_MONITOR_CONFIGURED_RELEASE_ACCEPTANCE_REQUIRED",
+    "EXACT_WINDOWS_DECISION_SERVICE_ACCEPTANCE_REQUIRED",
 )
 
 REQUIRED_PORTS = {
@@ -52,6 +55,11 @@ REQUIRED_PORTS = {
         "make_read_only_finalized_m15_provider",
         "make_verified_session_calendar_port",
     ),
+    "live_runtime.asymmetric_release_trust": (
+        "DECISION_RELEASE_PROFILE",
+        "VerifiedExternalLauncherAttestation",
+        "verify_external_launcher_attestation",
+    ),
     "live_runtime.contracts": (
         "DecisionSnapshot",
         "canonical_sha256",
@@ -64,6 +72,11 @@ REQUIRED_PORTS = {
     "live_runtime.decision_ipc": (
         "DecisionIPCProducer",
         "DecisionIPCEnvelope",
+    ),
+    "live_runtime.windows_decision_service_entrypoint": (
+        "WindowsDecisionServiceRunner",
+        "load_reviewed_windows_decision_service_factory",
+        "validate_reviewed_windows_decision_service_factory_manifest",
     ),
     "live_runtime.windows_decision_service_factory_template": (
         "provider_contracts",
@@ -155,7 +168,10 @@ def validate_windows_decision_service(
         "factory_template_sha256": factory_sha256,
         "production_execution_ready": PRODUCTION_EXECUTION_READY,
         "readiness_blockers": list(READINESS_BLOCKERS),
-        "external_runtime_factory": "REQUIRED_NOT_BUNDLED",
+        "external_runtime_factory": (
+            "CONFIGURED_RELEASE_OVERLAY_REQUIRED"
+        ),
+        "runtime_loader": "RELEASE_LOCAL_CONFIGURED_ONLY",
         "required_factory_provider_contracts": required_provider_contracts,
         "trust_boundaries": {
             "session_calendar_continuity": (
