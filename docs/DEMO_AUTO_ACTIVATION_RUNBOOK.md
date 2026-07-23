@@ -115,25 +115,31 @@ deliberately does not install runtime tasks or imply that any provider,
 launcher, task, or off-host delivery is accepted. Legacy v1 and historical v2
 operations bundles are not acceptable for a new host review.
 
-After the responsible owners have produced immutable external evidence, an
-offline acceptance authority signs exactly one observation per required gate.
-Verify the public dossier against an independently pinned policy hash:
+Before manual-demo, the responsible owners produce immutable evidence for the
+nine pre-run gates. The offline acceptance authority signs exactly one
+observation per pre-run gate. Do **not** fabricate the tenth manual-demo result
+observation. Verify this phase against an independently pinned policy hash:
 
 ```powershell
-python -B .\verify_windows_three_service_external_acceptance.py `
+python -B .\verify_windows_manual_demo_entry_review.py `
   --review-bundle C:\AI_SCALPER_PRIVATE\operations\three-service-review-v3.json `
   --trust-policy C:\AI_SCALPER_PRIVATE\operations\external-acceptance-policy.json `
-  --observations C:\AI_SCALPER_PRIVATE\operations\external-acceptance-observations.json `
+  --observations C:\AI_SCALPER_PRIVATE\operations\pre-manual-observations.json `
   --expected-policy-sha256 <INDEPENDENTLY_PINNED_POLICY_SHA256> `
   --checked-at-utc <TRUSTED_CANONICAL_UTC> `
-  --output C:\AI_SCALPER_PRIVATE\operations\external-acceptance-assessment.json
+  --output C:\AI_SCALPER_PRIVATE\operations\manual-demo-entry-review.json
 ```
 
 Only
-`EXTERNAL_ACCEPTANCE_COMPLETE_ACTIVATION_REVIEW_REQUIRED` closes the external
-operations inventory, and it still leaves activation, execution, demo-auto,
-promotion, and live flags false. `docs/WINDOWS_THREE_SERVICE_EXTERNAL_ACCEPTANCE.md`
-defines the fixed owner map and artifact contract.
+`PRE_MANUAL_DEMO_EXTERNAL_PRECONDITIONS_COMPLETE_ACTIVATION_REVIEW_REQUIRED`
+closes the pre-run inventory. It still leaves manual-demo authorization and
+all execution flags false. A separate human review and the existing
+short-lived MANUAL_DEMO stage/per-intent controls are still mandatory.
+
+The full ten-gate verifier is intentionally deferred until the controlled
+lifecycles in step 3 have produced their signed result evidence. Running it
+before the ten lifecycles must return blocked. This is expected, not a reason
+to bypass or forge the result gate.
 
 ## 2. Supply external authorities
 
@@ -171,6 +177,26 @@ critical alert failure, unresolved `UNCERTAIN`, or custody fork.
 Exercise and retain signed evidence for VPS reboot, MT5 restart, network
 partition, disk full, SQLite contention/corruption, clock drift, and release
 rollback. Any critical failure blocks activation.
+
+After the tracker and independent manual-demo acceptance authority validate all
+ten lifecycles, add the signed
+`MANUAL_DEMO_10_CONTROLLED_ORDERS_REQUIRED` observation and run the full
+external verifier:
+
+```powershell
+python -B .\verify_windows_three_service_external_acceptance.py `
+  --review-bundle C:\AI_SCALPER_PRIVATE\operations\three-service-review-v3.json `
+  --trust-policy C:\AI_SCALPER_PRIVATE\operations\external-acceptance-policy.json `
+  --observations C:\AI_SCALPER_PRIVATE\operations\external-acceptance-observations.json `
+  --expected-policy-sha256 <INDEPENDENTLY_PINNED_POLICY_SHA256> `
+  --checked-at-utc <TRUSTED_CANONICAL_UTC> `
+  --output C:\AI_SCALPER_PRIVATE\operations\external-acceptance-assessment.json
+```
+
+Only
+`EXTERNAL_ACCEPTANCE_COMPLETE_ACTIVATION_REVIEW_REQUIRED` closes the full
+external inventory. It still leaves activation, execution, demo-auto,
+promotion, and live flags false.
 
 ## 4. Review the activation release
 

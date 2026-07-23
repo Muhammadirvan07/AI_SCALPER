@@ -17,7 +17,7 @@ baru boleh dimulai setelah acceptance Windows, provider/key custody, sepuluh
 manual-demo lifecycles, dan approval manusia. Live masih membutuhkan soak 30
 hari/50 closed fills/20 XAU, bukti per lane, serta gate statistik dan keamanan.
 
-Validasi lokal terakhir menjalankan **1.320 test** tanpa kegagalan pada mode
+Validasi lokal terakhir menjalankan **1.330 test** tanpa kegagalan pada mode
 normal dan `PYTHONOPTIMIZE=2`. Seluruh tracked Python source berhasil
 dikompilasi, validator decision/execution/status-monitor lulus dengan
 `production_execution_ready=false`, dan safety locks tetap:
@@ -28,6 +28,11 @@ safe_to_demo_auto_order = false
 max_lot = 0.01
 promotion_eligible = false
 ```
+
+Dependency lock Windows, install manifest, dan CycloneDX SBOM juga tervalidasi.
+Audit environment development dengan `pip-audit 2.10.1` melaporkan tidak ada
+kerentanan yang diketahui. Hasil ini adalah pemeriksaan lokal saat ini, bukan
+pengganti signed OSV release receipt dari Windows host target.
 
 ## Yang selesai pada fondasi lokal
 
@@ -66,6 +71,12 @@ promotion_eligible = false
   pending; bahkan sepuluh gate yang valid hanya menghasilkan
   `EXTERNAL_ACCEPTANCE_COMPLETE_ACTIVATION_REVIEW_REQUIRED` dengan seluruh
   activation, execution, demo-auto, promotion, dan live lock tetap false.
+- Pre-manual entry verifier memisahkan urutan fase secara eksplisit. Tepat
+  sembilan gate pra-run harus accepted dan gate hasil sepuluh lifecycle wajib
+  masih `MISSING`. Hasil lengkap hanya meminta review manusia untuk penerbitan
+  stage evidence terpisah; ia menolak observation hasil manual-demo yang muncul
+  terlalu awal dan tidak memiliki order, activation, permit, atau issuer
+  capability.
 - Health threshold sekarang menolak `NaN`, infinity, dan pecahan untuk field
   yang secara kontrak bertipe integer.
 
@@ -81,12 +92,15 @@ promotion_eligible = false
    restore, serta failure-drill evidence.
 4. Buktikan risiko minimum `0.01` lot XAUUSD masih berada di bawah risk cap
    menggunakan `order_calc_profit()` dan measured spread/commission/slippage.
-5. Selesaikan sepuluh controlled manual-demo order lifecycles tanpa duplicate,
+5. Kumpulkan sembilan signed observation pra-manual, jalankan pre-manual entry
+   verifier, lalu lakukan review manusia terpisah atas penerbitan short-lived
+   `MANUAL_DEMO` stage evidence. Verifier tidak memberi authority.
+6. Selesaikan sepuluh controlled manual-demo order lifecycles tanpa duplicate,
    orphan, unresolved `UNCERTAIN`, missing SL/TP, atau critical alert failure.
-6. Kumpulkan sepuluh signed gate observation, verifikasi external-acceptance
-   dossier, lalu lakukan review manusia dan keluarkan activation release
-   terpisah. Source
-   saat ini tidak boleh diubah hanya untuk melewati gate.
+7. Setelah hasil run tersedia, terbitkan observation hasil ke-10 melalui
+   authority yang independen, verifikasi full external-acceptance dossier,
+   lalu review activation release DEMO_AUTO secara terpisah. Source saat ini
+   tidak boleh diubah hanya untuk melewati gate.
 
 ## Sisa setelah demo-auto dimulai
 

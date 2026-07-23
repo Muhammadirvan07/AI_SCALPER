@@ -2,10 +2,15 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-24 menjalankan **1.320 test** tanpa
+Validasi lokal terakhir pada 2026-07-24 menjalankan **1.330 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac. Itu adalah
 software regression evidence, bukan Windows host acceptance, broker-forward
 evidence, atau izin trading.
+
+Dependency lock/install manifest/SBOM lokal juga tervalidasi dan
+`pip-audit 2.10.1` melaporkan nol kerentanan yang diketahui pada environment
+development. Pemeriksaan tersebut tidak menggantikan fresh signed OSV receipt
+dari exact Windows release.
 
 Dokumen ini membedakan implementasi software lokal dari bukti operasi. Test
 hijau tidak menggantikan broker-forward evidence, legal review, Windows VPS
@@ -19,7 +24,7 @@ membuka demo-auto maupun live.
 | 1. Baseline terkunci | Selesai secara lokal | Seluruh safety lock terjaga; mutable CSV market cache dan legacy JSON runtime sudah dikeluarkan dari release source. Exact committed source lulus full regression dan empat clean-checkout Windows release build tanpa membawa artefak runtime lokal. |
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, byte-derived regulatory review package with two independent HMAC approvals, byte-derived pre-window base-calendar review with a separate human HMAC approval, prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
 | 3. Broker read-only shadow | FBS and Phillip diagnostic bindings observed; evidence not started | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip sanitized discovery-v3 inputs berhasil dibuat dan reviewed regular M15 base schedules tersedia, tetapi profile registration, regulatory approval, 20-session benchmark, broker-forward contract, dan promotion evidence tetap disabled/pending. FINEX tidak dipakai untuk observasi baru. |
-| 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, bounded Windows composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, dan non-mutating readiness report tersedia. Seluruh external gate serta sepuluh order demo belum selesai. |
+| 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, bounded Windows composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, non-mutating readiness report, dan deny-only pre-manual entry verifier tersedia. Sembilan signed gate pra-run, review aktivasi manual-demo, serta sepuluh order demo belum selesai. |
 | 5. Demo-auto soak | Local three-service activation foundation complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision/execution/status-monitor releases, deny-only gate catalog, immutable operator-only three-service v3 operations review bundle, public-key external-acceptance verifier, deterministic configured-release builder/verifier, production decision loader, serta external status-monitor loader/runner tersedia. V3 mengikat ketiga configured identity, runtime, IPC, monitor custody, failure manifest, dan tepat tiga validation-only scheduler review; acceptance verifier mengikat exact v3 bundle ke fixed owner map dan sepuluh externally signed gate observation tetapi tetap hanya dapat meminta activation review. Historical v1/v2 tetap readable dan deny-only. Configured packaging mengikat secret-free provider overlay ke identity baru tanpa memberi authority. External provider/key/CAS/latch custody dan actual acceptance observations, launcher issuance, exact Windows task/ACL activation, policy approval/unlock, sepuluh manual-demo lifecycle, serta actual soak evidence belum ada. |
 | 6. XAUUSD live canary | Not started | Dormant XAUUSD-only symbol scope sudah tersedia, tetapi central live lock, execution-policy approval, promotion evidence/permit/soak, dan 50 closed live trades belum ada. |
 | 7. Pair expansion | Not started | EURUSD, USDJPY, dan AUDUSD harus mengulang seluruh gate per lane; hasil lane lain tidak boleh menutup kegagalan sebuah pair. |
@@ -207,6 +212,15 @@ membuka demo-auto maupun live.
   `EXTERNAL_ACCEPTANCE_COMPLETE_ACTIVATION_REVIEW_REQUIRED`; ia tidak dapat
   menerbitkan signature, memasang task, memuat provider, membuka policy, atau
   memberi order authority.
+- Operator-only `verify_windows_manual_demo_entry_review.py` memakai exact
+  review v3, pinned public RSA policy, dan owner map yang sama, tetapi
+  mengklasifikasikan batas pra-run secara terpisah. Ia hanya meminta review
+  aktivasi manusia bila seluruh sembilan gate pra-manual accepted dan
+  `MANUAL_DEMO_10_CONTROLLED_ORDERS_REQUIRED` belum memiliki observation.
+  Observation hasil yang muncul terlalu awal ditolak. Output selalu
+  `manual_demo_authorized=false`, `execution_enabled=false`,
+  `safe_to_demo_auto_order=false`, `live_allowed=false`, dan
+  `order_capability=DISABLED`.
 - `WindowsGatedServiceRunner` menyediakan bounded cadence, interruptible wait,
   off-host heartbeat, serta pre/post external-evidence attestation. Exact
   release root menolak member yang tidak ada di manifest, symlink/reparse
@@ -449,8 +463,9 @@ BTCUSD = shadow-only
     histori tetapi tidak lagi menjadi kontrak host karena memakai satu release
     serta placeholder entrypoint yang tidak ada di release aktual.
     Independent session/projection custody, exact Windows queue/provider wiring,
-    externally signed launcher attestation, 10 manual
-    demo lifecycle, dan approval manusia tetap harus diselesaikan sebelum soak
+    externally signed launcher attestation, sembilan observation pra-manual,
+    review manusia untuk stage evidence, 10 manual-demo lifecycle, observation
+    hasil ke-10, dan approval DEMO_AUTO tetap harus diselesaikan sebelum soak
     boleh dimulai.
 
 Karena batas di atas, kalender yang valid dapat membuat
@@ -504,10 +519,13 @@ eksternal belum terpenuhi.
     reproducibility receipt, lalu jalankan hanya bundle service tersebut melalui
     Task Scheduler. Bundle operator tetap tidak boleh dijalankan oleh service
     account.
-11. Selesaikan failure drills serta repeated paired bar/raw ingestion, lalu
-   jalankan 10 manual-demo order dan 30-day demo-auto soak hanya setelah policy
-   review terpisah. Reporter `run_manual_demo_readiness.py` dapat dipakai untuk
-   inventaris blocker, tetapi hasilnya tidak merupakan izin order.
+11. Selesaikan failure drills serta repeated paired bar/raw ingestion. Sesudah
+   sembilan signed gate pra-run diterima, jalankan pre-manual entry verifier
+   dan review stage evidence secara terpisah; kemudian jalankan 10 manual-demo
+   order. Observation hasil ke-10 dan full external dossier baru boleh dibuat
+   setelah run, sebelum 30-day demo-auto soak direview. Reporter
+   `run_manual_demo_readiness.py` dan pre-manual verifier tidak merupakan izin
+   order.
 12. Penuhi gate statistik per lane: OOS/forward trade minimum, purged folds,
     PF, bootstrap expectancy lower bound, drawdown, cost stress, dan 100%
     deterministic replay/runtime parity.

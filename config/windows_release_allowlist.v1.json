@@ -79,6 +79,7 @@
     "live_runtime/shadow_fence.py",
     "live_runtime/three_service_external_acceptance.py",
     "live_runtime/vulnerability_audit.py",
+    "live_runtime/windows_manual_demo_entry_review.py",
     "live_runtime/windows_service_factory_template.py",
     "live_runtime/xm_window_plan.py",
     "market_data_quality.py",
@@ -138,6 +139,7 @@
     "vendor/windows-cp312-install-manifest.json",
     "verify_broker_registration_activation_review.py",
     "verify_windows_dependency_lock.py",
+    "verify_windows_manual_demo_entry_review.py",
     "verify_windows_vulnerability_audit.py",
     "validate_windows_gated_execution_service.py"
   ]

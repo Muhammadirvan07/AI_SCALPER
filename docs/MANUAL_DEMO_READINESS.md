@@ -43,6 +43,13 @@ secret, terminal path, volume, arm token, permit, atau approval.
 Reporter tidak dapat mengubah blocker menjadi `true`. Penyelesaian tiap blocker
 harus melalui workflow evidence/review yang sesuai dan clean commit terpisah.
 
+Setelah operations review v3 dan signed external evidence tersedia, gunakan
+`verify_windows_manual_demo_entry_review.py` untuk memeriksa batas pra-run.
+Tool itu membutuhkan tepat sembilan gate pra-manual yang accepted dan menolak
+observation hasil sepuluh lifecycle yang muncul sebelum run. Status lengkapnya
+tetap hanya permintaan review manusia; bukan stage authorization atau izin
+order. Lihat `docs/WINDOWS_MANUAL_DEMO_ENTRY_REVIEW.md`.
+
 ## Konversi batas risiko akun JPY
 
 MetaTrader 5 mengembalikan profit/loss, margin, dan equity dalam mata uang akun.

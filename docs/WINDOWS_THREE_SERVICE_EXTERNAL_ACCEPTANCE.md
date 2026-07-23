@@ -62,6 +62,23 @@ not replace the independent stage-authorization acceptance domains, two-human
 approval, manual-demo checkpoint, promotion receipt, permit, or environment
 arm required later by the runtime.
 
+## Pre-manual phase boundary
+
+The full dossier cannot be complete before controlled manual-demo because one
+of its gates is the result of those ten lifecycles. Do not fabricate or
+pre-approve that result.
+
+`verify_windows_manual_demo_entry_review.py` derives a separate deny-only
+pre-run review from the same signed dossier. It requires all nine other gates
+to pass and requires the manual-demo result observation to be absent. Its
+phase-complete status is
+`PRE_MANUAL_DEMO_EXTERNAL_PRECONDITIONS_COMPLETE_ACTIVATION_REVIEW_REQUIRED`;
+all execution and activation fields remain false.
+
+See `docs/WINDOWS_MANUAL_DEMO_ENTRY_REVIEW.md`. After ten clean controlled
+lifecycles exist, the pre-run verifier must no longer be used; add the
+independently accepted result observation and verify the full ten-gate dossier.
+
 ## Verification command
 
 Use an independently trusted UTC value with six fractional digits and `Z`:
@@ -97,4 +114,3 @@ allowlist. They are excluded from decision, execution, external-status-monitor,
 and read-only-shadow service releases. The CLI performs no network access,
 provider import, broker initialization, service launch, task installation, or
 credential lookup.
-
