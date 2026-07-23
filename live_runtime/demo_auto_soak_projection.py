@@ -26,6 +26,7 @@ import json
 from pathlib import Path
 import re
 import sqlite3
+import threading
 from types import MappingProxyType
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
@@ -956,6 +957,9 @@ class DemoAutoSoakProjection:
         self._external_provider = external_checkpoint_provider
         self._external_cas = external_checkpoint_compare_and_swap
         self._clock_provider = clock_provider
+        # Serialize compound tracker+projection operations within one runtime
+        # instance. SQLite still provides the cross-process writer fence.
+        self._operation_lock = threading.RLock()
         self._require_key_separation()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():
@@ -1521,9 +1525,19 @@ class DemoAutoSoakProjection:
         canonical_payload = dict(payload)
         canonical_payload["safety"] = _safe_payload()
         payload_json = canonical_json(canonical_payload)
-        prior_checkpoint, _rows = self._verify_all()
         with self._transaction() as connection:
             current_checkpoint, rows = self._verify_connection(connection)
+            # Verify independent custody only after SQLite's writer fence is
+            # held. A competing writer must wait until the prior writer has
+            # both exported its checkpoint and committed the matching local
+            # head, so it cannot observe external-ahead/local-old state.
+            external_checkpoint = self._verify_checkpoint(
+                self._external_provider(self.binding.ledger_id)
+            )
+            if external_checkpoint != current_checkpoint:
+                raise DemoAutoSoakProjectionReplayError(
+                    "local projection is rolled back, forked, or not externally anchored"
+                )
             existing = connection.execute(
                 "SELECT * FROM projection_events WHERE event_id=? OR dedup_key=?",
                 (normalized_event_id, normalized_dedup),
@@ -1551,10 +1565,6 @@ class DemoAutoSoakProjection:
                 return self._event_receipt(
                     existing,
                     self._checkpoint_from_json(str(checkpoint_row["checkpoint_json"])),
-                )
-            if current_checkpoint != prior_checkpoint:
-                raise DemoAutoSoakProjectionReplayError(
-                    "projection head changed during append"
                 )
             if rows:
                 latest_time = _parse_utc(
@@ -1615,7 +1625,7 @@ class DemoAutoSoakProjection:
             # see either the old fully anchored head or the new fully anchored
             # head, never the local-ahead CAS window.
             self._export_checkpoint(
-                expected_previous=prior_checkpoint.content_sha256,
+                expected_previous=current_checkpoint.content_sha256,
                 checkpoint=checkpoint,
             )
         return DemoAutoSoakProjectionEventReceipt(
@@ -2074,6 +2084,22 @@ class DemoAutoSoakProjection:
     ) -> tuple[DemoAutoSoakProjectionEventReceipt, ...]:
         """Project each exact exit deal once after a fully reconciled close."""
 
+        with self._operation_lock:
+            return self._project_closed_trade_locked(
+                intent=intent,
+                execution_receipt=execution_receipt,
+                reconciliation_receipt=reconciliation_receipt,
+                closed_trade_receipt=closed_trade_receipt,
+            )
+
+    def _project_closed_trade_locked(
+        self,
+        *,
+        intent: TradeIntent,
+        execution_receipt: ExecutionReceipt,
+        reconciliation_receipt: BrokerReconciliationReceipt,
+        closed_trade_receipt: BrokerClosedTradeReceipt,
+    ) -> tuple[DemoAutoSoakProjectionEventReceipt, ...]:
         self._require_activation()
         if type(intent) is not TradeIntent:
             raise TypeError("intent must be exact TradeIntent")

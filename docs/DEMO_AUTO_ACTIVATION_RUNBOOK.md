@@ -1,5 +1,21 @@
 # DEMO_AUTO Activation and Soak Runbook
 
+## Prepare the controlled manual-demo operator kit
+
+Before any manual-demo order is considered, create a non-executable kit on the
+Windows host:
+
+```powershell
+python -B .\prepare_manual_demo_activation_kit.py `
+  --candidate phillip-fx `
+  --output C:\AI_SCALPER_PRIVATE\manual-demo\phillip-fx-kit.json
+```
+
+Run the same command with `phillip-commodity` for the XAUUSD lane. The command
+must report `BLOCKED_EXTERNAL_INPUT_REQUIRED`; that is the expected safe state
+until every external gate in the kit has independently supplied evidence. The
+kit does not read credentials, initialize MT5, or send an order.
+
 ## Current outcome
 
 The repository contains the local DEMO_AUTO activation foundation, but the

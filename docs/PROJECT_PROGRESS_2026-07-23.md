@@ -3,7 +3,7 @@
 Status: **LOCAL DEMO_AUTO ACTIVATION FOUNDATION COMPLETE / OPERATIONAL
 ACTIVATION BLOCKED / LIVE NOT READY**
 
-Full regression pada development Mac menyelesaikan **1.164 test** tanpa
+Full regression pada development Mac menyelesaikan **1.168 test** tanpa
 kegagalan. `compileall`, dependency check, release-port validator, safety-lock
 scan, dan diff check juga lulus. Pesan penolakan yang tampil dari negative-path
 tests adalah perilaku fail-closed yang diharapkan. Tidak ada order broker,
@@ -26,6 +26,12 @@ deployment yang dilakukan.
 - verifier RSA-3072 public-key-only untuk external launcher attestation sebelum
   provider factory diimpor;
 - deny-by-default live-grade gate catalog dan activation runbook; dan
+- immutable manual-demo activation kit yang merangkum blocker kandidat,
+  37 required external provider contracts, urutan operator, dan target 10
+  controlled order lifecycles tanpa memperoleh execution authority;
+- perbaikan race pada soak projection: verifikasi custody kini dilakukan di
+  bawah SQLite writer fence dan operasi tracker+projection diserialkan dalam
+  satu runtime instance; uji konkurensi identik lulus 30 pengulangan; dan
 - exact-type hardening pada risk governor dan evidence boundaries.
 
 Semua komponen di atas tetap mempertahankan:
