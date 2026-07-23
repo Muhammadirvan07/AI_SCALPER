@@ -1,5 +1,10 @@
 # Windows Dual-Release Demo-Soak Operations
 
+> Historical v2 contract. New Windows host reviews use the exact three-service
+> v3 contract documented in
+> [`WINDOWS_THREE_SERVICE_DEMO_SOAK_OPERATIONS.md`](WINDOWS_THREE_SERVICE_DEMO_SOAK_OPERATIONS.md).
+> V2 remains readable and deny-only for audit compatibility.
+
 ## Current outcome
 
 The current Windows topology is now represented by a strict v2 review contract:

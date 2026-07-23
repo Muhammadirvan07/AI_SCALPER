@@ -572,7 +572,7 @@ class DualReleaseOperationsTests(unittest.TestCase):
             result.external_blockers,
         )
         self.assertIn(
-            "EXTERNAL_MONITOR_WATCHDOG_IMPLEMENTATION_REQUIRED",
+            "EXTERNAL_STATUS_MONITOR_CONFIGURED_RELEASE_ACCEPTANCE_REQUIRED",
             result.external_blockers,
         )
         self.assertIn(

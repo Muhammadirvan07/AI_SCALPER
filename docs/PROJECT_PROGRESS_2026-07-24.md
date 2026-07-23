@@ -17,7 +17,7 @@ baru boleh dimulai setelah acceptance Windows, provider/key custody, sepuluh
 manual-demo lifecycles, dan approval manusia. Live masih membutuhkan soak 30
 hari/50 closed fills/20 XAU, bukti per lane, serta gate statistik dan keamanan.
 
-Validasi lokal terakhir menjalankan **1.292 test** tanpa kegagalan pada mode
+Validasi lokal terakhir menjalankan **1.307 test** tanpa kegagalan pada mode
 normal dan `PYTHONOPTIMIZE=2`. Seluruh tracked Python source berhasil
 dikompilasi, validator decision/execution/status-monitor lulus dengan
 `production_execution_ready=false`, dan safety locks tetap:
@@ -54,6 +54,14 @@ promotion_eligible = false
 - Account-level soak projection dapat menghitung 30 clean days, 50 closed
   fills, dan minimal 20 XAU closed fills, tetapi tidak dapat memberi execution
   atau promotion authority.
+- Operations review v3 sekarang mengikat tepat tiga configured release,
+  runtime, service identity, decision IPC, monitor custody, failure-drill
+  manifest, dan tiga validation-only scheduler review. Strict loader menolak
+  unknown/duplicate/non-finite/oversized/symlink/unstable/secret input; verifier
+  merekonstruksi seluruh isi sehingga recomputed outer hash tidak dapat
+  menyamarkan tampering.
+- Health threshold sekarang menolak `NaN`, infinity, dan pecahan untuk field
+  yang secara kontrak bertipe integer.
 
 ## Sisa menuju demo-auto soak
 

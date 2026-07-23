@@ -383,14 +383,19 @@ class DemoSoakOperationsTests(unittest.TestCase):
     def test_thresholds_cannot_be_relaxed(self):
         cases = (
             {"max_clock_drift_seconds": 1.1},
+            {"max_clock_drift_seconds": float("nan")},
+            {"minimum_free_disk_gib": float("inf")},
             {"minimum_free_disk_gib": 4.9},
+            {"max_heartbeat_age_seconds": 10.5},
             {"max_heartbeat_age_seconds": 31},
             {"max_audit_export_age_seconds": 301},
             {"max_backup_anchor_age_seconds": 86_401},
         )
         for values in cases:
             with self.subTest(values=values):
-                with self.assertRaises(DemoSoakOperationsError):
+                with self.assertRaises(
+                    (DemoSoakOperationsError, TypeError)
+                ):
                     OperationsThresholds(**values)
 
     def test_storage_databases_must_be_unique_and_audit_separate(self):

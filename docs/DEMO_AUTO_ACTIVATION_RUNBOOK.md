@@ -99,20 +99,21 @@ exact configured release, separately reviewed provider implementation, and
 externally issued launcher policy/attestation. Their existence is not an
 activation approval.
 
-Before any Task Scheduler review, create and verify the current dual-release v2
-operations bundle:
+Before any Task Scheduler review, create and verify the current three-service
+v3 operations bundle:
 
 ```powershell
-python -B .\prepare_windows_dual_release_demo_soak_operations.py `
-  --config C:\AI_SCALPER_PRIVATE\operations\dual-release-input-v2.json `
+python -B .\prepare_windows_three_service_demo_soak_operations.py `
+  --config C:\AI_SCALPER_PRIVATE\operations\three-service-input-v3.json `
   --issued-at-utc <CURRENT_UTC> `
-  --output C:\AI_SCALPER_PRIVATE\operations\dual-release-review-v2.json
+  --output C:\AI_SCALPER_PRIVATE\operations\three-service-review-v3.json
 ```
 
-The bundle renders exactly two static decision/execution validation tasks. It
-deliberately does not install runtime tasks or imply that the separately
-configured monitor task is accepted. The legacy v1 single-release operations
-bundle is not acceptable for this topology.
+The bundle binds all three configured release identities and renders exactly
+three static decision/execution/status-monitor validation tasks. It
+deliberately does not install runtime tasks or imply that any provider,
+launcher, task, or off-host delivery is accepted. Legacy v1 and historical v2
+operations bundles are not acceptable for a new host review.
 
 ## 2. Supply external authorities
 
@@ -191,9 +192,9 @@ python -B .\run_windows_gated_execution_service.py `
 ```
 
 The factory manifest must be an exact configured-release member. Launcher
-policy, attestation, Task Scheduler definition, and dual-release operations v2
-review must bind the configured identity, while retaining the base identity as
-immutable provenance.
+policy, attestation, Task Scheduler definition, and three-service operations v3
+review must bind each configured identity, while retaining all three base
+identities as immutable provenance.
 
 The decision service runs under a different least-privilege identity and has no
 broker SDK or order capability. The executor consumes each decision once.

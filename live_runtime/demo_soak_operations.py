@@ -13,6 +13,7 @@ from datetime import datetime
 import hashlib
 import hmac
 import json
+import math
 from pathlib import PureWindowsPath
 import re
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -378,6 +379,19 @@ class OperationsThresholds:
         for name, (value, minimum, maximum) in numeric.items():
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise TypeError(f"{name} must be numeric")
+            if not math.isfinite(float(value)):
+                raise DemoSoakOperationsError(
+                    f"{name.upper()}_MUST_BE_FINITE"
+                )
+            if (
+                name
+                not in {
+                    "max_clock_drift_seconds",
+                    "minimum_free_disk_gib",
+                }
+                and type(value) is not int
+            ):
+                raise TypeError(f"{name} must be an integer")
             if value < minimum or (maximum is not None and value > maximum):
                 raise DemoSoakOperationsError(f"{name.upper()}_OUTSIDE_SAFE_BOUND")
 

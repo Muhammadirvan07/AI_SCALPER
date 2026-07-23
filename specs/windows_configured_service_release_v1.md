@@ -5,6 +5,7 @@
 - Target profiles:
   - `WINDOWS_DECISION_SERVICE_V1`
   - `WINDOWS_GATED_EXECUTION_SERVICE_V1`
+  - `WINDOWS_EXTERNAL_STATUS_MONITOR_V1`
 - Build authority: operator tooling only
 - Order authority: none
 - Demo-auto authority: none
@@ -12,11 +13,12 @@
 
 ## Context
 
-The deterministic decision and execution base releases intentionally contain no
-deployment-specific provider factory, provider implementation, service config,
-or factory manifest. The execution runner, however, accepts a factory only when
-all of those files are members of the exact release inventory. Copying them
-into an extracted release after build is therefore correctly rejected.
+The deterministic decision, execution, and external status-monitor base
+releases intentionally contain no deployment-specific provider factory,
+provider implementation, service config, or factory manifest. Each production
+runner accepts a factory only when all of those files are members of the exact
+release inventory. Copying them into an extracted release after build is
+therefore correctly rejected.
 
 This contract defines a second deterministic packaging step. It combines one
 already verified base release with a secret-free, exact-hash configured overlay
@@ -98,7 +100,9 @@ task_installation_performed = false
 
 The execution profile may retain `order_capability=GATED_PRESENT` because its
 reviewed base release contains the sealed adapter. That fact does not grant
-authority. The decision profile MUST retain `order_capability=DISABLED`.
+authority. The decision and status-monitor profiles MUST retain
+`order_capability=DISABLED`; the monitor also remains status-only and has no
+broker SDK or execution boundary.
 
 ## Acceptance criteria
 
