@@ -78,6 +78,19 @@ dan dependency lock khusus tanpa MetaTrader5/keyring. Executor, risk, permit,
 reconciliation, broker adapter, credential, data, dan runtime state ditolak.
 Panduan lengkap ada di `docs/WINDOWS_DECISION_SERVICE_RELEASE.md`.
 
+Factory/config/provider deployment-specific tidak boleh disalin ke base
+decision atau execution release setelah ekstraksi. Repository menyediakan
+profile operator terpisah
+`WINDOWS_CONFIGURED_RELEASE_OPERATOR_TOOLING_V1`, dibangun oleh
+`build_windows_configured_release_tooling.py` dari exact allowlist
+`config/windows_configured_release_tooling_allowlist.v1.json`. Bundle
+stdlib-only ini membuat dan memverifikasi configured release dengan identity
+baru tanpa mengimpor provider, membaca credential, menginisialisasi MT5,
+memasang task, atau melakukan broker mutation. Generic operator bundle tetap
+mempertahankan byte-level order-primitive prohibition dan tidak dilonggarkan.
+Panduan lengkap ada di
+`docs/WINDOWS_CONFIGURED_SERVICE_RELEASE.md`.
+
 ## Gate builder
 
 Builder menolak release bila:
@@ -146,9 +159,23 @@ python -B .\build_windows_decision_release.py `
   --output C:\AI_SCALPER_RELEASES\ai-scalper-decision-service-v1.zip
 ```
 
-Decision bundle dan executor bundle wajib menggunakan release identity,
-service account, root, state directory, dan external factory manifest yang
-berbeda.
+Bangun bundle operator configured-release yang minimal:
+
+```powershell
+python -B .\build_windows_configured_release_tooling.py `
+  --output C:\AI_SCALPER_RELEASES\configured-release-tooling-v1.zip
+```
+
+Gunakan bundle tersebut untuk mengikat masing-masing base release dengan exact
+secret-free reviewed overlay. Hasilnya adalah decision-configured dan
+execution-configured ZIP dengan identity baru. Verifikasi keduanya terhadap
+configured identity dan base identity yang dipin off-host. Extract dan jalankan
+configured ZIP; jangan menyalin factory ke base release setelah ekstraksi.
+
+Decision bundle dan executor bundle wajib menggunakan configured release
+identity, service account, root, state directory, dan in-release factory
+manifest yang berbeda. Base identity dipertahankan sebagai provenance, bukan
+identity proses akhir.
 
 Bangun artefak yang sama pada dua clean Windows CPython 3.12 environments.
 Masukkan kedua observasi exact ke `live_runtime.release_reproducibility`, lalu

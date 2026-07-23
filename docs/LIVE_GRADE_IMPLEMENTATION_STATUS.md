@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-23 menjalankan **1.205 test** tanpa
+Validasi lokal terakhir pada 2026-07-23 menjalankan **1.229 test** tanpa
 kegagalan pada development Mac. Itu adalah software regression evidence, bukan
 Windows host acceptance, broker-forward evidence, atau izin trading.
 
@@ -19,7 +19,7 @@ membuka demo-auto maupun live.
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, byte-derived regulatory review package with two independent HMAC approvals, byte-derived pre-window base-calendar review with a separate human HMAC approval, prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
 | 3. Broker read-only shadow | FBS and Phillip diagnostic bindings observed; evidence not started | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip sanitized discovery-v3 inputs berhasil dibuat dan reviewed regular M15 base schedules tersedia, tetapi profile registration, regulatory approval, 20-session benchmark, broker-forward contract, dan promotion evidence tetap disabled/pending. FINEX tidak dipakai untuk observasi baru. |
 | 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, bounded Windows composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, dan non-mutating readiness report tersedia. Seluruh external gate serta sepuluh order demo belum selesai. |
-| 5. Demo-auto soak | Local activation foundation complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision/execution releases, deny-only gate catalog, dan immutable operator-only dual-release v2 operations review bundle tersedia. V2 mengikat dua Python runtime/service identity, exact decision IPC, XAUUSD-only scope, serta external monitor reference tanpa entrypoint fiktif. External provider/key/CAS custody, configured release/launcher, monitor implementation, exact Windows activation, policy approval/unlock, serta actual soak evidence belum ada. |
+| 5. Demo-auto soak | Local activation foundation complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision/execution releases, deny-only gate catalog, immutable operator-only dual-release v2 operations review bundle, dan deterministic configured-release builder/verifier tersedia. Configured packaging mengikat secret-free provider overlay ke identity baru tanpa memberi authority. External provider/key/CAS custody dan acceptance, production decision loader, launcher issuance, monitor implementation, exact Windows activation, policy approval/unlock, serta actual soak evidence belum ada. |
 | 6. XAUUSD live canary | Not started | Dormant XAUUSD-only symbol scope sudah tersedia, tetapi central live lock, execution-policy approval, promotion evidence/permit/soak, dan 50 closed live trades belum ada. |
 | 7. Pair expansion | Not started | EURUSD, USDJPY, dan AUDUSD harus mengulang seluruh gate per lane; hasil lane lain tidak boleh menutup kegagalan sebuah pair. |
 | 8. Scaling | Out of v1 | Tidak ada auto-scaling lot maupun risk cap. |
@@ -387,6 +387,15 @@ BTCUSD = shadow-only
     external factory/provider configuration, Task Scheduler registration,
     Credential Manager custody, dan watchdog restart belum dipasang pada target
     Windows.
+    Base decision/execution release kini dapat digabung dengan exact
+    secret-free overlay melalui configured-service builder yang
+    byte-deterministic, create-exclusive, self-verifying, dan mempertahankan
+    nested base manifest/identity. Verifier offline memerlukan pin configured
+    serta base identity dan tidak mengimpor factory. Tooling tersebut berada
+    dalam profile operator stdlib-only terpisah; keberadaannya tidak
+    mematerialisasi provider atau menggantikan external provider acceptance,
+    production decision loader, launcher attestation, maupun Task Scheduler
+    review.
 14. Demo-auto decision IPC consumer sudah ada tetapi sengaja locked. Outputnya
     dapat diproses oleh risk/intent boundary dan dispatch seam yang memerlukan
     seluruh sealed authority. Session reservation terikat journal, crash

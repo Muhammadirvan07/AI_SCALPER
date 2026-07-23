@@ -3,7 +3,7 @@
 Status: **LOCAL DEMO_AUTO ACTIVATION FOUNDATION COMPLETE / OPERATIONAL
 ACTIVATION BLOCKED / LIVE NOT READY**
 
-Full regression pada development Mac menyelesaikan **1.205 test** tanpa
+Full regression pada development Mac menyelesaikan **1.229 test** tanpa
 kegagalan dalam mode normal dan optimized. Kompilasi seluruh Python source
 yang dilacak Git, dependency check, release-port validator, safety-lock scan,
 dan diff check juga lulus. Pesan penolakan yang tampil dari negative-path tests
@@ -50,6 +50,15 @@ dilakukan.
   external monitor authority karena tidak ada release-local production
   watchdog entrypoint. V1 tetap readable sebagai histori tetapi tidak boleh
   menjadi kontrak host demo-auto;
+- deterministic configured-service release boundary untuk decision dan
+  execution base ZIP. Exact secret-free factory/config/provider overlay
+  menghasilkan identity baru, mempertahankan nested base provenance dan
+  seluruh safety lock, serta diverifikasi ulang sebelum output ditulis.
+  Non-deterministic base ZIP, inherited commit/tree/policy drift,
+  missing/extra/tampered overlay, dynamic/native/process/order source, dan
+  identity mismatch ditolak. Tooling ini dikemas melalui profile operator
+  stdlib-only terpisah agar generic read-only tooling tidak perlu melonggarkan
+  byte-level order-primitive prohibition;
 - deterministic release builder kini mengambil exact committed Git blobs,
   sehingga clean checkout Windows CRLF menghasilkan source ZIP identik dengan
   commit LF tanpa melonggarkan worktree, commit/tree, symlink, atau allowlist

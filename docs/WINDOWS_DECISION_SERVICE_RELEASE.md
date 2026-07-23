@@ -61,7 +61,21 @@ Generate/review the payload with independent deployment tooling using
 `windows_decision_service_factory_contract()`. Do not place key values, broker
 credentials, data, cursor databases, or IPC state in the manifest or Git.
 
-## Validate extracted release
+## Create the configured identity
+
+The ZIP above is a base release. A production process must not copy its factory
+or providers into the extracted base directory. Bind the reviewed, secret-free
+factory/config/provider overlay through
+`build_windows_configured_service_release.py`, then independently verify the
+result against both externally pinned identities. The configured identity—not
+the base identity—is the identity that a future launcher attestation must bind.
+See `docs/WINDOWS_CONFIGURED_SERVICE_RELEASE.md`.
+
+Configured packaging does not add broker capability and does not make the
+current decision runner operational. A separately reviewed production
+decision loader is still required.
+
+## Validate the base release
 
 After extracting the reviewed ZIP into an ACL-protected Windows directory:
 
@@ -79,8 +93,9 @@ open cursor state, resolve a key, import a provider, or contact a broker.
 
 Invocation without `--validate-only` is intentionally rejected. Operational
 activation remains external until provider implementations, Windows service
-identity/ACLs, calendar/key/CAS custody, and Task Scheduler registration are
-separately reviewed and attested.
+identity/ACLs, calendar/key/CAS custody, production loader, configured release,
+launcher attestation, and Task Scheduler registration are separately reviewed
+and attested.
 
 ## Separation rule
 

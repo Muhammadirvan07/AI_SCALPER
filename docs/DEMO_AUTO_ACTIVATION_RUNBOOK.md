@@ -38,14 +38,41 @@ packages separately:
 
 ```powershell
 python -B .\build_windows_decision_release.py `
-  --output C:\AI_SCALPER_RELEASES\decision.zip
+  --output C:\AI_SCALPER_RELEASES\decision-base.zip
 
 python -B .\build_windows_execution_release.py `
-  --output C:\AI_SCALPER_RELEASES\execution.zip
+  --output C:\AI_SCALPER_RELEASES\execution-base.zip
+
+python -B .\build_windows_configured_release_tooling.py `
+  --output C:\AI_SCALPER_RELEASES\configured-release-tooling-v1.zip
 ```
 
-Extract each ZIP into its own read-only release directory. Mutable databases
-must live under `C:\ProgramData\AI_SCALPER\state`, never inside either release.
+Supply two separately reviewed, secret-free overlays and canonical descriptors
+outside the repository. Build a new configured identity for each process:
+
+```powershell
+python -I -S -B .\build_windows_configured_service_release.py `
+  --base-release C:\AI_SCALPER_RELEASES\decision-base.zip `
+  --overlay-root C:\AI_SCALPER_PRIVATE\decision-overlay `
+  --descriptor C:\AI_SCALPER_PRIVATE\decision-overlay.json `
+  --output C:\AI_SCALPER_RELEASES\decision-configured.zip
+
+python -I -S -B .\build_windows_configured_service_release.py `
+  --base-release C:\AI_SCALPER_RELEASES\execution-base.zip `
+  --overlay-root C:\AI_SCALPER_PRIVATE\execution-overlay `
+  --descriptor C:\AI_SCALPER_PRIVATE\execution-overlay.json `
+  --output C:\AI_SCALPER_RELEASES\execution-configured.zip
+```
+
+Independently verify each configured ZIP against configured and base identities
+pinned in the reviewed off-host release receipt. Do not take either expected
+identity from the archive being verified. Full commands and descriptor rules
+are in `docs/WINDOWS_CONFIGURED_SERVICE_RELEASE.md`.
+
+Extract each **configured** ZIP into its own read-only release directory.
+Copying a factory/config/provider into an extracted base release is forbidden
+and must fail exact-inventory verification. Mutable databases must live under
+`C:\ProgramData\AI_SCALPER\state`, never inside either release.
 
 ```powershell
 python -B .\validate_windows_decision_service.py
@@ -55,6 +82,9 @@ python -B .\validate_windows_gated_execution_service.py `
 
 A port pass with `production_execution_ready=false` is expected until the
 external facts below are supplied. It is not an activation approval.
+The current decision runner remains validate-only even after configured
+packaging; it still requires a separately reviewed production loader and
+launcher boundary.
 
 Before any Task Scheduler review, create and verify the current dual-release v2
 operations bundle:
@@ -78,7 +108,8 @@ Provision and independently review:
   cursor CAS, IPC checkpoint CAS, and IPC signing-key custody for the decision
   service;
 - Windows Credential Manager references and a mode-aware factory template with
-  exact `runtime_mode=DEMO_AUTO` and every required DEMO_AUTO provider;
+  exact `runtime_mode=DEMO_AUTO` and every required DEMO_AUTO provider, all
+  bound into the configured release without embedding credential values;
 - journal/risk/supervisor/session/projection off-host CAS custody;
 - current runtime facts, reconciliation, signed news, stage authorization,
   promotion evidence, permit, and process environment-arm providers;
@@ -135,13 +166,18 @@ The trusted launcher supplies the three external provenance arguments:
 
 ```powershell
 python -B .\run_windows_gated_execution_service.py `
-  --factory-manifest C:\AI_SCALPER_PRIVATE\factory-manifest.json `
-  --release-root C:\AI_SCALPER_RELEASES\execution `
-  --expected-release-identity-sha256 <RELEASE_SHA256> `
+  --factory-manifest C:\AI_SCALPER_RELEASES\execution-configured\config\windows_factory_manifest.json `
+  --release-root C:\AI_SCALPER_RELEASES\execution-configured `
+  --expected-release-identity-sha256 <CONFIGURED_RELEASE_IDENTITY> `
   --release-trust-policy C:\AI_SCALPER_PRIVATE\launcher-policy.json `
   --expected-release-trust-policy-sha256 <POLICY_SHA256> `
   --release-attestation C:\AI_SCALPER_PRIVATE\launcher-attestation.json
 ```
+
+The factory manifest must be an exact configured-release member. Launcher
+policy, attestation, Task Scheduler definition, and dual-release operations v2
+review must bind the configured identity, while retaining the base identity as
+immutable provenance.
 
 The decision service runs under a different least-privilege identity and has no
 broker SDK or order capability. The executor consumes each decision once.

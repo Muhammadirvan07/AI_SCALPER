@@ -5,8 +5,15 @@ worktree is intentionally rejected while it contains uncommitted work.
 
 ```powershell
 python -B .\build_windows_execution_release.py `
-  --output C:\AI_SCALPER_RELEASES\ai-scalper-gated-execution.zip
+  --output C:\AI_SCALPER_RELEASES\execution-base.zip
 ```
+
+This is a base release. Before operational launcher review, bind an exact
+secret-free factory/config/provider overlay through the configured-service
+release builder. That second deterministic step produces a new configured
+identity and self-verifies the complete archive before writing it. Copying a
+factory into an extracted base release is forbidden. See
+`docs/WINDOWS_CONFIGURED_SERVICE_RELEASE.md`.
 
 Validate the extracted composition without contacting MT5:
 
@@ -100,9 +107,9 @@ Example shape after an offline authority has issued the reviewed files:
 
 ```powershell
 python -B .\run_windows_gated_execution_service.py `
-  --factory-manifest C:\AI_SCALPER_PRIVATE\factory-manifest.json `
-  --release-root C:\AI_SCALPER_RELEASES\execution-v1 `
-  --expected-release-identity-sha256 <PINNED_RELEASE_SHA256> `
+  --factory-manifest C:\AI_SCALPER_RELEASES\execution-configured\config\windows_factory_manifest.json `
+  --release-root C:\AI_SCALPER_RELEASES\execution-configured `
+  --expected-release-identity-sha256 <PINNED_CONFIGURED_RELEASE_SHA256> `
   --release-trust-policy C:\AI_SCALPER_PRIVATE\launcher-policy.json `
   --expected-release-trust-policy-sha256 <PINNED_POLICY_SHA256> `
   --release-attestation C:\AI_SCALPER_PRIVATE\launcher-attestation.json
@@ -110,6 +117,9 @@ python -B .\run_windows_gated_execution_service.py `
 
 This verification proves provenance only. It does not grant stage, permit,
 environment-arm, DEMO_AUTO, promotion, or live authority.
+The factory manifest must be an exact member of the configured release and the
+launcher policy/attestation must bind its configured identity. The nested base
+identity remains immutable provenance.
 
 ## Demo-auto IPC remains inert
 
@@ -252,6 +262,6 @@ The import namespace rule intentionally permits one verified MT5 adapter per
 process. Starting a second verified adapter in the same process fails closed;
 service isolation is the supported production topology.
 
-Local regression on 2026-07-23 completed 1,164 tests without failure on the
+Local regression on 2026-07-23 completed 1,229 tests without failure on the
 development Mac. Exact Windows/Python/MT5/NTFS acceptance and all operational
 gates remain outstanding.
