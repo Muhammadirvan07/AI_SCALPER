@@ -355,9 +355,11 @@ BTCUSD = shadow-only
     builder, exact minimal read-only service allowlist, serta signed two-build
     reproducibility receipt sudah tersedia lokal, tetapi actual OSV collection,
     independent signing-key custody, clean committed release identity, dan
-    clean-checkout build pada exact Windows host belum dilakukan. Runtime/data
-    artifact churn pada development worktree tetap bukan release input. Karena
-    itu ZIP hanya boleh dibuat dari clean checkout commit yang sudah direview.
+    clean-checkout build pada exact Windows host belum dilakukan. CSV market
+    cache di `data/` sudah dikeluarkan dari Git dan tetap bukan release input;
+    runtime JSON artifact churn pada development worktree juga bukan release
+    input. Karena itu ZIP hanya boleh dibuat dari clean checkout commit yang
+    sudah direview.
 13. Bounded Windows service sudah menutup release-root, import-origin,
     heartbeat-chain, lost-deadline, dan exact-once abort gap secara lokal.
     Static reviewed factory template sekarang juga mengikat exact provider

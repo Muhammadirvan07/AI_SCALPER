@@ -64,6 +64,30 @@ class RepositoryHygieneTests(unittest.TestCase):
             "generated archives, backups, or editor metadata are tracked",
         )
 
+    def test_runtime_market_csv_files_are_not_tracked(self):
+        root = Path(__file__).resolve().parent
+        tracked = self._git_paths(
+            root,
+            "ls-files",
+            "-z",
+            "--",
+            "data/*.csv",
+        )
+        pending_deletions = self._git_paths(
+            root,
+            "diff",
+            "--name-only",
+            "--diff-filter=D",
+            "-z",
+            "--",
+            "data/*.csv",
+        )
+        self.assertEqual(
+            set(),
+            tracked - pending_deletions,
+            "runtime market CSV cache must not be part of the release source tree",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,12 +3,13 @@
 Status: **LOCAL DEMO_AUTO ACTIVATION FOUNDATION COMPLETE / OPERATIONAL
 ACTIVATION BLOCKED / LIVE NOT READY**
 
-Full regression pada development Mac menyelesaikan **1.171 test** tanpa
-kegagalan. `compileall`, dependency check, release-port validator, safety-lock
-scan, dan diff check juga lulus. Pesan penolakan yang tampil dari negative-path
-tests adalah perilaku fail-closed yang diharapkan. Tidak ada order broker,
-credential provisioning, Task Scheduler installation, policy unlock, atau
-deployment yang dilakukan.
+Full regression pada development Mac menyelesaikan **1.172 test** tanpa
+kegagalan dalam mode normal dan optimized. Kompilasi seluruh Python source
+yang dilacak Git, dependency check, release-port validator, safety-lock scan,
+dan diff check juga lulus. Pesan penolakan yang tampil dari negative-path tests
+adalah perilaku fail-closed yang diharapkan. Tidak ada order broker, credential
+provisioning, Task Scheduler installation, policy unlock, atau deployment yang
+dilakukan.
 
 ## Fondasi yang selesai secara lokal
 
@@ -33,6 +34,10 @@ deployment yang dilakukan.
   sehingga clean checkout Windows CRLF menghasilkan source ZIP identik dengan
   commit LF tanpa melonggarkan worktree, commit/tree, symlink, atau allowlist
   gate;
+- seluruh `data/*.csv` kini diperlakukan sebagai runtime cache dan tidak lagi
+  dilacak Git. Salinan development lokal tetap dipertahankan, sedangkan test
+  evidence memakai fixture sintetis deterministik agar clean checkout tidak
+  bergantung pada data pasar mutable;
 - perbaikan race pada soak projection: verifikasi custody kini dilakukan di
   bawah SQLite writer fence dan operasi tracker+projection diserialkan dalam
   satu runtime instance; uji konkurensi identik lulus 30 pengulangan; dan

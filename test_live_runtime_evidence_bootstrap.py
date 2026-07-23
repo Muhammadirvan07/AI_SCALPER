@@ -285,12 +285,31 @@ class EvidenceBootstrapTests(unittest.TestCase):
             evidence_bootstrap.CONFIG_FILES
             + evidence_bootstrap.DEPENDENCY_FILES
             + evidence_bootstrap.PROFILE_FILES
-            + tuple(evidence_bootstrap.DATA_FILES.values())
         )
         for relative in sorted(build_files):
             destination = self.work_repo / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(self.repo / relative, destination)
+        fixture_prices = {
+            "XAUUSD": 2400.0,
+            "EURUSD": 1.08,
+            "USDJPY": 158.0,
+            "AUDUSD": 0.67,
+        }
+        for symbol, relative in evidence_bootstrap.DATA_FILES.items():
+            destination = self.work_repo / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            price = fixture_prices[symbol]
+            destination.write_text(
+                "Datetime,Open,High,Low,Close,Volume\n"
+                f"2026-07-09T00:00:00+00:00,{price},{price + 0.02},"
+                f"{price - 0.02},{price + 0.01},100\n"
+                f"2026-07-09T00:15:00+00:00,{price + 0.01},"
+                f"{price + 0.03},{price - 0.01},{price + 0.02},110\n"
+                f"2026-07-09T00:30:00+00:00,{price + 0.02},"
+                f"{price + 0.04},{price},{price + 0.03},120\n",
+                encoding="utf-8",
+            )
         template = json.loads(
             (
                 self.work_repo / "config/xm_calendar_window_02.template.json"

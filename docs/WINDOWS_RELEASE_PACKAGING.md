@@ -141,7 +141,7 @@ python -I -S -B .\build_windows_release.py `
 Untuk menghasilkan decision-only service sebagai release yang terpisah:
 
 ```powershell
-python -I -S -B .\build_windows_decision_release.py `
+python -B .\build_windows_decision_release.py `
   --allowlist .\config\windows_decision_service_allowlist.v1.json `
   --output C:\AI_SCALPER_RELEASES\ai-scalper-decision-service-v1.zip
 ```
