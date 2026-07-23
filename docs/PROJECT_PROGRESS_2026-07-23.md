@@ -3,7 +3,7 @@
 Status: **LOCAL DEMO_AUTO ACTIVATION FOUNDATION COMPLETE / OPERATIONAL
 ACTIVATION BLOCKED / LIVE NOT READY**
 
-Full regression pada development Mac menyelesaikan **1.172 test** tanpa
+Full regression pada development Mac menyelesaikan **1.174 test** tanpa
 kegagalan dalam mode normal dan optimized. Kompilasi seluruh Python source
 yang dilacak Git, dependency check, release-port validator, safety-lock scan,
 dan diff check juga lulus. Pesan penolakan yang tampil dari negative-path tests
@@ -38,6 +38,14 @@ dilakukan.
   dilacak Git. Salinan development lokal tetap dipertahankan, sedangkan test
   evidence memakai fixture sintetis deterministik agar clean checkout tidak
   bergantung pada data pasar mutable;
+- seluruh JSON di repository root kini diperlakukan sebagai legacy runtime
+  state/report/draft dan tidak lagi dilacak Git. Immutable JSON wajib berada
+  di `config/`; salinan lokal serta histori Git lama tetap tersedia tanpa
+  menjadi release source;
+- pemeriksaan path decision IPC sekarang mengambil metadata SQLite sidecar
+  secara atomik. Penghapusan normal file `-wal`/`-shm` saat koneksi terakhir
+  ditutup tidak lagi dapat membuat kedua publisher gagal; 1.000 pengulangan
+  race optimized lulus tanpa duplicate atau fork;
 - perbaikan race pada soak projection: verifikasi custody kini dilakukan di
   bawah SQLite writer fence dan operasi tracker+projection diserialkan dalam
   satu runtime instance; uji konkurensi identik lulus 30 pengulangan; dan

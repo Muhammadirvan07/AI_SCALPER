@@ -9,6 +9,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 from live_runtime.contracts import DecisionSnapshot, _mint_decision_snapshot
 from live_runtime.controls import manual_demo_account_sha256
@@ -469,11 +470,35 @@ class DecisionIPCTests(unittest.TestCase):
         self.assertTrue(all(not thread.is_alive() for thread in threads))
         successes = [item for item in results if not isinstance(item, Exception)]
         failures = [item for item in results if isinstance(item, Exception)]
-        self.assertEqual(len(successes), 1)
+        self.assertEqual(
+            len(successes),
+            1,
+            [(type(item).__name__, str(item)) for item in failures],
+        )
         self.assertEqual(len(failures), 1)
         self.assertIsInstance(failures[0], DecisionIPCReplayError)
         reopened = self.reopen()
         self.assertEqual(reopened.current_checkpoint().published_count, 1)
+
+    def test_optional_sqlite_sidecar_can_disappear_during_path_check(self) -> None:
+        vanished = Path(f"{self.queue.database}-shm")
+        original_exists = Path.exists
+        original_stat = Path.stat
+
+        def exists(path: Path) -> bool:
+            if path == vanished:
+                return True
+            return original_exists(path)
+
+        def stat_path(path: Path, *args, **kwargs):
+            if path == vanished:
+                raise FileNotFoundError(path)
+            return original_stat(path, *args, **kwargs)
+
+        with patch.object(Path, "exists", exists), patch.object(
+            Path, "stat", stat_path
+        ):
+            self.queue._verify_secure_paths(require_database=True)
 
 
 if __name__ == "__main__":

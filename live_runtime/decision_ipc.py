@@ -830,19 +830,19 @@ class DurableDecisionIPCQueue:
             Path(f"{self.database}-wal"),
             Path(f"{self.database}-shm"),
         ):
-            if path.is_symlink():
-                raise DecisionIPCIntegrityError("decision IPC path cannot be a symlink")
-            if not path.exists():
+            try:
+                metadata = path.lstat()
+            except FileNotFoundError:
                 if path == self.database and require_database:
                     raise DecisionIPCIntegrityError("decision IPC database is missing")
                 continue
-            try:
-                metadata = path.stat(follow_symlinks=False)
-                mode = metadata.st_mode
             except OSError as exc:
                 raise DecisionIPCIntegrityError(
                     "decision IPC path metadata is unavailable"
                 ) from exc
+            mode = metadata.st_mode
+            if stat.S_ISLNK(mode):
+                raise DecisionIPCIntegrityError("decision IPC path cannot be a symlink")
             if not stat.S_ISREG(mode):
                 raise DecisionIPCIntegrityError(
                     "decision IPC database and sidecars must be regular files"
