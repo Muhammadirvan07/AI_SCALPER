@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-24 menjalankan **1.292 test** tanpa
+Validasi lokal terakhir pada 2026-07-24 menjalankan **1.320 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac. Itu adalah
 software regression evidence, bukan Windows host acceptance, broker-forward
 evidence, atau izin trading.
@@ -20,7 +20,7 @@ membuka demo-auto maupun live.
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, byte-derived regulatory review package with two independent HMAC approvals, byte-derived pre-window base-calendar review with a separate human HMAC approval, prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
 | 3. Broker read-only shadow | FBS and Phillip diagnostic bindings observed; evidence not started | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip sanitized discovery-v3 inputs berhasil dibuat dan reviewed regular M15 base schedules tersedia, tetapi profile registration, regulatory approval, 20-session benchmark, broker-forward contract, dan promotion evidence tetap disabled/pending. FINEX tidak dipakai untuk observasi baru. |
 | 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, bounded Windows composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, dan non-mutating readiness report tersedia. Seluruh external gate serta sepuluh order demo belum selesai. |
-| 5. Demo-auto soak | Local three-service activation foundation complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision/execution/status-monitor releases, deny-only gate catalog, immutable operator-only three-service v3 operations review bundle, deterministic configured-release builder/verifier, production decision loader, serta external status-monitor loader/runner tersedia. V3 mengikat ketiga configured identity, runtime, IPC, monitor custody, failure manifest, dan tepat tiga validation-only scheduler review; historical v1/v2 tetap readable dan deny-only. Configured packaging mengikat secret-free provider overlay ke identity baru tanpa memberi authority. External provider/key/CAS/latch custody dan acceptance, launcher issuance, exact Windows task/ACL activation, policy approval/unlock, sepuluh manual-demo lifecycle, serta actual soak evidence belum ada. |
+| 5. Demo-auto soak | Local three-service activation foundation complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision/execution/status-monitor releases, deny-only gate catalog, immutable operator-only three-service v3 operations review bundle, public-key external-acceptance verifier, deterministic configured-release builder/verifier, production decision loader, serta external status-monitor loader/runner tersedia. V3 mengikat ketiga configured identity, runtime, IPC, monitor custody, failure manifest, dan tepat tiga validation-only scheduler review; acceptance verifier mengikat exact v3 bundle ke fixed owner map dan sepuluh externally signed gate observation tetapi tetap hanya dapat meminta activation review. Historical v1/v2 tetap readable dan deny-only. Configured packaging mengikat secret-free provider overlay ke identity baru tanpa memberi authority. External provider/key/CAS/latch custody dan actual acceptance observations, launcher issuance, exact Windows task/ACL activation, policy approval/unlock, sepuluh manual-demo lifecycle, serta actual soak evidence belum ada. |
 | 6. XAUUSD live canary | Not started | Dormant XAUUSD-only symbol scope sudah tersedia, tetapi central live lock, execution-policy approval, promotion evidence/permit/soak, dan 50 closed live trades belum ada. |
 | 7. Pair expansion | Not started | EURUSD, USDJPY, dan AUDUSD harus mengulang seluruh gate per lane; hasil lane lain tidak boleh menutup kegagalan sebuah pair. |
 | 8. Scaling | Out of v1 | Tidak ada auto-scaling lot maupun risk cap. |
@@ -199,6 +199,14 @@ membuka demo-auto maupun live.
   seluruh safety lock. CLI tidak mengakses credential, menginstal task,
   menjalankan proses, membuka jaringan/MT5, atau mengirim order; file tersebut
   tidak masuk shadow/decision/execution service release.
+- Operator-only `verify_windows_three_service_external_acceptance.py`
+  merekonstruksi review v3 dan memverifikasi RSA-3072–8192 public policy yang
+  hash-nya dipin dari channel independen, exact tiga configured identity,
+  fixed gate-owner inventory, source/validation evidence hash yang berbeda,
+  freshness, dan satu signature per gate. Complete dossier tetap menghasilkan
+  `EXTERNAL_ACCEPTANCE_COMPLETE_ACTIVATION_REVIEW_REQUIRED`; ia tidak dapat
+  menerbitkan signature, memasang task, memuat provider, membuka policy, atau
+  memberi order authority.
 - `WindowsGatedServiceRunner` menyediakan bounded cadence, interruptible wait,
   off-host heartbeat, serta pre/post external-evidence attestation. Exact
   release root menolak member yang tidak ada di manifest, symlink/reparse

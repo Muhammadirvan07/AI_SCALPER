@@ -262,6 +262,6 @@ The import namespace rule intentionally permits one verified MT5 adapter per
 process. Starting a second verified adapter in the same process fails closed;
 service isolation is the supported production topology.
 
-Local regression on 2026-07-24 completed 1,292 tests without failure on the
+Local regression on 2026-07-24 completed 1,320 tests without failure on the
 development Mac. Exact Windows/Python/MT5/NTFS acceptance and all operational
 gates remain outstanding.

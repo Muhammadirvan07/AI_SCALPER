@@ -17,7 +17,7 @@ baru boleh dimulai setelah acceptance Windows, provider/key custody, sepuluh
 manual-demo lifecycles, dan approval manusia. Live masih membutuhkan soak 30
 hari/50 closed fills/20 XAU, bukti per lane, serta gate statistik dan keamanan.
 
-Validasi lokal terakhir menjalankan **1.307 test** tanpa kegagalan pada mode
+Validasi lokal terakhir menjalankan **1.320 test** tanpa kegagalan pada mode
 normal dan `PYTHONOPTIMIZE=2`. Seluruh tracked Python source berhasil
 dikompilasi, validator decision/execution/status-monitor lulus dengan
 `production_execution_ready=false`, dan safety locks tetap:
@@ -60,6 +60,12 @@ promotion_eligible = false
   unknown/duplicate/non-finite/oversized/symlink/unstable/secret input; verifier
   merekonstruksi seluruh isi sehingga recomputed outer hash tidak dapat
   menyamarkan tampering.
+- External-acceptance verifier sekarang merekonstruksi exact review v3,
+  memverifikasi externally pinned RSA policy, fixed owner map, serta satu
+  signed observation per blocker. Missing/failed/future/expired evidence tetap
+  pending; bahkan sepuluh gate yang valid hanya menghasilkan
+  `EXTERNAL_ACCEPTANCE_COMPLETE_ACTIVATION_REVIEW_REQUIRED` dengan seluruh
+  activation, execution, demo-auto, promotion, dan live lock tetap false.
 - Health threshold sekarang menolak `NaN`, infinity, dan pecahan untuk field
   yang secara kontrak bertipe integer.
 
@@ -77,7 +83,9 @@ promotion_eligible = false
    menggunakan `order_calc_profit()` dan measured spread/commission/slippage.
 5. Selesaikan sepuluh controlled manual-demo order lifecycles tanpa duplicate,
    orphan, unresolved `UNCERTAIN`, missing SL/TP, atau critical alert failure.
-6. Lakukan review manusia dan keluarkan activation release terpisah. Source
+6. Kumpulkan sepuluh signed gate observation, verifikasi external-acceptance
+   dossier, lalu lakukan review manusia dan keluarkan activation release
+   terpisah. Source
    saat ini tidak boleh diubah hanya untuk melewati gate.
 
 ## Sisa setelah demo-auto dimulai

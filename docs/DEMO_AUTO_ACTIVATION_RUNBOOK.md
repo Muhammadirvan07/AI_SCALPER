@@ -115,6 +115,26 @@ deliberately does not install runtime tasks or imply that any provider,
 launcher, task, or off-host delivery is accepted. Legacy v1 and historical v2
 operations bundles are not acceptable for a new host review.
 
+After the responsible owners have produced immutable external evidence, an
+offline acceptance authority signs exactly one observation per required gate.
+Verify the public dossier against an independently pinned policy hash:
+
+```powershell
+python -B .\verify_windows_three_service_external_acceptance.py `
+  --review-bundle C:\AI_SCALPER_PRIVATE\operations\three-service-review-v3.json `
+  --trust-policy C:\AI_SCALPER_PRIVATE\operations\external-acceptance-policy.json `
+  --observations C:\AI_SCALPER_PRIVATE\operations\external-acceptance-observations.json `
+  --expected-policy-sha256 <INDEPENDENTLY_PINNED_POLICY_SHA256> `
+  --checked-at-utc <TRUSTED_CANONICAL_UTC> `
+  --output C:\AI_SCALPER_PRIVATE\operations\external-acceptance-assessment.json
+```
+
+Only
+`EXTERNAL_ACCEPTANCE_COMPLETE_ACTIVATION_REVIEW_REQUIRED` closes the external
+operations inventory, and it still leaves activation, execution, demo-auto,
+promotion, and live flags false. `docs/WINDOWS_THREE_SERVICE_EXTERNAL_ACCEPTANCE.md`
+defines the fixed owner map and artifact contract.
+
 ## 2. Supply external authorities
 
 Provision and independently review:
@@ -166,6 +186,7 @@ central `DEMO_AUTO` lock still rejects before broker I/O, and
 Before producing a source release that changes the central DEMO_AUTO policy,
 review all of the following together:
 
+- the authenticated three-service external-acceptance assessment;
 - clean release and external launcher identities;
 - exact account/server/symbol and minimum-lot risk feasibility;
 - all external provider bindings and key fingerprints;
