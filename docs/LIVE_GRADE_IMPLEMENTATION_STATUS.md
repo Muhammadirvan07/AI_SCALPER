@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-23 menjalankan **1.190 test** tanpa
+Validasi lokal terakhir pada 2026-07-23 menjalankan **1.205 test** tanpa
 kegagalan pada development Mac. Itu adalah software regression evidence, bukan
 Windows host acceptance, broker-forward evidence, atau izin trading.
 
@@ -19,7 +19,7 @@ membuka demo-auto maupun live.
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, byte-derived regulatory review package with two independent HMAC approvals, byte-derived pre-window base-calendar review with a separate human HMAC approval, prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
 | 3. Broker read-only shadow | FBS and Phillip diagnostic bindings observed; evidence not started | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip sanitized discovery-v3 inputs berhasil dibuat dan reviewed regular M15 base schedules tersedia, tetapi profile registration, regulatory approval, 20-session benchmark, broker-forward contract, dan promotion evidence tetap disabled/pending. FINEX tidak dipakai untuk observasi baru. |
 | 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, bounded Windows composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, dan non-mutating readiness report tersedia. Seluruh external gate serta sepuluh order demo belum selesai. |
-| 5. Demo-auto soak | Local activation foundation complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision release, deny-only gate catalog, immutable operator-only Windows operations review bundle, serta exact dormant XAUUSD-only symbol scope pada seluruh risk/runtime/executor/MT5/bootstrap/supervisor boundary tersedia. External provider/key/CAS custody, exact Windows activation, policy approval/unlock, serta actual soak evidence belum ada. |
+| 5. Demo-auto soak | Local activation foundation complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision/execution releases, deny-only gate catalog, dan immutable operator-only dual-release v2 operations review bundle tersedia. V2 mengikat dua Python runtime/service identity, exact decision IPC, XAUUSD-only scope, serta external monitor reference tanpa entrypoint fiktif. External provider/key/CAS custody, configured release/launcher, monitor implementation, exact Windows activation, policy approval/unlock, serta actual soak evidence belum ada. |
 | 6. XAUUSD live canary | Not started | Dormant XAUUSD-only symbol scope sudah tersedia, tetapi central live lock, execution-policy approval, promotion evidence/permit/soak, dan 50 closed live trades belum ada. |
 | 7. Pair expansion | Not started | EURUSD, USDJPY, dan AUDUSD harus mengulang seluruh gate per lane; hasil lane lain tidak boleh menutup kegagalan sebuah pair. |
 | 8. Scaling | Out of v1 | Tidak ada auto-scaling lot maupun risk cap. |
@@ -400,6 +400,11 @@ BTCUSD = shadow-only
     dependency closure, static factory contract, dan validate-only runner.
     Profile itu dipisahkan dari executor bundle dan masih membutuhkan reviewed
     finalized-data/trusted-clock/key/CAS/provider configuration.
+    Operations review v2 kini mengikat exact decision dan execution release,
+    Python runtime serta service identity yang terpisah, IPC v2, dan external
+    monitor reference. Schema v1 tetap readable untuk histori tetapi tidak lagi
+    menjadi kontrak host karena memakai satu release serta placeholder
+    entrypoint yang tidak ada di release aktual.
     Independent session/projection custody, exact Windows queue/provider wiring,
     externally signed launcher attestation, 10 manual
     demo lifecycle, dan approval manusia tetap harus diselesaikan sebelum soak

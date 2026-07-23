@@ -56,6 +56,20 @@ python -B .\validate_windows_gated_execution_service.py `
 A port pass with `production_execution_ready=false` is expected until the
 external facts below are supplied. It is not an activation approval.
 
+Before any Task Scheduler review, create and verify the current dual-release v2
+operations bundle:
+
+```powershell
+python -B .\prepare_windows_dual_release_demo_soak_operations.py `
+  --config C:\AI_SCALPER_PRIVATE\operations\dual-release-input-v2.json `
+  --issued-at-utc <CURRENT_UTC> `
+  --output C:\AI_SCALPER_PRIVATE\operations\dual-release-review-v2.json
+```
+
+The bundle renders exactly two static validation tasks. It deliberately does
+not render runtime launchers or a fictitious watchdog. The legacy v1
+single-release operations bundle is not acceptable for this topology.
+
 ## 2. Supply external authorities
 
 Provision and independently review:

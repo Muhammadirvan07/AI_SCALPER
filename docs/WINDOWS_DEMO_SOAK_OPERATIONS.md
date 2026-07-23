@@ -1,5 +1,11 @@
 # Windows Demo-Soak Operations
 
+> **Legacy v1 notice:** this document describes the preserved single-release
+> review schema. The actual decision/execution topology now uses the
+> [dual-release v2 contract](WINDOWS_DUAL_RELEASE_DEMO_SOAK_OPERATIONS.md).
+> Because v1 models one release root and historical placeholder entrypoints, it
+> must not be used as the current demo-auto host contract.
+
 ## Outcome
 
 AI_SCALPER now has a side-effect-free Windows operations contract for reviewing
