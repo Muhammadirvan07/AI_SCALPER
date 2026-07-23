@@ -136,6 +136,15 @@ closes the pre-run inventory. It still leaves manual-demo authorization and
 all execution flags false. A separate human review and the existing
 short-lived MANUAL_DEMO stage/per-intent controls are still mandatory.
 
+The readiness authority must independently verify that exact public review
+artifact and bind its canonical SHA-256, exact status, and trusted UTC check
+time into the v2 `ManualDemoReadinessReceipt`. The v2
+`StageReadinessRequest`, sealed validation, and v3 supervisor
+`STARTUP/READY` receipt must carry the same hash. Any substitution, stale
+review, missing stage field, or validation mismatch fails closed before
+`READY`. The execution service does not import the operator-only verifier and
+cannot create this evidence.
+
 The full ten-gate verifier is intentionally deferred until the controlled
 lifecycles in step 3 have produced their signed result evidence. Running it
 before the ten lifecycles must return blocked. This is expected, not a reason

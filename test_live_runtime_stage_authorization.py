@@ -33,6 +33,10 @@ from live_runtime.stage_authorization import (
 
 
 UTC = timezone.utc
+PRE_MANUAL_COMPLETE_STATUS = (
+    "PRE_MANUAL_DEMO_EXTERNAL_PRECONDITIONS_COMPLETE_"
+    "ACTIVATION_REVIEW_REQUIRED"
+)
 
 
 def digest(value: str) -> str:
@@ -52,6 +56,9 @@ class StageAuthorizationTestCase(unittest.TestCase):
         }
         self.stage_secret = b"s" * 32
         self.replay_secret = b"x" * 32
+        self.pre_manual_entry_review_sha256 = digest(
+            "complete-pre-manual-entry-review"
+        )
         self.acceptance_authority_secrets = {
             "runtime-authority-v1": b"u" * 32,
             "parity-authority-v1": b"v" * 32,
@@ -123,6 +130,13 @@ class StageAuthorizationTestCase(unittest.TestCase):
                 "RECONCILIATION": digest("reconciliation"),
             },
             "source_validation_receipt_sha256": digest("global-validation"),
+            "pre_manual_entry_review_sha256": (
+                self.pre_manual_entry_review_sha256
+            ),
+            "pre_manual_entry_review_checked_at": (
+                self.t0 - timedelta(minutes=1)
+            ),
+            "pre_manual_entry_review_status": PRE_MANUAL_COMPLETE_STATUS,
             "issued_at": self.t0 - timedelta(minutes=1),
             "expires_at": self.t0 + timedelta(minutes=4),
             "signer_key_id": "manual-readiness-v1",
@@ -234,6 +248,9 @@ class StageAuthorizationTestCase(unittest.TestCase):
         values: dict[str, object] = {
             "binding": self.binding,
             "manual_readiness_receipt_sha256": self.readiness.content_sha256,
+            "pre_manual_entry_review_sha256": (
+                self.pre_manual_entry_review_sha256
+            ),
             "acceptance_receipts": (
                 self._acceptance_receipts() if mode == "DEMO_AUTO" else ()
             ),
@@ -391,8 +408,50 @@ class StageAuthorizationTestCase(unittest.TestCase):
         self.assertFalse(validation.safe_to_demo_auto_order)
         self.assertFalse(validation.live_allowed)
         self.assertEqual(validation.order_capability, "DISABLED")
+        self.assertEqual(
+            self.pre_manual_entry_review_sha256,
+            validation.pre_manual_entry_review_sha256,
+        )
         self.assertFalse(authorization.execution_authorized)
         self.assertEqual(authorization.order_capability, "DISABLED")
+
+    def test_pre_manual_review_status_and_freshness_are_mandatory(self) -> None:
+        self.assertEqual(
+            self.pre_manual_entry_review_sha256,
+            self.readiness.pre_manual_entry_review_sha256,
+        )
+        self.assertEqual(
+            PRE_MANUAL_COMPLETE_STATUS,
+            self.readiness.pre_manual_entry_review_status,
+        )
+        with self.assertRaises(ValueError):
+            self._readiness_receipt(
+                pre_manual_entry_review_status=(
+                    "BLOCKED_PRE_MANUAL_DEMO_EXTERNAL_PRECONDITIONS"
+                )
+            )
+        with self.assertRaises(ValueError):
+            self._readiness_receipt(
+                issued_at=self.t0 - timedelta(minutes=1, microseconds=1)
+            )
+        with self.assertRaises(ValueError):
+            self._readiness_receipt(
+                expires_at=self.t0
+                + timedelta(minutes=4, microseconds=1)
+            )
+
+    def test_request_cannot_substitute_a_different_pre_manual_review(
+        self,
+    ) -> None:
+        request = self._request(
+            "MANUAL_DEMO",
+            pre_manual_entry_review_sha256=digest("other-entry-review"),
+        )
+        with self.assertRaisesRegex(
+            StageAuthorizationError,
+            "MANUAL_READINESS_PRE_MANUAL_REVIEW_MISMATCH",
+        ):
+            self._issue(request)
 
     def test_demo_auto_requires_all_evidence_and_remains_deny_only(self) -> None:
         authorization = self._issue(self._request())
@@ -836,6 +895,7 @@ class StageAuthorizationTestCase(unittest.TestCase):
                 authorization_sha256=digest("auth"),
                 request_sha256=digest("request"),
                 binding_sha256=digest("binding"),
+                pre_manual_entry_review_sha256=digest("entry-review"),
                 nonce_sha256=digest("nonce"),
                 evidence_eligible_for_review=False,
                 consumed_once=False,

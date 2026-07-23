@@ -107,11 +107,13 @@ stale, or exceptional port results fail closed.
     blackout, and compare its sequence/predecessor to the durable accepted head;
 11. for `DEMO`, verify that the external stage replay checkpoint is signed and is
     the registry's exact current high-water mark, validate and atomically consume
-    the one-use `MANUAL_DEMO` authorization, create and reverify the new signed
-    current checkpoint, and require exactly one new replay event; and
+    the one-use `MANUAL_DEMO` authorization, require the sealed validation's
+    pre-manual entry-review hash to equal the signed request, create and reverify
+    the new signed current checkpoint, and require exactly one new replay event;
+    and
 12. atomically append a signed `STARTUP/READY` receipt containing the exact stage
-    authorization, sealed validation, prior external checkpoint, new replay
-    checkpoint, and signed news receipt hashes.
+    authorization, sealed validation, pre-manual entry-review, prior external
+    checkpoint, new replay checkpoint, and signed news receipt hashes.
 
 The decision provider is not called during startup.
 
@@ -176,9 +178,11 @@ hashes, signed news-guard hash/provider/sequence/predecessor, decision ID and
 decision-payload hash, execution-service
 invocation indicator, result hash, phase/status, release binding, owner, and fence.
 `STARTUP` additionally binds the stage mode, authorization ID/hash, sealed
-validation hash, prior external checkpoint hash, and post-consumption checkpoint
-hash. Authorization IDs/hashes are unique across the durable chain, so a restart
-requires a newly issued authorization.
+validation hash, exact pre-manual entry-review hash, prior external checkpoint
+hash, and post-consumption checkpoint hash. These stage fields are all-or-none
+and the sealed receipt is constructed before its row is inserted, so invalid
+partial evidence cannot become durable. Authorization IDs/hashes are unique
+across the durable chain, so a restart requires a newly issued authorization.
 
 Signed news receipts form a second durable monotonic chain. The append transaction
 requires a strictly increasing provider sequence and an exact predecessor equal to

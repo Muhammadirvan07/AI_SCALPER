@@ -138,6 +138,10 @@ BROKER_RECONCILIATION_KEY = (
 )
 NEWS_RULESET_SHA256 = hashlib.sha256(b"news-ruleset-v1").hexdigest()
 NEWS_WINDOW_SHA256 = hashlib.sha256(b"blackout-window-v1").hexdigest()
+PRE_MANUAL_COMPLETE_STATUS = (
+    "PRE_MANUAL_DEMO_EXTERNAL_PRECONDITIONS_COMPLETE_"
+    "ACTIVATION_REVIEW_REQUIRED"
+)
 
 
 def digest(value: str) -> str:
@@ -183,6 +187,9 @@ class StagePortFixture:
         )
         self.replay_secret = b"x" * 32
         self.checkpoint_secret = b"c" * 32
+        self.pre_manual_entry_review_sha256 = digest(
+            "supervisor-complete-pre-manual-entry-review"
+        )
         self.binding = StageBinding(
             broker_id="phillip-demo",
             account_alias_sha256=account_alias_sha256(ACCOUNT_ID),
@@ -224,6 +231,13 @@ class StagePortFixture:
                 )
             },
             source_validation_receipt_sha256=digest("global-validation"),
+            pre_manual_entry_review_sha256=(
+                self.pre_manual_entry_review_sha256
+            ),
+            pre_manual_entry_review_checked_at=(
+                self.t0 - timedelta(minutes=1)
+            ),
+            pre_manual_entry_review_status=PRE_MANUAL_COMPLETE_STATUS,
             issued_at=self.t0 - timedelta(minutes=1),
             expires_at=self.t0 + timedelta(minutes=4),
             signer_key_id="manual-readiness-v1",
@@ -317,6 +331,9 @@ class StagePortFixture:
         request = StageReadinessRequest(
             binding=self.binding,
             manual_readiness_receipt_sha256=self.readiness.content_sha256,
+            pre_manual_entry_review_sha256=(
+                self.pre_manual_entry_review_sha256
+            ),
             acceptance_receipts=references,
             issued_at=self.t0,
             expires_at=self.t0 + timedelta(minutes=4),
@@ -2425,12 +2442,103 @@ class RuntimeSupervisorTests(unittest.TestCase):
             fixture.stage_ports.authorization.content_sha256,
             startup.stage_authorization_sha256,
         )
+        self.assertEqual(
+            fixture.stage.pre_manual_entry_review_sha256,
+            startup.stage_pre_manual_entry_review_sha256,
+        )
         self.assertIsNotNone(startup.stage_validation_sha256)
         self.assertEqual(
             fixture.stage_ports.external_replay_checkpoint.content_sha256,
             startup.stage_external_checkpoint_sha256,
         )
         self.assertIsNotNone(startup.stage_replay_checkpoint_sha256)
+
+    def test_stage_validation_review_hash_mismatch_fails_before_ready(self):
+        root = self.root / "stage-review-mismatch"
+        root.mkdir()
+        fixture = SupervisorFixture(root, mode="DEMO")
+        assert fixture.stage_ports is not None
+        original_validator = fixture.stage_ports.authorization_validator
+
+        def mismatched_validator(now, expected_mode):
+            validation = original_validator(now, expected_mode)
+            object.__setattr__(
+                validation,
+                "pre_manual_entry_review_sha256",
+                digest("forged-pre-manual-review"),
+            )
+            return validation
+
+        bad_ports = replace(
+            fixture.stage_ports,
+            authorization_validator=mismatched_validator,
+        )
+        supervisor = fixture.supervisor(stage_authorization_ports=bad_ports)
+
+        with self.assertRaisesRegex(
+            RuntimeSupervisorCriticalError,
+            "STAGE_AUTHORIZATION_VALIDATION_FAILED",
+        ):
+            supervisor.start(owner_id="runtime-review-mismatch")
+
+        self.assertEqual(1, fixture.stage.validation_calls)
+        with sqlite3.connect(root / "supervisor.sqlite3") as connection:
+            statuses = tuple(
+                json.loads(row[0])["status"]
+                for row in connection.execute(
+                    """
+                    SELECT payload_json
+                    FROM supervisor_cycle_receipts
+                    ORDER BY sequence
+                    """
+                ).fetchall()
+            )
+        self.assertEqual(("STOPPED",), statuses)
+        self.assertNotIn("READY", statuses)
+        self.assertTrue(fixture.journal.kill_switch_status()["latched"])
+
+    def test_incomplete_stage_receipt_rolls_back_before_append(self):
+        root = self.root / "incomplete-stage-receipt"
+        root.mkdir()
+        fixture = SupervisorFixture(root, mode="DEMO")
+        supervisor = fixture.supervisor()
+        owner = "runtime-incomplete-stage"
+        token = supervisor.store.claim(
+            owner,
+            lease_seconds=30,
+            now=fixture.clock.value,
+        )
+        assert fixture.stage_ports is not None
+        authorization = fixture.stage_ports.authorization
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "stage startup receipt fields must be complete",
+        ):
+            supervisor.store.append(
+                owner_id=owner,
+                fence_token=token,
+                cycle_id="startup-incomplete-stage",
+                phase="STARTUP",
+                status="READY",
+                occurred_at=fixture.clock.value,
+                news_guard_sha256=digest("news-guard"),
+                news_guard_provider_id=NEWS_PROVIDER_ID,
+                news_guard_feed_sequence=1,
+                news_guard_previous_sha256="0" * 64,
+                stage_mode="MANUAL_DEMO",
+                stage_authorization_id=authorization.authorization_id,
+                stage_authorization_sha256=authorization.content_sha256,
+                stage_validation_sha256=digest("stage-validation"),
+                stage_external_checkpoint_sha256=digest(
+                    "stage-external-checkpoint"
+                ),
+                stage_replay_checkpoint_sha256=digest(
+                    "stage-replay-checkpoint"
+                ),
+            )
+
+        self.assertEqual(0, supervisor.store.receipt_count())
 
     def test_manual_demo_restart_requires_a_new_stage_authorization(self):
         root = self.root / "stage-restart"

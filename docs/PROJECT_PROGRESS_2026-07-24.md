@@ -17,7 +17,7 @@ baru boleh dimulai setelah acceptance Windows, provider/key custody, sepuluh
 manual-demo lifecycles, dan approval manusia. Live masih membutuhkan soak 30
 hari/50 closed fills/20 XAU, bukti per lane, serta gate statistik dan keamanan.
 
-Validasi lokal terakhir menjalankan **1.330 test** tanpa kegagalan pada mode
+Validasi lokal terakhir menjalankan **1.334 test** tanpa kegagalan pada mode
 normal dan `PYTHONOPTIMIZE=2`. Seluruh tracked Python source berhasil
 dikompilasi, validator decision/execution/status-monitor lulus dengan
 `production_execution_ready=false`, dan safety locks tetap:
@@ -77,6 +77,11 @@ pengganti signed OSV release receipt dari Windows host target.
   stage evidence terpisah; ia menolak observation hasil manual-demo yang muncul
   terlalu awal dan tidak memiliki order, activation, permit, atau issuer
   capability.
+- Stage-readiness v2 sekarang mengikat exact hash/status/check time hasil
+  pre-manual review ke readiness receipt, request, sealed validation, dan
+  supervisor startup receipt v3. Runtime menolak substitusi hash dan stage
+  evidence parsial sebelum `READY`; receipt juga divalidasi sebelum append agar
+  kegagalan konstruksi tidak meninggalkan row durable.
 - Health threshold sekarang menolak `NaN`, infinity, dan pecahan untuk field
   yang secara kontrak bertipe integer.
 

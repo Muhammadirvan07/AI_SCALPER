@@ -66,7 +66,7 @@ from .stage_authorization import (
 UTC = timezone.utc
 SUPERVISOR_SCHEMA_VERSION = 3
 SUPERVISOR_BINDING_SCHEMA_VERSION = "runtime-supervisor-binding-v2"
-SUPERVISOR_RECEIPT_SCHEMA_VERSION = "runtime-supervisor-cycle-receipt-v2"
+SUPERVISOR_RECEIPT_SCHEMA_VERSION = "runtime-supervisor-cycle-receipt-v3"
 SUPERVISOR_DECISION_SCHEMA_VERSION = "runtime-supervisor-decision-v1"
 NEWS_GUARD_SCHEMA_VERSION = "runtime-supervisor-news-guard-v1"
 NEWS_GUARD_RECEIPT_SCHEMA_VERSION = "runtime-supervisor-news-guard-receipt-v1"
@@ -1115,6 +1115,7 @@ class RuntimeSupervisorCycleReceipt(CanonicalContract):
     stage_authorization_id: str | None
     stage_authorization_sha256: str | None
     stage_validation_sha256: str | None
+    stage_pre_manual_entry_review_sha256: str | None
     stage_external_checkpoint_sha256: str | None
     stage_replay_checkpoint_sha256: str | None
     decision_id: str | None
@@ -1191,6 +1192,7 @@ class RuntimeSupervisorCycleReceipt(CanonicalContract):
             self.stage_authorization_id,
             self.stage_authorization_sha256,
             self.stage_validation_sha256,
+            self.stage_pre_manual_entry_review_sha256,
             self.stage_external_checkpoint_sha256,
             self.stage_replay_checkpoint_sha256,
         )
@@ -1209,6 +1211,7 @@ class RuntimeSupervisorCycleReceipt(CanonicalContract):
             for name in (
                 "stage_authorization_sha256",
                 "stage_validation_sha256",
+                "stage_pre_manual_entry_review_sha256",
                 "stage_external_checkpoint_sha256",
                 "stage_replay_checkpoint_sha256",
             ):
@@ -2106,6 +2109,7 @@ class _SupervisorStore:
         stage_authorization_id: str | None = None,
         stage_authorization_sha256: str | None = None,
         stage_validation_sha256: str | None = None,
+        stage_pre_manual_entry_review_sha256: str | None = None,
         stage_external_checkpoint_sha256: str | None = None,
         stage_replay_checkpoint_sha256: str | None = None,
         decision_id: str | None = None,
@@ -2167,6 +2171,9 @@ class _SupervisorStore:
                 "stage_authorization_id": stage_authorization_id,
                 "stage_authorization_sha256": stage_authorization_sha256,
                 "stage_validation_sha256": stage_validation_sha256,
+                "stage_pre_manual_entry_review_sha256": (
+                    stage_pre_manual_entry_review_sha256
+                ),
                 "stage_external_checkpoint_sha256": stage_external_checkpoint_sha256,
                 "stage_replay_checkpoint_sha256": stage_replay_checkpoint_sha256,
             }
@@ -2212,6 +2219,41 @@ class _SupervisorStore:
                         raise RuntimeSupervisorIntegrityError(
                             "stage authorization replay detected atomically"
                         )
+            receipt = RuntimeSupervisorCycleReceipt(
+                sequence=sequence,
+                cycle_id=payload["cycle_id"],
+                binding=self.binding,
+                owner_id=owner_id,
+                fence_token=fence_token,
+                phase=payload["phase"],
+                status=payload["status"],
+                occurred_at_utc=occurred_at,
+                reconciliation_status=reconciliation_status,
+                journal_checkpoint_sha256=journal_checkpoint_sha256,
+                risk_receipt_hmac_sha256=risk_receipt_hmac_sha256,
+                runtime_fact_receipt_sha256s=tuple(runtime_fact_receipt_sha256s),
+                news_guard_sha256=news_guard_sha256,
+                news_guard_provider_id=news_guard_provider_id,
+                news_guard_feed_sequence=news_guard_feed_sequence,
+                news_guard_previous_sha256=news_guard_previous_sha256,
+                stage_mode=stage_mode,
+                stage_authorization_id=stage_authorization_id,
+                stage_authorization_sha256=stage_authorization_sha256,
+                stage_validation_sha256=stage_validation_sha256,
+                stage_pre_manual_entry_review_sha256=(
+                    stage_pre_manual_entry_review_sha256
+                ),
+                stage_external_checkpoint_sha256=stage_external_checkpoint_sha256,
+                stage_replay_checkpoint_sha256=stage_replay_checkpoint_sha256,
+                decision_id=decision_id,
+                decision_payload_sha256=decision_payload_sha256,
+                execution_service_called=execution_service_called,
+                execution_result_sha256=execution_result_sha256,
+                reason_codes=tuple(reason_codes),
+                previous_receipt_hmac_sha256=previous,
+                receipt_hmac_sha256=receipt_hmac,
+                _seal=_RECEIPT_SEAL,
+            )
             connection.execute(
                 """
                 INSERT INTO supervisor_cycle_receipts(
@@ -2227,38 +2269,7 @@ class _SupervisorStore:
                     receipt_hmac,
                 ),
             )
-        return RuntimeSupervisorCycleReceipt(
-            sequence=sequence,
-            cycle_id=payload["cycle_id"],
-            binding=self.binding,
-            owner_id=owner_id,
-            fence_token=fence_token,
-            phase=payload["phase"],
-            status=payload["status"],
-            occurred_at_utc=occurred_at,
-            reconciliation_status=reconciliation_status,
-            journal_checkpoint_sha256=journal_checkpoint_sha256,
-            risk_receipt_hmac_sha256=risk_receipt_hmac_sha256,
-            runtime_fact_receipt_sha256s=tuple(runtime_fact_receipt_sha256s),
-            news_guard_sha256=news_guard_sha256,
-            news_guard_provider_id=news_guard_provider_id,
-            news_guard_feed_sequence=news_guard_feed_sequence,
-            news_guard_previous_sha256=news_guard_previous_sha256,
-            stage_mode=stage_mode,
-            stage_authorization_id=stage_authorization_id,
-            stage_authorization_sha256=stage_authorization_sha256,
-            stage_validation_sha256=stage_validation_sha256,
-            stage_external_checkpoint_sha256=stage_external_checkpoint_sha256,
-            stage_replay_checkpoint_sha256=stage_replay_checkpoint_sha256,
-            decision_id=decision_id,
-            decision_payload_sha256=decision_payload_sha256,
-            execution_service_called=execution_service_called,
-            execution_result_sha256=execution_result_sha256,
-            reason_codes=tuple(reason_codes),
-            previous_receipt_hmac_sha256=previous,
-            receipt_hmac_sha256=receipt_hmac,
-            _seal=_RECEIPT_SEAL,
-        )
+        return receipt
 
     def receipt_count(self) -> int:
         with self._reader() as connection:
@@ -3703,6 +3714,8 @@ class RuntimeSupervisor:
             or validation.authorization_sha256 != authorization.content_sha256
             or validation.request_sha256 != authorization.request.request_sha256
             or validation.binding_sha256 != stage_binding.binding_sha256
+            or validation.pre_manual_entry_review_sha256
+            != authorization.request.pre_manual_entry_review_sha256
             or validation.checked_at != checked_at
             or validation.execution_authorized
             or validation.activation_authorized
@@ -3840,6 +3853,11 @@ class RuntimeSupervisor:
                 ),
                 stage_validation_sha256=(
                     None if stage_evidence is None else stage_evidence[1].content_sha256
+                ),
+                stage_pre_manual_entry_review_sha256=(
+                    None
+                    if stage_evidence is None
+                    else stage_evidence[1].pre_manual_entry_review_sha256
                 ),
                 stage_external_checkpoint_sha256=(
                     None if stage_evidence is None else stage_evidence[2].content_sha256

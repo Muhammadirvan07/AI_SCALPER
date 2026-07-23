@@ -262,15 +262,18 @@ The controlled manual-demo boundary is also phase-ordered. Nine signed
 pre-manual observations must first pass
 `verify_windows_manual_demo_entry_review.py`; its successful result remains
 deny-only and merely requests an independent human review of short-lived
-MANUAL_DEMO stage evidence. The tenth observation records the outcome of the
-ten controlled lifecycles and therefore may be issued only after those
-lifecycles finish. Only then may the full external-acceptance dossier be
-verified for a separate DEMO_AUTO activation review.
+MANUAL_DEMO stage evidence. Its exact canonical hash, complete status, and
+trusted UTC check time must be independently bound into stage-readiness v2;
+the request, sealed validation, and supervisor startup receipt v3 must preserve
+the same hash. The tenth observation records the outcome of the ten controlled
+lifecycles and therefore may be issued only after those lifecycles finish. Only
+then may the full external-acceptance dossier be verified for a separate
+DEMO_AUTO activation review.
 
 The import namespace rule intentionally permits one verified MT5 adapter per
 process. Starting a second verified adapter in the same process fails closed;
 service isolation is the supported production topology.
 
-Local regression on 2026-07-24 completed 1,330 tests without failure on the
+Local regression on 2026-07-24 completed 1,334 tests without failure on the
 development Mac. Exact Windows/Python/MT5/NTFS acceptance and all operational
 gates remain outstanding.

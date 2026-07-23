@@ -107,10 +107,18 @@ to the exact `StageBinding`. It requires non-zero receipt hashes for all of:
 - `RECONCILIATION`.
 
 It also binds the source validation receipt used by the readiness authority.
+The v2 readiness contract additionally binds the non-zero SHA-256, trusted UTC
+check time, and exact complete status of the operator-only pre-manual entry
+review. Its issuance cannot precede that check and its expiry cannot extend
+past five minutes after it. The canonical `StageReadinessRequest` independently
+names the same review hash, so a valid readiness receipt cannot be substituted
+for a different reviewed Windows dossier. The runtime does not import the
+operator verifier or infer this hash itself.
 The final stage signer sees only content hashes; the independent source
 validators remain responsible for their underlying evidence. Missing gates,
 duplicate gates, unknown gates, a bad signature, a wrong binding, an expired
-receipt, or a receipt that expires before the stage request all fail closed.
+receipt, a review-reference mismatch, or a receipt that expires before the
+stage request all fail closed.
 
 MANUAL_DEMO explicitly rejects tracker, promotion, and automated-runtime
 claims. Those facts cannot exist until controlled manual execution has run.
@@ -215,7 +223,7 @@ and rejects not-yet-valid and expired data.
 the stage authority signs:
 
 1. exact request schema and time window;
-2. signed global readiness and exact binding;
+2. signed global readiness, exact binding, and exact pre-manual review hash;
 3. for DEMO_AUTO, clean signed manual tracker aggregate;
 4. for DEMO_AUTO, signed exact promotion/evidence/parity binding;
 5. fresh signed authority receipts under the exact bound per-domain trust policy;

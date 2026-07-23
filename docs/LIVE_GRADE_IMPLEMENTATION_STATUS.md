@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-24 menjalankan **1.330 test** tanpa
+Validasi lokal terakhir pada 2026-07-24 menjalankan **1.334 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac. Itu adalah
 software regression evidence, bukan Windows host acceptance, broker-forward
 evidence, atau izin trading.
@@ -221,6 +221,11 @@ membuka demo-auto maupun live.
   `manual_demo_authorized=false`, `execution_enabled=false`,
   `safe_to_demo_auto_order=false`, `live_allowed=false`, dan
   `order_capability=DISABLED`.
+- Stage-readiness v2 mengikat SHA-256, status lengkap, dan trusted UTC check
+  dari exact pre-manual entry review ke signed readiness, request, sealed
+  validation, serta supervisor startup receipt v3. Substitusi hash, review
+  stale, validation drift, atau stage fields parsial gagal sebelum `READY`;
+  receipt divalidasi sebelum SQLite append sehingga row parsial tidak durable.
 - `WindowsGatedServiceRunner` menyediakan bounded cadence, interruptible wait,
   off-host heartbeat, serta pre/post external-evidence attestation. Exact
   release root menolak member yang tidak ada di manifest, symlink/reparse

@@ -34,10 +34,10 @@ from .manual_demo_tracker import (
 from .promotion_evidence import PromotionEvidenceReceipt
 
 
-STAGE_AUTHORIZATION_SCHEMA_VERSION = "stage-readiness-authorization-v1"
+STAGE_AUTHORIZATION_SCHEMA_VERSION = "stage-readiness-authorization-v2"
 MANUAL_DEMO_AGGREGATE_SCHEMA_VERSION = "manual-demo-aggregate-receipt-v1"
 APPROVAL_SCHEMA_VERSION = "stage-readiness-human-approval-v1"
-MANUAL_READINESS_SCHEMA_VERSION = "manual-demo-global-readiness-receipt-v1"
+MANUAL_READINESS_SCHEMA_VERSION = "manual-demo-global-readiness-receipt-v2"
 REPLAY_SCHEMA_VERSION = "stage-readiness-replay-registry-v1"
 REPLAY_CHECKPOINT_SCHEMA_VERSION = "stage-readiness-replay-checkpoint-v1"
 ACCEPTANCE_AUTHORITY_RECEIPT_SCHEMA_VERSION = "stage-acceptance-authority-receipt-v1"
@@ -45,13 +45,17 @@ ACCEPTANCE_AUTHORITY_POLICY_SCHEMA_VERSION = "stage-acceptance-authority-policy-
 MANUAL_DEMO_CUSTODY_CHECKPOINT_SCHEMA_VERSION = (
     "manual-demo-external-custody-checkpoint-v1"
 )
+PRE_MANUAL_ENTRY_REVIEW_COMPLETE_STATUS = (
+    "PRE_MANUAL_DEMO_EXTERNAL_PRECONDITIONS_COMPLETE_"
+    "ACTIVATION_REVIEW_REQUIRED"
+)
 
 STAGE_AUTHORIZATION_MAX_TTL = timedelta(minutes=5)
 MANUAL_DEMO_AGGREGATE_MAX_TTL = timedelta(minutes=15)
 ACCEPTANCE_REFERENCE_MAX_TTL = timedelta(days=30)
 
 MANUAL_DEMO_HMAC_DOMAIN = b"AI_SCALPER:MANUAL_DEMO_AGGREGATE:v1\n"
-MANUAL_READINESS_HMAC_DOMAIN = b"AI_SCALPER:MANUAL_DEMO_GLOBAL_READINESS:v1\n"
+MANUAL_READINESS_HMAC_DOMAIN = b"AI_SCALPER:MANUAL_DEMO_GLOBAL_READINESS:v2\n"
 HUMAN_APPROVAL_HMAC_DOMAIN = b"AI_SCALPER:STAGE_READINESS_HUMAN_APPROVAL:v1\n"
 STAGE_AUTHORIZATION_HMAC_DOMAIN = b"AI_SCALPER:STAGE_READINESS_AUTHORIZATION:v1\n"
 REPLAY_RECORD_HMAC_DOMAIN = b"AI_SCALPER:STAGE_READINESS_REPLAY:v1\n"
@@ -346,6 +350,9 @@ class ManualDemoReadinessReceipt(CanonicalContract):
     binding_sha256: str
     gate_receipts: tuple[tuple[str, str], ...]
     source_validation_receipt_sha256: str
+    pre_manual_entry_review_sha256: str
+    pre_manual_entry_review_checked_at: datetime
+    pre_manual_entry_review_status: str
     issued_at: datetime
     expires_at: datetime
     signer_key_id: str
@@ -377,12 +384,46 @@ class ManualDemoReadinessReceipt(CanonicalContract):
                 self.source_validation_receipt_sha256,
             ),
         )
+        object.__setattr__(
+            self,
+            "pre_manual_entry_review_sha256",
+            _nonzero_hash(
+                "pre_manual_entry_review_sha256",
+                self.pre_manual_entry_review_sha256,
+            ),
+        )
+        checked_at = require_utc(
+            "pre_manual_entry_review_checked_at",
+            self.pre_manual_entry_review_checked_at,
+        )
+        if (
+            require_text(
+                "pre_manual_entry_review_status",
+                self.pre_manual_entry_review_status,
+                upper=True,
+            )
+            != PRE_MANUAL_ENTRY_REVIEW_COMPLETE_STATUS
+        ):
+            raise ValueError("pre-manual entry review is not complete")
+        object.__setattr__(
+            self,
+            "pre_manual_entry_review_status",
+            PRE_MANUAL_ENTRY_REVIEW_COMPLETE_STATUS,
+        )
         _require_window(
             self.issued_at,
             self.expires_at,
             maximum=STAGE_AUTHORIZATION_MAX_TTL,
             label="manual-demo global readiness",
         )
+        if self.issued_at < checked_at:
+            raise ValueError(
+                "manual readiness cannot precede the pre-manual entry review"
+            )
+        if self.expires_at > checked_at + STAGE_AUTHORIZATION_MAX_TTL:
+            raise ValueError(
+                "manual readiness exceeds the pre-manual review freshness window"
+            )
         object.__setattr__(
             self,
             "signer_key_id",
@@ -1096,6 +1137,7 @@ class StageReadinessRequest(CanonicalContract):
 
     binding: StageBinding
     manual_readiness_receipt_sha256: str
+    pre_manual_entry_review_sha256: str
     acceptance_receipts: tuple[AcceptanceAuthorityReceipt, ...]
     issued_at: datetime
     expires_at: datetime
@@ -1115,6 +1157,14 @@ class StageReadinessRequest(CanonicalContract):
             _nonzero_hash(
                 "manual_readiness_receipt_sha256",
                 self.manual_readiness_receipt_sha256,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "pre_manual_entry_review_sha256",
+            _nonzero_hash(
+                "pre_manual_entry_review_sha256",
+                self.pre_manual_entry_review_sha256,
             ),
         )
         mode = require_text("mode", self.mode, upper=True)
@@ -1406,6 +1456,11 @@ def _manual_readiness_reason_codes(
         reasons.append("MANUAL_READINESS_REFERENCE_MISMATCH")
     if receipt.binding_sha256 != request.binding.binding_sha256:
         reasons.append("MANUAL_READINESS_BINDING_MISMATCH")
+    if (
+        receipt.pre_manual_entry_review_sha256
+        != request.pre_manual_entry_review_sha256
+    ):
+        reasons.append("MANUAL_READINESS_PRE_MANUAL_REVIEW_MISMATCH")
     if not receipt.all_global_gates_accepted:
         reasons.append("MANUAL_READINESS_GLOBAL_GATE_REJECTED")
     if now < receipt.issued_at:
@@ -2377,6 +2432,7 @@ class StageAuthorizationValidation(CanonicalContract):
     authorization_sha256: str
     request_sha256: str
     binding_sha256: str
+    pre_manual_entry_review_sha256: str
     nonce_sha256: str
     evidence_eligible_for_review: bool
     consumed_once: bool
@@ -2410,6 +2466,7 @@ class StageAuthorizationValidation(CanonicalContract):
             "authorization_sha256",
             "request_sha256",
             "binding_sha256",
+            "pre_manual_entry_review_sha256",
             "nonce_sha256",
         ):
             object.__setattr__(self, name, _nonzero_hash(name, getattr(self, name)))
@@ -2540,6 +2597,9 @@ def validate_and_consume_stage_readiness_authorization(
         authorization_sha256=authorization.content_sha256,
         request_sha256=request.request_sha256,
         binding_sha256=request.binding.binding_sha256,
+        pre_manual_entry_review_sha256=(
+            request.pre_manual_entry_review_sha256
+        ),
         nonce_sha256=hashlib.sha256(request.nonce.encode("utf-8")).hexdigest(),
         evidence_eligible_for_review=valid,
         consumed_once=consumed,
@@ -2610,6 +2670,7 @@ __all__ = [
     "MANUAL_DEMO_HMAC_DOMAIN",
     "MANUAL_READINESS_HMAC_DOMAIN",
     "MANUAL_READINESS_SCHEMA_VERSION",
+    "PRE_MANUAL_ENTRY_REVIEW_COMPLETE_STATUS",
     "ManualDemoAggregateReceipt",
     "ManualDemoCustodyCheckpoint",
     "ManualDemoReadinessReceipt",
