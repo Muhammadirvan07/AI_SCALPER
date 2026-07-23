@@ -7,8 +7,11 @@ Windows host that will eventually support controlled manual-demo validation and 
 demo-auto soak. It does not authorize installation, order submission, demo-auto,
 or live trading.
 
-The implementation is `live_runtime/demo_soak_operations.py`. Its immutable
-safety state is always:
+The typed implementation is `live_runtime/demo_soak_operations.py`. Strict
+operator input and immutable review bundles are implemented by
+`live_runtime/demo_soak_operations_artifacts.py` and exposed through the
+deny-only `prepare_windows_demo_soak_operations.py` CLI. Their immutable safety
+state is always:
 
 - `execution_enabled = false`
 - `task_install_allowed = false`
@@ -138,6 +141,34 @@ valid signed passes.
 Completing the drill gate still does not set any order, demo-auto, promotion, or
 live flag.
 
+### FR-10 — Strict immutable operator review bundle
+
+The operator CLI MUST accept one exact
+`windows-demo-soak-operations-input-v1` JSON object. Unknown or duplicate
+fields, non-finite numbers, raw secret-like fields or values, symlinks/reparse
+points, non-regular files, unstable reads, oversized input, and noncanonical
+bindings fail closed.
+
+The generated
+`windows-demo-soak-operations-review-bundle-v1` artifact MUST bind:
+
+- the canonical operations plan and its SHA-256;
+- the exact failure-drill manifest and its SHA-256;
+- all three deterministic Task Scheduler XML reviews;
+- all three read-only PowerShell validation scripts;
+- the deny-only readiness assessment;
+- explicit false side-effect claims; and
+- all central safety locks.
+
+The bundle has one content SHA-256 over every field except that hash itself.
+Verification MUST reconstruct the typed plan, failure-drill manifest, scheduler
+reviews, readiness result, effects, and safety state. Any change to any
+component fails verification.
+
+The output path is create-exclusive. Existing files and symlinks MUST never be
+overwritten. The CLI MUST NOT access credentials, install or start tasks, launch
+processes, access a network, initialize MT5, or call an order API.
+
 ## Non-functional requirements
 
 - Validation and rendering are pure and deterministic.
@@ -152,7 +183,8 @@ live flag.
 
 ## Acceptance tests
 
-`test_live_runtime_demo_soak_operations.py` verifies:
+`test_live_runtime_demo_soak_operations.py` and
+`test_windows_demo_soak_operations_artifacts.py` verify:
 
 - valid exact two-process deny-only plans;
 - deterministic XML and read-only PowerShell output;
@@ -163,6 +195,10 @@ live flag.
 - unsigned, forged, future, mismatched, failed-latest, and replayed drill evidence;
   and
 - preservation of all safety locks even when every signed drill passes.
+- strict JSON input, immutable create-exclusive output, full deterministic
+  bundle reconstruction, tamper detection, and operator-only release
+  membership; and
+- absence of task, process, MT5, or broker-mutation calls from the review CLI.
 
 ## External operational gates
 

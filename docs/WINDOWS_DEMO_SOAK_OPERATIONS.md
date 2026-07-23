@@ -8,6 +8,11 @@ demo-auto soak. It validates the exact release, Python runtime, MT5 terminal,
 broker account alias, symbol specifications, state paths, service identity,
 off-host provider references, and safety thresholds.
 
+The operator release also contains
+`prepare_windows_demo_soak_operations.py`. It converts one reviewed, non-secret
+input document into a create-exclusive, self-verifying review bundle. It does
+not install the reviewed configuration.
+
 It also produces three review artifacts:
 
 1. Task Scheduler XML for a deny-only decision runtime;
@@ -16,6 +21,32 @@ It also produces three review artifacts:
 
 Each task has a read-only PowerShell validation script. The module does not
 register or start those tasks.
+
+## Preparing the immutable review bundle
+
+On the exact Windows host, first populate an external JSON document with the
+reviewed release, Python, MT5, account-alias, symbol-specification, Credential
+Manager reference IDs, provider IDs, storage paths, service identity, and
+hardening hashes. Do not put any login, password, token, API key, HMAC material,
+or private key in that document.
+
+Run the operator-only command:
+
+```powershell
+python -B .\prepare_windows_demo_soak_operations.py `
+  --config C:\AI_SCALPER_PRIVATE\operations-input.json `
+  --issued-at-utc 2026-07-23T15:00:00Z `
+  --output C:\AI_SCALPER_PRIVATE\operations-review.json
+```
+
+The output contains the exact plan hash, failure-drill manifest, scheduler XML,
+read-only validation scripts, blocker assessment, side-effect claims, and
+safety state. The destination must not exist. A second invocation against the
+same path is rejected instead of overwriting evidence.
+
+This CLI exists only in `WINDOWS_SHADOW_DEPLOYMENT_TOOLING_V1`. It is
+intentionally absent from the read-only shadow, decision-service, and gated
+execution-service releases.
 
 ## Important safety boundary
 

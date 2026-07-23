@@ -3,7 +3,7 @@
 Status: **LOCAL DEMO_AUTO ACTIVATION FOUNDATION COMPLETE / OPERATIONAL
 ACTIVATION BLOCKED / LIVE NOT READY**
 
-Full regression pada development Mac menyelesaikan **1.184 test** tanpa
+Full regression pada development Mac menyelesaikan **1.190 test** tanpa
 kegagalan dalam mode normal dan optimized. Kompilasi seluruh Python source
 yang dilacak Git, dependency check, release-port validator, safety-lock scan,
 dan diff check juga lulus. Pesan penolakan yang tampil dari negative-path tests
@@ -35,6 +35,13 @@ dilakukan.
 - immutable manual-demo activation kit yang merangkum blocker kandidat,
   37 required external provider contracts, urutan operator, dan target 10
   controlled order lifecycles tanpa memperoleh execution authority;
+- strict immutable Windows demo-soak operations review bundle yang mengikat
+  exact release/Python/MT5/account/symbol/storage/security/provider references,
+  failure-drill manifest, tiga scheduler XML, tiga validator PowerShell
+  read-only, readiness, effects, dan safety locks. CLI hanya berada di operator
+  tooling release, menolak overwrite/secret/schema drift/tamper, dan tidak
+  dapat menginstal task, menjalankan proses, mengakses credential/MT5, atau
+  mengirim order;
 - deterministic release builder kini mengambil exact committed Git blobs,
   sehingga clean checkout Windows CRLF menghasilkan source ZIP identik dengan
   commit LF tanpa melonggarkan worktree, commit/tree, symlink, atau allowlist
