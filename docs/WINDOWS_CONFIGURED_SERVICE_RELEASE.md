@@ -31,6 +31,10 @@ Repository menyediakan:
   dari exact base ZIP, membuat factory manifest serta descriptor kandidat
   secara create-exclusive, dan menjalankan static safety validation tanpa
   mengimpor provider;
+- `prepare_windows_three_service_provider_conformance_review.py`: mengikat
+  ketiga exact factory template dan seluruh 65 provider binding ke fresh
+  external conformance-evidence hashes dalam packet deny-only yang masih
+  membutuhkan signature owner independen;
 - `build_windows_configured_service_release.py`: menggabungkan exact base ZIP
   dengan exact overlay;
 - `verify_windows_configured_service_release.py`: verifier offline yang
@@ -45,6 +49,8 @@ Repository menyediakan:
 Tooling ini terpisah dari generic deployment tooling. Generic bundle tetap
 menolak byte `order_send/order_check`; configured verifier hanya menyebut nama
 tersebut sebagai aturan penolakan dan tidak memiliki executable broker call.
+Provider conformance reviewer juga tidak mengimpor provider, membaca
+credential, memverifikasi artifact bytes, atau memberi activation authority.
 
 ## Overlay non-secret
 
@@ -196,3 +202,10 @@ diterima, Credential Manager custody, trusted clock, signed news, IPC/CAS,
 WORM, heartbeat, Task Scheduler ACL, offline RSA issuer, Windows acceptance,
 manual-demo evidence, policy unlock, atau soak evidence. Seluruhnya tetap
 merupakan gate terpisah.
+
+Setelah tiga configured release dan provider test artifact tersedia, buat
+packet provider-level sesuai
+[`WINDOWS_PROVIDER_CONFORMANCE_REVIEW.md`](WINDOWS_PROVIDER_CONFORMANCE_REVIEW.md).
+Hash packet tersebut adalah detail yang dapat direview dan ditandatangani oleh
+service owner; packet itu sendiri tetap melaporkan
+`provider_accepted=false`.

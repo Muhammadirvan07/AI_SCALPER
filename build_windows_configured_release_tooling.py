@@ -74,6 +74,12 @@ APPROVED_SOURCE_PATHS = frozenset(
         "config/windows_configured_release_tooling_allowlist.v1.json",
         "live_runtime/__init__.py",
         "live_runtime/configured_service_release.py",
+        "live_runtime/contracts.py",
+        "live_runtime/windows_decision_service_factory_template.py",
+        "live_runtime/windows_external_status_monitor_factory_template.py",
+        "live_runtime/windows_provider_conformance_review.py",
+        "live_runtime/windows_service_factory_template.py",
+        "prepare_windows_three_service_provider_conformance_review.py",
         "prepare_windows_configured_overlay_candidate.py",
         "verify_windows_configured_service_release.py",
     }
@@ -92,6 +98,7 @@ ALLOWED_STDLIB_IMPORTS = frozenset(
         "argparse",
         "ast",
         "dataclasses",
+        "datetime",
         "hashlib",
         "io",
         "json",
@@ -107,7 +114,14 @@ ALLOWED_STDLIB_IMPORTS = frozenset(
     }
 )
 ALLOWED_LOCAL_IMPORTS = frozenset(
-    {"live_runtime.configured_service_release"}
+    {
+        "live_runtime.configured_service_release",
+        "live_runtime.contracts",
+        "live_runtime.windows_decision_service_factory_template",
+        "live_runtime.windows_external_status_monitor_factory_template",
+        "live_runtime.windows_provider_conformance_review",
+        "live_runtime.windows_service_factory_template",
+    }
 )
 FORBIDDEN_IMPORT_TOPS = frozenset(
     {
@@ -201,14 +215,25 @@ def load_configured_release_tooling_allowlist(path: Path) -> dict[str, Any]:
     return result
 
 
-def _import_names(node: ast.AST) -> tuple[str, ...]:
+def _import_names(
+    node: ast.AST,
+    *,
+    source_path: str,
+) -> tuple[str, ...]:
     if isinstance(node, ast.Import):
         return tuple(alias.name for alias in node.names)
     if isinstance(node, ast.ImportFrom):
         if node.level:
-            raise ReleaseBuildError(
-                "configured-release tooling relative imports are forbidden"
-            )
+            source = PurePosixPath(source_path)
+            if (
+                node.level != 1
+                or source.parts[:1] != ("live_runtime",)
+                or not node.module
+            ):
+                raise ReleaseBuildError(
+                    "configured-release tooling relative import is invalid"
+                )
+            return (f"live_runtime.{node.module}",)
         return (node.module or "",)
     return ()
 
@@ -264,7 +289,10 @@ def _validate_tooling_source_security(
                 "configured-release tooling Python is invalid"
             ) from exc
         for node in ast.walk(tree):
-            for imported in _import_names(node):
+            for imported in _import_names(
+                node,
+                source_path=path_text,
+            ):
                 top = imported.split(".", 1)[0]
                 if top in FORBIDDEN_IMPORT_TOPS:
                     raise ReleaseBuildError(

@@ -17,7 +17,7 @@ baru boleh dimulai setelah acceptance Windows, provider/key custody, sepuluh
 manual-demo lifecycles, dan approval manusia. Live masih membutuhkan soak 30
 hari/50 closed fills/20 XAU, bukti per lane, serta gate statistik dan keamanan.
 
-Validasi lokal terakhir menjalankan **1.361 test** tanpa kegagalan pada mode
+Validasi lokal terakhir menjalankan **1.376 test** tanpa kegagalan pada mode
 normal dan `PYTHONOPTIMIZE=2`. Seluruh tracked Python source berhasil
 dikompilasi, validator decision/execution/status-monitor lulus dengan
 `production_execution_ready=false`, dan safety locks tetap:
@@ -67,6 +67,12 @@ bukti eksternal selesai.
   menulis factory manifest/descriptor secara create-exclusive. Hasilnya tetap
   kandidat yang wajib direview eksternal, bukan configured release atau izin
   order.
+- Provider conformance reviewer kini merekonstruksi tiga authoritative factory
+  template dan mengikat seluruh 65 decision/execution/status-monitor provider
+  bindings ke fresh external suite/artifact hashes. Packet canonical ini
+  memberi target `details_sha256` yang granular untuk signature owner
+  independen, tetapi tetap menetapkan `provider_accepted=false`, tidak
+  mengimpor provider, dan tidak mempunyai activation/order authority.
 - Account-level soak projection dapat menghitung 30 clean days, 50 closed
   fills, dan minimal 20 XAU closed fills, tetapi tidak dapat memberi execution
   atau promotion authority.
@@ -105,9 +111,10 @@ bukti eksternal selesai.
 
 ## Sisa menuju demo-auto soak
 
-1. Materialisasi serta review provider nyata untuk finalized data, trusted
-   clock, news, decision IPC, reconciliation, risk facts, off-host CAS,
-   checkpoint, incident latch, WORM audit, heartbeat, dan alert.
+1. Materialisasi serta uji provider nyata untuk finalized data, trusted clock,
+   news, decision IPC, reconciliation, risk facts, off-host CAS, checkpoint,
+   incident latch, WORM audit, heartbeat, dan alert; kemudian hasil per-provider
+   diikat melalui conformance packet dan ditandatangani owner independen.
 2. Provision tiga least-privilege Windows identities, Credential Manager,
    exact Task Scheduler definitions/ACL, offline RSA issuer, VPN/MFA, backup,
    restore, serta failure-drill evidence.

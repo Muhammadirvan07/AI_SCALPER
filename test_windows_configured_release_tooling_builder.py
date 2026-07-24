@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -113,6 +114,52 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
                 manifest["effects_during_build"]["broker_mutation"]
             )
             self.assertEqual("DISABLED", first_result["order_capability"])
+
+    def test_provider_conformance_review_has_exact_safe_import_closure(self):
+        required = {
+            "prepare_windows_three_service_provider_conformance_review.py",
+            "live_runtime/contracts.py",
+            "live_runtime/windows_decision_service_factory_template.py",
+            "live_runtime/windows_external_status_monitor_factory_template.py",
+            "live_runtime/windows_provider_conformance_review.py",
+            "live_runtime/windows_service_factory_template.py",
+        }
+        self.assertTrue(required.issubset(APPROVED_SOURCE_PATHS))
+        sources = {
+            path: (REPO_ROOT / path).read_bytes()
+            for path in APPROVED_SOURCE_PATHS
+        }
+        _validate_tooling_source_security(sources)
+
+    def test_extracted_provider_review_cli_bootstraps_under_isolated_mode(self):
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw).resolve()
+            root, allowlist = self._repo(base)
+            archive = base / "tooling.zip"
+            build_configured_release_tooling(root, allowlist, archive)
+            extracted = base / "extracted"
+            with zipfile.ZipFile(archive) as bundle:
+                bundle.extractall(extracted)
+            result = subprocess.run(
+                (
+                    sys.executable,
+                    "-I",
+                    "-S",
+                    "-B",
+                    str(
+                        extracted
+                        / "prepare_windows_three_service_provider_conformance_review.py"
+                    ),
+                    "--help",
+                ),
+                cwd=base,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("--input", result.stdout)
+            self.assertIn("--output", result.stdout)
 
     def test_static_deny_rule_strings_are_allowed_but_executable_calls_are_not(self):
         sources = {

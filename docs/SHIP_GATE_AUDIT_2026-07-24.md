@@ -23,7 +23,8 @@ manual-demo lifecycle, demo-auto soak, or any live lane has passed acceptance.
 - SQLite journal and checkpoint integrity surfaces;
 - dependency locks, install manifest, CycloneDX SBOM, and the active
   development environment;
-- the exact configured-release admission boundary introduced in this change.
+- the exact configured-release admission and provider-conformance review
+  boundaries present in the current source.
 
 The user-owned untracked `frontend-dashboard/` directory was excluded and was
 not read, modified, staged, tested, or treated as release input.
@@ -32,10 +33,10 @@ not read, modified, staged, tested, or treated as release input.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `1,361 / 1,361 PASS` |
-| Full regression with `PYTHONOPTIMIZE=2` | `1,361 / 1,361 PASS` |
+| Full Python regression | `1,376 / 1,376 PASS` |
+| Full regression with `PYTHONOPTIMIZE=2` | `1,376 / 1,376 PASS` |
 | Tracked Python compilation | PASS |
-| Focused configured-overlay/release tests | `40 / 40 PASS` in both modes |
+| Focused provider-conformance/tooling tests | `20 / 20 PASS` in both modes |
 | Spec validator | `98 / 100`, grade A, zero errors |
 | Git whitespace/error check | PASS |
 | Windows dependency-lock verification | PASS |
@@ -46,7 +47,8 @@ not read, modified, staged, tested, or treated as release input.
 | Private-key/token signature scan | zero tracked production findings |
 | Dynamic `eval`/`exec` and unsafe deserialization scan | zero findings |
 | `subprocess` with `shell=True` scan | zero findings |
-| New admission-boundary capability scan | no network, subprocess, credential, environment, MT5, scheduler, service, or broker mutation surface |
+| New provider-review capability scan | no network, subprocess, credential, environment, MT5, scheduler, service, or broker mutation surface |
+| Clean configured-tooling reproducibility | two byte-identical 12-file archives; SHA-256 `4ed297169841f67a7567211adb8bedc31769a475ce8ce8d7545c2083668a635a` |
 | Generic ship-gate pattern scanner | raw `DO_NOT_SHIP`; all automatic critical hits triaged as non-applicable or false-positive, while unconfirmed external operations checks remain blockers |
 
 The generic scanner correctly preserves a production-blocking verdict while
@@ -82,11 +84,12 @@ promotion_eligible = false
 ```
 
 The execution release contains dormant gated broker capability by design, but
-the central demo-auto and live locks remain false. The admission verifier and
-configured-overlay candidate preparer are deny-only. Neither can issue a
-permit, stage evidence, arm flag, credential, task, process, MT5 connection, or
-broker order; the preparer can only write a create-exclusive non-secret
-candidate manifest and descriptor for independent review.
+the central demo-auto and live locks remain false. The admission verifier,
+configured-overlay candidate preparer, and 65-binding provider conformance
+reviewer are deny-only. None can issue a permit, stage evidence, arm flag,
+credential, task, process, MT5 connection, or broker order. The conformance
+packet only binds externally produced suite/artifact hashes and explicitly
+retains `provider_accepted=false` pending an independent owner signature.
 
 ## Blocking findings
 
