@@ -77,8 +77,10 @@ APPROVED_SOURCE_PATHS = frozenset(
         "live_runtime/contracts.py",
         "live_runtime/windows_decision_service_factory_template.py",
         "live_runtime/windows_external_status_monitor_factory_template.py",
+        "live_runtime/windows_provider_conformance_input.py",
         "live_runtime/windows_provider_conformance_review.py",
         "live_runtime/windows_service_factory_template.py",
+        "prepare_windows_three_service_provider_conformance_input.py",
         "prepare_windows_three_service_provider_conformance_review.py",
         "prepare_windows_configured_overlay_candidate.py",
         "verify_windows_configured_service_release.py",
@@ -119,6 +121,7 @@ ALLOWED_LOCAL_IMPORTS = frozenset(
         "live_runtime.contracts",
         "live_runtime.windows_decision_service_factory_template",
         "live_runtime.windows_external_status_monitor_factory_template",
+        "live_runtime.windows_provider_conformance_input",
         "live_runtime.windows_provider_conformance_review",
         "live_runtime.windows_service_factory_template",
     }

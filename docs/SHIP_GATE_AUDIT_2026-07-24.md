@@ -33,10 +33,10 @@ not read, modified, staged, tested, or treated as release input.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `1,376 / 1,376 PASS` |
-| Full regression with `PYTHONOPTIMIZE=2` | `1,376 / 1,376 PASS` |
+| Full Python regression | `1,387 / 1,387 PASS` |
+| Full regression with `PYTHONOPTIMIZE=2` | `1,387 / 1,387 PASS` |
 | Tracked Python compilation | PASS |
-| Focused provider-conformance/tooling tests | `20 / 20 PASS` in both modes |
+| Focused provider-input/conformance/tooling tests | `31 / 31 PASS` in both modes |
 | Spec validator | `98 / 100`, grade A, zero errors |
 | Git whitespace/error check | PASS |
 | Windows dependency-lock verification | PASS |
@@ -47,8 +47,8 @@ not read, modified, staged, tested, or treated as release input.
 | Private-key/token signature scan | zero tracked production findings |
 | Dynamic `eval`/`exec` and unsafe deserialization scan | zero findings |
 | `subprocess` with `shell=True` scan | zero findings |
-| New provider-review capability scan | no network, subprocess, credential, environment, MT5, scheduler, service, or broker mutation surface |
-| Clean configured-tooling reproducibility | two byte-identical 12-file archives; SHA-256 `4ed297169841f67a7567211adb8bedc31769a475ce8ce8d7545c2083668a635a` |
+| New provider-input/review capability scan | no network, subprocess, credential, environment, MT5, scheduler, service, or broker mutation surface |
+| Clean configured-tooling reproducibility | two byte-identical 14-file archives; fixture SHA-256 `08630e539710daea9347e51af87d9a275f9faa504ab83c8184c33aa344b9d69f` |
 | Generic ship-gate pattern scanner | raw `DO_NOT_SHIP`; all automatic critical hits triaged as non-applicable or false-positive, while unconfirmed external operations checks remain blockers |
 
 The generic scanner correctly preserves a production-blocking verdict while

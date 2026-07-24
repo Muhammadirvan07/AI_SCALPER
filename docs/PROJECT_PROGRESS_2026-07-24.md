@@ -17,7 +17,7 @@ baru boleh dimulai setelah acceptance Windows, provider/key custody, sepuluh
 manual-demo lifecycles, dan approval manusia. Live masih membutuhkan soak 30
 hari/50 closed fills/20 XAU, bukti per lane, serta gate statistik dan keamanan.
 
-Validasi lokal terakhir menjalankan **1.376 test** tanpa kegagalan pada mode
+Validasi lokal terakhir menjalankan **1.387 test** tanpa kegagalan pada mode
 normal dan `PYTHONOPTIMIZE=2`. Seluruh tracked Python source berhasil
 dikompilasi, validator decision/execution/status-monitor lulus dengan
 `production_execution_ready=false`, dan safety locks tetap:
@@ -73,6 +73,12 @@ bukti eksternal selesai.
   memberi target `details_sha256` yang granular untuk signature owner
   independen, tetapi tetap menetapkan `provider_accepted=false`, tidak
   mengimpor provider, dan tidak mempunyai activation/order authority.
+- Provider evidence input assembler kini menghapus transkripsi manual 65
+  binding: operator hanya memasukkan compact external test evidence, sedangkan
+  contract/implementation/configuration/binding/custody/kind/credential truth
+  diturunkan dari tiga exact factory template. Output langsung diuji oleh
+  reviewer lama sebelum ditulis, tetapi tidak membuat evidence, signature,
+  acceptance, atau authority.
 - Account-level soak projection dapat menghitung 30 clean days, 50 closed
   fills, dan minimal 20 XAU closed fills, tetapi tidak dapat memberi execution
   atau promotion authority.

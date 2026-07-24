@@ -53,6 +53,7 @@ READINESS_BLOCKERS = (
 )
 
 _REVIEW_SEAL = object()
+_IDENTITY_UNSET = object()
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
 _SECRET_ID_RE = re.compile(
@@ -416,6 +417,67 @@ def _normalized_monitor_service(
     return MONITOR_RELEASE_PROFILE, normalized_template, expected
 
 
+def provider_binding_targets_from_factory_template(
+    *,
+    service_role: str,
+    factory_template: Mapping[str, object],
+    configured_release_identity_sha256: object = _IDENTITY_UNSET,
+) -> dict[str, object]:
+    """Derive canonical provider targets without accepting caller binding data.
+
+    The returned mapping is suitable for offline evidence-input assembly.  It
+    validates the authoritative profile-specific template but never imports a
+    configured provider or resolves external authority.
+    """
+
+    if service_role not in SERVICE_ROLES:
+        raise WindowsProviderConformanceError("SERVICE_SET_INVALID")
+    if not isinstance(factory_template, Mapping):
+        if service_role == "DECISION":
+            reason = "DECISION_FACTORY_TEMPLATE_INVALID"
+        elif service_role == "EXECUTION":
+            reason = "EXECUTION_FACTORY_TEMPLATE_INVALID"
+        else:
+            reason = "MONITOR_FACTORY_TEMPLATE_INVALID"
+        raise WindowsProviderConformanceError(reason)
+    if configured_release_identity_sha256 is _IDENTITY_UNSET:
+        if service_role == "EXECUTION":
+            identity = factory_template.get(
+                "expected_release_identity_sha256"
+            )
+        else:
+            identity = factory_template.get(
+                "release_identity_sha256"
+            )
+    else:
+        identity = configured_release_identity_sha256
+    service = {
+        "configured_release_identity_sha256": identity,
+        "factory_template": factory_template,
+    }
+    if service_role == "DECISION":
+        release_profile, template, expected = (
+            _normalized_decision_service(service)
+        )
+    elif service_role == "EXECUTION":
+        release_profile, template, expected = (
+            _normalized_execution_service(service)
+        )
+    else:
+        release_profile, template, expected = (
+            _normalized_monitor_service(service)
+        )
+    return {
+        "service_role": service_role,
+        "release_profile": release_profile,
+        "configured_release_identity_sha256": _hash(identity),
+        "factory_template": template,
+        "factory_template_sha256": canonical_sha256(template),
+        "provider_bindings": json.loads(_canonical_bytes(expected)),
+        "provider_count": len(expected),
+    }
+
+
 def _normalized_evidence(
     values: object,
     *,
@@ -531,31 +593,31 @@ def _normalize_service(
     role = service["service_role"]
     if role not in SERVICE_ROLES:
         raise WindowsProviderConformanceError("SERVICE_SET_INVALID")
-    if role == "DECISION":
-        release_profile, template, expected = (
-            _normalized_decision_service(service)
-        )
-    elif role == "EXECUTION":
-        release_profile, template, expected = (
-            _normalized_execution_service(service)
-        )
-    else:
-        release_profile, template, expected = (
-            _normalized_monitor_service(service)
+    targets = provider_binding_targets_from_factory_template(
+        service_role=role,
+        factory_template=service["factory_template"],
+        configured_release_identity_sha256=service[
+            "configured_release_identity_sha256"
+        ],
+    )
+    identity = _hash(service["configured_release_identity_sha256"])
+    if identity != targets["configured_release_identity_sha256"]:
+        raise WindowsProviderConformanceError(
+            "TEMPLATE_RELEASE_IDENTITY_MISMATCH"
         )
     evidence = _normalized_evidence(
         service["provider_evidence"],
-        expected=expected,
+        expected=targets["provider_bindings"],
         trusted_now=trusted_now,
     )
     return {
         "service_role": role,
-        "release_profile": release_profile,
-        "configured_release_identity_sha256": _hash(
-            service["configured_release_identity_sha256"]
-        ),
-        "factory_template": template,
-        "factory_template_sha256": canonical_sha256(template),
+        "release_profile": targets["release_profile"],
+        "configured_release_identity_sha256": identity,
+        "factory_template": targets["factory_template"],
+        "factory_template_sha256": targets[
+            "factory_template_sha256"
+        ],
         "provider_evidence": evidence,
         "provider_evidence_set_sha256": canonical_sha256(evidence),
         "provider_count": len(evidence),
@@ -1018,5 +1080,6 @@ __all__ = [
     "WindowsThreeServiceProviderConformanceReview",
     "prepare_windows_three_service_provider_conformance_review",
     "prepare_windows_three_service_provider_conformance_review_file",
+    "provider_binding_targets_from_factory_template",
     "verify_windows_three_service_provider_conformance_review",
 ]

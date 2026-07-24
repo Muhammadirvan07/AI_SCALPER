@@ -20,6 +20,14 @@ The current `DEMO_AUTO` inventory contains exactly 65 bindings:
 | Execution | 46 |
 | External status monitor | 12 |
 
+Do not transcribe the repeated binding fields manually. Use the offline input
+assembler documented in
+[`WINDOWS_PROVIDER_CONFORMANCE_INPUT_ASSEMBLY.md`](WINDOWS_PROVIDER_CONFORMANCE_INPUT_ASSEMBLY.md).
+It derives contract, implementation, configuration, binding, custody, kind,
+and credential-reference truth from the three exact factory templates and
+joins only compact external evidence. The assembled input is validated by this
+reviewer before it is written.
+
 The packet remains deny-only:
 
 ```text

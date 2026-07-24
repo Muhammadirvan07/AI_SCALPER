@@ -117,10 +117,12 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
 
     def test_provider_conformance_review_has_exact_safe_import_closure(self):
         required = {
+            "prepare_windows_three_service_provider_conformance_input.py",
             "prepare_windows_three_service_provider_conformance_review.py",
             "live_runtime/contracts.py",
             "live_runtime/windows_decision_service_factory_template.py",
             "live_runtime/windows_external_status_monitor_factory_template.py",
+            "live_runtime/windows_provider_conformance_input.py",
             "live_runtime/windows_provider_conformance_review.py",
             "live_runtime/windows_service_factory_template.py",
         }
@@ -159,6 +161,37 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             )
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertIn("--input", result.stdout)
+            self.assertIn("--output", result.stdout)
+
+    def test_extracted_provider_input_cli_bootstraps_under_isolated_mode(self):
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw).resolve()
+            root, allowlist = self._repo(base)
+            archive = base / "tooling.zip"
+            build_configured_release_tooling(root, allowlist, archive)
+            extracted = base / "extracted"
+            with zipfile.ZipFile(archive) as bundle:
+                bundle.extractall(extracted)
+            result = subprocess.run(
+                (
+                    sys.executable,
+                    "-I",
+                    "-S",
+                    "-B",
+                    str(
+                        extracted
+                        / "prepare_windows_three_service_provider_conformance_input.py"
+                    ),
+                    "--help",
+                ),
+                cwd=base,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("--decision-factory-template", result.stdout)
+            self.assertIn("--evidence-manifest", result.stdout)
             self.assertIn("--output", result.stdout)
 
     def test_static_deny_rule_strings_are_allowed_but_executable_calls_are_not(self):

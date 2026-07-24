@@ -31,6 +31,9 @@ Repository menyediakan:
   dari exact base ZIP, membuat factory manifest serta descriptor kandidat
   secara create-exclusive, dan menjalankan static safety validation tanpa
   mengimpor provider;
+- `prepare_windows_three_service_provider_conformance_input.py`: menurunkan
+  seluruh 65 binding field dari tiga exact factory template dan merakit compact
+  external evidence menjadi input reviewer tanpa transkripsi manual;
 - `prepare_windows_three_service_provider_conformance_review.py`: mengikat
   ketiga exact factory template dan seluruh 65 provider binding ke fresh
   external conformance-evidence hashes dalam packet deny-only yang masih
@@ -51,6 +54,8 @@ menolak byte `order_send/order_check`; configured verifier hanya menyebut nama
 tersebut sebagai aturan penolakan dan tidak memiliki executable broker call.
 Provider conformance reviewer juga tidak mengimpor provider, membaca
 credential, memverifikasi artifact bytes, atau memberi activation authority.
+Input assembler memiliki batas yang sama dan tidak menghasilkan evidence atau
+signature acceptance.
 
 ## Overlay non-secret
 
@@ -204,7 +209,9 @@ manual-demo evidence, policy unlock, atau soak evidence. Seluruhnya tetap
 merupakan gate terpisah.
 
 Setelah tiga configured release dan provider test artifact tersedia, buat
-packet provider-level sesuai
+input canonical tanpa menyalin binding secara manual sesuai
+[`WINDOWS_PROVIDER_CONFORMANCE_INPUT_ASSEMBLY.md`](WINDOWS_PROVIDER_CONFORMANCE_INPUT_ASSEMBLY.md),
+kemudian buat packet provider-level sesuai
 [`WINDOWS_PROVIDER_CONFORMANCE_REVIEW.md`](WINDOWS_PROVIDER_CONFORMANCE_REVIEW.md).
 Hash packet tersebut adalah detail yang dapat direview dan ditandatangani oleh
 service owner; packet itu sendiri tetap melaporkan
