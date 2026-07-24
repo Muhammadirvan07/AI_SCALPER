@@ -96,6 +96,13 @@ order.
   role or changing its provider contract.
 - FR-17: Existing decision-producer, configured-release, factory-template, and
   decision-IPC public contracts MUST remain backward compatible.
+- FR-18: A publisher MAY bind a new packet to an exact aware-UTC publication
+  deadline. The deadline MUST be no earlier than the first eligible tick and
+  no later than the ten-second entry deadline. Before every new
+  create-exclusive write, the feed MUST re-read trusted UTC and reject the
+  write if that clock is later than the supplied deadline. Returning an
+  already committed identical packet remains an idempotent read, not a new
+  publication.
 
 ## Non-Functional Requirements
 
@@ -129,13 +136,15 @@ Then the packet is canonical, domain-separated, hash-bound, and create-exclusive
 And the provider returns an exact `FinalizedM15DecisionInput` equal to the
 original observation through defensive copies.
 
-### AC-2: Idempotent replay and conflict denial (FR-7, FR-8, FR-9)
+### AC-2: Idempotent replay, conflict, and deadline denial (FR-7, FR-8, FR-9, FR-18)
 
 Given a verified packet for one lane and candle
 When the same semantic observation is published again
 Then no second file is created and the existing packet is returned
 And when any bar, quote, receipt, or binding field differs for that candle the
-publication fails with `FEED_CANDLE_CONFLICT`.
+publication fails with `FEED_CANDLE_CONFLICT`
+And when trusted UTC crosses a supplied valid deadline before a new write, the
+new packet is rejected before key use or file creation.
 
 ### AC-3: Ordered per-lane head (FR-5, FR-9, FR-10; NFR-2)
 
