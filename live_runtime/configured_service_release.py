@@ -1,9 +1,10 @@
 """Deterministic, secret-free configured Windows service release assembly.
 
-The base decision/execution releases intentionally exclude deployment-specific
-factory and provider files.  This module binds a reviewed overlay into a new
-release inventory and identity without importing the factory, resolving a
-credential, installing a task, initializing MT5, or performing broker work.
+The base decision, execution, and status-monitor releases intentionally
+exclude deployment-specific factory and provider files. This module binds a
+reviewed overlay into a new release inventory and identity without importing
+the factory, resolving a credential, installing a task, initializing MT5, or
+performing broker work.
 """
 
 from __future__ import annotations

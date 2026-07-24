@@ -2,11 +2,11 @@
 
 Status: **PACKAGING FOUNDATION READY / ACTIVATION AUTHORITY ABSENT**
 
-Decision dan execution base release sengaja tidak membawa factory, service
-config, atau provider deployment-specific. File tersebut juga tidak boleh
-disalin ke release setelah ekstraksi karena exact release inventory akan
-menolaknya. Solusinya adalah membuat configured release dengan identity baru
-sebelum deployment.
+Decision, execution, dan status-monitor base release sengaja tidak membawa
+factory, service config, atau provider deployment-specific. File tersebut juga
+tidak boleh disalin ke release setelah ekstraksi karena exact release inventory
+akan menolaknya. Solusinya adalah membuat configured release dengan identity
+baru sebelum deployment.
 
 Configured release tetap mempertahankan:
 
@@ -99,6 +99,12 @@ python -I -S -B .\build_windows_configured_service_release.py `
   --overlay-root C:\AI_SCALPER_PRIVATE\execution-overlay `
   --descriptor C:\AI_SCALPER_PRIVATE\execution-overlay.json `
   --output C:\AI_SCALPER_RELEASES\execution-configured.zip
+
+python -I -S -B .\build_windows_configured_service_release.py `
+  --base-release C:\AI_SCALPER_RELEASES\status-monitor-base.zip `
+  --overlay-root C:\AI_SCALPER_PRIVATE\status-monitor-overlay `
+  --descriptor C:\AI_SCALPER_PRIVATE\status-monitor-overlay.json `
+  --output C:\AI_SCALPER_RELEASES\status-monitor-configured.zip
 ```
 
 Builder memverifikasi base manifest, byte-deterministic base ZIP, exact
@@ -117,7 +123,7 @@ python -I -S -B .\verify_windows_configured_service_release.py `
   --expected-base-release-identity-sha256 <REVIEWED_BASE_IDENTITY>
 ```
 
-Ulangi untuk decision release. Verifier tidak mengimpor factory dan tidak
+Ulangi untuk ketiga release. Verifier tidak mengimpor factory dan tidak
 mematerialisasi provider.
 
 ## Deployment rule
@@ -128,8 +134,9 @@ mematerialisasi provider.
 - Launcher policy/attestation dan operations review v2 harus mengikat
   configured identity. Base identity tetap disimpan sebagai provenance tetapi
   tidak boleh dipakai sebagai identity proses akhir.
-- Decision dan execution release harus memiliki root, service identity, state
-  directory, factory, provider set, dan launcher attestation terpisah.
+- Decision, execution, dan status-monitor release harus memiliki root, service
+  identity, state directory, factory, provider set, dan launcher attestation
+  terpisah.
 - Current decision runner masih validate-only; configured decision packaging
   tidak mengubahnya menjadi production launcher.
 - Jangan mengubah ZIP, manifest, overlay, atau factory setelah build. Perubahan

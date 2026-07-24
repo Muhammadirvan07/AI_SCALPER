@@ -76,15 +76,19 @@ from live_runtime.configured_service_release import (
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Build a deterministic configured Windows decision/execution "
-            "service release from one exact base release and reviewed, "
-            "secret-free overlay. No provider is imported or materialized."
+            "Build a deterministic configured Windows decision, execution, "
+            "or status-monitor service release from one exact base release "
+            "and reviewed, secret-free overlay. No provider is imported or "
+            "materialized."
         )
     )
     parser.add_argument(
         "--base-release",
         required=True,
-        help="Exact deterministic base decision/execution release ZIP.",
+        help=(
+            "Exact deterministic base decision, execution, or "
+            "status-monitor release ZIP."
+        ),
     )
     parser.add_argument(
         "--overlay-root",
