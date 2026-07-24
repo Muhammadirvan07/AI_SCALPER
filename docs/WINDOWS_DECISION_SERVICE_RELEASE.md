@@ -43,6 +43,21 @@ exact implementation/configuration hashes for seven provider roles:
 - `PRODUCER_CURSOR_ACK_VERIFIER`
 - `SESSION_CALENDAR_VERIFIER`
 
+The base release includes a reviewed implementation option for
+`FINALIZED_M15_DATA`: `live_runtime/decision_feed.py`. It consumes a
+create-exclusive per-lane stream of canonical HMAC-authenticated packets,
+verifies exact broker/account/lane/source/calendar binding, sequence and
+immediate predecessor, and reconstructs the exact
+`FinalizedM15DecisionInput`. It has no MT5, network, credential lookup, risk,
+permit, executor, or order surface. The broker-facing read-only publisher,
+key custody, directory ACL, clock behavior, and real conformance evidence are
+external provider responsibilities.
+
+The feed is runtime transport only. A valid packet is not validation evidence,
+does not make `source_aligned` or `data_fresh` semantically true, and cannot
+bypass the producer's existing OHLC/gap/calendar/freshness/entry-window checks.
+See `specs/signed_decision_feed_handoff_v1.md`.
+
 Every lane binds an immutable session-calendar hash plus issuer/key identity.
 The data input may bridge a weekend, holiday, or DST-shifted interval only with
 one exact HMAC-authenticated closure receipt per gap. No weekday/timezone
@@ -71,9 +86,12 @@ result against both externally pinned identities. The configured identity—not
 the base identity—is the identity that a future launcher attestation must bind.
 See `docs/WINDOWS_CONFIGURED_SERVICE_RELEASE.md`.
 
-Configured packaging does not add broker capability and does not make the
-current decision runner operational. A separately reviewed production
-decision loader is still required.
+Configured packaging does not add broker capability or activate the process.
+The bundled decision runner now has an operational path, but it accepts only
+an exact configured release, a release-local reviewed factory, and a valid
+short-lived external RSA launcher attestation. Real provider implementations,
+provider acceptance, service identity/ACLs, and launcher issuance remain
+external gates.
 
 ## Validate the base release
 
@@ -91,11 +109,23 @@ Validate-only checks the complete extracted file set and hash inventory, then
 validates the factory template. It does not fetch a candle, open or modify IPC,
 open cursor state, resolve a key, import a provider, or contact a broker.
 
-Invocation without `--validate-only` is intentionally rejected. Operational
-activation remains external until provider implementations, Windows service
-identity/ACLs, calendar/key/CAS custody, production loader, configured release,
-launcher attestation, and Task Scheduler registration are separately reviewed
-and attested.
+Operational invocation uses the same entrypoint without `--validate-only`:
+
+```powershell
+python -B .\run_windows_decision_service.py `
+  --release-root C:\AI_SCALPER_DECISION_CONFIGURED `
+  --factory-manifest C:\AI_SCALPER_DECISION_CONFIGURED\config\windows_factory_manifest.json `
+  --expected-release-identity-sha256 <PINNED_CONFIGURED_RELEASE_IDENTITY> `
+  --release-trust-policy C:\AI_SCALPER_PRIVATE\decision-launcher-policy.json `
+  --expected-release-trust-policy-sha256 <PINNED_POLICY_SHA256> `
+  --release-attestation C:\AI_SCALPER_PRIVATE\decision-launcher-attestation.json
+```
+
+The runner fails before factory import when the configured identity, external
+trust documents, profile, host/service/task binding, factory inventory, or
+provider contract is missing or changed. Passing that boundary proves only
+runtime provenance; it does not supply provider acceptance, install a task,
+grant broker authority, or unlock demo-auto/live policy.
 
 ## Separation rule
 

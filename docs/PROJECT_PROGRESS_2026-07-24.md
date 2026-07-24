@@ -17,7 +17,7 @@ baru boleh dimulai setelah acceptance Windows, provider/key custody, sepuluh
 manual-demo lifecycles, dan approval manusia. Live masih membutuhkan soak 30
 hari/50 closed fills/20 XAU, bukti per lane, serta gate statistik dan keamanan.
 
-Validasi lokal terakhir menjalankan **1.387 test** tanpa kegagalan pada mode
+Validasi lokal terakhir menjalankan **1.406 test** tanpa kegagalan pada mode
 normal dan `PYTHONOPTIMIZE=2`. Seluruh tracked Python source berhasil
 dikompilasi, validator decision/execution/status-monitor lulus dengan
 `production_execution_ready=false`, dan safety locks tetap:
@@ -38,10 +38,26 @@ Audit ship-gate terperinci tersedia di
 adalah source lokal lulus, sedangkan demo-auto dan live tetap ditolak sampai
 bukti eksternal selesai.
 
+Empat deterministic archive untuk commit `d153361`—decision, execution,
+status monitor, dan configured-release operator tooling—sudah dibangun pada
+Windows lalu direproduksi dari clean checkout independen. Seluruh archive
+SHA-256 dan release identity identik. Exact receipt tersedia di
+[WINDOWS_BASE_RELEASE_REPRODUCIBILITY_2026-07-24.md](WINDOWS_BASE_RELEASE_REPRODUCIBILITY_2026-07-24.md).
+Ini menutup base-release gate untuk exact source `d153361`, bukan
+provider/configured-release gate. Setelah signed decision-feed handoff
+ditambahkan, artefak itu menjadi baseline historis; candidate baru harus
+dibangun ulang dari clean commit berikutnya.
+
 ## Yang selesai pada fondasi lokal
 
 - Pure decision core dan brokerless finalized-M15 decision producer dipakai
   melalui signed, one-use decision IPC.
+- Signed append-only decision-feed handoff sekarang menutup boundary lokal
+  antara broker-side read-only observation dan role `FINALIZED_M15_DATA`.
+  Packet mengikat exact broker/account/lane/source/calendar, sequence serta
+  predecessor, HMAC, canonical JSON, dan first-eligible quote; consumer
+  stable-read mengembalikan exact `FinalizedM15DecisionInput`. Transport ini
+  tidak memberi broker/order capability dan bukan promotion evidence.
 - Decision, gated execution/reconciliation, dan external status monitor
   memiliki tiga release profile, allowlist, service identity, runtime root,
   serta state domain yang terpisah.
@@ -121,10 +137,14 @@ bukti eksternal selesai.
    news, decision IPC, reconciliation, risk facts, off-host CAS, checkpoint,
    incident latch, WORM audit, heartbeat, dan alert; kemudian hasil per-provider
    diikat melalui conformance packet dan ditandatangani owner independen.
+   Untuk finalized data, wire broker-side read-only publisher ke signed feed
+   dan buktikan latency/fork/restart/key-custody behavior pada exact Windows
+   host; keberadaan reference handoff saja belum merupakan provider acceptance.
 2. Provision tiga least-privilege Windows identities, Credential Manager,
    exact Task Scheduler definitions/ACL, offline RSA issuer, VPN/MFA, backup,
    restore, serta failure-drill evidence.
-3. Gunakan candidate preparer pada masing-masing exact base ZIP/provider/task
+3. Gunakan candidate preparer pada masing-masing exact base ZIP yang sudah
+   direproduksi, provider/task
    set, review output secara independen, lalu bangun ketiga configured release
    pada exact Windows x86-64, CPython 3.12, NTFS, MT5 terminal, account,
    server, dan symbol specification. Jalankan exact configured-release

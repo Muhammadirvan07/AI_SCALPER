@@ -73,7 +73,9 @@ Profile `WINDOWS_DECISION_SERVICE_V1` dibangun oleh dedicated
 `build_windows_decision_release.py` dari
 `config/windows_decision_service_allowlist.v1.json`. Profile ini memuat
 brokerless finalized-M15 producer, shared decision core, signed decision IPC,
-exact strategy dependencies, static factory contract, validate-only runner,
+signed append-only finalized-M15 feed consumer/provider,
+exact strategy dependencies, static factory contract, runtime runner dengan
+jalur `--validate-only` tanpa side effect serta jalur operasional ber-attestation,
 dan dependency lock khusus tanpa MetaTrader5/keyring. Executor, risk, permit,
 reconciliation, broker adapter, credential, data, dan runtime state ditolak.
 Panduan lengkap ada di `docs/WINDOWS_DECISION_SERVICE_RELEASE.md`.

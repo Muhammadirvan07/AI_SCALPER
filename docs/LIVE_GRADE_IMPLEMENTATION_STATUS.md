@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-24 menjalankan **1.387 test** tanpa
+Validasi lokal terakhir pada 2026-07-24 menjalankan **1.406 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac. Itu adalah
 software regression evidence, bukan Windows host acceptance, broker-forward
 evidence, atau izin trading.
@@ -476,9 +476,19 @@ BTCUSD = shadow-only
     capability dan deny-by-default gate catalog tetap false/disabled.
     Brokerless M15 decision producer sekarang memiliki
     deterministic Windows profile tersendiri dengan exact allowlist, pinned
-    dependency closure, static factory contract, dan validate-only runner.
-    Profile itu dipisahkan dari executor bundle dan masih membutuhkan reviewed
-    finalized-data/trusted-clock/key/CAS/provider configuration.
+    dependency closure, static factory contract, serta runtime runner dengan
+    validasi side-effect-free dan jalur operasional ber-attestation. Profile itu
+    dipisahkan dari executor bundle. Signed append-only decision-feed handoff
+    sekarang menyediakan implementation option untuk role
+    `FINALIZED_M15_DATA`: exact broker/account/lane binding, canonical
+    HMAC-authenticated packet, per-lane sequence/predecessor, create-exclusive
+    persistence, strict stable read, fork/rollback/tamper rejection, dan
+    reconstruction ke exact `FinalizedM15DecisionInput`. Handoff itu tetap
+    runtime transport, bukan validation/promotion evidence, dan tidak
+    mengandung MT5 maupun order capability. Jalur operasional masih membutuhkan
+    broker-side read-only publisher, reviewed trusted-clock/key/CAS/provider
+    configuration, external provider conformance, configured identity, dan
+    external RSA launcher attestation.
     Operations review v2 kini mengikat exact decision dan execution release,
     Python runtime serta service identity yang terpisah, IPC v2, dan external
     status-monitor reference. Implementasi monitor lokal tidak mengubah bundle
@@ -538,6 +548,14 @@ eksternal belum terpenuhi.
 9. Setelah perubahan direview, buat clean commit baru, bangun bundle dengan
    exact allowlist dari clean checkout, collect receipt OSV nyata dengan key di
    luar repository, dan arsipkan manifest/receipt melalui channel off-host.
+   Deterministic decision, execution, status-monitor, dan configured-tooling
+   archive untuk commit `d153361` sudah lulus reproduksibilitas lintas-host;
+   receipt-nya tercatat di
+   `docs/WINDOWS_BASE_RELEASE_REPRODUCIBILITY_2026-07-24.md`. Receipt tersebut
+   sekarang merupakan baseline historis karena decision allowlist mendapat
+   signed-feed module; seluruh role harus dibangun ulang dari clean commit yang
+   sama sebelum configured-release review. Receipt lama belum menggantikan OSV
+   receipt atau configured-provider acceptance.
 10. Bangun profile `WINDOWS_READ_ONLY_SHADOW_SERVICE_V1` dari clean checkout
     pada exact Windows host, lakukan dua build independen, verifikasi signed
     reproducibility receipt, lalu jalankan hanya bundle service tersebut melalui

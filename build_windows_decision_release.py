@@ -54,6 +54,9 @@ REQUIRED_USAGE_POLICY = {
     "execution_context": "WINDOWS_TASK_SCHEDULER_SERVICE_ACCOUNT",
     "network_capable_tooling_present": False,
     "broker_mutation_capability": False,
+    "finalized_m15_handoff_capability": (
+        "SIGNED_APPEND_ONLY_FILESYSTEM_PROVIDER"
+    ),
     "ipc_publish_capability": "SIGNED_DECISION_SNAPSHOT_ONLY",
     "production_service_execution_allowed": False,
     "configured_service_runtime_supported": True,
@@ -82,6 +85,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "live_runtime/brokerless_decision_producer.py",
         "live_runtime/contracts.py",
         "live_runtime/decision_core.py",
+        "live_runtime/decision_feed.py",
         "live_runtime/decision_ipc.py",
         "live_runtime/windows_decision_service_entrypoint.py",
         "live_runtime/windows_decision_service_factory_template.py",

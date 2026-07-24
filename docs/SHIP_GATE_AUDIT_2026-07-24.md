@@ -33,11 +33,11 @@ not read, modified, staged, tested, or treated as release input.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `1,387 / 1,387 PASS` |
-| Full regression with `PYTHONOPTIMIZE=2` | `1,387 / 1,387 PASS` |
+| Full Python regression | `1,406 / 1,406 PASS` |
+| Full regression with `PYTHONOPTIMIZE=2` | `1,406 / 1,406 PASS` |
 | Tracked Python compilation | PASS |
-| Focused provider-input/conformance/tooling tests | `31 / 31 PASS` in both modes |
-| Spec validator | `98 / 100`, grade A, zero errors |
+| Focused signed-feed/decision-release tests | `32 / 32 PASS` in both modes |
+| Signed-feed spec validator | `100 / 100`, grade A, zero errors/warnings |
 | Git whitespace/error check | PASS |
 | Windows dependency-lock verification | PASS |
 | Install-manifest verification | PASS |
@@ -95,10 +95,21 @@ retains `provider_accepted=false` pending an independent owner signature.
 
 These are launch blockers, not unpatched local-source defects:
 
+The deterministic decision, execution, status-monitor, and configured-tooling
+archives for commit `d153361` have passed an independent byte-for-byte
+reproducibility comparison. See
+`docs/WINDOWS_BASE_RELEASE_REPRODUCIBILITY_2026-07-24.md`.
+That receipt is now a historical baseline: the signed finalized-M15 feed adds a
+reviewed decision-release member, so the next clean commit requires a fresh
+same-commit four-archive reproducibility run before configured-release review.
+
 1. The three configured ZIP files have not yet been built and atomically
    admitted on the exact Windows x86-64, CPython 3.12, NTFS, MT5, account,
    server, and symbol environment.
-2. Real finalized-data, trusted-clock, news, risk-fact, decision-IPC,
+2. The finalized-data transport implementation is now present, but its real
+   broker-side read-only publisher, key custody, exact Windows timing/restart
+   observations, and independent provider conformance have not been accepted.
+   Real trusted-clock, news, risk-fact, decision-IPC,
    reconciliation, checkpoint, incident-latch, WORM, heartbeat, alert, and
    off-host CAS providers have not passed independent acceptance.
 3. Least-privilege service identities, Credential Manager custody, exact Task

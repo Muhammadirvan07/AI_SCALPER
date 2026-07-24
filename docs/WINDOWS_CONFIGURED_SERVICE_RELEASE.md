@@ -194,8 +194,10 @@ mematerialisasi provider.
 - Decision, execution, dan status-monitor release harus memiliki root, service
   identity, state directory, factory, provider set, dan launcher attestation
   terpisah.
-- Current decision runner masih validate-only; configured decision packaging
-  tidak mengubahnya menjadi production launcher.
+- Decision runner memiliki jalur operasional yang tetap fail-closed: configured
+  decision packaging saja tidak mengaktifkannya. Jalur tersebut memerlukan
+  exact configured identity, release-local reviewed factory, external RSA
+  launcher attestation, dan seluruh provider binding yang sudah diterima.
 - Jangan mengubah ZIP, manifest, overlay, atau factory setelah build. Perubahan
   apa pun memerlukan descriptor, configured identity, review, dan attestation
   baru.
