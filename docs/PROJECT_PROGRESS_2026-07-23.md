@@ -1,0 +1,122 @@
+# AI_SCALPER Progress — 2026-07-23
+
+Status: **LOCAL DEMO_AUTO ACTIVATION FOUNDATION COMPLETE / OPERATIONAL
+ACTIVATION BLOCKED / LIVE NOT READY**
+
+Full regression pada development Mac menyelesaikan **1.229 test** tanpa
+kegagalan dalam mode normal dan optimized. Kompilasi seluruh Python source
+yang dilacak Git, dependency check, release-port validator, safety-lock scan,
+dan diff check juga lulus. Pesan penolakan yang tampil dari negative-path tests
+adalah perilaku fail-closed yang diharapkan. Tidak ada order broker, credential
+provisioning, Task Scheduler installation, policy unlock, atau deployment yang
+dilakukan.
+
+## Fondasi yang selesai secara lokal
+
+- brokerless M15 decision producer dan deterministic Windows decision-only
+  release terpisah dari executor;
+- signed one-use decision IPC dengan cursor/checkpoint CAS dan continuity
+  calendar yang fail-closed;
+- locked decision-to-risk-to-intent pipeline, renewable DEMO_AUTO session
+  capability, journal-bound submission settlement, dan restart recovery;
+- kemungkinan submit yang tidak dapat dibuktikan tetap
+  `RECONCILIATION_REQUIRED` dan tidak boleh dikirim ulang;
+- authenticated soak projection dan account-level cohort untuk ambang 30 hari,
+  50 closed fill, serta minimal 20 XAUUSD closed fill;
+- mode-aware Windows factory contract untuk `DEMO` dan `DEMO_AUTO`;
+- exact mode-aware execution-symbol policy: legacy tetap EURUSD-only,
+  controlled manual-demo menerima EURUSD/XAUUSD, sedangkan dormant
+  `DEMO_AUTO` dan future live canary hanya XAUUSD; seluruh
+  risk, service, executor, MT5, bootstrap, dan supervisor boundary membawa
+  exact mode tanpa mengubah central safety lock;
+- verifier RSA-3072 public-key-only untuk external launcher attestation sebelum
+  provider factory diimpor;
+- deny-by-default live-grade gate catalog dan activation runbook; dan
+- immutable manual-demo activation kit yang merangkum blocker kandidat,
+  37 required external provider contracts, urutan operator, dan target 10
+  controlled order lifecycles tanpa memperoleh execution authority;
+- strict immutable Windows demo-soak operations review bundle yang mengikat
+  exact release/Python/MT5/account/symbol/storage/security/provider references,
+  failure-drill manifest, tiga scheduler XML, tiga validator PowerShell
+  read-only, readiness, effects, dan safety locks. CLI hanya berada di operator
+  tooling release, menolak overwrite/secret/schema drift/tamper, dan tidak
+  dapat menginstal task, menjalankan proses, mengakses credential/MT5, atau
+  mengirim order;
+- strict dual-release operations v2 contract yang menggantikan asumsi
+  single-release pada host aktual: decision dan execution release, Python
+  runtime, service identity, manifest/identity, dan validator entrypoint
+  terikat terpisah pada commit/tree yang sama; exact decision IPC dan
+  XAUUSD-only lane juga terikat, sedangkan watchdog dimodelkan jujur sebagai
+  external monitor authority karena tidak ada release-local production
+  watchdog entrypoint. V1 tetap readable sebagai histori tetapi tidak boleh
+  menjadi kontrak host demo-auto;
+- deterministic configured-service release boundary untuk decision dan
+  execution base ZIP. Exact secret-free factory/config/provider overlay
+  menghasilkan identity baru, mempertahankan nested base provenance dan
+  seluruh safety lock, serta diverifikasi ulang sebelum output ditulis.
+  Non-deterministic base ZIP, inherited commit/tree/policy drift,
+  missing/extra/tampered overlay, dynamic/native/process/order source, dan
+  identity mismatch ditolak. Tooling ini dikemas melalui profile operator
+  stdlib-only terpisah agar generic read-only tooling tidak perlu melonggarkan
+  byte-level order-primitive prohibition;
+- deterministic release builder kini mengambil exact committed Git blobs,
+  sehingga clean checkout Windows CRLF menghasilkan source ZIP identik dengan
+  commit LF tanpa melonggarkan worktree, commit/tree, symlink, atau allowlist
+  gate;
+- seluruh `data/*.csv` kini diperlakukan sebagai runtime cache dan tidak lagi
+  dilacak Git. Salinan development lokal tetap dipertahankan, sedangkan test
+  evidence memakai fixture sintetis deterministik agar clean checkout tidak
+  bergantung pada data pasar mutable;
+- seluruh JSON di repository root kini diperlakukan sebagai legacy runtime
+  state/report/draft dan tidak lagi dilacak Git. Immutable JSON wajib berada
+  di `config/`; salinan lokal serta histori Git lama tetap tersedia tanpa
+  menjadi release source;
+- pemeriksaan path decision IPC sekarang mengambil metadata SQLite sidecar
+  secara atomik. Penghapusan normal file `-wal`/`-shm` saat koneksi terakhir
+  ditutup tidak lagi dapat membuat kedua publisher gagal; 1.000 pengulangan
+  race optimized lulus tanpa duplicate atau fork;
+- perbaikan race pada soak projection: verifikasi custody kini dilakukan di
+  bawah SQLite writer fence dan operasi tracker+projection diserialkan dalam
+  satu runtime instance; uji konkurensi identik lulus 30 pengulangan; dan
+- exact-type hardening pada risk governor dan evidence boundaries.
+
+Semua komponen di atas tetap mempertahankan:
+
+```text
+live_allowed = false
+safe_to_demo_auto_order = false
+max_lot = 0.01
+promotion_eligible = false
+```
+
+## Gate menuju DEMO_AUTO yang tidak dapat diselesaikan dari Mac
+
+1. Build bersih dan acceptance pada exact Windows 64-bit, Python 3.12,
+   `MetaTrader5==5.0.5735`, NTFS, terminal, account, server, dan symbol spec.
+2. Reviewed external provider factory, Windows Credential Manager, service
+   identities, Task Scheduler ACL, trusted clock, signed news, off-host CAS,
+   WORM audit, heartbeat, backup/restore, dan offline RSA-key custody.
+3. Exact XAUUSD minimum-lot risk feasibility memakai broker-native
+   `order_calc_profit()`, spread, commission, slippage, dan stop level.
+4. Sepuluh controlled manual-demo lifecycles tanpa duplicate, orphan,
+   unresolved `UNCERTAIN`, missing SL/TP, atau critical alert failure.
+5. Manual review atas activation release yang hanya membuka XAUUSD pada satu
+   exact demo account. FX tetap shadow pada tahap pertama.
+
+Setelah kelima gate tersebut terbukti, DEMO_AUTO soak baru boleh dimulai. Soak
+harus berjalan minimal 30 hari dan menutup minimal 50 trade, termasuk 20
+XAUUSD, tanpa critical incident. Insiden critical mereset periode soak.
+
+## Gate live setelah soak
+
+Hasil soak tidak otomatis membuka live. Setiap lane masih memerlukan 100 OOS
+closed trades, 50 broker-forward closed trades dan delapan minggu observasi,
+purged folds, PF/expectancy/bootstrap/drawdown/cost-stress gates, full parity,
+broker/legal/security acceptance, serta manual ship approval. Live pertama
+tetap XAUUSD canary `0.01` lot dengan satu posisi global. Concurrent
+multi-account expansion memerlukan external atomic portfolio-exposure custody.
+
+Runbook operasional terdapat di
+`docs/DEMO_AUTO_ACTIVATION_RUNBOOK.md`. Repository kini menyediakan fondasi
+source untuk tahap tersebut, tetapi tidak boleh menyatakan soak berjalan atau
+live ready sebelum bukti eksternal dan temporal benar-benar tersedia.

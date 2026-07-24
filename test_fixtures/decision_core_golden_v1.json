@@ -1,0 +1,73 @@
+{
+  "schema_version": "decision-core-golden-v1",
+  "cases": {
+    "XAUUSD": {
+      "side": "BUY",
+      "strategy": "MOMENTUM_PULLBACK",
+      "score": 6,
+      "score_components": [
+        ["bounded_pullback_rejection", 2],
+        ["direction_alignment", 1],
+        ["rsi_confirmation", 1],
+        ["strong_adx", 1],
+        ["strong_body", 1]
+      ],
+      "entry_reference": 3331.5975694571243,
+      "stop_loss": 3329.484482096618,
+      "take_profit": 3335.8237441781366,
+      "snapshot_id": "decision_edd9d83489035f4a206c1713aff8017f",
+      "content_sha256": "edd9d83489035f4a206c1713aff8017fc2cad75b84e554d0937b2d1d7cb518c6"
+    },
+    "EURUSD": {
+      "side": "BUY",
+      "strategy": "MOMENTUM_PULLBACK",
+      "score": 6,
+      "score_components": [
+        ["bounded_pullback_rejection", 2],
+        ["direction_alignment", 1],
+        ["rsi_confirmation", 1],
+        ["strong_adx", 1],
+        ["strong_body", 1]
+      ],
+      "entry_reference": 1.2114963888934995,
+      "stop_loss": 1.2107279934896789,
+      "take_profit": 1.213033179701141,
+      "snapshot_id": "decision_ba886b5c1b9688e5f903d39e25bcb81e",
+      "content_sha256": "ba886b5c1b9688e5f903d39e25bcb81ef85e1f0face7c98569b25cd3434590c4"
+    },
+    "USDJPY": {
+      "side": "SELL",
+      "strategy": "MOMENTUM_PULLBACK",
+      "score": 6,
+      "score_components": [
+        ["bounded_pullback_rejection", 2],
+        ["direction_alignment", 1],
+        ["rsi_confirmation", 1],
+        ["strong_adx", 1],
+        ["strong_body", 1]
+      ],
+      "entry_reference": 148.56320138831254,
+      "stop_loss": 148.65925081379007,
+      "take_profit": 148.37110253735747,
+      "snapshot_id": "decision_464d6a510914d79a5d025249a4a130a4",
+      "content_sha256": "464d6a510914d79a5d025249a4a130a483decff1c112fdfba23bcd7e1ff9d35e"
+    },
+    "AUDUSD": {
+      "side": "SELL",
+      "strategy": "MOMENTUM_PULLBACK",
+      "score": 6,
+      "score_components": [
+        ["bounded_pullback_rejection", 2],
+        ["direction_alignment", 1],
+        ["rsi_confirmation", 1],
+        ["strong_adx", 1],
+        ["strong_body", 1]
+      ],
+      "entry_reference": 0.693289606478792,
+      "stop_loss": 0.6937378371310208,
+      "take_profit": 0.6923931451743345,
+      "snapshot_id": "decision_54ccafea24112e9bc5e711b9c6b1b1c1",
+      "content_sha256": "54ccafea24112e9bc5e711b9c6b1b1c1bd4e1cf2cd743c8c81d5bd65c63d15a5"
+    }
+  }
+}

@@ -1,0 +1,514 @@
+"""Windows CLI for broker-real-time diagnostic shadow observation only."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import subprocess
+import sys
+import time
+from typing import Mapping, Sequence
+
+from live_runtime.account_fence import (
+    AccountRuntimeFence,
+    AccountRuntimeFenceError,
+    account_runtime_identity,
+)
+from live_runtime.realtime_diagnostic import (
+    DIAGNOSTIC_PROFILE,
+    DiagnosticIdentity,
+    DiagnosticJournal,
+    REQUIRED_SYMBOLS,
+    RealtimeDiagnosticError,
+    run_diagnostic_cycle,
+)
+from live_runtime.mt5_readonly import (
+    MT5ReadOnlyAttestationError,
+    MT5ReadOnlyCapabilityError,
+    ReadOnlyMT5Facade,
+    attest_mt5_read_only,
+)
+
+
+REPO_ROOT = Path(__file__).resolve().parent
+DEFAULT_CONFIG = REPO_ROOT / "config" / "broker_candidates.phase3.json"
+DEFAULT_DIAGNOSTIC_ROOT = REPO_ROOT / "runtime_state" / "diagnostic"
+MODEL_SOURCE_PATHS = (
+    "agents/market_status.py",
+    "agents/supervisor_agent.py",
+    "live_runtime/decision_core.py",
+    "market_data_quality.py",
+    "market_regime_filter.py",
+    "strategy/strategy_profiles.py",
+    "strategy/strategy_selector.py",
+    "strategy/trend_analyzer.py",
+)
+
+
+@dataclass(frozen=True)
+class BrokerRunnerDomain:
+    required_symbols: tuple[str, ...]
+    symbol_config_key: str
+    profile: str
+    schema_version: str
+    outcome_quality: str
+    timeframe: str
+    artifact_tag: str
+    model_version: str
+
+
+FOREX_RUNNER_DOMAIN = BrokerRunnerDomain(
+    required_symbols=REQUIRED_SYMBOLS,
+    symbol_config_key="broker_symbols_observed",
+    profile=DIAGNOSTIC_PROFILE,
+    schema_version="real-market-diagnostic-v1",
+    outcome_quality="BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+    timeframe="M15",
+    artifact_tag="real-market",
+    model_version="rule-core-champion-locked-v1",
+)
+FBS_CRYPTO_M15_RUNNER_DOMAIN = BrokerRunnerDomain(
+    required_symbols=("BTCUSD", "ETHUSD"),
+    symbol_config_key="broker_crypto_symbols_observed",
+    profile="FBS_BROKER_CRYPTO_M15_DIAGNOSTIC_ONLY",
+    schema_version="fbs-broker-crypto-m15-diagnostic-v1",
+    outcome_quality="FBS_BROKER_TICK_M15_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+    timeframe="M15",
+    artifact_tag="broker-crypto-m15",
+    model_version="rule-core-fbs-crypto-m15-locked-v1",
+)
+FBS_CRYPTO_M5_RUNNER_DOMAIN = BrokerRunnerDomain(
+    required_symbols=("BTCUSD", "ETHUSD"),
+    symbol_config_key="broker_crypto_symbols_observed",
+    profile="FBS_BROKER_CRYPTO_M5_CHALLENGER_DIAGNOSTIC_ONLY",
+    schema_version="fbs-broker-crypto-m5-diagnostic-v1",
+    outcome_quality="FBS_BROKER_TICK_M5_CHALLENGER_NOT_PROMOTION_EVIDENCE",
+    timeframe="M5",
+    artifact_tag="broker-crypto-m5",
+    model_version="rule-core-fbs-crypto-m5-challenger-locked-v1",
+)
+PHILLIP_FX_RUNNER_DOMAIN = BrokerRunnerDomain(
+    required_symbols=("AUDUSD", "EURUSD", "USDJPY"),
+    symbol_config_key="broker_symbols_observed",
+    profile="PHILLIP_FX_BROKER_REALTIME_DIAGNOSTIC_ONLY",
+    schema_version="phillip-fx-real-market-diagnostic-v1",
+    outcome_quality="PHILLIP_FX_BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+    timeframe="M15",
+    artifact_tag="fx-real-market",
+    model_version="rule-core-phillip-fx-locked-v1",
+)
+PHILLIP_COMMODITY_RUNNER_DOMAIN = BrokerRunnerDomain(
+    required_symbols=("XAUUSD",),
+    symbol_config_key="broker_symbols_observed",
+    profile="PHILLIP_COMMODITY_BROKER_REALTIME_DIAGNOSTIC_ONLY",
+    schema_version="phillip-commodity-real-market-diagnostic-v1",
+    outcome_quality=(
+        "PHILLIP_COMMODITY_BROKER_TICK_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE"
+    ),
+    timeframe="M15",
+    artifact_tag="commodity-real-market",
+    model_version="rule-core-phillip-commodity-locked-v1",
+)
+
+
+def _diagnostic_artifact_paths(
+    candidate_id: str,
+    *,
+    root: Path = DEFAULT_DIAGNOSTIC_ROOT,
+    artifact_tag: str = "real-market",
+) -> tuple[Path, Path]:
+    normalized = str(candidate_id or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", normalized):
+        raise RealtimeDiagnosticError("candidate id is invalid for artifact isolation")
+    normalized_tag = str(artifact_tag or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,47}", normalized_tag):
+        raise RealtimeDiagnosticError("diagnostic artifact tag is invalid")
+    prefix = f"{normalized}-{normalized_tag}"
+    return root / f"{prefix}.sqlite3", root / f"{prefix}-summary.json"
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _candidate(
+    path: Path,
+    candidate_id: str,
+    domain: BrokerRunnerDomain = FOREX_RUNNER_DOMAIN,
+) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RealtimeDiagnosticError("broker candidate configuration is invalid") from exc
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list):
+        raise RealtimeDiagnosticError("broker candidate list is unavailable")
+    matches = [
+        item
+        for item in candidates
+        if isinstance(item, Mapping) and item.get("candidate_id") == candidate_id
+    ]
+    if len(matches) != 1:
+        raise RealtimeDiagnosticError("candidate must exist exactly once")
+    candidate = dict(matches[0])
+    if str(candidate.get("environment", "")).upper() != "DEMO":
+        raise RealtimeDiagnosticError("real-time diagnostic requires a demo candidate")
+    if not str(candidate.get("server", "")).strip():
+        raise RealtimeDiagnosticError("candidate server is unavailable")
+    symbols = candidate.get(domain.symbol_config_key)
+    if not isinstance(symbols, Mapping):
+        raise RealtimeDiagnosticError("candidate broker symbol map is unavailable")
+    normalized = {
+        str(symbol).upper(): str(broker_symbol).strip()
+        for symbol, broker_symbol in symbols.items()
+    }
+    if set(normalized) != set(domain.required_symbols) or any(
+        not value for value in normalized.values()
+    ):
+        raise RealtimeDiagnosticError("candidate requires the exact domain symbol map")
+    candidate[domain.symbol_config_key] = normalized
+    return candidate
+
+
+def _git_commit() -> str:
+    try:
+        result = subprocess.run(
+            ("git", "rev-parse", "HEAD"),
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "LC_ALL": "C"},
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RealtimeDiagnosticError("clean Git commit identity is unavailable") from exc
+    return result.stdout.strip()
+
+
+def _model_artifact_sha256() -> str:
+    digest = hashlib.sha256()
+    for relative in MODEL_SOURCE_PATHS:
+        path = REPO_ROOT / relative
+        try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise RealtimeDiagnosticError(
+                f"decision source is unavailable: {relative}"
+            ) from exc
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(data)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _identity(
+    config_path: Path,
+    domain: BrokerRunnerDomain = FOREX_RUNNER_DOMAIN,
+) -> DiagnosticIdentity:
+    try:
+        config_hash = _sha256_bytes(config_path.read_bytes())
+    except OSError as exc:
+        raise RealtimeDiagnosticError("candidate config cannot be hashed") from exc
+    return DiagnosticIdentity(
+        commit_sha=_git_commit(),
+        model_version=domain.model_version,
+        model_artifact_sha256=_model_artifact_sha256(),
+        config_sha256=config_hash,
+    )
+
+
+def _account_mapping(value: object) -> dict[str, object]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    asdict = getattr(value, "_asdict", None)
+    if callable(asdict):
+        return dict(asdict())
+    raise RealtimeDiagnosticError("MT5 account identity is unavailable")
+
+
+def _last_sunday(year: int, month: int) -> datetime:
+    if month == 12:
+        next_month = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        next_month = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+    cursor = next_month - timedelta(days=1)
+    return cursor - timedelta(days=(cursor.weekday() + 1) % 7)
+
+
+def _parse_utc_offset(value: object) -> int:
+    text = str(value or "").strip()
+    if len(text) != 6 or text[0] not in {"+", "-"} or text[3] != ":":
+        raise RealtimeDiagnosticError("candidate broker UTC offset is invalid")
+    try:
+        hours = int(text[1:3])
+        minutes = int(text[4:6])
+    except ValueError as exc:
+        raise RealtimeDiagnosticError("candidate broker UTC offset is invalid") from exc
+    if hours > 14 or minutes > 59:
+        raise RealtimeDiagnosticError("candidate broker UTC offset is invalid")
+    seconds = (hours * 60 + minutes) * 60
+    return seconds if text[0] == "+" else -seconds
+
+
+def _broker_time_offset_seconds(
+    candidate: Mapping[str, object],
+    observed_at: datetime,
+) -> int:
+    model = candidate.get("server_time_model")
+    if not isinstance(model, Mapping):
+        return 0
+    fixed = model.get("fixed_utc_offset")
+    if fixed is not None:
+        if (
+            str(model.get("source_status") or "").strip()
+            != "OPERATOR_RUNTIME_OBSERVED_DIAGNOSTIC_ONLY"
+        ):
+            raise RealtimeDiagnosticError(
+                "fixed broker UTC offset lacks diagnostic observation status"
+            )
+        selected = _parse_utc_offset(fixed)
+        if selected < 0:
+            raise RealtimeDiagnosticError(
+                "diagnostic broker time offset must be nonnegative"
+            )
+        return selected
+    standard = _parse_utc_offset(model.get("standard_utc_offset"))
+    daylight = _parse_utc_offset(model.get("daylight_saving_utc_offset"))
+    rule = str(model.get("daylight_saving_rule") or "").strip()
+    if rule != "LAST_SUNDAY_MARCH_TO_LAST_SUNDAY_OCTOBER":
+        raise RealtimeDiagnosticError("candidate broker DST rule is unsupported")
+    start = _last_sunday(observed_at.year, 3).replace(hour=1)
+    end = _last_sunday(observed_at.year, 10).replace(hour=1)
+    selected = daylight if start <= observed_at < end else standard
+    if selected < 0:
+        raise RealtimeDiagnosticError(
+            "diagnostic broker time offset must be nonnegative"
+        )
+    return selected
+
+
+def _write_summary(path: Path, summary: Mapping[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(summary, indent=2, sort_keys=True) + "\n"
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(payload, encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _read_only_remediation(error: MT5ReadOnlyAttestationError) -> str:
+    actions: list[str] = []
+    mismatches = error.mismatches
+    if "account_trade_allowed" in mismatches:
+        actions.append(
+            "login ulang ke akun demo memakai investor/read-only password"
+        )
+    if "terminal_trade_allowed" in mismatches:
+        actions.append("matikan tombol Algo Trading/AutoTrading di MT5")
+    if "terminal_tradeapi_disabled" in mismatches:
+        actions.append(
+            "aktifkan Tools > Options > Expert Advisors > "
+            "Disable automated trading through the external Python API"
+        )
+    if not actions:
+        actions.append(
+            "pastikan MT5 terbuka, terhubung, dan menyediakan seluruh flag read-only"
+        )
+    return "; ".join(actions)
+
+
+def cli_entrypoint(
+    argv: Sequence[str] | None = None,
+    *,
+    runner_domain: BrokerRunnerDomain = FOREX_RUNNER_DOMAIN,
+) -> int:
+    """Translate expected operator/configuration rejection into concise output."""
+
+    try:
+        return main(argv, runner_domain=runner_domain)
+    except MT5ReadOnlyAttestationError as exc:
+        print(str(exc), file=sys.stderr)
+        print(f"Required action: {_read_only_remediation(exc)}.", file=sys.stderr)
+        print(
+            "Safety lock remains active; no broker order was submitted.",
+            file=sys.stderr,
+        )
+        return 2
+    except (
+        AccountRuntimeFenceError,
+        MT5ReadOnlyCapabilityError,
+        RealtimeDiagnosticError,
+    ) as exc:
+        print(f"DIAGNOSTIC_SHADOW_REJECTED: {exc}", file=sys.stderr)
+        print(
+            "Safety lock remains active; no broker order was submitted.",
+            file=sys.stderr,
+        )
+        return 2
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Observe broker M15/ticks and simulate decisions without broker mutation"
+        )
+    )
+    parser.add_argument("--candidate", default="fbs")
+    parser.add_argument(
+        "--terminal-path",
+        help="Exact terminal64.exe path when multiple MT5 installations exist",
+    )
+    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--journal", type=Path)
+    parser.add_argument("--summary", type=Path)
+    parser.add_argument("--bar-count", type=int, default=300)
+    parser.add_argument("--max-bar-age-seconds", type=int, default=1800)
+    parser.add_argument("--poll-seconds", type=float, default=5.0)
+    parser.add_argument("--cycles", type=int, default=1)
+    parser.add_argument("--continuous", action="store_true")
+    parser.add_argument(
+        "--acknowledge-diagnostic-only",
+        action="store_true",
+        help=(
+            "Confirm that output is not promotion evidence and cannot enable trading"
+        ),
+    )
+    return parser
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    mt5_module: object | None = None,
+    platform_name: str | None = None,
+    runner_domain: BrokerRunnerDomain = FOREX_RUNNER_DOMAIN,
+) -> int:
+    args = _parser().parse_args(argv)
+    if not args.acknowledge_diagnostic_only:
+        raise RealtimeDiagnosticError(
+            "--acknowledge-diagnostic-only is required"
+        )
+    if (platform_name or platform.system()) != "Windows":
+        raise RealtimeDiagnosticError(
+            "MetaTrader5 diagnostic shadow must run on Windows"
+        )
+    if args.cycles < 1:
+        raise RealtimeDiagnosticError("--cycles must be at least 1")
+    if not 1.0 <= args.poll_seconds <= 300.0:
+        raise RealtimeDiagnosticError("--poll-seconds must be between 1 and 300")
+
+    candidate = _candidate(args.config, args.candidate, runner_domain)
+    default_journal, default_summary = _diagnostic_artifact_paths(
+        args.candidate,
+        artifact_tag=runner_domain.artifact_tag,
+    )
+    journal_path = args.journal or default_journal
+    summary_path = args.summary or default_summary
+    identity = _identity(args.config, runner_domain)
+    if mt5_module is None:
+        import MetaTrader5 as mt5_module
+
+    initialize = getattr(mt5_module, "initialize", None)
+    shutdown = getattr(mt5_module, "shutdown", None)
+    last_error = getattr(mt5_module, "last_error", lambda: "unavailable")
+    if not callable(initialize) or not callable(shutdown):
+        raise RealtimeDiagnosticError("MetaTrader5 lifecycle API is unavailable")
+    initialized = initialize(args.terminal_path) if args.terminal_path else initialize()
+    if not initialized:
+        raise RealtimeDiagnosticError(f"MT5 initialize failed: {last_error()}")
+
+    try:
+        facade = ReadOnlyMT5Facade(mt5_module)
+        attest_mt5_read_only(
+            facade,
+            require_account_expert_disabled=False,
+        )
+        account = _account_mapping(facade.account_info())
+        runtime_identity = account_runtime_identity(
+            account.get("login"),
+            str(candidate["server"]),
+            "DEMO",
+        )
+        with AccountRuntimeFence(runtime_identity), DiagnosticJournal(
+            journal_path,
+            required_symbols=runner_domain.required_symbols,
+            profile=runner_domain.profile,
+            schema_version=runner_domain.schema_version,
+            outcome_quality=runner_domain.outcome_quality,
+            timeframe=runner_domain.timeframe,
+        ) as journal:
+            journal.assert_broker_cohort(
+                expected_server=str(candidate["server"]),
+                expected_account_identity_sha256=runtime_identity,
+            )
+            run_nonce = utc_now().strftime("%Y%m%dT%H%M%S%fZ")
+            cycle_number = 0
+            print(f"Profile: {runner_domain.profile}")
+            print(f"Timeframe: {runner_domain.timeframe}")
+            print("Broker mutation capability: DISABLED")
+            print("Promotion evidence: DISABLED")
+            while args.continuous or cycle_number < args.cycles:
+                cycle_number += 1
+                observed_at = utc_now()
+                receipt = run_diagnostic_cycle(
+                    facade,
+                    journal,
+                    cycle_id=f"{run_nonce}-{cycle_number:08d}",
+                    expected_server=str(candidate["server"]),
+                    expected_account_identity_sha256=runtime_identity,
+                    broker_symbols=candidate[runner_domain.symbol_config_key],
+                    identity=identity,
+                    observed_at=observed_at,
+                    bar_count=args.bar_count,
+                    max_bar_age_seconds=args.max_bar_age_seconds,
+                    broker_time_offset_seconds=_broker_time_offset_seconds(
+                        candidate,
+                        observed_at,
+                    ),
+                )
+                summary = journal.summary()
+                summary["candidate_id"] = str(args.candidate).strip().lower()
+                summary["broker_server"] = str(candidate["server"])
+                summary["lane_domain"] = runner_domain.artifact_tag
+                summary["latest_cycle"] = {
+                    "cycle_id": receipt.cycle_id,
+                    "observed_at_utc": receipt.observed_at.isoformat().replace(
+                        "+00:00",
+                        "Z",
+                    ),
+                    "status": receipt.status,
+                    "symbol_status": dict(receipt.symbol_status),
+                    "failures": dict(receipt.failures),
+                    "closed_positions": list(receipt.closed_positions),
+                    "payload_sha256": receipt.payload_sha256,
+                }
+                _write_summary(summary_path, summary)
+                statuses = ", ".join(
+                    f"{symbol}={status}"
+                    for symbol, status in receipt.symbol_status.items()
+                )
+                print(f"[{cycle_number}] {receipt.status}: {statuses}")
+                if not args.continuous and cycle_number >= args.cycles:
+                    break
+                time.sleep(args.poll_seconds)
+            return 0
+    except KeyboardInterrupt:
+        print("Diagnostic shadow stopped by operator.")
+        return 130
+    finally:
+        shutdown()
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli_entrypoint())

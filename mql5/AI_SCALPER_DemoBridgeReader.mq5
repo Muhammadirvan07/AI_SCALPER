@@ -1,40 +1,15 @@
 //+------------------------------------------------------------------+
 //| AI_SCALPER_DemoBridgeReader.mq5                                  |
-//| Demo-only MT5 reader for AI_SCALPER mt5_demo_bridge_outbox.json   |
+//| Inert diagnostic reader for mt5_demo_bridge_outbox.json          |
 //+------------------------------------------------------------------+
 #property strict
 
-#include <Trade/Trade.mqh>
-
-CTrade trade;
-
-// =========================
-// USER SETTINGS
-// =========================
+// This legacy adapter deliberately has no broker-order capability.
+// Only file location and polling cadence are configurable.
 input string InpOutboxFileName = "mt5_demo_bridge_outbox.json";
 input int    InpCheckIntervalSeconds = 10;
-input double InpMaxLot = 0.01;
-input int    InpMagicNumber = 260615;
-input int    InpDeviationPoints = 30;
-input bool   InpDemoOnly = true;
-input bool   InpRequireDemoOnlyFlag = true;
-input bool   InpRequireLiveAllowedFalse = true;
-input bool   InpOnePositionPerSymbol = true;
 
-// =========================
-// STATE
-// =========================
-datetime last_check_time = 0;
-string executed_signal_ids[];
-
-//+------------------------------------------------------------------+
-//| Utility                                                          |
-//+------------------------------------------------------------------+
-bool IsDemoAccount()
-{
-   ENUM_ACCOUNT_TRADE_MODE mode = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
-   return mode == ACCOUNT_TRADE_MODE_DEMO;
-}
+const double EXPECTED_MAX_LOT = 0.01;
 
 string ReadWholeFile(string file_name)
 {
@@ -43,447 +18,207 @@ string ReadWholeFile(string file_name)
    int handle = FileOpen(file_name, FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON);
    if(handle == INVALID_HANDLE)
    {
-      Print("Cannot open file from COMMON folder: ", file_name, " error=", GetLastError());
+      Print("Diagnostic reader cannot open COMMON file: ", file_name, " error=", GetLastError());
       return "";
    }
 
    string content = "";
    while(!FileIsEnding(handle))
-   {
       content += FileReadString(handle);
-   }
 
    FileClose(handle);
    return content;
 }
 
-bool JsonBool(string json, string key, bool default_value=false)
+int JsonValuePosition(string json, string key)
 {
-   string pattern_true = "\"" + key + "\": true";
-   string pattern_false = "\"" + key + "\": false";
-
-   if(StringFind(json, pattern_true) >= 0)
-      return true;
-
-   if(StringFind(json, pattern_false) >= 0)
-      return false;
-
-   return default_value;
-}
-
-int JsonInt(string json, string key, int default_value=0)
-{
-   string pattern = "\"" + key + "\":";
+   string pattern = "\"" + key + "\"";
    int pos = StringFind(json, pattern);
    if(pos < 0)
-      return default_value;
+      return -1;
 
-   pos += StringLen(pattern);
-
-   while(pos < StringLen(json))
-   {
-      ushort ch = StringGetCharacter(json, pos);
-      if(ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n')
-         break;
-      pos++;
-   }
-
-   string value = "";
-   while(pos < StringLen(json))
-   {
-      ushort ch = StringGetCharacter(json, pos);
-      if((ch >= '0' && ch <= '9') || ch == '-')
-      {
-         value += ShortToString(ch);
-         pos++;
-      }
-      else
-      {
-         break;
-      }
-   }
-
-   if(value == "")
-      return default_value;
-
-   return (int)StringToInteger(value);
-}
-
-double JsonDouble(string json, string key, double default_value=0.0)
-{
-   string pattern = "\"" + key + "\":";
-   int pos = StringFind(json, pattern);
+   pos = StringFind(json, ":", pos + StringLen(pattern));
    if(pos < 0)
-      return default_value;
-
-   pos += StringLen(pattern);
-
-   while(pos < StringLen(json))
-   {
-      ushort ch = StringGetCharacter(json, pos);
-      if(ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n')
-         break;
-      pos++;
-   }
-
-   string value = "";
-   while(pos < StringLen(json))
-   {
-      ushort ch = StringGetCharacter(json, pos);
-      if((ch >= '0' && ch <= '9') || ch == '-' || ch == '.')
-      {
-         value += ShortToString(ch);
-         pos++;
-      }
-      else
-      {
-         break;
-      }
-   }
-
-   if(value == "")
-      return default_value;
-
-   return StringToDouble(value);
-}
-
-string JsonString(string json, string key, string default_value="")
-{
-   string pattern = "\"" + key + "\":";
-   int pos = StringFind(json, pattern);
-   if(pos < 0)
-      return default_value;
-
-   pos += StringLen(pattern);
-
-   while(pos < StringLen(json))
-   {
-      ushort ch = StringGetCharacter(json, pos);
-      if(ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n')
-         break;
-      pos++;
-   }
-
-   if(pos >= StringLen(json) || StringGetCharacter(json, pos) != '"')
-      return default_value;
+      return -1;
 
    pos++;
-
-   string value = "";
    while(pos < StringLen(json))
    {
       ushort ch = StringGetCharacter(json, pos);
-      if(ch == '"')
+      if(ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n')
          break;
-
-      value += ShortToString(ch);
       pos++;
    }
 
-   return value;
+   return pos;
 }
 
-string ExtractArrayContent(string json, string key)
+bool TryJsonBool(string json, string key, bool &value)
 {
-   string pattern = "\"" + key + "\":";
-   int pos = StringFind(json, pattern);
+   int pos = JsonValuePosition(json, key);
    if(pos < 0)
-      return "";
+      return false;
 
-   int start = StringFind(json, "[", pos);
-   if(start < 0)
-      return "";
-
-   int depth = 0;
-   for(int i = start; i < StringLen(json); i++)
+   if(StringSubstr(json, pos, 4) == "true")
    {
-      ushort ch = StringGetCharacter(json, i);
-
-      if(ch == '[')
-         depth++;
-
-      if(ch == ']')
-      {
-         depth--;
-         if(depth == 0)
-            return StringSubstr(json, start + 1, i - start - 1);
-      }
+      value = true;
+      return true;
    }
 
-   return "";
-}
-
-string ExtractNextObject(string array_content, int &pos)
-{
-   int start = -1;
-   int depth = 0;
-
-   for(int i = pos; i < StringLen(array_content); i++)
+   if(StringSubstr(json, pos, 5) == "false")
    {
-      ushort ch = StringGetCharacter(array_content, i);
-
-      if(ch == '{')
-      {
-         if(depth == 0)
-            start = i;
-         depth++;
-      }
-
-      if(ch == '}')
-      {
-         depth--;
-         if(depth == 0 && start >= 0)
-         {
-            pos = i + 1;
-            return StringSubstr(array_content, start, i - start + 1);
-         }
-      }
-   }
-
-   return "";
-}
-
-bool WasExecuted(string signal_id)
-{
-   for(int i = 0; i < ArraySize(executed_signal_ids); i++)
-   {
-      if(executed_signal_ids[i] == signal_id)
-         return true;
+      value = false;
+      return true;
    }
 
    return false;
 }
 
-void MarkExecuted(string signal_id)
+bool TryJsonInt(string json, string key, int &value)
 {
-   int size = ArraySize(executed_signal_ids);
-   ArrayResize(executed_signal_ids, size + 1);
-   executed_signal_ids[size] = signal_id;
-}
+   int pos = JsonValuePosition(json, key);
+   if(pos < 0)
+      return false;
 
-bool HasOpenPositionForSymbol(string symbol)
-{
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   string text = "";
+   while(pos < StringLen(json))
    {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0)
+      ushort ch = StringGetCharacter(json, pos);
+      if((ch >= '0' && ch <= '9') || (ch == '-' && text == ""))
+      {
+         text += ShortToString(ch);
+         pos++;
          continue;
+      }
+      break;
+   }
 
-      if(!PositionSelectByTicket(ticket))
+   if(text == "" || text == "-")
+      return false;
+
+   value = (int)StringToInteger(text);
+   return true;
+}
+
+bool TryJsonDouble(string json, string key, double &value)
+{
+   int pos = JsonValuePosition(json, key);
+   if(pos < 0)
+      return false;
+
+   string text = "";
+   while(pos < StringLen(json))
+   {
+      ushort ch = StringGetCharacter(json, pos);
+      if((ch >= '0' && ch <= '9') || (ch == '-' && text == "") || ch == '.')
+      {
+         text += ShortToString(ch);
+         pos++;
          continue;
-
-      string pos_symbol = PositionGetString(POSITION_SYMBOL);
-      long magic = PositionGetInteger(POSITION_MAGIC);
-
-      if(pos_symbol == symbol && magic == InpMagicNumber)
-         return true;
+      }
+      break;
    }
 
-   return false;
+   if(text == "" || text == "-" || text == ".")
+      return false;
+
+   value = StringToDouble(text);
+   return true;
 }
 
-double NormalizeLot(string symbol, double requested_lot)
+bool ValidateLockedDiagnosticState(string json)
 {
-   double min_lot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
-   double max_lot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
-   double step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   bool demo_only = false;
+   bool paper_only = false;
+   bool live_allowed = false;
+   bool safe_to_demo_auto_order = false;
+   int order_count = -1;
+   double max_lot = -1.0;
 
-   double capped = MathMin(requested_lot, InpMaxLot);
-   capped = MathMin(capped, max_lot);
-
-   if(capped < min_lot)
-      return 0.0;
-
-   if(step > 0)
-      capped = MathFloor(capped / step) * step;
-
-   return NormalizeDouble(capped, 2);
-}
-
-bool ValidateOutboxRoot(string json)
-{
-   bool demo_only = JsonBool(json, "demo_only", false);
-   bool live_allowed = JsonBool(json, "live_allowed", true);
-   int order_count = JsonInt(json, "order_count", 0);
-   double max_lot = JsonDouble(json, "max_lot", 0.0);
-
-   if(InpDemoOnly && !IsDemoAccount())
+   if(!TryJsonBool(json, "demo_only", demo_only) ||
+      !TryJsonBool(json, "paper_only", paper_only) ||
+      !TryJsonBool(json, "live_allowed", live_allowed) ||
+      !TryJsonBool(json, "safe_to_demo_auto_order", safe_to_demo_auto_order) ||
+      !TryJsonInt(json, "order_count", order_count) ||
+      !TryJsonDouble(json, "max_lot", max_lot))
    {
-      Print("Safety stop: this EA is demo-only, but account is not DEMO.");
+      Print("Diagnostic safety rejection: required root lock field is missing or malformed.");
       return false;
    }
 
-   if(InpRequireDemoOnlyFlag && !demo_only)
+   if(!demo_only || !paper_only)
    {
-      Print("Safety stop: outbox demo_only flag is not true.");
+      Print("Diagnostic safety rejection: demo_only and paper_only must both be true.");
       return false;
    }
 
-   if(InpRequireLiveAllowedFalse && live_allowed)
+   if(live_allowed)
    {
-      Print("Safety stop: outbox live_allowed is true. Refusing.");
+      Print("Diagnostic safety rejection: live_allowed must remain false.");
       return false;
    }
 
-   if(max_lot > InpMaxLot)
+   if(safe_to_demo_auto_order)
    {
-      Print("Safety stop: outbox max_lot exceeds EA max lot. outbox=", max_lot, " ea=", InpMaxLot);
+      Print("Diagnostic safety rejection: safe_to_demo_auto_order must remain false.");
       return false;
    }
 
-   if(order_count <= 0)
+   if(order_count != 0)
    {
-      Print("No demo order in outbox.");
+      Print("Diagnostic safety rejection: order_count must remain zero.");
+      return false;
+   }
+
+   if(MathAbs(max_lot - EXPECTED_MAX_LOT) > 0.0000001)
+   {
+      Print("Diagnostic safety rejection: max_lot must remain 0.01.");
       return false;
    }
 
    return true;
 }
 
-bool ExecuteDemoOrder(string order_json)
-{
-   string signal_id = JsonString(order_json, "signal_id", "");
-   string symbol = JsonString(order_json, "symbol_mt5", "");
-   if(symbol == "")
-      symbol = JsonString(order_json, "symbol", "");
-
-   string order_type = JsonString(order_json, "order_type", "");
-   double lot = JsonDouble(order_json, "lot", 0.0);
-   double sl = JsonDouble(order_json, "stop_loss", 0.0);
-   double tp = JsonDouble(order_json, "take_profit", 0.0);
-
-   bool order_demo_only = JsonBool(order_json, "demo_only", false);
-   bool order_live_allowed = JsonBool(order_json, "live_allowed", true);
-
-   if(signal_id == "")
-   {
-      Print("Skip order: signal_id missing.");
-      return false;
-   }
-
-   if(WasExecuted(signal_id))
-   {
-      Print("Skip duplicate signal: ", signal_id);
-      return false;
-   }
-
-   if(symbol == "" || !SymbolSelect(symbol, true))
-   {
-      Print("Skip order: symbol unavailable: ", symbol);
-      return false;
-   }
-
-   if(order_demo_only != true)
-   {
-      Print("Skip order: order demo_only is not true. Signal=", signal_id);
-      return false;
-   }
-
-   if(order_live_allowed == true)
-   {
-      Print("Skip order: order live_allowed is true. Signal=", signal_id);
-      return false;
-   }
-
-   if(order_type != "BUY" && order_type != "SELL")
-   {
-      Print("Skip order: invalid order_type=", order_type, " signal=", signal_id);
-      return false;
-   }
-
-   double safe_lot = NormalizeLot(symbol, lot);
-   if(safe_lot <= 0.0)
-   {
-      Print("Skip order: invalid safe lot. requested=", lot, " signal=", signal_id);
-      return false;
-   }
-
-   if(InpOnePositionPerSymbol && HasOpenPositionForSymbol(symbol))
-   {
-      Print("Skip order: existing position for symbol ", symbol, " signal=", signal_id);
-      return false;
-   }
-
-   trade.SetExpertMagicNumber(InpMagicNumber);
-   trade.SetDeviationInPoints(InpDeviationPoints);
-
-   bool result = false;
-   string comment = "AI_SCALPER_DEMO";
-
-   if(order_type == "BUY")
-      result = trade.Buy(safe_lot, symbol, 0.0, sl, tp, comment);
-
-   if(order_type == "SELL")
-      result = trade.Sell(safe_lot, symbol, 0.0, sl, tp, comment);
-
-   if(result)
-   {
-      MarkExecuted(signal_id);
-      Print("DEMO order executed: ", signal_id, " ", symbol, " ", order_type, " lot=", safe_lot);
-      return true;
-   }
-
-   Print("OrderSend failed: signal=", signal_id, " retcode=", trade.ResultRetcode(), " desc=", trade.ResultRetcodeDescription());
-   return false;
-}
-
-void ProcessOutbox()
+void InspectOutbox()
 {
    string json = ReadWholeFile(InpOutboxFileName);
    if(json == "")
       return;
 
-   if(!ValidateOutboxRoot(json))
+   if(!ValidateLockedDiagnosticState(json))
       return;
 
-   string orders_content = ExtractArrayContent(json, "orders");
-   if(orders_content == "")
-   {
-      Print("No orders array content.");
-      return;
-   }
-
-   int pos = 0;
-   while(pos < StringLen(orders_content))
-   {
-      string object_json = ExtractNextObject(orders_content, pos);
-      if(object_json == "")
-         break;
-
-      ExecuteDemoOrder(object_json);
-   }
+   Print(
+      "AI_SCALPER legacy diagnostic state verified: ",
+      "safe_to_demo_auto_order=false, live_allowed=false, order_count=0. ",
+      "This reader cannot transmit orders."
+   );
 }
 
-//+------------------------------------------------------------------+
-//| Expert lifecycle                                                 |
-//+------------------------------------------------------------------+
 int OnInit()
 {
-   Print("AI_SCALPER Demo Bridge Reader initialized.");
-   Print("Demo only: ", InpDemoOnly, " | Max lot: ", InpMaxLot, " | File: ", InpOutboxFileName);
+   int interval = InpCheckIntervalSeconds;
+   if(interval < 1)
+      interval = 1;
 
-   if(InpDemoOnly && !IsDemoAccount())
-   {
-      Print("Safety warning: attached account is not DEMO. EA will refuse execution.");
-   }
-
-   trade.SetExpertMagicNumber(InpMagicNumber);
-   EventSetTimer(InpCheckIntervalSeconds);
+   Print("AI_SCALPER inert legacy diagnostic reader initialized.");
+   Print("Broker-order capability is not compiled into this source.");
+   EventSetTimer(interval);
    return INIT_SUCCEEDED;
 }
 
 void OnDeinit(const int reason)
 {
    EventKillTimer();
-   Print("AI_SCALPER Demo Bridge Reader stopped.");
+   Print("AI_SCALPER inert legacy diagnostic reader stopped.");
 }
 
 void OnTick()
 {
-   // Timer handles file polling.
+   // Intentionally empty. Diagnostics are read by the timer only.
 }
 
 void OnTimer()
 {
-   ProcessOutbox();
+   InspectOutbox();
 }

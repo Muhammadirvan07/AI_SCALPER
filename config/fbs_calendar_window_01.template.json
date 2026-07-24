@@ -1,0 +1,63 @@
+{
+  "schema_version": "broker-calendar-plan-template-v1",
+  "candidate_id": "fbs",
+  "broker_legal_name": "FBS Markets Inc.",
+  "broker_server": "FBS-Demo",
+  "operating_jurisdiction": "JP",
+  "broker_symbols": {
+    "XAUUSD": "XAUUSD",
+    "EURUSD": "EURUSD",
+    "USDJPY": "USDJPY",
+    "AUDUSD": "AUDUSD"
+  },
+  "server_timezone": "Etc/GMT-3",
+  "calendar_version": "fbs-window-01-v1",
+  "observation_start_at_utc": "2026-07-26T22:00:00Z",
+  "blind_until_utc": "2026-09-21T21:00:00Z",
+  "expected_complete_sessions": 40,
+  "validation_profile": "DIAGNOSTIC",
+  "execution_enabled": false,
+  "live_allowed": false,
+  "safe_to_demo_auto_order": false,
+  "max_lot": 0.01,
+  "weekly_m15_sessions": {
+    "AUDUSD": [
+      {"weekday": 0, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 1, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 2, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 3, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 4, "open_local": "01:00", "close_local": "23:45"}
+    ],
+    "EURUSD": [
+      {"weekday": 0, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 1, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 2, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 3, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 4, "open_local": "01:00", "close_local": "23:45"}
+    ],
+    "USDJPY": [
+      {"weekday": 0, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 1, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 2, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 3, "open_local": "01:00", "close_local": "23:45"},
+      {"weekday": 4, "open_local": "01:00", "close_local": "23:45"}
+    ],
+    "XAUUSD": [
+      {"weekday": 0, "open_local": "01:15", "close_local": "23:45"},
+      {"weekday": 1, "open_local": "01:15", "close_local": "23:45"},
+      {"weekday": 2, "open_local": "01:15", "close_local": "23:45"},
+      {"weekday": 3, "open_local": "01:15", "close_local": "23:45"},
+      {"weekday": 4, "open_local": "01:15", "close_local": "23:45"}
+    ]
+  },
+  "special_hours_review": {
+    "attested": false,
+    "source": "PENDING_OFFICIAL_FBS_HOLIDAY_AND_SESSION_REVIEW",
+    "source_published_date": null,
+    "source_last_updated_date": null,
+    "covered_through_server_date": "2026-09-22",
+    "affected_required_symbols": [],
+    "registered_closures": [],
+    "review_note": "Weekly M15 windows are conservative screenshot-derived scaffolding only. Registration remains disabled until exact official session and holiday attestation is completed."
+  }
+}

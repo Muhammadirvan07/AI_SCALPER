@@ -58,10 +58,15 @@ def _normalize_ohlc(df: pd.DataFrame) -> pd.DataFrame:
     return data.reset_index(drop=True)
 
 
-def get_market_context(df: pd.DataFrame, symbol: str = "UNKNOWN") -> dict:
+def get_market_context(
+    df: pd.DataFrame,
+    symbol: str = "UNKNOWN",
+    *,
+    timeframe: str = "M15",
+) -> dict:
     data = _normalize_ohlc(df)
     symbol = normalize_symbol(symbol)
-    profile = get_strategy_profile(symbol)
+    profile = get_strategy_profile(symbol, timeframe=timeframe)
 
     close = data["Close"]
     high = data["High"]
@@ -78,7 +83,9 @@ def get_market_context(df: pd.DataFrame, symbol: str = "UNKNOWN") -> dict:
 
     current_price = float(close.iloc[-1])
     current_atr = float(atr.iloc[-1])
-    atr_median = float(atr.tail(100).median())
+    # Keep the runtime selector on the same trailing ATR baseline used by the
+    # regime detector and replay validator.
+    atr_median = float(atr.tail(200).median())
     atr_ratio = current_atr / atr_median if atr_median > 0 else 0.0
 
     candle_range = float(high.iloc[-1] - low.iloc[-1])
@@ -117,6 +124,7 @@ def get_market_context(df: pd.DataFrame, symbol: str = "UNKNOWN") -> dict:
         "ema_trend_down": bool(ema20.iloc[-1] < ema50.iloc[-1] < ema200.iloc[-1]),
         "market_regime": str(regime_result.get("regime", "NO_TRADE")),
         "regime_confidence": int(regime_result.get("confidence", 0) or 0),
+        "regime_direction": str(regime_result.get("direction", "NEUTRAL")),
         "regime_trade_allowed": bool(regime_result.get("trade_allowed", False)),
         "regime_reason": str(regime_result.get("reason", "")),
         "symbol": symbol,
@@ -145,11 +153,13 @@ def _result(
     score: int,
     reasons: list[str],
     eligible: bool,
+    score_components: dict | None = None,
 ) -> dict:
     return {
         "strategy": strategy,
         "signal": signal,
         "score": int(score),
+        "score_components": score_components or {},
         "reasons": reasons,
         "eligible": bool(eligible),
     }
@@ -222,20 +232,36 @@ def breakout_strategy(df: pd.DataFrame, context: dict, profile) -> dict:
             reasons.append("no buffered Donchian break")
         return _result("BREAKOUT", signal, 0, reasons, eligible)
 
-    score = 2
+    score_components = {
+        "buffered_breakout": {"passed": True, "points": 2},
+        "regime_alignment": {"passed": True, "points": 1},
+        "stable_atr": {"passed": True, "points": 1},
+        "strong_adx": {
+            "passed": context["adx"] >= profile.min_breakout_adx + 4,
+            "points": int(context["adx"] >= profile.min_breakout_adx + 4),
+        },
+        "strong_body": {
+            "passed": context["candle_body_ratio"] >= 0.60,
+            "points": int(context["candle_body_ratio"] >= 0.60),
+        },
+    }
+    score = sum(component["points"] for component in score_components.values())
     reasons.append("buffered 20-candle breakout confirmed")
-    score += 1
     reasons.append(f"{context['market_regime']} regime supports breakout")
-    score += 1
     reasons.append("ATR regime is stable")
-    if context["adx"] >= profile.min_breakout_adx + 4:
-        score += 1
+    if score_components["strong_adx"]["passed"]:
         reasons.append("ADX has strong confirmation")
-    if context["candle_body_ratio"] >= 0.60:
-        score += 1
+    if score_components["strong_body"]["passed"]:
         reasons.append("breakout candle closes with a strong body")
 
-    return _result("BREAKOUT", signal, score, reasons, eligible)
+    return _result(
+        "BREAKOUT",
+        signal,
+        score,
+        reasons,
+        eligible,
+        score_components,
+    )
 
 
 def mean_reversion_strategy(df: pd.DataFrame, context: dict, profile) -> dict:
@@ -272,6 +298,11 @@ def mean_reversion_strategy(df: pd.DataFrame, context: dict, profile) -> dict:
             reasons.append("RSI and Bollinger extreme are not aligned")
         return _result("MEAN_REVERSION", signal, 0, reasons, eligible)
 
+    score_components = {
+        "rsi_extreme": {"passed": True, "points": 2},
+        "bollinger_edge": {"passed": True, "points": 2},
+        "confirmed_range": {"passed": True, "points": 2},
+    }
     reasons.extend(
         [
             "RSI extreme confirmed",
@@ -279,7 +310,14 @@ def mean_reversion_strategy(df: pd.DataFrame, context: dict, profile) -> dict:
             "low-ADX RANGE regime confirmed",
         ]
     )
-    return _result("MEAN_REVERSION", signal, 6, reasons, eligible)
+    return _result(
+        "MEAN_REVERSION",
+        signal,
+        sum(component["points"] for component in score_components.values()),
+        reasons,
+        eligible,
+        score_components,
+    )
 
 
 def momentum_pullback_strategy(df: pd.DataFrame, context: dict, profile) -> dict:
@@ -293,22 +331,30 @@ def momentum_pullback_strategy(df: pd.DataFrame, context: dict, profile) -> dict
     adx_quality = context["adx"] >= profile.min_momentum_adx
     touch_distance = profile.pullback_touch_atr * context["atr"]
 
-    buy_setup = (
-        context["ema20"] > context["ema50"]
+    buy_direction = (
+        context["ema20"] > context["ema50"] > context["ema200"]
         and context["ema50_slope"] > 0
-        and context["low"] <= context["ema20"] + touch_distance
+        and context.get("regime_direction", "NEUTRAL") == "UP"
+    )
+    sell_direction = (
+        context["ema20"] < context["ema50"] < context["ema200"]
+        and context["ema50_slope"] < 0
+        and context.get("regime_direction", "NEUTRAL") == "DOWN"
+    )
+    buy_rejection = (
+        abs(context["low"] - context["ema20"]) <= touch_distance
         and context["price"] > context["ema20"]
         and context["price"] > context["open"]
-        and 48 <= context["rsi"] <= 68
     )
-    sell_setup = (
-        context["ema20"] < context["ema50"]
-        and context["ema50_slope"] < 0
-        and context["high"] >= context["ema20"] - touch_distance
+    sell_rejection = (
+        abs(context["high"] - context["ema20"]) <= touch_distance
         and context["price"] < context["ema20"]
         and context["price"] < context["open"]
-        and 32 <= context["rsi"] <= 52
     )
+    buy_rsi = 48 <= context["rsi"] <= 68
+    sell_rsi = 32 <= context["rsi"] <= 52
+    buy_setup = buy_direction and buy_rejection and buy_rsi
+    sell_setup = sell_direction and sell_rejection and sell_rsi
 
     signal = "SIDEWAYS"
     if eligible and trend_regime and atr_quality and adx_quality:
@@ -330,29 +376,64 @@ def momentum_pullback_strategy(df: pd.DataFrame, context: dict, profile) -> dict
             reasons.append("EMA touch/rejection and RSI are not aligned")
         return _result("MOMENTUM_PULLBACK", signal, 0, reasons, eligible)
 
-    score = 5
+    direction_alignment = buy_direction if signal == "BUY" else sell_direction
+    bounded_rejection = buy_rejection if signal == "BUY" else sell_rejection
+    rsi_confirmation = buy_rsi if signal == "BUY" else sell_rsi
+    score_components = {
+        "bounded_pullback_rejection": {
+            "passed": bool(bounded_rejection),
+            "points": 2 if bounded_rejection else 0,
+        },
+        "direction_alignment": {
+            "passed": bool(direction_alignment),
+            "points": 1 if direction_alignment else 0,
+        },
+        "rsi_confirmation": {
+            "passed": bool(rsi_confirmation),
+            "points": 1 if rsi_confirmation else 0,
+        },
+        "strong_adx": {
+            "passed": context["adx"] >= profile.min_momentum_adx + 4,
+            "points": int(context["adx"] >= profile.min_momentum_adx + 4),
+        },
+        "strong_body": {
+            "passed": context["candle_body_ratio"] >= 0.55,
+            "points": int(context["candle_body_ratio"] >= 0.55),
+        },
+    }
+    score = sum(component["points"] for component in score_components.values())
     reasons.extend(
         [
-            "EMA20 pullback rejection confirmed",
-            "EMA50 slope confirms direction",
+            "bounded EMA20 pullback rejection confirmed",
+            "EMA stack, slope, and regime direction align",
             "TREND regime and ADX confirm continuation",
             "ATR regime is stable",
         ]
     )
-    if context["candle_body_ratio"] >= 0.55:
-        score += 1
+    if score_components["strong_adx"]["passed"]:
+        reasons.append("ADX has strong continuation confirmation")
+    if score_components["strong_body"]["passed"]:
         reasons.append("rejection candle body is strong")
 
-    return _result("MOMENTUM_PULLBACK", signal, score, reasons, eligible)
+    return _result(
+        "MOMENTUM_PULLBACK",
+        signal,
+        score,
+        reasons,
+        eligible,
+        score_components,
+    )
 
 
 def evaluate_strategies(
     df: pd.DataFrame,
     symbol: str = "UNKNOWN",
+    *,
+    timeframe: str = "M15",
 ) -> tuple[list[dict], dict]:
     symbol = normalize_symbol(symbol)
-    context = get_market_context(df, symbol=symbol)
-    profile = get_strategy_profile(symbol)
+    context = get_market_context(df, symbol=symbol, timeframe=timeframe)
+    profile = get_strategy_profile(symbol, timeframe=timeframe)
 
     strategy_results = [
         trend_following_strategy(df, context, symbol=symbol),
@@ -370,19 +451,47 @@ def _no_strategy_result(reason: str, context: dict | None = None) -> dict:
         "signal": "SIDEWAYS",
         "strategy": "NO_STRATEGY",
         "score": 0,
+        "score_components": {},
         "market_regime": context.get("market_regime", "NO_TRADE"),
         "volatility_percent": context.get("volatility_percent", 0.0),
         "all_strategies": context.get("all_strategies", []),
         "reasons": [reason],
+        "decision_context": _decision_context(context),
     }
 
 
-def select_best_strategy(df: pd.DataFrame, symbol: str = "UNKNOWN") -> dict:
+def _decision_context(context: dict) -> dict:
+    """Return stable, non-authoritative diagnostics for runtime explanation."""
+
+    keys = (
+        "price",
+        "atr",
+        "adx",
+        "rsi",
+        "atr_ratio",
+        "candle_body_ratio",
+        "regime_confidence",
+        "regime_direction",
+        "regime_trade_allowed",
+    )
+    return {key: context.get(key) for key in keys}
+
+
+def select_best_strategy(
+    df: pd.DataFrame,
+    symbol: str = "UNKNOWN",
+    *,
+    timeframe: str = "M15",
+) -> dict:
     symbol = normalize_symbol(symbol)
-    profile = get_strategy_profile(symbol)
+    profile = get_strategy_profile(symbol, timeframe=timeframe)
 
     try:
-        strategy_results, context = evaluate_strategies(df, symbol=symbol)
+        strategy_results, context = evaluate_strategies(
+            df,
+            symbol=symbol,
+            timeframe=timeframe,
+        )
     except (TypeError, ValueError, KeyError, IndexError) as exc:
         return _no_strategy_result(f"strategy input rejected: {exc}")
 
@@ -422,6 +531,7 @@ def select_best_strategy(df: pd.DataFrame, symbol: str = "UNKNOWN") -> dict:
             "signal": "SIDEWAYS",
             "strategy": "LOW_SCORE",
             "score": best_result["score"],
+            "score_components": best_result.get("score_components", {}),
             "market_regime": context["market_regime"],
             "volatility_percent": context["volatility_percent"],
             "all_strategies": strategy_results,
@@ -429,14 +539,17 @@ def select_best_strategy(df: pd.DataFrame, symbol: str = "UNKNOWN") -> dict:
                 f"best strategy score {best_result['score']} below "
                 f"{symbol} minimum {profile.min_strategy_score}"
             ],
+            "decision_context": _decision_context(context),
         }
 
     return {
         "signal": best_result["signal"],
         "strategy": best_result["strategy"],
         "score": best_result["score"],
+        "score_components": best_result.get("score_components", {}),
         "market_regime": context["market_regime"],
         "volatility_percent": context["volatility_percent"],
         "all_strategies": strategy_results,
         "reasons": best_result["reasons"],
+        "decision_context": _decision_context(context),
     }

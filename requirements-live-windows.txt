@@ -1,0 +1,8 @@
+# Windows x86-64 / CPython 3.12 runtime only.
+# Development-only data sources (including yfinance/Yahoo) must not enter this
+# release manifest. Keep this file hash-bound to every release.
+numpy==2.5.1
+pandas==2.3.3
+ta==0.11.0
+MetaTrader5==5.0.5735
+keyring==25.7.0

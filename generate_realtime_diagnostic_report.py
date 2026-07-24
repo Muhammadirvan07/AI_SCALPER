@@ -1,0 +1,149 @@
+"""CLI for a read-only AI_SCALPER realtime diagnostic performance report."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import tempfile
+from typing import Callable, Mapping, Sequence
+
+from live_runtime.diagnostic_report import (
+    DiagnosticReportError,
+    build_diagnostic_report,
+    build_phillip_diagnostic_report,
+)
+
+
+REPO_ROOT = Path(__file__).resolve().parent
+DEFAULT_DIAGNOSTIC_ROOT = REPO_ROOT / "runtime_state" / "diagnostic"
+
+
+def _diagnostic_report_paths(
+    candidate_id: str,
+    *,
+    root: Path = DEFAULT_DIAGNOSTIC_ROOT,
+    artifact_tag: str = "real-market",
+) -> tuple[Path, Path]:
+    normalized = str(candidate_id or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", normalized):
+        raise DiagnosticReportError("candidate id is invalid for artifact isolation")
+    normalized_tag = str(artifact_tag or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,47}", normalized_tag):
+        raise DiagnosticReportError("diagnostic artifact tag is invalid")
+    prefix = f"{normalized}-{normalized_tag}"
+    return root / f"{prefix}.sqlite3", root / f"{prefix}-performance.json"
+
+
+def _report_builder(
+    candidate_id: str,
+    artifact_tag: str,
+) -> tuple[Callable[..., dict[str, object]], dict[str, str]]:
+    normalized_candidate = str(candidate_id or "").strip().lower()
+    normalized_tag = str(artifact_tag or "").strip().lower()
+    phillip_contracts = {
+        ("phillip-fx", "fx-real-market"): "fx",
+        ("phillip-commodity", "commodity-real-market"): "commodity",
+    }
+    lane = phillip_contracts.get((normalized_candidate, normalized_tag))
+    if lane is not None:
+        return build_phillip_diagnostic_report, {"lane": lane}
+    if normalized_candidate.startswith("phillip-") or normalized_tag in {
+        "fx-real-market",
+        "commodity-real-market",
+    }:
+        raise DiagnosticReportError(
+            "diagnostic candidate and artifact tag do not form an approved lane"
+        )
+    return build_diagnostic_report, {}
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Build a read-only, non-promotional performance report from the "
+            "realtime diagnostic journal"
+        )
+    )
+    parser.add_argument("--candidate", default="fbs")
+    parser.add_argument(
+        "--artifact-tag",
+        choices=("real-market", "fx-real-market", "commodity-real-market"),
+        default="real-market",
+        help="Select the isolated broker lane journal",
+    )
+    parser.add_argument("--database", type=Path)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--acknowledge-diagnostic-only",
+        action="store_true",
+        help="Confirm that this report cannot enable demo-auto or live trading",
+    )
+    return parser
+
+
+def _write_report(report: Mapping[str, object], output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            prefix=f".{output.name}.",
+            suffix=".tmp",
+            dir=output.parent,
+            delete=False,
+        ) as temporary:
+            temporary_name = temporary.name
+            temporary.write(payload)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(temporary_name, output)
+        temporary_name = None
+    finally:
+        if temporary_name is not None:
+            Path(temporary_name).unlink(missing_ok=True)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    if not args.acknowledge_diagnostic_only:
+        raise DiagnosticReportError("--acknowledge-diagnostic-only is required")
+    default_database, default_output = _diagnostic_report_paths(
+        args.candidate,
+        artifact_tag=args.artifact_tag,
+    )
+    database = args.database or default_database
+    output = args.output or default_output
+    if database.resolve() == output.resolve():
+        raise DiagnosticReportError("report output cannot replace the journal")
+    builder, builder_kwargs = _report_builder(args.candidate, args.artifact_tag)
+    report = builder(database, **builder_kwargs)
+    _write_report(report, output)
+    overall = report["overall"]
+    if not isinstance(overall, Mapping):
+        raise DiagnosticReportError("generated report metrics are unavailable")
+    print(f"Diagnostic performance report written: {output}")
+    print(f"Closed trades: {overall['closed_trades']}")
+    print(f"Net R: {overall['net_r']}")
+    print(f"Sample status: {report['sample_assessment']['status']}")
+    print("Promotion evidence: DISABLED")
+    print("Broker mutation capability: DISABLED")
+    return 0
+
+
+def cli_entrypoint(argv: Sequence[str] | None = None) -> int:
+    try:
+        return main(argv)
+    except (DiagnosticReportError, OSError) as exc:
+        print(f"DIAGNOSTIC_REPORT_REJECTED: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli_entrypoint())

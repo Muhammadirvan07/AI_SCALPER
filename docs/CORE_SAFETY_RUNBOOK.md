@@ -5,9 +5,11 @@
 Use this runbook to verify the execution boundary after changes to the decision
 engine, paper executor, MT5 bridge, dry-run executor, or readiness evaluator.
 
-The safety baseline is fixed:
+The checked-in safety baseline is fixed:
 
-- execution-approved symbol: `EURUSD`
+- legacy, dry-run, and paper execution scope: `EURUSD`
+- controlled manual-demo execution scope: `EURUSD`, `XAUUSD`
+- dormant `DEMO_AUTO` and future live-canary symbol scope: `XAUUSD`
 - blocked symbol: `GBPUSD`
 - shadow-only symbol: `BTCUSD`
 - minimum and maximum lot: `0.01`
@@ -51,17 +53,33 @@ python -c 'import decision_engine as engine; engine.UPDATE_DATA_BEFORE_DECISION 
 - decision status remains `WAIT` while Phase4R or quality guards are active
 - `mt5_trade_signals.json` contains `order_count: 0` unless an EURUSD setup
   passes every upstream guard
+- XAUUSD passes only the mode-specific `DEMO_AUTO`/`LIVE` symbol-scope check;
+  both modes still fail the independent checked-in central lock
 - `bridge_status.json` contains `live_allowed: false`
 - `mt5_demo_bridge_outbox.json` contains `safe_to_demo_auto_order: false`
-- no GBPUSD or BTCUSD order reaches the MT5 payload boundary
+- no GBPUSD or BTCUSD order reaches any MT5 payload boundary
+- no XAUUSD order reaches the legacy/dry-run/paper MT5 payload boundary
+- manual-demo XAUUSD reaches MT5 only with exact permit, one-second arm,
+  signed per-intent approval, risk, preflight, journal, and reconciliation
 - no lot above `0.01` reaches the MT5 payload boundary
+
+All JSON files created in the repository root are untracked legacy runtime
+state, reports, or drafts. Their absence in a clean checkout is valid and must
+fail closed; run the relevant diagnostic to create a fresh local copy. Never
+add those files back to Git. Immutable JSON configuration belongs under
+`config/`, while live-grade state belongs under `runtime_state/` or the
+external evidence store.
 
 ## Stop conditions
 
 Stop the pipeline and investigate if any of these occur:
 
 - live or demo auto-order becomes enabled
-- a non-EURUSD symbol appears in an MT5-ready payload
+- a non-EURUSD symbol appears in a legacy/dry-run/paper MT5-ready payload
+- USDJPY, AUDUSD, GBPUSD, or crypto appears in a manual-demo MT5-ready payload
+- an EURUSD, USDJPY, or AUDUSD symbol passes a `DEMO_AUTO`/`LIVE`
+  execution-symbol boundary
+- any `DEMO_AUTO` or `LIVE` order is submitted while its central lock is false
 - order lot differs from `0.01`
 - symbol and `symbol_mt5` do not match
 - entry, stop loss, or take profit is missing, non-finite, or directionally invalid

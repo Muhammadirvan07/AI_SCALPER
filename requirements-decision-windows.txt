@@ -1,0 +1,5 @@
+# Windows x86-64 / CPython 3.12 decision-process runtime only.
+# Broker SDKs, credential stores, and execution dependencies are forbidden.
+numpy==2.5.1
+pandas==2.3.3
+ta==0.11.0

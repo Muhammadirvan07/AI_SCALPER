@@ -27,6 +27,8 @@ from typing import Dict, Any, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from ta.trend import ADXIndicator, EMAIndicator
+from ta.volatility import AverageTrueRange, BollingerBands
 
 from market_data_quality import keep_completed_candles
 
@@ -68,6 +70,7 @@ BB_CHOPPY_RATIO = 0.80
 
 CANDLE_BODY_MIN_RATIO = 0.30
 CANDLE_WICK_SPIKE_MAX_RATIO = 3.0
+MIN_TRADEABLE_DIRECTIONAL_CONFIDENCE = 3
 
 
 # Strategy compatibility.
@@ -97,6 +100,8 @@ class RegimeResult:
     ema_slow: float
     ema_distance_percent: float
     ema_slope_percent: float
+    ema_slope_signed_percent: float
+    direction: str
     bb_width_percent: float
     bb_width_median: float
     candle_body_ratio: float
@@ -168,54 +173,21 @@ def normalize_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
 # ============================================================
 
 def calculate_atr(df: pd.DataFrame, period: int = DEFAULT_ATR_PERIOD) -> pd.Series:
-    high = df["High"]
-    low = df["Low"]
-    close = df["Close"]
-
-    prev_close = close.shift(1)
-
-    tr = pd.concat(
-        [
-            high - low,
-            (high - prev_close).abs(),
-            (low - prev_close).abs(),
-        ],
-        axis=1,
-    ).max(axis=1)
-
-    return tr.rolling(period).mean()
+    return AverageTrueRange(
+        high=df["High"],
+        low=df["Low"],
+        close=df["Close"],
+        window=period,
+    ).average_true_range()
 
 
 def calculate_adx(df: pd.DataFrame, period: int = DEFAULT_ADX_PERIOD) -> pd.Series:
-    high = df["High"]
-    low = df["Low"]
-    close = df["Close"]
-
-    plus_dm = high.diff()
-    minus_dm = -low.diff()
-
-    plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0.0)
-    minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0.0)
-
-    prev_close = close.shift(1)
-    tr = pd.concat(
-        [
-            high - low,
-            (high - prev_close).abs(),
-            (low - prev_close).abs(),
-        ],
-        axis=1,
-    ).max(axis=1)
-
-    atr = tr.rolling(period).mean()
-
-    plus_di = 100 * (plus_dm.rolling(period).mean() / atr.replace(0, np.nan))
-    minus_di = 100 * (minus_dm.rolling(period).mean() / atr.replace(0, np.nan))
-
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
-    adx = dx.rolling(period).mean()
-
-    return adx.fillna(0)
+    return ADXIndicator(
+        high=df["High"],
+        low=df["Low"],
+        close=df["Close"],
+        window=period,
+    ).adx()
 
 
 def calculate_bollinger_width(
@@ -224,44 +196,29 @@ def calculate_bollinger_width(
     std_mult: float = DEFAULT_BB_STD,
 ) -> pd.Series:
     close = df["Close"]
-    ma = close.rolling(period).mean()
-    std = close.rolling(period).std()
-
-    upper = ma + std_mult * std
-    lower = ma - std_mult * std
-
-    width = (upper - lower) / close.replace(0, np.nan) * 100
-    return width.fillna(0)
+    bollinger = BollingerBands(
+        close=close,
+        window=period,
+        window_dev=std_mult,
+    )
+    return (
+        (bollinger.bollinger_hband() - bollinger.bollinger_lband())
+        / close.replace(0, np.nan)
+        * 100.0
+    )
 
 
 def calculate_ema(series: pd.Series, period: int) -> pd.Series:
-    return series.ewm(span=period, adjust=False).mean()
+    return EMAIndicator(close=series, window=period).ema_indicator()
 
 
 def calculate_candle_quality(df: pd.DataFrame) -> Tuple[float, float]:
-    # Incomplete candles are removed before this function is called, so start
-    # with the latest completed bar and only walk backward across doji bars.
+    # The decision is about the latest finalized bar.  Falling back to an older
+    # non-doji candle makes runtime and replay evaluate different events.
     if df is None or df.empty:
         return 0.0, 999.0
 
-    lookback = min(6, len(df))
-
-    selected = None
-    for i in range(1, lookback + 1):
-        candle = df.iloc[-i]
-
-        candle_range = abs(float(candle["High"]) - float(candle["Low"]))
-        body = abs(float(candle["Close"]) - float(candle["Open"]))
-
-        if candle_range > 0:
-            body_ratio = body / candle_range
-            if body_ratio >= 0.10:
-                selected = candle
-                break
-
-    # Fallback: use the latest completed candle if recent bars are flat/doji.
-    if selected is None:
-        selected = df.iloc[-1]
+    selected = df.iloc[-1]
 
     candle_range = abs(float(selected["High"]) - float(selected["Low"]))
     body = abs(float(selected["Close"]) - float(selected["Open"]))
@@ -321,6 +278,8 @@ def detect_market_regime(
             ema_slow=0.0,
             ema_distance_percent=0.0,
             ema_slope_percent=0.0,
+            ema_slope_signed_percent=0.0,
+            direction="NEUTRAL",
             bb_width_percent=0.0,
             bb_width_median=0.0,
             candle_body_ratio=0.0,
@@ -343,6 +302,8 @@ def detect_market_regime(
             ema_slow=0.0,
             ema_distance_percent=0.0,
             ema_slope_percent=0.0,
+            ema_slope_signed_percent=0.0,
+            direction="NEUTRAL",
             bb_width_percent=0.0,
             bb_width_median=0.0,
             candle_body_ratio=0.0,
@@ -374,7 +335,22 @@ def detect_market_regime(
     ema_distance_percent = abs(ema_fast - ema_slow) / last_close * 100 if last_close > 0 else 0.0
 
     ema_fast_prev = float(ema_fast_series.iloc[-6]) if len(ema_fast_series) >= 6 else ema_fast
-    ema_slope_percent = abs(ema_fast - ema_fast_prev) / last_close * 100 if last_close > 0 else 0.0
+    ema_slope_signed_percent = (
+        (ema_fast - ema_fast_prev) / last_close * 100 if last_close > 0 else 0.0
+    )
+    ema_slope_percent = abs(ema_slope_signed_percent)
+    if (
+        ema_fast > ema_slow
+        and ema_slope_signed_percent >= EMA_SLOPE_MIN_PERCENT
+    ):
+        direction = "UP"
+    elif (
+        ema_fast < ema_slow
+        and ema_slope_signed_percent <= -EMA_SLOPE_MIN_PERCENT
+    ):
+        direction = "DOWN"
+    else:
+        direction = "NEUTRAL"
 
     bb_width_now = float(bb_width_series.iloc[-1]) if not pd.isna(bb_width_series.iloc[-1]) else 0.0
     bb_width_median = float(bb_width_series.rolling(200, min_periods=30).median().iloc[-1])
@@ -395,6 +371,7 @@ def detect_market_regime(
         "is_strong_trend_adx": adx_now >= ADX_STRONG_TREND_MIN,
         "is_ema_separated": ema_distance_percent >= EMA_DISTANCE_TREND_MIN_PERCENT,
         "is_ema_sloping": ema_slope_percent >= EMA_SLOPE_MIN_PERCENT,
+        "is_direction_aligned": direction != "NEUTRAL",
         "is_bb_expanding": bb_width_q75 > 0 and bb_width_now >= bb_width_q75,
         "is_bb_compressed": bb_width_median > 0 and bb_width_now < bb_width_median * BB_CHOPPY_RATIO,
         "is_weak_candle": candle_body_ratio < CANDLE_BODY_MIN_RATIO,
@@ -427,7 +404,12 @@ def detect_market_regime(
             f"Choppy market: ADX {adx_now:.2f} below {ADX_CHOPPY_MAX}, BB width compressed."
         )
 
-    elif flags["is_trending_adx"] and flags["is_ema_separated"] and flags["is_ema_sloping"]:
+    elif (
+        flags["is_trending_adx"]
+        and flags["is_ema_separated"]
+        and flags["is_ema_sloping"]
+        and flags["is_direction_aligned"]
+    ):
         regime = REGIME_TREND
         trade_allowed = True
         confidence = 4
@@ -467,6 +449,16 @@ def detect_market_regime(
         confidence = max(1, confidence - 1)
         reasons.append(f"Large wick/body ratio {wick_body_ratio:.2f}; confidence reduced.")
 
+    if (
+        regime in {REGIME_TREND, REGIME_BREAKOUT}
+        and confidence < MIN_TRADEABLE_DIRECTIONAL_CONFIDENCE
+    ):
+        trade_allowed = False
+        reasons.append(
+            "Directional confidence fell below the fail-closed trading floor "
+            f"{MIN_TRADEABLE_DIRECTIONAL_CONFIDENCE}."
+        )
+
     reason = " | ".join(reasons)
 
     return RegimeResult(
@@ -483,6 +475,8 @@ def detect_market_regime(
         ema_slow=round(ema_slow, 8),
         ema_distance_percent=round(ema_distance_percent, 6),
         ema_slope_percent=round(ema_slope_percent, 6),
+        ema_slope_signed_percent=round(ema_slope_signed_percent, 6),
+        direction=direction,
         bb_width_percent=round(bb_width_now, 6),
         bb_width_median=round(bb_width_median, 6),
         candle_body_ratio=round(candle_body_ratio, 4),

@@ -1,0 +1,511 @@
+{
+  "schema_version": "broker-candidate-plan-v1",
+  "status": "PHILLIP_JAPAN_DUAL_SHADOW_ACTIVE_EVIDENCE_DISCOVERY_PREPARED",
+  "execution_enabled": false,
+  "credentials_allowed": false,
+  "operational_priority": {
+    "selected_target_broker": "phillip",
+    "selected_target_bindings": ["phillip-fx", "phillip-commodity"],
+    "preflight_allowed_bindings": ["fbs", "phillip-fx", "phillip-commodity"],
+    "primary_shadow_broker": "fbs",
+    "standby_preparation_broker": "finex",
+    "deferred_benchmark_brokers": []
+  },
+  "required_symbols": ["XAUUSD", "EURUSD", "USDJPY", "AUDUSD"],
+  "minimum_sessions_per_candidate": 20,
+  "candidates": [
+    {
+      "candidate_id": "phillip-fx",
+      "parent_broker_id": "phillip",
+      "display_name": "Phillip Securities Japan FX",
+      "role": "SELECTED_TARGET_PREPARATION",
+      "environment": "DEMO",
+      "binding_scope": "FX",
+      "server": "PhillipSecuritiesJP-PROD",
+      "account_type": "FX_DEMO",
+      "leverage": "25:1",
+      "broker_legal_name_observed": "Phillip Securities Japan, Ltd.",
+      "account_currency": "JPY",
+      "margin_mode_observed": 2,
+      "margin_mode_normalized": "RETAIL_HEDGING",
+      "server_time_model": {
+        "fixed_utc_offset": "+09:00",
+        "source": "PhillipSecuritiesJP-PROD MT5 AUDUSD.ps01, EURUSD.ps01, and USDJPY.ps01 runtime bar observation",
+        "source_status": "OPERATOR_RUNTIME_OBSERVED_DIAGNOSTIC_ONLY",
+        "observed_at_utc": "2026-07-21T09:33:54Z",
+        "offset_review_policy": "FAIL_CLOSED_ON_RUNTIME_ALIGNMENT_DRIFT",
+        "calendar_hash_status": "PENDING_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS"
+      },
+      "read_only_discovery_allowed": true,
+      "binding_status": "READ_ONLY_DISCOVERY_V3_APPROVED_REGISTRATION_GATES_REMAIN_BLOCKED",
+      "broker_symbols_observed": {
+        "AUDUSD": "AUDUSD.ps01",
+        "EURUSD": "EURUSD.ps01",
+        "USDJPY": "USDJPY.ps01"
+      },
+      "instrument_specification_status": "API_CAPTURE_PENDING",
+      "binding_probe_observation": {
+        "schema_version": "mt5-candidate-binding-probe-v1",
+        "status": "BINDING_READY",
+        "account_identifier_stored": false,
+        "account_name_stored": false,
+        "account_balance_stored": false,
+        "terminal_trade_allowed": false,
+        "terminal_tradeapi_disabled": true
+      },
+      "regulatory_observation": {
+        "entity": "Phillip Securities Japan, Ltd.",
+        "authority": "Japan Financial Services Agency",
+        "registration": "Kanto Finance Bureau (Kinsho) No. 127",
+        "verification_status": "OFFICIAL_JAPAN_REGISTRATION_OBSERVED",
+        "independent_registry_verification": true,
+        "independent_registry_sources": [
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/menkyo/menkyo.html",
+            "result": "REGISTERED_FINANCIAL_INSTRUMENTS_BUSINESS_OPERATOR"
+          },
+          {
+            "authority": "Phillip Securities Japan",
+            "url": "https://www.phillip.co.jp/company/outline.php",
+            "result": "COMPANY_REGISTRATION_DISCLOSURE"
+          }
+        ],
+        "japan_residency_eligibility": "VERIFIED_REGISTERED_BROKER_DEMO_ACCOUNT_OBSERVED",
+        "legal_eligible": true,
+        "decision": "DEMO_READ_ONLY_PREFLIGHT_ALLOWED_DISCOVERY_ORDER_AND_LIVE_REMAIN_BLOCKED"
+      },
+      "account_identifier_stored": false
+    },
+    {
+      "candidate_id": "phillip-commodity",
+      "parent_broker_id": "phillip",
+      "display_name": "Phillip Securities Japan Commodity CFD",
+      "role": "SELECTED_TARGET_PREPARATION",
+      "environment": "DEMO",
+      "binding_scope": "COMMODITY",
+      "server": "PhillipSecuritiesJP-PROD",
+      "account_type": "COMMODITY_CFD_DEMO",
+      "leverage": "20:1",
+      "broker_legal_name_observed": "Phillip Securities Japan, Ltd.",
+      "account_currency": "JPY",
+      "margin_mode_observed": 2,
+      "margin_mode_normalized": "RETAIL_HEDGING",
+      "server_time_model": {
+        "fixed_utc_offset": "+09:00",
+        "source": "PhillipSecuritiesJP-PROD MT5 XAUUSD.ps01 runtime bar observation",
+        "source_status": "OPERATOR_RUNTIME_OBSERVED_DIAGNOSTIC_ONLY",
+        "observed_at_utc": "2026-07-21T09:12:41Z",
+        "offset_review_policy": "FAIL_CLOSED_ON_RUNTIME_ALIGNMENT_DRIFT",
+        "calendar_hash_status": "PENDING_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS"
+      },
+      "read_only_discovery_allowed": true,
+      "binding_status": "READ_ONLY_DISCOVERY_V3_APPROVED_REGISTRATION_GATES_REMAIN_BLOCKED",
+      "broker_symbols_observed": {
+        "XAUUSD": "XAUUSD.ps01"
+      },
+      "instrument_specification_status": "API_CAPTURE_PENDING",
+      "binding_probe_observation": {
+        "schema_version": "mt5-candidate-binding-probe-v1",
+        "status": "BINDING_READY",
+        "account_identifier_stored": false,
+        "account_name_stored": false,
+        "account_balance_stored": false,
+        "terminal_trade_allowed": false,
+        "terminal_tradeapi_disabled": true
+      },
+      "regulatory_observation": {
+        "entity": "Phillip Securities Japan, Ltd.",
+        "authority": "Japan Financial Services Agency",
+        "registration": "Kanto Finance Bureau (Kinsho) No. 127",
+        "verification_status": "OFFICIAL_JAPAN_REGISTRATION_OBSERVED",
+        "independent_registry_verification": true,
+        "independent_registry_sources": [
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/menkyo/menkyo.html",
+            "result": "REGISTERED_FINANCIAL_INSTRUMENTS_BUSINESS_OPERATOR"
+          },
+          {
+            "authority": "Phillip Securities Japan",
+            "url": "https://www.phillip.co.jp/company/outline.php",
+            "result": "COMPANY_REGISTRATION_DISCLOSURE"
+          }
+        ],
+        "japan_residency_eligibility": "VERIFIED_REGISTERED_BROKER_DEMO_ACCOUNT_OBSERVED",
+        "legal_eligible": true,
+        "decision": "DEMO_READ_ONLY_PREFLIGHT_ALLOWED_DISCOVERY_ORDER_AND_LIVE_REMAIN_BLOCKED"
+      },
+      "account_identifier_stored": false
+    },
+    {
+      "candidate_id": "fbs",
+      "display_name": "FBS",
+      "role": "SELECTED_TARGET_PREPARATION",
+      "environment": "DEMO",
+      "server": "FBS-Demo",
+      "account_type": "DEMO_ACCOUNT_TYPE_UNATTESTED",
+      "leverage": "500:1",
+      "broker_legal_name_observed": "FBS Markets Inc.",
+      "account_currency": "USD",
+      "margin_mode_observed": 2,
+      "margin_mode_normalized": "RETAIL_HEDGING",
+      "server_time_model": {
+        "fixed_utc_offset": "+03:00",
+        "source": "FBS-Demo MT5 BTCUSD and ETHUSD runtime bar observation",
+        "source_status": "OPERATOR_RUNTIME_OBSERVED_DIAGNOSTIC_ONLY",
+        "observed_at_utc": "2026-07-18T12:05:00Z",
+        "offset_review_policy": "FAIL_CLOSED_ON_RUNTIME_ALIGNMENT_DRIFT",
+        "calendar_hash_status": "PENDING_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS"
+      },
+      "read_only_discovery_allowed": false,
+      "binding_status": "SANITIZED_BINDING_AND_PREFLIGHT_OBSERVED_DIAGNOSTIC_SHADOW_ACTIVE",
+      "broker_symbols_observed": {
+        "XAUUSD": "XAUUSD",
+        "EURUSD": "EURUSD",
+        "USDJPY": "USDJPY",
+        "AUDUSD": "AUDUSD"
+      },
+      "broker_crypto_symbols_observed": {
+        "BTCUSD": "BTCUSD",
+        "ETHUSD": "ETHUSD"
+      },
+      "broker_crypto_binding_status": "SANITIZED_BINDING_PROBE_COMPLETE",
+      "instrument_specification_status": "API_CAPTURE_PENDING",
+      "binding_probe_observation": {
+        "schema_version": "mt5-candidate-binding-probe-v1",
+        "status": "BINDING_READY",
+        "account_identifier_stored": false,
+        "account_name_stored": false,
+        "account_balance_stored": false,
+        "terminal_trade_allowed": false,
+        "terminal_tradeapi_disabled": true
+      },
+      "regulatory_observation": {
+        "entity": "FBS Markets Inc.",
+        "authority": "Japan Financial Services Agency",
+        "verification_status": "OFFICIAL_JFSA_UNREGISTERED_WARNING_OBSERVED_PROJECT_BLOCKED",
+        "independent_registry_verification": true,
+        "verified_at_utc": "2026-07-21T06:31:49Z",
+        "independent_registry_sources": [
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/ordinary/chuui/mutouroku/04.html",
+            "result": "FBS_MARKETS_INC_LISTED_AS_UNREGISTERED_OVERSEAS_OPERATOR_WARNING_ISSUED_2015_08"
+          },
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/menkyo/menkyo.html",
+            "result": "NO_PROJECT_BASIS_TO_TREAT_FBS_AS_REGISTERED_JAPAN_FINANCIAL_INSTRUMENTS_BUSINESS"
+          }
+        ],
+        "japan_residency_eligibility": "PROJECT_BLOCKED_OFFICIAL_JFSA_WARNING",
+        "indonesia_return_eligibility": "NO_BAPPEBTI_REGISTRATION_EVIDENCE_USE_REGULATED_LOCAL_PATH",
+        "legal_eligible": false,
+        "decision": "DIAGNOSTIC_PAPER_ONLY_BLOCK_DISCOVERY_EVIDENCE_ORDER_AND_LIVE_WHILE_IN_JAPAN"
+      },
+      "account_identifier_stored": false
+    },
+    {
+      "candidate_id": "xm",
+      "display_name": "XM",
+      "role": "BLOCKED_CURRENT_JAPAN_JURISDICTION",
+      "environment": "DEMO",
+      "server": "XMTrading-MT5 3",
+      "account_type": "XMZero",
+      "leverage": "500:1",
+      "broker_legal_name_observed": "Tradexfin Limited",
+      "account_currency": "JPY",
+      "margin_mode_observed": 2,
+      "margin_mode_normalized": "RETAIL_HEDGING",
+      "binding_status": "LEGACY_DISCOVERY_INVALIDATED_V3_AND_LEGAL_BLOCKED",
+      "observed_at": "2026-07-16T03:46:48.735819Z",
+      "server_time_model": {
+        "standard_utc_offset": "+02:00",
+        "daylight_saving_utc_offset": "+03:00",
+        "daylight_saving_rule": "LAST_SUNDAY_MARCH_TO_LAST_SUNDAY_OCTOBER",
+        "source": "https://fxplus.xmtrading.com/en/trading-hours/",
+        "source_status": "OFFICIAL_XMTRADING_PAGE_OBSERVED",
+        "calendar_hash_status": "PENDING_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS"
+      },
+      "regulatory_observation": {
+        "entity": "Tradexfin Limited",
+        "authority": "Seychelles Financial Services Authority; Japan Financial Services Agency",
+        "license": "SD010",
+        "source": "https://www.xmtrading.com/regulation",
+        "broker_claim_observed": true,
+        "independent_registry_verification": true,
+        "verified_at_utc": "2026-07-16T10:51:10Z",
+        "verification_status": "VERIFIED_INELIGIBLE_CURRENT_JAPAN_JURISDICTION",
+        "independent_registry_sources": [
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/ordinary/iwagai/",
+            "result": "OVERSEAS_FX_PROVIDER_REQUIRES_JAPANESE_REGISTRATION_FOR_JAPAN_RESIDENTS"
+          },
+          {
+            "authority": "Japan Financial Services Agency",
+            "url": "https://www.fsa.go.jp/ordinary/chuui/mutouroku/04.html",
+            "result": "TRADEXFIN_LIMITED_XMTRADING_LISTED_AS_UNREGISTERED_OPERATOR"
+          }
+        ],
+        "japan_residency_eligibility": "VERIFIED_INELIGIBLE",
+        "indonesia_return_eligibility": "PENDING_INDEPENDENT_LEGAL_REVIEW",
+        "legal_eligible": false,
+        "decision": "BLOCK_XM_WINDOW_02_WHILE_OPERATING_FROM_JAPAN"
+      },
+      "discovery_receipt": {
+        "schema_version": "mt5-read-only-discovery-v1",
+        "payload_sha256": "a53b6c55e91c6afb63b575686c7a8de1883c02b21a913479776a46f33e51bdbb",
+        "transport_hash_independently_reverified": true,
+        "status": "LEGACY_READ_ONLY_ATTESTATION_INSUFFICIENT_DO_NOT_REUSE",
+        "execution_enabled": false,
+        "live_allowed": false,
+        "safe_to_demo_auto_order": false
+      },
+      "broker_symbols_observed": {
+        "XAUUSD": "GOLD.",
+        "EURUSD": "EURUSD.",
+        "USDJPY": "USDJPY.",
+        "AUDUSD": "AUDUSD."
+      },
+      "instrument_specification_status": "API_CAPTURED_DYNAMIC_FIELDS_CLASSIFIED",
+      "dynamic_tick_value_policy": "REFERENCE_CAPTURE_ONLY_RUNTIME_RISK_USES_ORDER_CALC_PROFIT",
+      "canonical_identity_policy": "CANONICAL_SYMBOL_MAP_AUTHORITATIVE_BROKER_CURRENCY_BASE_INFORMATIONAL_FOR_CFD",
+      "instrument_specifications_observed": {
+        "XAUUSD": {
+          "broker_symbol": "GOLD.",
+          "broker_currency_base_observed": "USD",
+          "digits": 2,
+          "point": 0.01,
+          "contract_size": 100,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "USD",
+          "profit_currency": "USD",
+          "calculation": "CFD_LEVERAGE",
+          "tick_size": 0.01,
+          "tick_value": 1,
+          "tick_value_profit": 1,
+          "tick_value_loss": 1,
+          "freeze_level_points": 0,
+          "execution": "MARKET",
+          "filling": "IMMEDIATE_OR_CANCEL",
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01
+        },
+        "EURUSD": {
+          "broker_symbol": "EURUSD.",
+          "broker_currency_base_observed": "EUR",
+          "digits": 5,
+          "point": 0.00001,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "EUR",
+          "profit_currency": "USD",
+          "calculation": "FOREX",
+          "tick_size": 0.00001,
+          "tick_value": 162.098,
+          "tick_value_profit": 162.098,
+          "tick_value_loss": 162.1,
+          "freeze_level_points": 0,
+          "execution": "MARKET",
+          "filling": "IMMEDIATE_OR_CANCEL",
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01
+        },
+        "USDJPY": {
+          "broker_symbol": "USDJPY.",
+          "broker_currency_base_observed": "USD",
+          "digits": 3,
+          "point": 0.001,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "USD",
+          "profit_currency": "JPY",
+          "calculation": "FOREX",
+          "tick_size": 0.001,
+          "tick_value": 100,
+          "tick_value_profit": 100,
+          "tick_value_loss": 100,
+          "freeze_level_points": 0,
+          "execution": "MARKET",
+          "filling": "IMMEDIATE_OR_CANCEL",
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01
+        },
+        "AUDUSD": {
+          "broker_symbol": "AUDUSD.",
+          "broker_currency_base_observed": "AUD",
+          "digits": 5,
+          "point": 0.00001,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "AUD",
+          "profit_currency": "USD",
+          "calculation": "FOREX",
+          "tick_size": 0.00001,
+          "tick_value": 162.098,
+          "tick_value_profit": 162.098,
+          "tick_value_loss": 162.1,
+          "freeze_level_points": 0,
+          "execution": "MARKET",
+          "filling": "IMMEDIATE_OR_CANCEL",
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01
+        }
+      },
+      "specification_missing_fields": [
+        "session_calendar_hash_and_holiday_overrides",
+        "v3_investor_login_and_terminal_python_api_attestation",
+        "eligible_broker_for_current_japan_operating_jurisdiction"
+      ],
+      "account_identifier_stored": false
+    },
+    {
+      "candidate_id": "finex",
+      "display_name": "FINEX",
+      "role": "STANDBY_PREPARATION_NO_NEW_OBSERVATION",
+      "environment": "DEMO",
+      "server": "FinexBisnisSolusi-Demo",
+      "server_endpoint_observed": "prod-mt5-demo1.fnx.xmt.mx:443",
+      "account_type": "Demo Reguler",
+      "leverage": "500:1",
+      "account_currency": "USD",
+      "read_only_discovery_allowed": false,
+      "binding_status": "ACCOUNT_AND_FOUR_SYMBOL_SCREENSHOT_FACTS_COMPLETE_API_ATTESTATION_AND_ELIGIBILITY_PENDING",
+      "broker_symbols_observed": {
+        "XAUUSD": "XAUUSD",
+        "EURUSD": "EURUSD",
+        "USDJPY": "USDJPY",
+        "AUDUSD": "AUDUSD"
+      },
+      "instrument_specification_status": "FOUR_SYMBOL_SCREENSHOT_CAPTURE_API_ATTESTATION_PENDING",
+      "instrument_specifications_observed": {
+        "XAUUSD": {
+          "broker_symbol": "XAUUSD",
+          "description": "Gold Spot",
+          "digits": 2,
+          "contract_size": 100,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 10,
+          "margin_currency": "USD",
+          "profit_currency": "USD",
+          "calculation": "CFD",
+          "tick_size_displayed": 0.0,
+          "tick_size_status": "DISPLAY_ROUNDED_REQUIRES_API_CAPTURE",
+          "tick_value_displayed": 10,
+          "hedged_margin": 100,
+          "chart_mode": "BY_BID_PRICE",
+          "trade_access": "FULL_ACCESS",
+          "execution": "MARKET",
+          "gtc_mode": "GOOD_TILL_CANCELLED",
+          "filling": ["FILL_OR_KILL", "IMMEDIATE_OR_CANCEL"],
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01,
+          "commission_observed": "1 USD per lot; instant by deal volume, in deals"
+        },
+        "EURUSD": {
+          "broker_symbol": "EURUSD",
+          "digits": 5,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "EUR",
+          "profit_currency": "USD",
+          "calculation": "FOREX",
+          "hedged_margin": 100000,
+          "chart_mode": "BY_BID_PRICE",
+          "trade_access": "FULL_ACCESS",
+          "execution": "MARKET",
+          "gtc_mode": "GOOD_TILL_CANCELLED",
+          "filling": ["FILL_OR_KILL", "IMMEDIATE_OR_CANCEL"],
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01,
+          "commission_observed": "1 USD per lot; instant by deal volume, in deals"
+        },
+        "USDJPY": {
+          "broker_symbol": "USDJPY",
+          "digits": 3,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "USD",
+          "profit_currency": "JPY",
+          "calculation": "FOREX",
+          "hedged_margin": 100000,
+          "chart_mode": "BY_BID_PRICE",
+          "trade_access": "FULL_ACCESS",
+          "execution": "MARKET",
+          "gtc_mode": "GOOD_TILL_CANCELLED",
+          "filling": ["FILL_OR_KILL", "IMMEDIATE_OR_CANCEL"],
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01,
+          "commission_observed": "1 USD per lot; instant by deal volume, in deals"
+        },
+        "AUDUSD": {
+          "broker_symbol": "AUDUSD",
+          "digits": 5,
+          "contract_size": 100000,
+          "spread_mode": "FLOATING",
+          "stops_level_points": 0,
+          "margin_currency": "AUD",
+          "profit_currency": "USD",
+          "calculation": "FOREX",
+          "hedged_margin": 100000,
+          "chart_mode": "BY_BID_PRICE",
+          "trade_access": "FULL_ACCESS",
+          "execution": "MARKET",
+          "gtc_mode": "GOOD_TILL_CANCELLED",
+          "filling": ["FILL_OR_KILL", "IMMEDIATE_OR_CANCEL"],
+          "volume_min": 0.01,
+          "volume_max": 50,
+          "volume_step": 0.01,
+          "commission_observed": "1 USD per lot; instant by deal volume, in deals"
+        }
+      },
+      "screenshot_observation_status": {
+        "observed_at_local": "2026-07-18T18:27:33+09:00",
+        "xauusd": "CONFIRMED",
+        "audusd": "CONFIRMED",
+        "account_currency": "OPERATOR_CONFIRMED_USD_DISPLAY_API_ATTESTATION_PENDING",
+        "account_currency_observed_at_local": "2026-07-18T18:29:15+09:00",
+        "account_balance_stored": false
+      },
+      "regulatory_observation": {
+        "entity": "PT Finex Bisnis Solusi Futures",
+        "authority": "Badan Pengawas Perdagangan Berjangka Komoditi",
+        "license": "47/BAPPEBTI/SI/04/2013",
+        "spa_approval": "77/BAPPEBTI/SP/12/2014",
+        "source": "https://bappebti.go.id/pialang_berjangka/detail/133",
+        "broker_claim_observed": false,
+        "independent_registry_verification": true,
+        "verified_at_utc": "2026-07-16T10:51:10Z",
+        "verification_status": "BROKER_REGISTRATION_VERIFIED_OPERATING_ELIGIBILITY_PENDING",
+        "independent_registry_sources": [
+          {
+            "authority": "Bappebti",
+            "url": "https://bappebti.go.id/pialang_berjangka/detail/133",
+            "result": "REGISTERED_INDONESIAN_FUTURES_BROKER"
+          }
+        ],
+        "japan_residency_eligibility": "PENDING_JAPAN_REGULATORY_REVIEW",
+        "indonesia_return_eligibility": "PENDING_PERSONAL_AND_ACCOUNT_ELIGIBILITY_AFTER_RETURN",
+        "legal_eligible": false,
+        "decision": "SELECTED_BY_OPERATOR_PREPARE_ONLY_NO_CURRENT_JAPAN_OPERATION"
+      },
+      "account_identifier_stored": false
+    }
+  ],
+  "notes": "Phillip Securities Japan is split into isolated FX and commodity demo lanes. Sanitized binding, read-only preflight, and diagnostic shadow are observed for both lanes. Candidate-namespaced discovery-v3 capture is approved only through an explicit terminal64.exe path; forward contract registration remains blocked pending dual signed regulatory approval plus exact independently attested session and holiday calendars. FBS remains diagnostic-only and is project-blocked for discovery evidence, orders, promotion, and live use while operating from Japan because of the official Japan FSA unregistered-operator warning. FINEX remains the future-Indonesia preparation path; current-Japan operation and personal eligibility after return are not approved. XM remains blocked. Do not guess or store credentials here."
+}

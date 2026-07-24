@@ -98,6 +98,7 @@ def analyze_active_pair(symbol):
             "decision": "WAIT",
             "selected_strategy": "NO_DATA",
             "strategy_score": 0,
+            "strategy_score_components": {},
             "strategy_regime": "NO_DATA",
             "strategy_reasons": ["no data available"],
         }
@@ -108,6 +109,7 @@ def analyze_active_pair(symbol):
     signal = strategy_result["signal"]
     selected_strategy = strategy_result["strategy"]
     strategy_score = strategy_result["score"]
+    strategy_score_components = strategy_result.get("score_components", {})
     strategy_regime = strategy_result["market_regime"]
     strategy_reasons = strategy_result["reasons"]
 
@@ -136,6 +138,7 @@ def analyze_active_pair(symbol):
         "decision": decision,
         "selected_strategy": selected_strategy,
         "strategy_score": strategy_score,
+        "strategy_score_components": strategy_score_components,
         "strategy_regime": strategy_regime,
         "strategy_reasons": strategy_reasons,
     }

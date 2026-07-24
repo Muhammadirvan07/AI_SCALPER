@@ -1,0 +1,52 @@
+{
+  "schema_version": "ai-scalper-windows-decision-service-allowlist-v1",
+  "release_profile": "WINDOWS_DECISION_SERVICE_V1",
+  "safety": {
+    "live_allowed": false,
+    "safe_to_demo_auto_order": false,
+    "max_lot": 0.01,
+    "order_capability": "DISABLED"
+  },
+  "usage_policy": {
+    "bundle_class": "DECISION_ONLY_SERVICE",
+    "execution_context": "WINDOWS_TASK_SCHEDULER_SERVICE_ACCOUNT",
+    "network_capable_tooling_present": false,
+    "broker_mutation_capability": false,
+    "finalized_m15_handoff_capability": "SIGNED_APPEND_ONLY_FILESYSTEM_PROVIDER",
+    "ipc_publish_capability": "SIGNED_DECISION_SNAPSHOT_ONLY",
+    "session_calendar_capability": "SIGNED_EXACT_CLOSURE_RECEIPTS_ONLY",
+    "session_calendar_verifier_provider": "EXACT_IMPLEMENTATION_AND_CONFIGURATION_HASH_REQUIRED",
+    "cursor_cas_acknowledgement_authentication": "BINDING_PINNED_HMAC_VERIFIER_PORT",
+    "production_service_execution_allowed": false,
+    "configured_service_runtime_supported": true,
+    "runtime_materialization_required": true,
+    "launcher_attestation_required": "RSA3072_EXTERNAL_DECISION_PROFILE",
+    "runtime_entrypoint": "run_windows_decision_service.py",
+    "validation_entrypoint": "validate_windows_decision_service.py"
+  },
+  "files": [
+    "agents/market_status.py",
+    "agents/supervisor_agent.py",
+    "config/windows_decision_service_allowlist.v1.json",
+    "live_runtime/__init__.py",
+    "live_runtime/asymmetric_release_trust.py",
+    "live_runtime/brokerless_decision_producer.py",
+    "live_runtime/contracts.py",
+    "live_runtime/decision_core.py",
+    "live_runtime/decision_feed.py",
+    "live_runtime/decision_ipc.py",
+    "live_runtime/windows_decision_service_entrypoint.py",
+    "live_runtime/windows_decision_service_factory_template.py",
+    "market_data_quality.py",
+    "market_regime_filter.py",
+    "pylock.decision-windows-cp312.toml",
+    "requirements-decision-windows-cp312.lock.txt",
+    "requirements-decision-windows.txt",
+    "run_windows_decision_service.py",
+    "strategy/strategy_profiles.py",
+    "strategy/strategy_selector.py",
+    "strategy/trend_analyzer.py",
+    "validate_windows_decision_service.py",
+    "vendor/wheels/ta-0.11.0-py3-none-any.whl"
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "schema_version": "manual-demo-readiness-policy-v1",
+  "status": "LOCKED_PENDING_EXTERNAL_GATES",
+  "manual_demo_enabled": false,
+  "execution_enabled": false,
+  "live_allowed": false,
+  "safe_to_demo_auto_order": false,
+  "order_capability": "DISABLED",
+  "max_lot": 0.01,
+  "global_gates": {
+    "CLEAN_RELEASE_ATTESTATION_REQUIRED": false,
+    "FAILURE_DRILLS_REQUIRED": false,
+    "INDEPENDENT_APPROVER_REQUIRED": false,
+    "JOURNAL_RECONCILIATION_DRILL_REQUIRED": false,
+    "MANUAL_APPROVAL_KEY_REQUIRED": false,
+    "PRODUCTION_NEWS_PROVIDER_REQUIRED": false,
+    "WINDOWS_HARDENING_REQUIRED": false
+  },
+  "candidate_gates": {
+    "phillip-fx": {
+      "BROKER_FORWARD_SAMPLE_REQUIRED": false,
+      "BROKER_SESSIONS_20_REQUIRED": false,
+      "EIGHT_WEEK_OBSERVATION_REQUIRED": false,
+      "TERMINAL_FENCE_ATTESTATION_REQUIRED": false,
+      "USD_RISK_CAP_CONVERSION_RUNTIME_ATTESTATION_REQUIRED": false
+    },
+    "phillip-commodity": {
+      "BROKER_FORWARD_SAMPLE_REQUIRED": false,
+      "BROKER_SESSIONS_20_REQUIRED": false,
+      "EIGHT_WEEK_OBSERVATION_REQUIRED": false,
+      "TERMINAL_FENCE_ATTESTATION_REQUIRED": false,
+      "USDJPY_CONVERSION_SYMBOL_ATTESTATION_REQUIRED": false,
+      "USD_RISK_CAP_CONVERSION_RUNTIME_ATTESTATION_REQUIRED": false
+    }
+  }
+}

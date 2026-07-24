@@ -1,0 +1,36 @@
+{
+  "schema_version": "broker-evidence-profiles-v1",
+  "execution_enabled": false,
+  "live_allowed": false,
+  "safe_to_demo_auto_order": false,
+  "max_lot": 0.01,
+  "profiles": [
+    {
+      "candidate_id": "phillip-fx",
+      "key_name": "phillip-fx-window-01-v1",
+      "snapshot_id": "phillip-fx-dev-pre-window-01-v1",
+      "contract_id": "phillip-fx-window-01-diagnostic-v1",
+      "template_path": "config/phillip_fx_calendar_window_01.template.json",
+      "registration_enabled": false,
+      "status": "BLOCKED_PENDING_SIGNED_REGULATORY_CALENDAR_AND_REGISTRATION_REVIEW"
+    },
+    {
+      "candidate_id": "phillip-commodity",
+      "key_name": "phillip-commodity-window-01-v1",
+      "snapshot_id": "phillip-commodity-dev-pre-window-01-v1",
+      "contract_id": "phillip-commodity-window-01-diagnostic-v1",
+      "template_path": "config/phillip_commodity_calendar_window_01.template.json",
+      "registration_enabled": false,
+      "status": "BLOCKED_PENDING_SIGNED_REGULATORY_CALENDAR_AND_REGISTRATION_REVIEW"
+    },
+    {
+      "candidate_id": "fbs",
+      "key_name": "fbs-window-01-v1",
+      "snapshot_id": "fbs-dev-pre-window-01-v1",
+      "contract_id": "fbs-window-01-diagnostic-v1",
+      "template_path": "config/fbs_calendar_window_01.template.json",
+      "registration_enabled": false,
+      "status": "BLOCKED_PENDING_REGULATORY_CALENDAR_AND_DISCOVERY_V3"
+    }
+  ]
+}

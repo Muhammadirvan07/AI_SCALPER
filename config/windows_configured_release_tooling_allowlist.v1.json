@@ -1,0 +1,37 @@
+{
+  "schema_version": "ai-scalper-windows-configured-release-tooling-allowlist-v1",
+  "release_profile": "WINDOWS_CONFIGURED_RELEASE_OPERATOR_TOOLING_V1",
+  "safety": {
+    "live_allowed": false,
+    "safe_to_demo_auto_order": false,
+    "max_lot": 0.01,
+    "order_capability": "DISABLED"
+  },
+  "usage_policy": {
+    "bundle_class": "CONFIGURED_RELEASE_OPERATOR_TOOLING",
+    "execution_context": "RELEASE_OPERATOR_ONLY",
+    "network_capable_tooling_present": false,
+    "broker_mutation_capability": false,
+    "production_service_execution_allowed": false,
+    "provider_import_allowed": false,
+    "credential_access_allowed": false,
+    "task_installation_allowed": false,
+    "runtime_materialization_required": false
+  },
+  "files": [
+    "build_windows_configured_service_release.py",
+    "config/windows_configured_release_tooling_allowlist.v1.json",
+    "live_runtime/__init__.py",
+    "live_runtime/configured_service_release.py",
+    "live_runtime/contracts.py",
+    "live_runtime/windows_decision_service_factory_template.py",
+    "live_runtime/windows_external_status_monitor_factory_template.py",
+    "live_runtime/windows_provider_conformance_input.py",
+    "live_runtime/windows_provider_conformance_review.py",
+    "live_runtime/windows_service_factory_template.py",
+    "prepare_windows_configured_overlay_candidate.py",
+    "prepare_windows_three_service_provider_conformance_input.py",
+    "prepare_windows_three_service_provider_conformance_review.py",
+    "verify_windows_configured_service_release.py"
+  ]
+}
