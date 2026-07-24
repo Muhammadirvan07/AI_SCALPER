@@ -49,14 +49,18 @@ create-exclusive per-lane stream of canonical HMAC-authenticated packets,
 verifies exact broker/account/lane/source/calendar binding, sequence and
 immediate predecessor, and reconstructs the exact
 `FinalizedM15DecisionInput`. It has no MT5, network, credential lookup, risk,
-permit, executor, or order surface. The broker-facing read-only publisher,
-key custody, directory ACL, clock behavior, and real conformance evidence are
-external provider responsibilities.
+permit, executor, or order surface. The broker-facing reference publisher is
+implemented in `live_runtime/mt5_decision_feed_publisher.py` and packaged only
+in the separate `WINDOWS_READ_ONLY_SHADOW_SERVICE_V1` profile. Its exact
+binding, key/account-identity custody, directory ACL, calendar receipt source,
+clock behavior, and real conformance evidence remain external provider
+responsibilities.
 
 The feed is runtime transport only. A valid packet is not validation evidence,
 does not make `source_aligned` or `data_fresh` semantically true, and cannot
 bypass the producer's existing OHLC/gap/calendar/freshness/entry-window checks.
-See `specs/signed_decision_feed_handoff_v1.md`.
+See `specs/signed_decision_feed_handoff_v1.md` and
+`specs/mt5_readonly_decision_feed_publisher_v1.md`.
 
 Every lane binds an immutable session-calendar hash plus issuer/key identity.
 The data input may bridge a weekend, holiday, or DST-shifted interval only with

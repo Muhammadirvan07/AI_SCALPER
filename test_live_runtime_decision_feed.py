@@ -170,6 +170,7 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.binding = feed_binding()
         self.lane = producer_lane()
+        self.feed_lane = self.binding.lane(self.lane.lane_id)
         self.clock = BAR_CLOSED_AT + timedelta(milliseconds=200)
         self.store = SignedDecisionFeedDirectory(
             self.root,
@@ -184,7 +185,7 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
     def test_ac1_exact_signed_round_trip_and_sealed_provider(self) -> None:
         original = observation()
         packet = self.store.publish(
-            self.lane,
+            self.feed_lane,
             original,
             issued_at_utc=self.clock,
         )
@@ -231,9 +232,11 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
         self.assertEqual("FEED_BINDING_INVALID", caught.exception.reason_code)
 
     def test_ac2_same_observation_is_idempotent_and_conflict_is_denied(self) -> None:
-        first = self.store.publish(self.lane, observation(), issued_at_utc=self.clock)
+        first = self.store.publish(
+            self.feed_lane, observation(), issued_at_utc=self.clock
+        )
         replay = self.store.publish(
-            self.lane,
+            self.feed_lane,
             observation(),
             issued_at_utc=self.clock + timedelta(milliseconds=1),
         )
@@ -242,7 +245,7 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
 
         with self.assertRaises(DecisionFeedError) as caught:
             self.store.publish(
-                self.lane,
+                self.feed_lane,
                 observation(bid=1.10499),
                 issued_at_utc=self.clock,
             )
@@ -250,10 +253,12 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
         self.assertEqual(1, len(tuple(self.root.iterdir())))
 
     def test_ac3_newer_packet_links_verified_head_and_fetch_reads_two_bodies(self) -> None:
-        first = self.store.publish(self.lane, observation(), issued_at_utc=self.clock)
+        first = self.store.publish(
+            self.feed_lane, observation(), issued_at_utc=self.clock
+        )
         self.clock += timedelta(minutes=15)
         second = self.store.publish(
-            self.lane,
+            self.feed_lane,
             observation(shift_bars=1),
             issued_at_utc=self.clock,
         )
@@ -272,7 +277,9 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
         self.assertEqual(2, stable_read.call_count)
 
     def test_ac4_tamper_and_wrong_key_are_rejected(self) -> None:
-        self.store.publish(self.lane, observation(), issued_at_utc=self.clock)
+        self.store.publish(
+            self.feed_lane, observation(), issued_at_utc=self.clock
+        )
         packet_file = next(self.root.iterdir())
         payload = json.loads(packet_file.read_text(encoding="utf-8"))
         payload["first_eligible_bid"] = 1.0
@@ -296,7 +303,7 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
             clock_provider=lambda: self.clock,
         )
         valid_store.publish(
-            self.lane,
+            self.feed_lane,
             observation(),
             issued_at_utc=self.clock,
         )
@@ -324,7 +331,9 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
             )
         self.assertEqual("FEED_DIRECTORY_INVALID", caught.exception.reason_code)
 
-        self.store.publish(self.lane, observation(), issued_at_utc=self.clock)
+        self.store.publish(
+            self.feed_lane, observation(), issued_at_utc=self.clock
+        )
         packet_file = next(self.root.iterdir())
         target = self.root / "moved.json"
         packet_file.replace(target)
@@ -350,7 +359,7 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
             key_provider=key_provider,
             clock_provider=lambda: self.clock,
         )
-        store.publish(self.lane, observation(), issued_at_utc=self.clock)
+        store.publish(self.feed_lane, observation(), issued_at_utc=self.clock)
         packet_file = next(self.root.iterdir())
         text = packet_file.read_text(encoding="utf-8")
         packet_file.write_text(
@@ -389,7 +398,7 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
 
     def test_ac8_freshness_false_is_reconstructed_for_producer_to_reject(self) -> None:
         self.store.publish(
-            self.lane,
+            self.feed_lane,
             observation(data_fresh=False),
             issued_at_utc=self.clock,
         )
@@ -444,7 +453,7 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
 
     def test_ac10_existing_producer_types_are_not_changed(self) -> None:
         packet = self.store.publish(
-            self.lane,
+            self.feed_lane,
             observation(),
             issued_at_utc=self.clock,
         )
@@ -452,6 +461,14 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
         self.assertIs(type(result), FinalizedM15DecisionInput)
         self.assertEqual(self.lane.lane_id, packet.lane_id)
         self.assertEqual(self.lane.symbol, packet.symbol)
+        self.assertEqual(
+            packet,
+            self.store.publish(
+                self.lane,
+                observation(),
+                issued_at_utc=self.clock,
+            ),
+        )
         with self.assertRaises(AttributeError):
             self.store.binding = feed_binding(include_second_lane=True)
 
@@ -465,7 +482,9 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
             clock_provider=lambda: self.clock,
         )
         with self.assertRaises(DecisionFeedError) as caught:
-            store.publish(self.lane, observation(), issued_at_utc=self.clock)
+            store.publish(
+                self.feed_lane, observation(), issued_at_utc=self.clock
+            )
         self.assertEqual("FEED_KEY_UNAVAILABLE", caught.exception.reason_code)
         self.assertEqual("FEED_KEY_UNAVAILABLE", str(caught.exception))
 
@@ -500,22 +519,26 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
             key_provider=lambda key_id: FEED_KEY,
             clock_provider=lambda: self.clock,
         )
-        first = self.store.publish(self.lane, observation(), issued_at_utc=self.clock)
+        first = self.store.publish(
+            self.feed_lane, observation(), issued_at_utc=self.clock
+        )
         self.assertEqual(
             first,
-            peer.publish(self.lane, observation(), issued_at_utc=self.clock),
+            peer.publish(
+                self.feed_lane, observation(), issued_at_utc=self.clock
+            ),
         )
 
         self.clock += timedelta(minutes=15)
         second = self.store.publish(
-            self.lane,
+            self.feed_lane,
             observation(shift_bars=1),
             issued_at_utc=self.clock,
         )
         self.assertEqual(
             second,
             peer.publish(
-                self.lane,
+                self.feed_lane,
                 observation(shift_bars=1),
                 issued_at_utc=self.clock,
             ),
@@ -530,7 +553,7 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
             clock_provider=lambda: self.clock,
         )
         race_head = race_store.publish(
-            self.lane,
+            self.feed_lane,
             observation(),
             issued_at_utc=self.clock,
         )
@@ -541,7 +564,7 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
         def competing_write(path, payload, *, root):
             competing_packet = decision_feed._issue_packet(
                 binding=self.binding,
-                lane=self.lane,
+                lane=self.feed_lane,
                 observation=winner,
                 sequence=2,
                 previous_packet_sha256=race_head.content_sha256,
@@ -561,17 +584,19 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
                 side_effect=competing_write,
             ):
                 race_store.publish(
-                    self.lane,
+                    self.feed_lane,
                     desired,
                     issued_at_utc=self.clock,
                 )
         self.assertEqual("FEED_SEQUENCE_CONFLICT", caught.exception.reason_code)
 
     def test_ec8_missing_historical_sequence_is_rejected(self) -> None:
-        self.store.publish(self.lane, observation(), issued_at_utc=self.clock)
+        self.store.publish(
+            self.feed_lane, observation(), issued_at_utc=self.clock
+        )
         self.clock += timedelta(minutes=15)
         self.store.publish(
-            self.lane,
+            self.feed_lane,
             observation(shift_bars=1),
             issued_at_utc=self.clock,
         )
@@ -584,7 +609,7 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
     def test_ec9_future_issued_packet_is_rejected(self) -> None:
         with self.assertRaises(DecisionFeedError) as caught:
             self.store.publish(
-                self.lane,
+                self.feed_lane,
                 observation(),
                 issued_at_utc=self.clock + timedelta(seconds=2),
             )
@@ -632,7 +657,7 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
             verification_key=CALENDAR_KEY,
         )
         self.store.publish(
-            self.lane,
+            self.feed_lane,
             observation(receipts=(receipt,)),
             issued_at_utc=self.clock,
         )
@@ -647,7 +672,9 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
             key_provider=lambda key_id: FEED_KEY,
             clock_provider=lambda: self.clock,
         )
-        empty.publish(self.lane, observation(), issued_at_utc=self.clock)
+        empty.publish(
+            self.feed_lane, observation(), issued_at_utc=self.clock
+        )
         self.assertEqual((), empty.fetch(self.lane).session_closure_receipts)
 
     def test_resource_constants_match_reviewed_bounds(self) -> None:

@@ -9,15 +9,15 @@ Persentase berikut adalah estimasi engineering, bukan izin trading:
 
 - fondasi software lokal yang diperlukan sebelum acceptance Windows:
   **100%**;
-- kesiapan untuk **memulai** demo-auto soak: sekitar **73%**;
-- roadmap Live-Grade v1 end-to-end: sekitar **48%**.
+- kesiapan untuk **memulai** demo-auto soak: sekitar **75%**;
+- roadmap Live-Grade v1 end-to-end: sekitar **49%**.
 
 Perbedaan tersebut disengaja. Source code lokal dapat selesai, tetapi demo-auto
 baru boleh dimulai setelah acceptance Windows, provider/key custody, sepuluh
 manual-demo lifecycles, dan approval manusia. Live masih membutuhkan soak 30
 hari/50 closed fills/20 XAU, bukti per lane, serta gate statistik dan keamanan.
 
-Validasi lokal terakhir menjalankan **1.406 test** tanpa kegagalan pada mode
+Validasi lokal terakhir menjalankan **1.419 test** tanpa kegagalan pada mode
 normal dan `PYTHONOPTIMIZE=2`. Seluruh tracked Python source berhasil
 dikompilasi, validator decision/execution/status-monitor lulus dengan
 `production_execution_ready=false`, dan safety locks tetap:
@@ -58,6 +58,15 @@ dibangun ulang dari clean commit berikutnya.
   predecessor, HMAC, canonical JSON, dan first-eligible quote; consumer
   stable-read mengembalikan exact `FinalizedM15DecisionInput`. Transport ini
   tidak memberi broker/order capability dan bukan promotion evidence.
+- Reference MT5 read-only publisher sekarang mengisi sisi broker dari boundary
+  tersebut. Setiap siklus melakukan attestation dan exact account binding
+  sebelum serta sesudah market read, hanya menerima finalized current-boundary
+  M15 dan first eligible tick dalam 10 detik, membatasi publish lag maksimal
+  satu detik, meminta receipt independen untuk setiap session gap, lalu
+  mendelegasikan write ke signed feed. Publisher masuk exact 33-file Windows
+  shadow-service closure, tetapi tidak masuk decision process dan tidak
+  memiliki order, risk, permit, credential provisioning, atau terminal
+  lifecycle capability.
 - Decision, gated execution/reconciliation, dan external status monitor
   memiliki tiga release profile, allowlist, service identity, runtime root,
   serta state domain yang terpisah.
@@ -137,9 +146,11 @@ dibangun ulang dari clean commit berikutnya.
    news, decision IPC, reconciliation, risk facts, off-host CAS, checkpoint,
    incident latch, WORM audit, heartbeat, dan alert; kemudian hasil per-provider
    diikat melalui conformance packet dan ditandatangani owner independen.
-   Untuk finalized data, wire broker-side read-only publisher ke signed feed
-   dan buktikan latency/fork/restart/key-custody behavior pada exact Windows
-   host; keberadaan reference handoff saja belum merupakan provider acceptance.
+   Untuk finalized data, materialisasikan binding/custody eksternal bagi
+   reference broker-side read-only publisher dan buktikan
+   latency/fork/restart/key-custody behavior pada exact Windows host;
+   keberadaan implementation dan handoff lokal belum merupakan provider
+   acceptance.
 2. Provision tiga least-privilege Windows identities, Credential Manager,
    exact Task Scheduler definitions/ACL, offline RSA issuer, VPN/MFA, backup,
    restore, serta failure-drill evidence.

@@ -549,7 +549,24 @@ def _packet_filename(lane_id: str, sequence: int) -> str:
     return f"{_lane_token(lane_id)}.{sequence:0{_SEQUENCE_WIDTH}d}{_PACKET_SUFFIX}"
 
 
-def _match_lane(
+def _require_feed_lane(
+    binding: DecisionFeedBinding,
+    lane: DecisionFeedLaneBinding,
+) -> DecisionFeedLaneBinding:
+    if type(binding) is not DecisionFeedBinding:
+        raise TypeError("binding must be exact DecisionFeedBinding")
+    if type(lane) is not DecisionFeedLaneBinding:
+        raise TypeError("lane must be exact DecisionFeedLaneBinding")
+    try:
+        expected = binding.lane(lane.lane_id)
+    except KeyError as exc:
+        raise DecisionFeedError("FEED_LANE_BINDING_MISMATCH") from exc
+    if expected != lane:
+        raise DecisionFeedError("FEED_LANE_BINDING_MISMATCH")
+    return lane
+
+
+def _match_producer_lane(
     binding: DecisionFeedBinding,
     lane: DecisionProducerLaneConfig,
 ) -> DecisionFeedLaneBinding:
@@ -572,6 +589,20 @@ def _match_lane(
     return feed_lane
 
 
+def _publication_lane(
+    binding: DecisionFeedBinding,
+    lane: DecisionFeedLaneBinding | DecisionProducerLaneConfig,
+) -> DecisionFeedLaneBinding:
+    if type(lane) is DecisionFeedLaneBinding:
+        return _require_feed_lane(binding, lane)
+    if type(lane) is DecisionProducerLaneConfig:
+        return _match_producer_lane(binding, lane)
+    raise TypeError(
+        "lane must be exact DecisionFeedLaneBinding or "
+        "DecisionProducerLaneConfig"
+    )
+
+
 def _bar_timestamp(value: object) -> datetime:
     try:
         timestamp = pd.Timestamp(value)
@@ -590,7 +621,7 @@ def _bar_timestamp(value: object) -> datetime:
 
 def _observation_parts(
     binding: DecisionFeedBinding,
-    lane: DecisionProducerLaneConfig,
+    lane: DecisionFeedLaneBinding,
     observation: FinalizedM15DecisionInput,
 ) -> tuple[
     DecisionFeedLaneBinding,
@@ -598,7 +629,7 @@ def _observation_parts(
     tuple[SignedSessionClosureReceipt, ...],
     dict[str, object],
 ]:
-    feed_lane = _match_lane(binding, lane)
+    feed_lane = _require_feed_lane(binding, lane)
     if type(observation) is not FinalizedM15DecisionInput:
         raise TypeError("observation must be exact FinalizedM15DecisionInput")
     if (
@@ -718,7 +749,7 @@ def _key(
 def _issue_packet(
     *,
     binding: DecisionFeedBinding,
-    lane: DecisionProducerLaneConfig,
+    lane: DecisionFeedLaneBinding,
     observation: FinalizedM15DecisionInput,
     sequence: int,
     previous_packet_sha256: str,
@@ -932,18 +963,37 @@ def _verify_packet(
     key_provider: Callable[[str], str | bytes],
     trusted_now: datetime,
 ) -> None:
-    feed_lane = _match_lane(binding, lane)
+    feed_lane = _match_producer_lane(binding, lane)
+    _verify_packet_for_feed_lane(
+        packet,
+        binding=binding,
+        lane=feed_lane,
+        key_provider=key_provider,
+        trusted_now=trusted_now,
+    )
+
+
+def _verify_packet_for_feed_lane(
+    packet: SignedDecisionFeedPacket,
+    *,
+    binding: DecisionFeedBinding,
+    lane: DecisionFeedLaneBinding,
+    key_provider: Callable[[str], str | bytes],
+    trusted_now: datetime,
+) -> None:
+    feed_lane = _require_feed_lane(binding, lane)
     if (
         packet.feed_id != binding.feed_id
-        or packet.lane_id != lane.lane_id
-        or packet.symbol != lane.symbol
+        or packet.lane_id != feed_lane.lane_id
+        or packet.symbol != feed_lane.symbol
         or packet.broker_symbol != feed_lane.broker_symbol
         or packet.broker_server != binding.broker_server
         or packet.broker_account_identity_sha256
         != binding.broker_account_identity_sha256
-        or packet.source_name != lane.source_name
-        or packet.data_contract_sha256 != lane.data_contract_sha256
-        or packet.session_calendar_sha256 != lane.session_calendar_sha256
+        or packet.source_name != feed_lane.source_name
+        or packet.data_contract_sha256 != feed_lane.data_contract_sha256
+        or packet.session_calendar_sha256
+        != feed_lane.session_calendar_sha256
         or packet.publisher_issuer_id != binding.publisher_issuer_id
         or packet.publisher_key_id != binding.publisher_key_id
         or packet.publisher_key_fingerprint_sha256
@@ -1059,9 +1109,9 @@ class SignedDecisionFeedDirectory:
 
     def _lane_paths(
         self,
-        lane: DecisionProducerLaneConfig,
+        lane: DecisionFeedLaneBinding,
     ) -> list[tuple[int, Path]]:
-        _match_lane(self.binding, lane)
+        _require_feed_lane(self.binding, lane)
         _require_real_directory(self.root)
         token = _lane_token(lane.lane_id)
         prefix = f"{token}."
@@ -1104,7 +1154,7 @@ class SignedDecisionFeedDirectory:
 
     def _load(
         self,
-        lane: DecisionProducerLaneConfig,
+        lane: DecisionFeedLaneBinding,
         sequence: int,
         path: Path,
         *,
@@ -1116,7 +1166,7 @@ class SignedDecisionFeedDirectory:
         packet = _packet_from_bytes(_stable_read(path, root=self.root))
         if packet.sequence != sequence:
             raise DecisionFeedError("FEED_CHAIN_INVALID")
-        _verify_packet(
+        _verify_packet_for_feed_lane(
             packet,
             binding=self.binding,
             lane=lane,
@@ -1127,7 +1177,7 @@ class SignedDecisionFeedDirectory:
 
     def _head(
         self,
-        lane: DecisionProducerLaneConfig,
+        lane: DecisionFeedLaneBinding,
         *,
         trusted_now: datetime,
     ) -> SignedDecisionFeedPacket | None:
@@ -1167,17 +1217,19 @@ class SignedDecisionFeedDirectory:
         lane: DecisionProducerLaneConfig,
     ) -> FinalizedM15DecisionInput | None:
         trusted_now = self._clock_pair()
-        head = self._head(lane, trusted_now=trusted_now)
+        feed_lane = _match_producer_lane(self.binding, lane)
+        head = self._head(feed_lane, trusted_now=trusted_now)
         return None if head is None else _to_input(head)
 
     def publish(
         self,
-        lane: DecisionProducerLaneConfig,
+        lane: DecisionFeedLaneBinding | DecisionProducerLaneConfig,
         observation: FinalizedM15DecisionInput,
         *,
         issued_at_utc: datetime | None = None,
     ) -> SignedDecisionFeedPacket:
         trusted_now = self._clock_pair()
+        feed_lane = _publication_lane(self.binding, lane)
         try:
             issued = require_utc(
                 "issued_at_utc",
@@ -1189,11 +1241,11 @@ class SignedDecisionFeedDirectory:
             raise DecisionFeedError("FEED_CLOCK_INVALID")
         _, _, _, observation_payload = _observation_parts(
             self.binding,
-            lane,
+            feed_lane,
             observation,
         )
         observation_sha256 = canonical_sha256(observation_payload)
-        head = self._head(lane, trusted_now=trusted_now)
+        head = self._head(feed_lane, trusted_now=trusted_now)
         if head is not None:
             if observation.bar_closed_at < head.bar_closed_at:
                 raise DecisionFeedError("FEED_CANDLE_ROLLBACK")
@@ -1213,14 +1265,14 @@ class SignedDecisionFeedDirectory:
         key = _key(self.binding, self.__key_provider)
         packet = _issue_packet(
             binding=self.binding,
-            lane=lane,
+            lane=feed_lane,
             observation=observation,
             sequence=sequence,
             previous_packet_sha256=previous,
             issued_at_utc=issued,
             key=key,
         )
-        path = self.root / _packet_filename(lane.lane_id, sequence)
+        path = self.root / _packet_filename(feed_lane.lane_id, sequence)
         try:
             _write_exclusive(
                 path,
@@ -1228,7 +1280,7 @@ class SignedDecisionFeedDirectory:
                 root=self.root,
             )
         except FileExistsError:
-            winner = self._head(lane, trusted_now=trusted_now)
+            winner = self._head(feed_lane, trusted_now=trusted_now)
             if (
                 winner is not None
                 and winner.bar_closed_at == observation.bar_closed_at
@@ -1242,7 +1294,7 @@ class SignedDecisionFeedDirectory:
                 raise DecisionFeedError("FEED_CANDLE_CONFLICT")
             raise DecisionFeedError("FEED_SEQUENCE_CONFLICT")
         readback = self._load(
-            lane,
+            feed_lane,
             sequence,
             path,
             trusted_now=trusted_now,

@@ -33,11 +33,11 @@ not read, modified, staged, tested, or treated as release input.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `1,406 / 1,406 PASS` |
-| Full regression with `PYTHONOPTIMIZE=2` | `1,406 / 1,406 PASS` |
+| Full Python regression | `1,419 / 1,419 PASS` |
+| Full regression with `PYTHONOPTIMIZE=2` | `1,419 / 1,419 PASS` |
 | Tracked Python compilation | PASS |
-| Focused signed-feed/decision-release tests | `32 / 32 PASS` in both modes |
-| Signed-feed spec validator | `100 / 100`, grade A, zero errors/warnings |
+| Focused signed-feed/publisher/shadow-closure tests | `38 / 38 PASS` in both modes |
+| Publisher spec validator | `100 / 100`, grade A, zero errors/warnings |
 | Git whitespace/error check | PASS |
 | Windows dependency-lock verification | PASS |
 | Install-manifest verification | PASS |
@@ -106,9 +106,10 @@ same-commit four-archive reproducibility run before configured-release review.
 1. The three configured ZIP files have not yet been built and atomically
    admitted on the exact Windows x86-64, CPython 3.12, NTFS, MT5, account,
    server, and symbol environment.
-2. The finalized-data transport implementation is now present, but its real
-   broker-side read-only publisher, key custody, exact Windows timing/restart
-   observations, and independent provider conformance have not been accepted.
+2. The finalized-data transport and reference broker-side read-only publisher
+   are now present, but their exact configured binding, key/account-identity
+   custody, calendar-receipt source, Windows timing/restart observations, and
+   independent provider conformance have not been accepted.
    Real trusted-clock, news, risk-fact, decision-IPC,
    reconciliation, checkpoint, incident-latch, WORM, heartbeat, alert, and
    off-host CAS providers have not passed independent acceptance.

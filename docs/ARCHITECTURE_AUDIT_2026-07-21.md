@@ -40,8 +40,9 @@ closure lulus, dan diff whitespace bersih.
   validation binding. Caller tidak dapat membentuk status receipt terverifikasi
   secara langsung.
 - Minimal Windows read-only shadow service profile kini terpisah dari operator
-  tooling, memakai exact 25-file allowlist dan tetap menolak executor, setup,
-  credential, runtime artifact, serta primitive order.
+  tooling, memakai exact 33-file allowlist termasuk publisher signed M15 feed
+  least-privilege, dan tetap menolak executor, setup, credential, runtime
+  artifact, serta primitive order.
 - Clean-checkout Windows reproducibility comparison dan signed HMAC receipt
   tersedia untuk exact commit/tree/archive/manifest/release hashes.
 - Provider-neutral signed off-host envelope, durable idempotent outbox, remote

@@ -57,6 +57,15 @@ class ReleaseReproducibilityTests(unittest.TestCase):
         self.assertEqual(payload["safety"]["order_capability"], "DISABLED")
         self.assertNotIn("live_runtime/executor.py", payload["files"])
         self.assertNotIn("setup_broker_evidence_key.py", payload["files"])
+        self.assertIn(
+            "live_runtime/mt5_decision_feed_publisher.py",
+            payload["files"],
+        )
+        self.assertIn("live_runtime/decision_feed.py", payload["files"])
+        self.assertIn(
+            "live_runtime/brokerless_decision_producer.py",
+            payload["files"],
+        )
         sources = _read_release_sources(root, payload["files"], set(payload["files"]))
         self.assertEqual(set(sources), set(payload["files"]))
 

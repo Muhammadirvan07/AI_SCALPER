@@ -63,9 +63,10 @@ mengaktifkan evidence maupun order.
 
 Build identity shadow kini dapat dikomposisikan per broker dari exact config
 files. Profile `WINDOWS_READ_ONLY_SHADOW_SERVICE_V1` memakai exact allowlist
-`config/windows_shadow_service_allowlist.v1.json`. Ia memuat 25 file closure
-runtime read-only yang telah direview dan tidak membawa setup/generator,
-credential bootstrap, executor, MT5 mutation adapter, atau order primitive.
+`config/windows_shadow_service_allowlist.v1.json`. Ia memuat 33 file closure
+runtime read-only yang telah direview, termasuk publisher signed M15 feed
+least-privilege, dan tidak membawa setup/generator, credential bootstrap,
+executor, MT5 mutation adapter, atau order primitive.
 Actual clean-checkout build dan two-host/two-build reproducibility receipt tetap
 harus dikumpulkan pada exact Windows target sebelum service dipasang.
 

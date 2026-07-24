@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-24 menjalankan **1.406 test** tanpa
+Validasi lokal terakhir pada 2026-07-24 menjalankan **1.419 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac. Itu adalah
 software regression evidence, bukan Windows host acceptance, broker-forward
 evidence, atau izin trading.
@@ -485,10 +485,15 @@ BTCUSD = shadow-only
     persistence, strict stable read, fork/rollback/tamper rejection, dan
     reconstruction ke exact `FinalizedM15DecisionInput`. Handoff itu tetap
     runtime transport, bukan validation/promotion evidence, dan tidak
-    mengandung MT5 maupun order capability. Jalur operasional masih membutuhkan
-    broker-side read-only publisher, reviewed trusted-clock/key/CAS/provider
-    configuration, external provider conformance, configured identity, dan
-    external RSA launcher attestation.
+    mengandung MT5 maupun order capability. Reference broker-side publisher
+    sekarang tersedia di profile read-only shadow terpisah: ia mengikat exact
+    demo account/server/lane, re-attest sebelum dan sesudah market read,
+    menegakkan current finalized M15, first eligible tick, publish-lag budget,
+    independent session-gap receipt, serta signed-feed conflict semantics.
+    Jalur operasional masih membutuhkan reviewed
+    trusted-clock/key/account-identity/calendar/provider configuration,
+    external provider conformance, configured identity, dan external RSA
+    launcher attestation.
     Operations review v2 kini mengikat exact decision dan execution release,
     Python runtime serta service identity yang terpisah, IPC v2, dan external
     status-monitor reference. Implementasi monitor lokal tidak mengubah bundle
