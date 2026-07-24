@@ -17,7 +17,7 @@ baru boleh dimulai setelah acceptance Windows, provider/key custody, sepuluh
 manual-demo lifecycles, dan approval manusia. Live masih membutuhkan soak 30
 hari/50 closed fills/20 XAU, bukti per lane, serta gate statistik dan keamanan.
 
-Validasi lokal terakhir menjalankan **1.346 test** tanpa kegagalan pada mode
+Validasi lokal terakhir menjalankan **1.361 test** tanpa kegagalan pada mode
 normal dan `PYTHONOPTIMIZE=2`. Seluruh tracked Python source berhasil
 dikompilasi, validator decision/execution/status-monitor lulus dengan
 `production_execution_ready=false`, dan safety locks tetap:
@@ -60,6 +60,13 @@ bukti eksternal selesai.
 - Configured-release tooling menghasilkan identity baru untuk exact
   secret-free provider overlay tanpa memasukkan credential atau melonggarkan
   base release provenance.
+- Configured-overlay candidate preparer kini menghilangkan perakitan descriptor
+  manual: ia memilih exact factory-template member dari base profile,
+  stable-read Task Scheduler definition, menghitung factory contract serta
+  seluruh inventory/hash, menolak import closure yang tidak lengkap, dan
+  menulis factory manifest/descriptor secara create-exclusive. Hasilnya tetap
+  kandidat yang wajib direview eksternal, bukan configured release atau izin
+  order.
 - Account-level soak projection dapat menghitung 30 clean days, 50 closed
   fills, dan minimal 20 XAU closed fills, tetapi tidak dapat memberi execution
   atau promotion authority.
@@ -98,16 +105,17 @@ bukti eksternal selesai.
 
 ## Sisa menuju demo-auto soak
 
-1. Bangun ketiga configured release pada exact Windows x86-64, CPython 3.12,
-   NTFS, MT5 terminal, account, server, dan symbol specification; lalu jalankan
-   exact configured-release admission terhadap tiga ZIP yang benar-benar akan
-   diekstrak.
-2. Materialisasi serta review provider nyata untuk finalized data, trusted
+1. Materialisasi serta review provider nyata untuk finalized data, trusted
    clock, news, decision IPC, reconciliation, risk facts, off-host CAS,
    checkpoint, incident latch, WORM audit, heartbeat, dan alert.
-3. Provision tiga least-privilege Windows identities, Credential Manager,
+2. Provision tiga least-privilege Windows identities, Credential Manager,
    exact Task Scheduler definitions/ACL, offline RSA issuer, VPN/MFA, backup,
    restore, serta failure-drill evidence.
+3. Gunakan candidate preparer pada masing-masing exact base ZIP/provider/task
+   set, review output secara independen, lalu bangun ketiga configured release
+   pada exact Windows x86-64, CPython 3.12, NTFS, MT5 terminal, account,
+   server, dan symbol specification. Jalankan exact configured-release
+   admission terhadap tiga ZIP yang benar-benar akan diekstrak.
 4. Buktikan risiko minimum `0.01` lot XAUUSD masih berada di bawah risk cap
    menggunakan `order_calc_profit()` dan measured spread/commission/slippage.
 5. Kumpulkan sembilan signed observation pra-manual, jalankan pre-manual entry

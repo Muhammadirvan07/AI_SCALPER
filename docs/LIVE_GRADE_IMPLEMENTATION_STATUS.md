@@ -452,6 +452,12 @@ BTCUSD = shadow-only
     launcher attestation, maupun Task Scheduler review. Production decision
     loader sekarang memverifikasi exact configured release, RSA launcher
     attestation, import origin, sealed factory result, dan bounded runtime.
+    Operator tooling kini juga memiliki candidate preparer yang menurunkan
+    exact profile-template hash dari base ZIP, stable-read Task Scheduler
+    definition, membuat canonical factory manifest/descriptor, memverifikasi
+    exact local import closure, lalu menulis keduanya secara create-exclusive.
+    Statusnya tetap `CANDIDATE_PREPARED_EXTERNAL_REVIEW_REQUIRED`; tool tidak
+    menulis provider, credential, task, configured ZIP, atau authority.
     Deterministic external status-monitor release, configured-release loader,
     serta bounded runner juga sudah tersedia sebagai service ketiga tanpa
     broker/order authority. Provider nyata, key/CAS/latch custody, dan

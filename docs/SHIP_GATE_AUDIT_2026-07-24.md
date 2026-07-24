@@ -32,11 +32,10 @@ not read, modified, staged, tested, or treated as release input.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `1,346 / 1,346 PASS` |
-| Full regression with `PYTHONOPTIMIZE=2` | `1,346 / 1,346 PASS` |
+| Full Python regression | `1,361 / 1,361 PASS` |
+| Full regression with `PYTHONOPTIMIZE=2` | `1,361 / 1,361 PASS` |
 | Tracked Python compilation | PASS |
-| Focused configured-release admission tests | `11 / 11 PASS` |
-| Related release/admission boundary tests | `69 / 69 PASS` in both modes |
+| Focused configured-overlay/release tests | `40 / 40 PASS` in both modes |
 | Spec validator | `98 / 100`, grade A, zero errors |
 | Git whitespace/error check | PASS |
 | Windows dependency-lock verification | PASS |
@@ -48,6 +47,17 @@ not read, modified, staged, tested, or treated as release input.
 | Dynamic `eval`/`exec` and unsafe deserialization scan | zero findings |
 | `subprocess` with `shell=True` scan | zero findings |
 | New admission-boundary capability scan | no network, subprocess, credential, environment, MT5, scheduler, service, or broker mutation surface |
+| Generic ship-gate pattern scanner | raw `DO_NOT_SHIP`; all automatic critical hits triaged as non-applicable or false-positive, while unconfirmed external operations checks remain blockers |
+
+The generic scanner correctly preserves a production-blocking verdict while
+external Windows evidence is absent. Its automatic critical pattern hits were
+reviewed individually: SHA-256 is used for artifact integrity rather than
+password hashing; the two SQLite f-strings contain parameter placeholders or
+module-fixed table/column identifiers; key/order/MT5 strings in the new surface
+are rejection patterns; and route, CSP, CSRF, session, and HTTPS checks do not
+apply to this non-web CLI/service repository. The scanner's backup/restore,
+production configuration, staging, uptime, and task verification items remain
+manual and are represented in the blockers below.
 
 The SQLite query using interpolated identifiers in
 `live_runtime/journal_integrity.py` was manually traced. Its table and order
@@ -72,9 +82,11 @@ promotion_eligible = false
 ```
 
 The execution release contains dormant gated broker capability by design, but
-the central demo-auto and live locks remain false. The new admission verifier
-is deny-only and cannot issue a permit, stage evidence, arm flag, credential,
-task, process, MT5 connection, or broker order.
+the central demo-auto and live locks remain false. The admission verifier and
+configured-overlay candidate preparer are deny-only. Neither can issue a
+permit, stage evidence, arm flag, credential, task, process, MT5 connection, or
+broker order; the preparer can only write a create-exclusive non-secret
+candidate manifest and descriptor for independent review.
 
 ## Blocking findings
 

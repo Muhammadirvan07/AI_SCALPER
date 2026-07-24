@@ -27,6 +27,10 @@ Repository menyediakan:
 
 - `build_windows_configured_release_tooling.py`: membangun bundle operator
   minimal dan stdlib-only dari clean Git commit;
+- `prepare_windows_configured_overlay_candidate.py`: menurunkan template hash
+  dari exact base ZIP, membuat factory manifest serta descriptor kandidat
+  secara create-exclusive, dan menjalankan static safety validation tanpa
+  mengimpor provider;
 - `build_windows_configured_service_release.py`: menggabungkan exact base ZIP
   dengan exact overlay;
 - `verify_windows_configured_service_release.py`: verifier offline yang
@@ -34,7 +38,9 @@ Repository menyediakan:
 - `live_runtime/configured_service_release.py`: builder/verifier fail-closed;
 - `config/windows_configured_release_tooling_allowlist.v1.json`: exact tooling
   inventory; dan
-- `specs/windows_configured_service_release_v1.md`: kontrak normatif.
+- `specs/windows_configured_service_release_v1.md` serta
+  `specs/windows_configured_overlay_candidate_preparation_v1.md`: kontrak
+  normatif.
 
 Tooling ini terpisah dari generic deployment tooling. Generic bundle tetap
 menolak byte `order_send/order_check`; configured verifier hanya menyebut nama
@@ -68,6 +74,46 @@ Overlay tidak boleh mengandung password, login, token, private key, permit,
 environment arm, credential value, atau account secret. Credential Manager
 references boleh berada dalam reviewed configuration hanya bila nilainya tidak
 ditanamkan dan kontrak factory yang terpisah mengizinkannya.
+
+## Prepare candidate manifest dan descriptor
+
+Sebelum perintah ini dijalankan, reviewer eksternal harus menyediakan exact
+factory, service config, provider source, Task Scheduler definition, serta
+`bootstrap_binding_sha256`. Jangan menaruh credential value di salah satu file.
+Candidate overlay awal harus belum memiliki
+`config/windows_factory_manifest.json`.
+
+Jalankan preparer dari configured-release operator tooling yang sudah
+diekstrak. Contoh untuk decision service:
+
+```powershell
+python -I -S -B .\prepare_windows_configured_overlay_candidate.py `
+  --base-release C:\AI_SCALPER_RELEASES\decision-base.zip `
+  --overlay-root C:\AI_SCALPER_PRIVATE\decision-overlay `
+  --task-definition C:\AI_SCALPER_PRIVATE\tasks\decision-task.xml `
+  --overlay-id decision-demo-auto-window-01 `
+  --bootstrap-binding-sha256 <EXACT_NON_ZERO_BOOTSTRAP_BINDING_SHA256> `
+  --runtime-mode DEMO_AUTO `
+  --descriptor-output C:\AI_SCALPER_PRIVATE\decision-overlay.json
+```
+
+Ulangi dengan base, overlay, task definition, ID, bootstrap binding, dan output
+yang terpisah untuk execution serta status monitor. Preparer:
+
+- memverifikasi canonical base ZIP dan memilih factory-template member sesuai
+  profile secara otomatis;
+- stable-read dan mengikat exact Task Scheduler bytes;
+- menolak file tambahan, symlink/reparse, collision, noncanonical/secret JSON,
+  missing import closure, unsafe Python, dynamic code/process/native loader,
+  serta order primitive;
+- membuat factory manifest dan descriptor secara create-exclusive; dan
+- tetap melaporkan `CANDIDATE_PREPARED_EXTERNAL_REVIEW_REQUIRED`,
+  `configured_release_built=false`, serta seluruh execution lock false.
+
+Output ini belum berarti provider diterima. Review source serta seluruh hash
+secara independen sebelum memakai descriptor pada configured-release builder.
+Jika kandidat perlu diubah, gunakan directory dan overlay ID baru; jangan
+menimpa manifest atau descriptor lama.
 
 ## Build tooling release
 

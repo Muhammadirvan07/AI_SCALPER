@@ -50,9 +50,45 @@ python -B .\build_windows_configured_release_tooling.py `
   --output C:\AI_SCALPER_RELEASES\configured-release-tooling-v1.zip
 ```
 
-Supply three separately reviewed, secret-free overlays and canonical
-descriptors outside the repository. Build a new configured identity for each
-process:
+Supply three separately reviewed, secret-free candidate overlays outside the
+repository. Each candidate initially contains the factory, service config, and
+provider source but not `config/windows_factory_manifest.json`. Hash exact,
+separately reviewed Task Scheduler definitions and derive canonical factory
+manifests/descriptors using the operator tooling:
+
+```powershell
+python -I -S -B .\prepare_windows_configured_overlay_candidate.py `
+  --base-release C:\AI_SCALPER_RELEASES\decision-base.zip `
+  --overlay-root C:\AI_SCALPER_PRIVATE\decision-overlay `
+  --task-definition C:\AI_SCALPER_PRIVATE\tasks\decision-task.xml `
+  --overlay-id decision-demo-auto-window-01 `
+  --bootstrap-binding-sha256 <DECISION_BOOTSTRAP_BINDING_SHA256> `
+  --runtime-mode DEMO_AUTO `
+  --descriptor-output C:\AI_SCALPER_PRIVATE\decision-overlay.json
+
+python -I -S -B .\prepare_windows_configured_overlay_candidate.py `
+  --base-release C:\AI_SCALPER_RELEASES\execution-base.zip `
+  --overlay-root C:\AI_SCALPER_PRIVATE\execution-overlay `
+  --task-definition C:\AI_SCALPER_PRIVATE\tasks\execution-task.xml `
+  --overlay-id execution-demo-auto-window-01 `
+  --bootstrap-binding-sha256 <EXECUTION_BOOTSTRAP_BINDING_SHA256> `
+  --runtime-mode DEMO_AUTO `
+  --descriptor-output C:\AI_SCALPER_PRIVATE\execution-overlay.json
+
+python -I -S -B .\prepare_windows_configured_overlay_candidate.py `
+  --base-release C:\AI_SCALPER_RELEASES\status-monitor-base.zip `
+  --overlay-root C:\AI_SCALPER_PRIVATE\status-monitor-overlay `
+  --task-definition C:\AI_SCALPER_PRIVATE\tasks\status-monitor-task.xml `
+  --overlay-id status-monitor-demo-auto-window-01 `
+  --bootstrap-binding-sha256 <STATUS_MONITOR_BOOTSTRAP_BINDING_SHA256> `
+  --runtime-mode DEMO_AUTO `
+  --descriptor-output C:\AI_SCALPER_PRIVATE\status-monitor-overlay.json
+```
+
+`CANDIDATE_PREPARED_EXTERNAL_REVIEW_REQUIRED` is the expected status. It does
+not approve a provider, install any task, build a configured ZIP, or grant
+execution. Independently review the three exact overlay inventories,
+descriptors, and hashes. Then build a new configured identity for each process:
 
 ```powershell
 python -I -S -B .\build_windows_configured_service_release.py `

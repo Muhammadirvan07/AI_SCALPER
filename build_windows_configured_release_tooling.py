@@ -74,6 +74,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "config/windows_configured_release_tooling_allowlist.v1.json",
         "live_runtime/__init__.py",
         "live_runtime/configured_service_release.py",
+        "prepare_windows_configured_overlay_candidate.py",
         "verify_windows_configured_service_release.py",
     }
 )

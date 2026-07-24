@@ -212,7 +212,21 @@ _READINESS_BLOCKERS = (
     "EXTERNAL_PROVIDER_RUNTIME_ATTESTATION_REQUIRED",
     "EXTERNAL_TASK_INSTALLATION_AND_ACL_ATTESTATION_REQUIRED",
 )
+_FACTORY_TEMPLATE_MEMBER_BY_PROFILE = {
+    EXECUTION_PROFILE: "live_runtime/windows_service_factory_template.py",
+    DECISION_PROFILE: (
+        "live_runtime/windows_decision_service_factory_template.py"
+    ),
+    MONITOR_PROFILE: (
+        "live_runtime/windows_external_status_monitor_factory_template.py"
+    ),
+}
+_CANDIDATE_FACTORY_PATH = "reviewed_windows_factory.py"
+_CANDIDATE_SERVICE_CONFIG_PATH = "config/windows_service_config.json"
+_CANDIDATE_FACTORY_MANIFEST_PATH = "config/windows_factory_manifest.json"
+_CANDIDATE_STATUS = "CANDIDATE_PREPARED_EXTERNAL_REVIEW_REQUIRED"
 _REPORT_SEAL = object()
+_PREPARATION_SEAL = object()
 
 
 class ConfiguredReleaseError(RuntimeError):
@@ -222,6 +236,57 @@ class ConfiguredReleaseError(RuntimeError):
         normalized = str(reason_code or "").strip().upper()
         self.reason_code = normalized or "CONFIGURED_RELEASE_INVALID"
         super().__init__(self.reason_code)
+
+
+@dataclass(frozen=True)
+class ConfiguredOverlayCandidatePreparation:
+    """Deny-only receipt for one statically prepared overlay candidate."""
+
+    base_release_profile: str
+    base_release_identity_sha256: str
+    overlay_id: str
+    runtime_mode: str
+    factory_manifest_path: str
+    factory_manifest_sha256: str
+    descriptor_path: str
+    descriptor_sha256: str
+    factory_contract_sha256: str
+    bootstrap_binding_sha256: str
+    reviewed_factory_template_sha256: str
+    task_definition_sha256: str
+    provider_source_relative_paths: tuple[str, ...]
+    file_count: int
+    status: str = _CANDIDATE_STATUS
+    production_execution_ready: bool = False
+    configured_release_built: bool = False
+    provider_materialization_performed: bool = False
+    credential_access_performed: bool = False
+    task_installation_performed: bool = False
+    broker_mutation_performed: bool = False
+    live_allowed: bool = False
+    safe_to_demo_auto_order: bool = False
+    max_lot: float = 0.01
+    _seal: InitVar[object] = None
+
+    def __post_init__(self, _seal: object) -> None:
+        if _seal is not _PREPARATION_SEAL:
+            raise TypeError(
+                "ConfiguredOverlayCandidatePreparation must be produced by "
+                "the configured overlay candidate preparer"
+            )
+        if (
+            self.status != _CANDIDATE_STATUS
+            or self.production_execution_ready is not False
+            or self.configured_release_built is not False
+            or self.provider_materialization_performed is not False
+            or self.credential_access_performed is not False
+            or self.task_installation_performed is not False
+            or self.broker_mutation_performed is not False
+            or self.live_allowed is not False
+            or self.safe_to_demo_auto_order is not False
+            or self.max_lot != 0.01
+        ):
+            raise ValueError("configured overlay preparation safety drift")
 
 
 def _sha256(value: bytes) -> str:
@@ -390,12 +455,7 @@ def _local_module_inventory(paths: set[str]) -> dict[str, str]:
 
 
 def _resolve_local_import(module: str, inventory: Mapping[str, str]) -> str | None:
-    current = module
-    while current:
-        if current in inventory:
-            return inventory[current]
-        current = current.rpartition(".")[0]
-    return None
+    return inventory.get(module)
 
 
 def _relative_module(
@@ -841,6 +901,25 @@ def _validate_descriptor(payload: Mapping[str, object]) -> dict[str, Any]:
     }
 
 
+def _validate_overlay_payloads(
+    observed: Mapping[str, bytes],
+    descriptor: Mapping[str, object],
+) -> None:
+    expected = {item["path"]: item for item in descriptor["files"]}
+    if set(observed) != set(expected):
+        raise ConfiguredReleaseError("OVERLAY_FILE_SET_MISMATCH")
+    for path, item in expected.items():
+        data = observed[path]
+        if len(data) != item["size_bytes"] or _sha256(data) != item["sha256"]:
+            raise ConfiguredReleaseError("OVERLAY_FILE_HASH_MISMATCH")
+        for pattern in _SECRET_PATTERNS:
+            if pattern.search(data):
+                raise ConfiguredReleaseError("OVERLAY_SECRET_PATTERN")
+        if path.endswith(".json"):
+            parsed = _strict_json(data, kind="OVERLAY", canonical=True)
+            _safe_json_value(parsed)
+
+
 def _read_overlay(
     root: Path,
     descriptor: Mapping[str, object],
@@ -896,18 +975,7 @@ def _read_overlay(
             raise ConfiguredReleaseError("OVERLAY_TOTAL_SIZE_EXCEEDED")
         observed[relative] = data
         observed_folded.add(relative.casefold())
-    if set(observed) != set(expected):
-        raise ConfiguredReleaseError("OVERLAY_FILE_SET_MISMATCH")
-    for path, item in expected.items():
-        data = observed[path]
-        if len(data) != item["size_bytes"] or _sha256(data) != item["sha256"]:
-            raise ConfiguredReleaseError("OVERLAY_FILE_HASH_MISMATCH")
-        for pattern in _SECRET_PATTERNS:
-            if pattern.search(data):
-                raise ConfiguredReleaseError("OVERLAY_SECRET_PATTERN")
-        if path.endswith(".json"):
-            parsed = _strict_json(data, kind="OVERLAY", canonical=True)
-            _safe_json_value(parsed)
+    _validate_overlay_payloads(observed, descriptor)
     return observed
 
 
@@ -1019,6 +1087,341 @@ def _write_exclusive(path: Path, data: bytes) -> None:
     except Exception:
         path.unlink(missing_ok=True)
         raise
+
+
+def _regular_directory(path: Path, *, code: str) -> Path:
+    try:
+        metadata = path.lstat()
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or int(getattr(metadata, "st_file_attributes", 0)) & 0x400
+        ):
+            raise ConfiguredReleaseError(code)
+        resolved = path.resolve(strict=True)
+    except ConfiguredReleaseError:
+        raise
+    except OSError as exc:
+        raise ConfiguredReleaseError(code) from exc
+    return resolved
+
+
+def _new_output_path(path: Path, *, code: str) -> Path:
+    absolute = path.expanduser().absolute()
+    try:
+        absolute.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise ConfiguredReleaseError(code) from exc
+    else:
+        raise ConfiguredReleaseError(code)
+    parent = _regular_directory(absolute.parent, code=code)
+    if absolute.name in {"", ".", ".."}:
+        raise ConfiguredReleaseError(code)
+    return parent / absolute.name
+
+
+def _candidate_overlay_files(root: Path) -> tuple[Path, dict[str, bytes]]:
+    resolved_root = _regular_directory(root, code="OVERLAY_ROOT_INVALID")
+    manifest_target = (
+        resolved_root / _CANDIDATE_FACTORY_MANIFEST_PATH
+    )
+    try:
+        manifest_target.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise ConfiguredReleaseError(
+            "OUTPUT_ALREADY_EXISTS_OR_UNAVAILABLE"
+        ) from exc
+    else:
+        raise ConfiguredReleaseError(
+            "OUTPUT_ALREADY_EXISTS_OR_UNAVAILABLE"
+        )
+
+    observed: dict[str, bytes] = {}
+    folded: set[str] = set()
+    total = 0
+    try:
+        paths = sorted(resolved_root.rglob("*"))
+    except OSError as exc:
+        raise ConfiguredReleaseError("OVERLAY_FILE_SET_INVALID") from exc
+    for path in paths:
+        try:
+            metadata = path.lstat()
+        except OSError as exc:
+            raise ConfiguredReleaseError("OVERLAY_FILE_NOT_REGULAR") from exc
+        if stat.S_ISDIR(metadata.st_mode):
+            if stat.S_ISLNK(metadata.st_mode) or int(
+                getattr(metadata, "st_file_attributes", 0)
+            ) & 0x400:
+                raise ConfiguredReleaseError("OVERLAY_FILE_NOT_REGULAR")
+            continue
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or int(getattr(metadata, "st_file_attributes", 0)) & 0x400
+        ):
+            raise ConfiguredReleaseError("OVERLAY_FILE_NOT_REGULAR")
+        try:
+            relative = (
+                path.resolve(strict=True)
+                .relative_to(resolved_root)
+                .as_posix()
+            )
+        except (OSError, ValueError) as exc:
+            raise ConfiguredReleaseError("OVERLAY_FILE_NOT_REGULAR") from exc
+        relative = _overlay_path(relative)
+        parsed = PurePosixPath(relative)
+        allowed = (
+            relative == _CANDIDATE_FACTORY_PATH
+            or relative == _CANDIDATE_SERVICE_CONFIG_PATH
+            or (
+                parsed.parts[0] == "configured_providers"
+                and parsed.suffix == ".py"
+            )
+        )
+        if not allowed:
+            raise ConfiguredReleaseError("OVERLAY_FILE_SET_INVALID")
+        if relative.casefold() in folded:
+            raise ConfiguredReleaseError("OVERLAY_FILE_CASE_COLLISION")
+        data = _read_stable_file(path, code="OVERLAY_FILE_NOT_REGULAR")
+        total += len(data)
+        if total > MAX_TOTAL_BYTES:
+            raise ConfiguredReleaseError("OVERLAY_TOTAL_SIZE_EXCEEDED")
+        observed[relative] = data
+        folded.add(relative.casefold())
+
+    required = {
+        _CANDIDATE_FACTORY_PATH,
+        _CANDIDATE_SERVICE_CONFIG_PATH,
+        "configured_providers/__init__.py",
+    }
+    if not required.issubset(observed):
+        raise ConfiguredReleaseError("OVERLAY_FILE_SET_INVALID")
+    for path, data in observed.items():
+        for pattern in _SECRET_PATTERNS:
+            if pattern.search(data):
+                raise ConfiguredReleaseError("OVERLAY_SECRET_PATTERN")
+        if path.endswith(".json"):
+            parsed = _strict_json(data, kind="OVERLAY", canonical=True)
+            _safe_json_value(parsed)
+    return resolved_root, observed
+
+
+def _file_identity(path: Path) -> tuple[int, int, int, int, int, int]:
+    try:
+        item = path.lstat()
+    except OSError as exc:
+        raise ConfiguredReleaseError(
+            "OUTPUT_ALREADY_EXISTS_OR_UNAVAILABLE"
+        ) from exc
+    return (
+        int(item.st_dev),
+        int(item.st_ino),
+        int(item.st_mode),
+        int(item.st_size),
+        int(item.st_mtime_ns),
+        int(getattr(item, "st_file_attributes", 0)),
+    )
+
+
+def _remove_created_file(
+    path: Path,
+    *,
+    identity: tuple[int, int, int, int, int, int],
+) -> None:
+    try:
+        if _file_identity(path) == identity:
+            path.unlink()
+    except (ConfiguredReleaseError, OSError):
+        pass
+
+
+def prepare_configured_overlay_candidate(
+    *,
+    base_archive: str | Path,
+    overlay_root: str | Path,
+    task_definition_path: str | Path,
+    overlay_id: str,
+    bootstrap_binding_sha256: str,
+    runtime_mode: str,
+    descriptor_output_path: str | Path,
+) -> ConfiguredOverlayCandidatePreparation:
+    """Prepare one static configured-overlay candidate without authority."""
+
+    _base_bytes, base_manifest, base_sources = _load_base_release(base_archive)
+    profile = str(base_manifest["release_profile"])
+    template_path = _FACTORY_TEMPLATE_MEMBER_BY_PROFILE.get(profile)
+    if template_path is None or template_path not in base_sources:
+        raise ConfiguredReleaseError("BASE_FACTORY_TEMPLATE_MISSING")
+    template_sha256 = _sha256(base_sources[template_path])
+
+    candidate_id = _require_id(overlay_id, "DESCRIPTOR_ID_INVALID")
+    if runtime_mode not in {"DEMO", "DEMO_AUTO"}:
+        raise ConfiguredReleaseError("DESCRIPTOR_RUNTIME_MODE_INVALID")
+    bootstrap_sha256 = _require_nonzero_hash(
+        bootstrap_binding_sha256,
+        "BOOTSTRAP_BINDING_HASH_INVALID",
+    )
+    task_bytes = _read_stable_file(
+        Path(task_definition_path),
+        code="TASK_DEFINITION_INVALID",
+    )
+    if not task_bytes:
+        raise ConfiguredReleaseError("TASK_DEFINITION_INVALID")
+    for pattern in _SECRET_PATTERNS:
+        if pattern.search(task_bytes):
+            raise ConfiguredReleaseError("TASK_DEFINITION_SECRET_PATTERN")
+    task_sha256 = _sha256(task_bytes)
+
+    resolved_root, candidate_overlay = _candidate_overlay_files(
+        Path(overlay_root)
+    )
+    descriptor_target = _new_output_path(
+        Path(descriptor_output_path),
+        code="OUTPUT_ALREADY_EXISTS_OR_UNAVAILABLE",
+    )
+    if descriptor_target.is_relative_to(resolved_root):
+        raise ConfiguredReleaseError("DESCRIPTOR_OUTPUT_INSIDE_OVERLAY")
+    manifest_target = (
+        resolved_root / _CANDIDATE_FACTORY_MANIFEST_PATH
+    )
+
+    final_paths = set(candidate_overlay) | {
+        _CANDIDATE_FACTORY_MANIFEST_PATH
+    }
+    base_folded = {path.casefold() for path in base_sources}
+    if any(path.casefold() in base_folded for path in final_paths):
+        raise ConfiguredReleaseError("OVERLAY_BASE_PATH_COLLISION")
+
+    _validate_python_sources(
+        candidate_overlay,
+        combined_paths=set(base_sources) | final_paths,
+    )
+    factory_data = candidate_overlay[_CANDIDATE_FACTORY_PATH]
+    service_config_data = candidate_overlay[
+        _CANDIDATE_SERVICE_CONFIG_PATH
+    ]
+    manifest: dict[str, object] = {
+        "bootstrap_binding_sha256": bootstrap_sha256,
+        "factory_attribute": "build",
+        "factory_file_sha256": _sha256(factory_data),
+        "factory_module": "reviewed_windows_factory",
+        "factory_relative_path": _CANDIDATE_FACTORY_PATH,
+        "release_profile": profile,
+        "schema_version": FACTORY_MANIFEST_SCHEMA,
+        "service_config_file_sha256": _sha256(service_config_data),
+        "service_config_relative_path": _CANDIDATE_SERVICE_CONFIG_PATH,
+    }
+    manifest["factory_contract_sha256"] = _factory_contract_hash(manifest)
+    manifest_bytes = _canonical_file(manifest)
+    final_overlay = {
+        **candidate_overlay,
+        _CANDIDATE_FACTORY_MANIFEST_PATH: manifest_bytes,
+    }
+    provider_paths = sorted(
+        path
+        for path in final_overlay
+        if PurePosixPath(path).parts[0] == "configured_providers"
+    )
+    descriptor_payload = {
+        "base_release_identity_sha256": base_manifest[
+            "release_identity_sha256"
+        ],
+        "base_release_profile": profile,
+        "factory_manifest_relative_path": (
+            _CANDIDATE_FACTORY_MANIFEST_PATH
+        ),
+        "factory_source_relative_path": _CANDIDATE_FACTORY_PATH,
+        "files": [
+            {
+                "path": path,
+                "sha256": _sha256(data),
+                "size_bytes": len(data),
+            }
+            for path, data in sorted(final_overlay.items())
+        ],
+        "overlay_id": candidate_id,
+        "provider_source_relative_paths": provider_paths,
+        "reviewed_factory_template_sha256": template_sha256,
+        "runtime_mode": runtime_mode,
+        "safety": dict(_DESCRIPTOR_SAFETY),
+        "schema_version": CONFIGURED_OVERLAY_SCHEMA,
+        "service_config_relative_path": _CANDIDATE_SERVICE_CONFIG_PATH,
+        "task_definition_sha256": task_sha256,
+    }
+    descriptor = _validate_descriptor(descriptor_payload)
+    _validate_overlay_payloads(final_overlay, descriptor)
+    _validate_python_sources(
+        final_overlay,
+        combined_paths=set(base_sources) | set(final_overlay),
+    )
+    validated_manifest = _validate_factory_manifest(
+        manifest_bytes,
+        descriptor=descriptor,
+        overlay=final_overlay,
+    )
+    descriptor_bytes = _canonical_file(descriptor)
+
+    _write_exclusive(manifest_target, manifest_bytes)
+    manifest_identity = _file_identity(manifest_target)
+    try:
+        _write_exclusive(descriptor_target, descriptor_bytes)
+    except Exception:
+        _remove_created_file(
+            manifest_target,
+            identity=manifest_identity,
+        )
+        raise
+    descriptor_identity = _file_identity(descriptor_target)
+    try:
+        if (
+            _read_stable_file(
+                manifest_target,
+                code="OUTPUT_VERIFICATION_FAILED",
+            )
+            != manifest_bytes
+            or _read_stable_file(
+                descriptor_target,
+                code="OUTPUT_VERIFICATION_FAILED",
+            )
+            != descriptor_bytes
+        ):
+            raise ConfiguredReleaseError("OUTPUT_VERIFICATION_FAILED")
+    except Exception:
+        _remove_created_file(
+            manifest_target,
+            identity=manifest_identity,
+        )
+        _remove_created_file(
+            descriptor_target,
+            identity=descriptor_identity,
+        )
+        raise
+
+    return ConfiguredOverlayCandidatePreparation(
+        base_release_profile=profile,
+        base_release_identity_sha256=str(
+            base_manifest["release_identity_sha256"]
+        ),
+        overlay_id=candidate_id,
+        runtime_mode=runtime_mode,
+        factory_manifest_path=str(manifest_target),
+        factory_manifest_sha256=_sha256(manifest_bytes),
+        descriptor_path=str(descriptor_target),
+        descriptor_sha256=_sha256(descriptor_bytes),
+        factory_contract_sha256=str(
+            validated_manifest["factory_contract_sha256"]
+        ),
+        bootstrap_binding_sha256=bootstrap_sha256,
+        reviewed_factory_template_sha256=template_sha256,
+        task_definition_sha256=task_sha256,
+        provider_source_relative_paths=tuple(provider_paths),
+        file_count=len(final_overlay),
+        _seal=_PREPARATION_SEAL,
+    )
 
 
 def _combined_source_entries(sources: Mapping[str, bytes]) -> list[dict[str, object]]:

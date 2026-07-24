@@ -48,6 +48,7 @@ class ConfiguredServiceReleaseCLITests(unittest.TestCase):
         root = Path(__file__).resolve().parent
         for script in (
             "build_windows_configured_service_release.py",
+            "prepare_windows_configured_overlay_candidate.py",
             "verify_windows_configured_service_release.py",
         ):
             with self.subTest(script=script):

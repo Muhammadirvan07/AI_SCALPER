@@ -184,10 +184,16 @@ python -B .\build_windows_configured_release_tooling.py `
 ```
 
 Gunakan bundle tersebut untuk mengikat masing-masing base release dengan exact
-secret-free reviewed overlay. Hasilnya adalah decision-configured dan
-execution-configured ZIP dengan identity baru. Verifikasi keduanya terhadap
-configured identity dan base identity yang dipin off-host. Extract dan jalankan
-configured ZIP; jangan menyalin factory ke base release setelah ekstraksi.
+secret-free reviewed overlay. Sebelum build, gunakan
+`prepare_windows_configured_overlay_candidate.py` dari bundle yang sama untuk
+menurunkan exact profile-template hash dari base ZIP, mengikat reviewed Task
+Scheduler definition, serta membuat canonical factory manifest/descriptor
+secara create-exclusive. Status preparer tetap external-review-required dan
+tidak mengimpor provider. Hasil build berikutnya adalah decision-configured,
+execution-configured, dan status-monitor-configured ZIP dengan identity baru.
+Verifikasi semuanya terhadap configured identity dan base identity yang dipin
+off-host. Extract dan jalankan configured ZIP; jangan menyalin factory ke base
+release setelah ekstraksi.
 
 Decision, execution, dan status-monitor bundle wajib menggunakan configured
 release identity, service account, root, state directory, dan in-release
