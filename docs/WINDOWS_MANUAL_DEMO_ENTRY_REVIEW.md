@@ -16,6 +16,13 @@ acceptance verifier. It requests a separate human activation review only when:
 - the manual-demo result observation is completely absent; and
 - the full external dossier truthfully remains incomplete.
 
+Sebelum configured release benar-benar digunakan, jalankan juga admission
+atomik di
+[Windows Pre-Manual Configured-Release Admission](WINDOWS_PRE_MANUAL_CONFIGURED_RELEASE_ADMISSION.md).
+Boundary tersebut memanggil verifier ini setelah membuktikan bahwa tiga ZIP
+decision/execution/status-monitor adalah byte persis yang diikat dossier,
+bukan hanya tiga paket valid yang dipilih terpisah.
+
 It never authorizes manual-demo. Its complete pre-run result still contains:
 
 ```text

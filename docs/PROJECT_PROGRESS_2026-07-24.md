@@ -9,7 +9,7 @@ Persentase berikut adalah estimasi engineering, bukan izin trading:
 
 - fondasi software lokal yang diperlukan sebelum acceptance Windows:
   **100%**;
-- kesiapan untuk **memulai** demo-auto soak: sekitar **72%**;
+- kesiapan untuk **memulai** demo-auto soak: sekitar **73%**;
 - roadmap Live-Grade v1 end-to-end: sekitar **48%**.
 
 Perbedaan tersebut disengaja. Source code lokal dapat selesai, tetapi demo-auto
@@ -17,7 +17,7 @@ baru boleh dimulai setelah acceptance Windows, provider/key custody, sepuluh
 manual-demo lifecycles, dan approval manusia. Live masih membutuhkan soak 30
 hari/50 closed fills/20 XAU, bukti per lane, serta gate statistik dan keamanan.
 
-Validasi lokal terakhir menjalankan **1.334 test** tanpa kegagalan pada mode
+Validasi lokal terakhir menjalankan **1.346 test** tanpa kegagalan pada mode
 normal dan `PYTHONOPTIMIZE=2`. Seluruh tracked Python source berhasil
 dikompilasi, validator decision/execution/status-monitor lulus dengan
 `production_execution_ready=false`, dan safety locks tetap:
@@ -33,6 +33,10 @@ Dependency lock Windows, install manifest, dan CycloneDX SBOM juga tervalidasi.
 Audit environment development dengan `pip-audit 2.10.1` melaporkan tidak ada
 kerentanan yang diketahui. Hasil ini adalah pemeriksaan lokal saat ini, bukan
 pengganti signed OSV release receipt dari Windows host target.
+Audit ship-gate terperinci tersedia di
+[SHIP_GATE_AUDIT_2026-07-24.md](SHIP_GATE_AUDIT_2026-07-24.md); verdict-nya
+adalah source lokal lulus, sedangkan demo-auto dan live tetap ditolak sampai
+bukti eksternal selesai.
 
 ## Yang selesai pada fondasi lokal
 
@@ -77,6 +81,13 @@ pengganti signed OSV release receipt dari Windows host target.
   stage evidence terpisah; ia menolak observation hasil manual-demo yang muncul
   terlalu awal dan tidak memiliki order, activation, permit, atau issuer
   capability.
+- Configured-release admission sekarang membaca tiga ZIP role-specific secara
+  stabil dan hanya sekali, memverifikasi byte yang sama, lalu mengikat exact
+  archive/manifest, base/configured identity, profile, Git, factory,
+  configuration, dan task hash ke signed operations bundle sebelum
+  pre-manual assessment. Ini menutup substitusi paket valid yang salah tanpa
+  menambah provider, credential, task, process, MT5, broker, atau activation
+  capability.
 - Stage-readiness v2 sekarang mengikat exact hash/status/check time hasil
   pre-manual review ke readiness receipt, request, sealed validation, dan
   supervisor startup receipt v3. Runtime menolak substitusi hash dan stage
@@ -87,8 +98,10 @@ pengganti signed OSV release receipt dari Windows host target.
 
 ## Sisa menuju demo-auto soak
 
-1. Bangun dan terima ketiga configured release pada exact Windows x86-64,
-   CPython 3.12, NTFS, MT5 terminal, account, server, dan symbol specification.
+1. Bangun ketiga configured release pada exact Windows x86-64, CPython 3.12,
+   NTFS, MT5 terminal, account, server, dan symbol specification; lalu jalankan
+   exact configured-release admission terhadap tiga ZIP yang benar-benar akan
+   diekstrak.
 2. Materialisasi serta review provider nyata untuk finalized data, trusted
    clock, news, decision IPC, reconciliation, risk facts, off-host CAS,
    checkpoint, incident latch, WORM audit, heartbeat, dan alert.

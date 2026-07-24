@@ -143,6 +143,18 @@ FORBIDDEN_SERVICE_TOOL_PREFIXES = (
     "setup_",
     "verify_",
 )
+CONFIGURED_RELEASE_VERIFIER_PATH = (
+    "live_runtime/configured_service_release.py"
+)
+FORBIDDEN_READ_ONLY_SERVICE_PATHS = frozenset(
+    {
+        CONFIGURED_RELEASE_VERIFIER_PATH,
+        (
+            "live_runtime/"
+            "windows_pre_manual_configured_release_admission.py"
+        ),
+    }
+)
 ORDER_CAPABILITY_SOURCE_PATTERNS = (
     re.compile(rb"\border_(?:check|send)\b", re.IGNORECASE),
     re.compile(rb"\bTRADE_ACTION_[A-Z0-9_]+\b"),
@@ -171,6 +183,75 @@ SECRET_BYTE_PATTERNS = (
 
 class ReleaseBuildError(RuntimeError):
     """Fail-closed release construction error."""
+
+
+def _configured_verifier_contains_deny_rules_only(data: bytes) -> bool:
+    """Admit exact deny-list literals, never executable broker primitives."""
+
+    try:
+        tree = ast.parse(
+            data.decode("utf-8"),
+            filename=CONFIGURED_RELEASE_VERIFIER_PATH,
+        )
+    except (UnicodeDecodeError, SyntaxError):
+        return False
+    allowed_literals: set[int] = set()
+    assignments = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(target, ast.Name)
+            and target.id == "_FORBIDDEN_ORDER_MEMBERS"
+            for target in node.targets
+        ):
+            continue
+        assignments += 1
+        value = node.value
+        if (
+            not isinstance(value, ast.Call)
+            or not isinstance(value.func, ast.Name)
+            or value.func.id != "frozenset"
+            or len(value.args) != 1
+            or value.keywords
+            or not isinstance(value.args[0], (ast.Set, ast.Tuple, ast.List))
+        ):
+            return False
+        elements = tuple(value.args[0].elts)
+        literals = {
+            item.value
+            for item in elements
+            if isinstance(item, ast.Constant)
+            and isinstance(item.value, str)
+        }
+        if literals != {"order_check", "order_send"} or len(elements) != 2:
+            return False
+        allowed_literals.update(id(item) for item in elements)
+    if assignments != 1:
+        return False
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr in {"order_check", "order_send"}
+        ):
+            return False
+        if (
+            isinstance(node, ast.Name)
+            and node.id in {"order_check", "order_send"}
+        ):
+            return False
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and re.search(
+                r"\border_(?:check|send)\b",
+                node.value,
+                re.IGNORECASE,
+            )
+            and id(node) not in allowed_literals
+        ):
+            return False
+    return True
 
 
 def _canonical_json(payload: Mapping[str, Any]) -> bytes:
@@ -319,6 +400,11 @@ def _content_policy(path_text: str, data: bytes) -> None:
     if PurePosixPath(path_text).suffix.casefold() in {".mq5", ".mqh", ".py"}:
         for pattern in ORDER_CAPABILITY_SOURCE_PATTERNS:
             if pattern.search(data):
+                if (
+                    path_text == CONFIGURED_RELEASE_VERIFIER_PATH
+                    and _configured_verifier_contains_deny_rules_only(data)
+                ):
+                    continue
                 raise ReleaseBuildError(
                     "order-capability primitive is forbidden in a read-only "
                     f"release: {path_text}"
@@ -369,7 +455,10 @@ def load_allowlist(path: Path) -> dict[str, Any]:
     if schema_version == READ_ONLY_SERVICE_ALLOWLIST_SCHEMA:
         for item in normalized:
             basename = PurePosixPath(item).name.casefold()
-            if basename.startswith(FORBIDDEN_SERVICE_TOOL_PREFIXES):
+            if (
+                basename.startswith(FORBIDDEN_SERVICE_TOOL_PREFIXES)
+                or item in FORBIDDEN_READ_ONLY_SERVICE_PATHS
+            ):
                 raise ReleaseBuildError(
                     f"operator/setup tooling is forbidden in service release: {item}"
                 )

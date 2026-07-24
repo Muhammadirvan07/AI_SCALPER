@@ -371,6 +371,39 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
         source = _read_release_sources(REPO_ROOT, payload["files"], paths)
         self.assertEqual(paths, set(source))
 
+    def test_configured_verifier_deny_literals_are_not_execution_capability(
+        self,
+    ):
+        path = release_builder.CONFIGURED_RELEASE_VERIFIER_PATH
+        source = (REPO_ROOT / path).read_bytes()
+        release_builder._content_policy(path, source)
+
+        executable = source + (
+            b"\ndef activate(client):\n"
+            b"    return client.order_send({})\n"
+        )
+        with self.assertRaisesRegex(
+            ReleaseBuildError,
+            "order-capability primitive",
+        ):
+            release_builder._content_policy(path, executable)
+
+        indirect = source + (
+            b"\ndef activate(client):\n"
+            b"    return getattr(client, 'order_send')({})\n"
+        )
+        with self.assertRaisesRegex(
+            ReleaseBuildError,
+            "order-capability primitive",
+        ):
+            release_builder._content_policy(path, indirect)
+
+        with self.assertRaisesRegex(
+            ReleaseBuildError,
+            "order-capability primitive",
+        ):
+            release_builder._content_policy("arbitrary.py", source)
+
 
 if __name__ == "__main__":
     unittest.main()
