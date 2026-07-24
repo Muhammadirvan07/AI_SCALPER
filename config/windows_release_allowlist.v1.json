@@ -82,6 +82,7 @@
     "live_runtime/vulnerability_audit.py",
     "live_runtime/windows_manual_demo_entry_review.py",
     "live_runtime/windows_pre_manual_configured_release_admission.py",
+    "live_runtime/windows_base_release_suite.py",
     "live_runtime/windows_service_factory_template.py",
     "live_runtime/xm_window_plan.py",
     "market_data_quality.py",

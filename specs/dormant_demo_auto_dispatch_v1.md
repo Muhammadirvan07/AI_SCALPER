@@ -92,6 +92,11 @@ A reviewed DEMO_AUTO release is incomplete until deployment supplies and verifie
 - clean failure-drill evidence for restart, disconnect, timeout, duplicate intent,
   partial fill, missing protection, orphan position, and clock drift;
 - a fake-adapter acceptance run proving one dispatch and zero duplicate sends.
+  Its synthetic account-runtime identity must be unique per independent test
+  fixture so concurrent normal and optimized regression processes cannot
+  contend with each other.  The dedicated split-brain test must continue to
+  share one identity and prove that the production fence rejects the second
+  runtime.
 
 The checked-in policy must remain false until those external authorities are
 available and a human-reviewed release explicitly enables the central policy.

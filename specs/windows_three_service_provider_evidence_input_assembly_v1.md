@@ -9,6 +9,10 @@ continue the live-grade roadmap while preserving every execution lock
 `specs/windows_three_service_provider_conformance_review_v1.md`,
 `specs/windows_configured_overlay_candidate_preparation_v1.md`
 
+> **Legacy notice:** This approved v1 assembler contract is retained only for
+> byte-compatible historical diagnostics. New candidate assembly MUST use
+> `specs/windows_three_service_provider_conformance_v2.md`.
+
 ## Context
 
 The provider-conformance reviewer binds three exact configured service factory

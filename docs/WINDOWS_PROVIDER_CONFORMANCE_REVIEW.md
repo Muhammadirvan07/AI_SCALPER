@@ -46,18 +46,22 @@ order_capability=DISABLED
 max_lot=0.01
 ```
 
-## Input
+## Input v2 untuk candidate baru
 
 Create one secret-free
-`windows-three-service-provider-conformance-input-v1` document outside the
+`windows-three-service-provider-conformance-input-v2` document outside the
 repository. It must bind:
 
-- the exact operations plan, operations review bundle, and configured-release
-  admission hashes;
+- the exact operations plan and operations review bundle hashes;
 - exactly one `DECISION`, `EXECUTION`, and `STATUS_MONITOR` service;
 - three distinct configured release identities;
 - each exact validated factory template; and
 - exactly one evidence record for every provider binding.
+
+The reviewer derives `configured_release_set_sha256` from the three exact
+role/identity pairs. The caller cannot supply that value. Version 2 must not
+contain `configured_release_admission_sha256`; exact suite/archive admission
+happens later, after independent signed pre-manual observations exist.
 
 Each evidence record repeats the template-bound contract, implementation,
 configuration, and binding hashes. It also carries a conformance-suite hash,
@@ -83,8 +87,8 @@ Git commit. Extract it to an operator-only regular NTFS directory. Then run:
 
 ```powershell
 python -I -S -B .\prepare_windows_three_service_provider_conformance_review.py `
-  --input C:\AI_SCALPER_PRIVATE\providers\three-service-provider-input-v1.json `
-  --output C:\AI_SCALPER_PRIVATE\providers\three-service-provider-review-v1.json
+  --input C:\AI_SCALPER_PRIVATE\providers\three-service-provider-input-v2.json `
+  --output C:\AI_SCALPER_PRIVATE\providers\three-service-provider-review-v2.json
 ```
 
 Success reports:
@@ -100,6 +104,15 @@ The output is canonical, newline-terminated, and create-exclusive. Use a new
 path when any provider, configuration, test suite, evidence artifact, or
 configured identity changes.
 
+The packet content SHA-256 may be referenced by an external observation only
+as `source_evidence_sha256`. Independent validation must produce a different
+immutable object and bind its hash as `validation_receipt_sha256`. The packet
+cannot validate itself and neither hash grants activation.
+
+Version 1 remains readable and byte-compatible for historical diagnostics.
+Because it depends on a future admission placeholder, it cannot satisfy a new
+pre-manual or promotion workflow.
+
 ## Failure behavior
 
 The tool rejects unknown or duplicate fields, non-finite values, noncanonical
@@ -113,5 +126,6 @@ not import a configured provider, read Credential Manager, inspect an evidence
 artifact, access the network, initialize MT5, install a task, launch a service,
 or call a broker.
 
-Normative behavior is defined in
-[`specs/windows_three_service_provider_conformance_review_v1.md`](../specs/windows_three_service_provider_conformance_review_v1.md).
+Normative candidate behavior is defined in
+[`specs/windows_three_service_provider_conformance_v2.md`](../specs/windows_three_service_provider_conformance_v2.md).
+The v1 spec remains the compatibility contract for historical packets.

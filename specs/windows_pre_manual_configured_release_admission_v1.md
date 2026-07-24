@@ -6,6 +6,7 @@
 **Reviewers:** AI_SCALPER project owner (standing authorization to continue the
 roadmap while preserving all execution locks)
 **Related specs:** `specs/windows_configured_service_release_v1.md`,
+`specs/windows_base_suite_configured_release_binding_v1.md`,
 `specs/windows_three_service_demo_soak_operations_v3.md`,
 `specs/windows_three_service_external_acceptance_v1.md`,
 `specs/windows_manual_demo_entry_review_v1.md`
@@ -74,10 +75,10 @@ order.
   `ready_for_demo_auto_soak=false`, `safe_to_demo_auto_order=false`,
   `live_allowed=false`, `promotion_eligible=false`,
   `order_capability=DISABLED`, and `max_lot=0.01`.
-- FR-11: The CLI MUST accept only three configured-release paths, the immutable
-  review bundle, public trust policy, signed observations, independently
-  pinned policy SHA-256, trusted canonical UTC, and an optional create-only
-  output path.
+- FR-11: The CLI MUST accept only one exact atomic base-release suite root,
+  three configured-release paths, the immutable review bundle, public trust
+  policy, signed observations, independently pinned policy SHA-256, trusted
+  canonical UTC, and an optional create-only output path.
 - FR-12: The implementation MUST NOT load a private key, sign evidence, accept
   a password/login/token/credential value, import a configured provider,
   materialize a factory, install or start a task, launch a service, initialize
@@ -90,6 +91,12 @@ order.
   any input changes, fails verification, or mismatches the signed plan.
 - FR-15: Existing configured-release, operations-bundle, external-acceptance,
   and pre-manual-entry semantics MUST remain unchanged.
+- FR-16: Admission MUST independently verify the exact atomic five-role
+  base-release suite. Each configured archive MUST carry a suite-provenance
+  binding for the matching role, and all three bindings MUST name the same
+  suite identity and manifest hash.
+- FR-17: Legacy configured releases without suite provenance MUST remain
+  ineligible for pre-manual admission.
 
 ## Non-Functional Requirements
 
@@ -192,7 +199,7 @@ When admission runs more than once
 Then canonical reports and content hashes are identical
 And each run completes within the measurable bound.
 
-### AC-10: Full safety regression remains green (FR-10, FR-15, NFR-7)
+### AC-10: Full safety regression remains green (FR-10, FR-15, FR-16, FR-17, NFR-7)
 
 Given the completed implementation
 When focused, optimized, compilation, release-policy, dependency, SBOM, and
@@ -233,11 +240,13 @@ And checked-in execution locks remain unchanged.
 ## API Contracts
 
 No HTTP, network, broker, scheduler, service-control, or signing API is
-introduced.
+introduced. The documentation-only validator marker `GET /not-applicable`
+MUST NOT be implemented or exposed.
 
 ```python
 def assess_windows_pre_manual_configured_release_admission(
     *,
+    base_release_suite_root: str | Path,
     decision_archive: str | Path,
     execution_archive: str | Path,
     status_monitor_archive: str | Path,
@@ -253,6 +262,7 @@ Command contract:
 
 ```text
 python -B verify_windows_pre_manual_configured_release_admission.py \
+  --base-release-suite-root <exact-five-role-suite-root> \
   --decision-release <decision-configured.zip> \
   --execution-release <execution-configured.zip> \
   --status-monitor-release <status-monitor-configured.zip> \
@@ -303,6 +313,9 @@ cryptographically assessed; callers MUST inspect the report status. Exit code
 | pending_reasons | mapping | Exact reason for every pending gate |
 | status | enum | Complete-review-required or blocked |
 | configured_archives_verified | bool | Always true for a report |
+| base_release_suite_identity_sha256 | SHA-256 | Exact common five-role suite |
+| base_release_suite_manifest_sha256 | SHA-256 | Exact suite manifest |
+| base_release_suite_verified | bool | Always true for a report |
 | external_preconditions_complete | bool | True only with all nine gates |
 | manual_demo_activation_review_required | bool | True only for complete admission |
 | safety fields | fixed | No execution, activation, promotion, or live authority |

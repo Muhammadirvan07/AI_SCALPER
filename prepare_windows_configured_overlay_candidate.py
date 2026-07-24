@@ -29,6 +29,8 @@ def _bootstrap_release_root() -> Path:
         initializer_meta = initializer.lstat()
         implementation = package / "configured_service_release.py"
         implementation_meta = implementation.lstat()
+        suite_verifier = package / "windows_base_release_suite.py"
+        suite_verifier_meta = suite_verifier.lstat()
     except OSError as exc:
         raise RuntimeError(
             "CONFIGURED_TOOLING_BOOTSTRAP_REJECTED"
@@ -54,6 +56,9 @@ def _bootstrap_release_root() -> Path:
         or not stat.S_ISREG(implementation_meta.st_mode)
         or stat.S_ISLNK(implementation_meta.st_mode)
         or reparse(implementation_meta)
+        or not stat.S_ISREG(suite_verifier_meta.st_mode)
+        or stat.S_ISLNK(suite_verifier_meta.st_mode)
+        or reparse(suite_verifier_meta)
     ):
         raise RuntimeError("CONFIGURED_TOOLING_BOOTSTRAP_REJECTED")
     sys.dont_write_bytecode = True

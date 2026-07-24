@@ -31,23 +31,37 @@ Do not edit these values merely to test an order. Activation is a separate,
 reviewed release after the external configuration and manual-demo evidence
 below are complete.
 
+## Canonical non-circular activation order
+
+For every new Windows candidate, use exactly this order:
+
+1. build one **atomic five-role base suite** from one clean commit;
+2. build three **suite-bound configured releases** from that exact suite;
+3. create the immutable **operations plan/review bundle**;
+4. assemble and verify the **provider-conformance v2** packet;
+5. obtain independent validation and **signed pre-manual observations**; and
+6. run **pre-manual configured-release admission** before controlled
+   manual-demo execution.
+
+The provider-conformance v2 packet content hash may be referenced as
+`source_evidence_sha256`. The independent verifier must issue a separate
+immutable object whose hash is `validation_receipt_sha256`; the two hashes
+must never be equal. Neither object is order authority.
+
 ## 1. Build and validate clean releases
 
-Use a clean reviewed commit on Windows and build the decision, execution, and
-status-monitor packages separately:
+Use a clean reviewed commit on Windows and build the complete atomic suite.
+Individual three-role ZIPs built outside this suite are historical artifacts
+only and cannot be used for a new configured candidate:
 
 ```powershell
-python -B .\build_windows_decision_release.py `
-  --output C:\AI_SCALPER_RELEASES\decision-base.zip
+$commit = (git rev-parse --short=12 HEAD).Trim()
+$releaseParent = "C:\AI_SCALPER_RELEASES\$commit"
+New-Item -ItemType Directory -Force $releaseParent | Out-Null
+$suiteRoot = "$releaseParent\base-release-suite-v1"
 
-python -B .\build_windows_execution_release.py `
-  --output C:\AI_SCALPER_RELEASES\execution-base.zip
-
-python -B .\build_windows_status_monitor_release.py `
-  --output C:\AI_SCALPER_RELEASES\status-monitor-base.zip
-
-python -B .\build_windows_configured_release_tooling.py `
-  --output C:\AI_SCALPER_RELEASES\configured-release-tooling-v1.zip
+python -B .\build_windows_base_release_suite.py `
+  --output-root $suiteRoot
 ```
 
 Supply three separately reviewed, secret-free candidate overlays outside the
@@ -58,7 +72,7 @@ manifests/descriptors using the operator tooling:
 
 ```powershell
 python -I -S -B .\prepare_windows_configured_overlay_candidate.py `
-  --base-release C:\AI_SCALPER_RELEASES\decision-base.zip `
+  --base-release "$suiteRoot\decision-base-v1.zip" `
   --overlay-root C:\AI_SCALPER_PRIVATE\decision-overlay `
   --task-definition C:\AI_SCALPER_PRIVATE\tasks\decision-task.xml `
   --overlay-id decision-demo-auto-window-01 `
@@ -67,7 +81,7 @@ python -I -S -B .\prepare_windows_configured_overlay_candidate.py `
   --descriptor-output C:\AI_SCALPER_PRIVATE\decision-overlay.json
 
 python -I -S -B .\prepare_windows_configured_overlay_candidate.py `
-  --base-release C:\AI_SCALPER_RELEASES\execution-base.zip `
+  --base-release "$suiteRoot\execution-base-v1.zip" `
   --overlay-root C:\AI_SCALPER_PRIVATE\execution-overlay `
   --task-definition C:\AI_SCALPER_PRIVATE\tasks\execution-task.xml `
   --overlay-id execution-demo-auto-window-01 `
@@ -76,7 +90,7 @@ python -I -S -B .\prepare_windows_configured_overlay_candidate.py `
   --descriptor-output C:\AI_SCALPER_PRIVATE\execution-overlay.json
 
 python -I -S -B .\prepare_windows_configured_overlay_candidate.py `
-  --base-release C:\AI_SCALPER_RELEASES\status-monitor-base.zip `
+  --base-release "$suiteRoot\status-monitor-base-v1.zip" `
   --overlay-root C:\AI_SCALPER_PRIVATE\status-monitor-overlay `
   --task-definition C:\AI_SCALPER_PRIVATE\tasks\status-monitor-task.xml `
   --overlay-id status-monitor-demo-auto-window-01 `
@@ -92,22 +106,25 @@ descriptors, and hashes. Then build a new configured identity for each process:
 
 ```powershell
 python -I -S -B .\build_windows_configured_service_release.py `
-  --base-release C:\AI_SCALPER_RELEASES\decision-base.zip `
+  --base-release-suite-root $suiteRoot `
+  --base-release "$suiteRoot\decision-base-v1.zip" `
   --overlay-root C:\AI_SCALPER_PRIVATE\decision-overlay `
   --descriptor C:\AI_SCALPER_PRIVATE\decision-overlay.json `
-  --output C:\AI_SCALPER_RELEASES\decision-configured.zip
+  --output "$releaseParent\decision-configured-v1.zip"
 
 python -I -S -B .\build_windows_configured_service_release.py `
-  --base-release C:\AI_SCALPER_RELEASES\execution-base.zip `
+  --base-release-suite-root $suiteRoot `
+  --base-release "$suiteRoot\execution-base-v1.zip" `
   --overlay-root C:\AI_SCALPER_PRIVATE\execution-overlay `
   --descriptor C:\AI_SCALPER_PRIVATE\execution-overlay.json `
-  --output C:\AI_SCALPER_RELEASES\execution-configured.zip
+  --output "$releaseParent\execution-configured-v1.zip"
 
 python -I -S -B .\build_windows_configured_service_release.py `
-  --base-release C:\AI_SCALPER_RELEASES\status-monitor-base.zip `
+  --base-release-suite-root $suiteRoot `
+  --base-release "$suiteRoot\status-monitor-base-v1.zip" `
   --overlay-root C:\AI_SCALPER_PRIVATE\status-monitor-overlay `
   --descriptor C:\AI_SCALPER_PRIVATE\status-monitor-overlay.json `
-  --output C:\AI_SCALPER_RELEASES\status-monitor-configured.zip
+  --output "$releaseParent\status-monitor-configured-v1.zip"
 ```
 
 Independently verify each configured ZIP against configured and base identities
@@ -150,6 +167,30 @@ three static decision/execution/status-monitor validation tasks. It
 deliberately does not install runtime tasks or imply that any provider,
 launcher, task, or off-host delivery is accepted. Legacy v1 and historical v2
 operations bundles are not acceptable for a new host review.
+
+Next, use the exact three validated factory templates, compact external
+provider evidence, and operations hashes to create provider-conformance v2.
+Do not pass the legacy configured-admission argument:
+
+```powershell
+python -I -S -B .\prepare_windows_three_service_provider_conformance_input.py `
+  --decision-factory-template C:\AI_SCALPER_PRIVATE\providers\decision-factory-template.json `
+  --execution-factory-template C:\AI_SCALPER_PRIVATE\providers\execution-factory-template.json `
+  --status-monitor-factory-template C:\AI_SCALPER_PRIVATE\providers\status-monitor-factory-template.json `
+  --evidence-manifest C:\AI_SCALPER_PRIVATE\providers\provider-evidence-manifest-v1.json `
+  --review-id provider-review-jp-window-01 `
+  --operations-plan-sha256 <EXACT_OPERATIONS_PLAN_SHA256> `
+  --operations-review-bundle-sha256 <EXACT_OPERATIONS_REVIEW_BUNDLE_SHA256> `
+  --output C:\AI_SCALPER_PRIVATE\providers\three-service-provider-input-v2.json
+
+python -I -S -B .\prepare_windows_three_service_provider_conformance_review.py `
+  --input C:\AI_SCALPER_PRIVATE\providers\three-service-provider-input-v2.json `
+  --output C:\AI_SCALPER_PRIVATE\providers\three-service-provider-review-v2.json
+```
+
+The packet must report provider acceptance and order capability as disabled.
+An independent authority must validate the packet and produce a distinct
+validation receipt before signing the corresponding pre-manual observations.
 
 Before manual-demo, the responsible owners produce immutable evidence for the
 nine pre-run gates. The offline acceptance authority signs exactly one

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -47,6 +48,9 @@ from test_windows_three_service_external_acceptance import (
     json_ready,
     policy_for,
 )
+from test_live_runtime_windows_base_release_suite import (
+    write_suite_from_role_bases,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -63,6 +67,7 @@ def sha256(value: bytes) -> str:
 
 class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
     def _fixture(self, root: Path):
+        root = root.resolve()
         builder = configured_fixture.WindowsConfiguredServiceReleaseTests(
             methodName="runTest"
         )
@@ -74,6 +79,14 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
         )
         archives: dict[str, Path] = {}
         roles: dict[str, object] = {}
+        prepared: dict[
+            str,
+            tuple[str, Path, Path],
+        ] = {}
+        base_roles: dict[
+            str,
+            tuple[Path, dict[str, object]],
+        ] = {}
         for role_name, profile in role_cases:
             role_root = root / role_name
             role_root.mkdir()
@@ -140,12 +153,37 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
             descriptor_path.write_bytes(
                 configured_fixture.canonical_file(descriptor)
             )
+            prepared[role_name] = (
+                profile,
+                overlay,
+                descriptor_path,
+            )
+            base_roles[
+                {
+                    "decision": "DECISION",
+                    "execution": "EXECUTION",
+                    "status_monitor": "STATUS_MONITOR",
+                }[role_name]
+            ] = (base, base_manifest)
+
+        suite_root, _suite_manifest, _suite_manifests = (
+            write_suite_from_role_bases(root, base_roles)
+        )
+        base_names = {
+            "decision": "decision-base-v1.zip",
+            "execution": "execution-base-v1.zip",
+            "status_monitor": "status-monitor-base-v1.zip",
+        }
+        for role_name, _profile in role_cases:
+            profile, overlay, descriptor_path = prepared[role_name]
+            role_root = root / role_name
             output = role_root / "configured.zip"
             build_configured_service_release(
-                base,
+                suite_root / base_names[role_name],
                 overlay,
                 descriptor_path,
                 output,
+                base_release_suite_root=suite_root,
             )
             archive_bytes = output.read_bytes()
             report = verify_configured_service_release(archive_bytes)
@@ -210,16 +248,25 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
         )
         policy = policy_for(bundle)
         observations = pre_manual_observations(bundle, policy)
-        return archives, exact_plan, bundle, policy, observations
+        return (
+            archives,
+            suite_root,
+            exact_plan,
+            bundle,
+            policy,
+            observations,
+        )
 
     def _assess(
         self,
         archives,
+        suite_root,
         bundle,
         policy,
         observations,
     ):
         return assess_windows_pre_manual_configured_release_admission(
+            base_release_suite_root=suite_root,
             decision_archive=archives["decision"],
             execution_archive=archives["execution"],
             status_monitor_archive=archives["status_monitor"],
@@ -274,8 +321,17 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def _cli_args(self, root, archives, policy, output):
+    def _cli_args(
+        self,
+        root,
+        archives,
+        suite_root,
+        policy,
+        output,
+    ):
         return [
+            "--base-release-suite-root",
+            str(suite_root),
             "--decision-release",
             str(archives["decision"]),
             "--execution-release",
@@ -303,23 +359,26 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            archives, exact_plan, bundle, policy, observations = (
+            archives, suite_root, exact_plan, bundle, policy, observations = (
                 self._fixture(Path(raw))
             )
             first = self._assess(
                 archives,
+                suite_root,
                 bundle,
                 policy,
                 observations,
             )
             second = self._assess(
                 archives,
+                suite_root,
                 bundle,
                 policy,
                 observations,
             )
         self.assertEqual(COMPLETE_STATUS, first.status)
         self.assertTrue(first.configured_archives_verified)
+        self.assertTrue(first.base_release_suite_verified)
         self.assertTrue(first.external_preconditions_complete)
         self.assertTrue(first.manual_demo_activation_review_required)
         self.assertEqual(3, len(first.configured_archives))
@@ -352,11 +411,12 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
 
     def test_missing_pre_manual_observation_remains_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            archives, _exact_plan, bundle, policy, observations = (
+            archives, suite_root, _exact_plan, bundle, policy, observations = (
                 self._fixture(Path(raw))
             )
             result = self._assess(
                 archives,
+                suite_root,
                 bundle,
                 policy,
                 observations[:-1],
@@ -372,7 +432,7 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
 
     def test_role_archive_substitution_rejects(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            archives, _exact_plan, bundle, policy, observations = (
+            archives, suite_root, _exact_plan, bundle, policy, observations = (
                 self._fixture(Path(raw))
             )
             swapped = dict(archives)
@@ -383,6 +443,68 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
             ):
                 self._assess(
                     swapped,
+                    suite_root,
+                    bundle,
+                    policy,
+                    observations,
+                )
+
+    def test_suite_tamper_and_legacy_configured_report_reject(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            archives, suite_root, _exact_plan, bundle, policy, observations = (
+                self._fixture(Path(raw))
+            )
+            supporting = suite_root / "read-only-shadow-base-v1.zip"
+            original = supporting.read_bytes()
+            supporting.write_bytes(original + b"x")
+            with self.assertRaisesRegex(
+                WindowsPreManualConfiguredReleaseAdmissionError,
+                "BASE_RELEASE_SUITE_INVALID",
+            ):
+                self._assess(
+                    archives,
+                    suite_root,
+                    bundle,
+                    policy,
+                    observations,
+                )
+            supporting.write_bytes(original)
+
+            verified = verify_configured_service_release(
+                archives["decision"]
+            )
+            legacy_report = SimpleNamespace(
+                **{
+                    name: getattr(verified, name)
+                    for name in (
+                        "release_profile",
+                        "runtime_mode",
+                        "base_release_identity_sha256",
+                        "release_identity_sha256",
+                        "factory_contract_sha256",
+                    )
+                },
+                base_release_suite_bound=False,
+                base_release_suite_identity_sha256=None,
+                base_release_suite_manifest_sha256=None,
+                base_release_suite_role=None,
+                base_release_suite_role_archive_sha256=None,
+                base_release_suite_role_sidecar_sha256=None,
+            )
+            with (
+                patch(
+                    "live_runtime.windows_pre_manual_configured_release_"
+                    "admission.verify_configured_service_release",
+                    return_value=legacy_report,
+                ),
+                self.assertRaisesRegex(
+                    WindowsPreManualConfiguredReleaseAdmissionError,
+                    "BASE_RELEASE_SUITE_BINDING_MISMATCH",
+                ),
+            ):
+                self._assess(
+                    archives,
+                    suite_root,
                     bundle,
                     policy,
                     observations,
@@ -392,7 +514,7 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            archives, exact_plan, _bundle, _policy, _observations = (
+            archives, suite_root, exact_plan, _bundle, _policy, _observations = (
                 self._fixture(Path(raw))
             )
             mutations = {
@@ -437,6 +559,7 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
                     ):
                         self._assess(
                             archives,
+                            suite_root,
                             bundle,
                             policy,
                             observations,
@@ -461,6 +584,7 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
             ):
                 self._assess(
                     archives,
+                    suite_root,
                     bundle,
                     policy,
                     observations,
@@ -469,7 +593,7 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
     def test_unsafe_and_unstable_archive_inputs_reject(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
-            archives, _exact_plan, bundle, policy, observations = (
+            archives, suite_root, _exact_plan, bundle, policy, observations = (
                 self._fixture(root)
             )
             invalid_inputs = {
@@ -490,6 +614,7 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
                     ):
                         self._assess(
                             selected,
+                            suite_root,
                             bundle,
                             policy,
                             observations,
@@ -509,6 +634,7 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
                 ):
                     self._assess(
                         selected,
+                        suite_root,
                         bundle,
                         policy,
                         observations,
@@ -527,6 +653,7 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
             ):
                 self._assess(
                     archives,
+                    suite_root,
                     bundle,
                     policy,
                     observations,
@@ -534,11 +661,12 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
 
     def test_policy_pin_failure_rejects_without_report(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            archives, _exact_plan, bundle, policy, observations = (
+            archives, suite_root, _exact_plan, bundle, policy, observations = (
                 self._fixture(Path(raw))
             )
             with self.assertRaises(Exception):
                 assess_windows_pre_manual_configured_release_admission(
+                    base_release_suite_root=suite_root,
                     decision_archive=archives["decision"],
                     execution_archive=archives["execution"],
                     status_monitor_archive=archives["status_monitor"],
@@ -553,11 +681,12 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            archives, _exact_plan, bundle, policy, observations = (
+            archives, suite_root, _exact_plan, bundle, policy, observations = (
                 self._fixture(Path(raw))
             )
             result = self._assess(
                 archives,
+                suite_root,
                 bundle,
                 policy,
                 observations,
@@ -570,7 +699,7 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
-            archives, _exact_plan, bundle, policy, observations = (
+            archives, suite_root, _exact_plan, bundle, policy, observations = (
                 self._fixture(root)
             )
             self._write_public_documents(
@@ -580,7 +709,13 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
                 observations,
             )
             output = root / "admission.json"
-            args = self._cli_args(root, archives, policy, output)
+            args = self._cli_args(
+                root,
+                archives,
+                suite_root,
+                policy,
+                output,
+            )
             self.assertEqual(0, cli.main(args))
             before = output.read_bytes()
             stderr = io.StringIO()
@@ -598,6 +733,7 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
                     self._cli_args(
                         root,
                         substituted,
+                        suite_root,
                         policy,
                         second_output,
                     )
@@ -669,13 +805,14 @@ class WindowsPreManualConfiguredReleaseAdmissionTests(unittest.TestCase):
 
     def test_repeated_admission_finishes_within_resource_bound(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            archives, _exact_plan, bundle, policy, observations = (
+            archives, suite_root, _exact_plan, bundle, policy, observations = (
                 self._fixture(Path(raw))
             )
             started = time.perf_counter()
             for _ in range(2):
                 self._assess(
                     archives,
+                    suite_root,
                     bundle,
                     policy,
                     observations,

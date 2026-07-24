@@ -60,6 +60,11 @@ def _parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument(
+        "--base-release-suite-root",
+        required=True,
+        help="exact verified atomic five-role base-release suite root",
+    )
+    parser.add_argument(
         "--decision-release",
         required=True,
         help="exact configured decision-service ZIP",
@@ -118,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
             args.observations
         )
         report = assess_windows_pre_manual_configured_release_admission(
+            base_release_suite_root=args.base_release_suite_root,
             decision_archive=args.decision_release,
             execution_archive=args.execution_release,
             status_monitor_archive=args.status_monitor_release,

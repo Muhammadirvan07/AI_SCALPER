@@ -5,6 +5,15 @@ profile terisolasi untuk deployment/tooling, minimal read-only broker shadow,
 brokerless decision-only service, dan external status-only monitor. Tidak satu
 pun profile tersebut membuka manual-demo, demo-auto, atau live.
 
+Untuk candidate baru, lima base artifact wajib dibangun bersama melalui
+`build_windows_base_release_suite.py`. Orchestrator ini memanggil builder role
+yang sudah ada, memverifikasi seluruh archive/sidecar secara independen,
+mengikat satu commit/tree ke `BASE_RELEASE_SUITE.json`, lalu menerbitkan satu
+directory dengan atomic rename. Fixed closure-nya adalah decision, execution,
+status monitor, read-only shadow, dan configured-release tooling. Panduan
+operator tersedia di
+`docs/WINDOWS_ATOMIC_BASE_RELEASE_SUITE.md`.
+
 ## Mengapa repository tidak boleh langsung diarsipkan
 
 Repository development masih memiliki data cache CSV, status JSON, histori
@@ -97,7 +106,8 @@ profile operator terpisah
 `build_windows_configured_release_tooling.py` dari exact allowlist
 `config/windows_configured_release_tooling_allowlist.v1.json`. Bundle
 stdlib-only ini membuat dan memverifikasi configured release dengan identity
-baru tanpa mengimpor provider, membaca credential, menginisialisasi MT5,
+baru serta membuktikan ancestry ke exact atomic five-role suite tanpa
+mengimpor provider, membaca credential, menginisialisasi MT5,
 memasang task, atau melakukan broker mutation. Generic operator bundle tetap
 mempertahankan byte-level order-primitive prohibition dan tidak dilonggarkan.
 Panduan lengkap ada di
@@ -144,6 +154,28 @@ perubahan commit/tree tetap ditolak.
 
 Jalankan dari clean checkout. Tulis output di luar repository:
 
+Untuk candidate lima-role yang akan diteruskan ke provider conformance,
+gunakan entrypoint atomik berikut. Ini adalah jalur yang direkomendasikan;
+perintah role-specific setelahnya tetap tersedia untuk diagnosis atau
+reproducibility terisolasi.
+
+```powershell
+$commit = (git rev-parse --short=12 HEAD).Trim()
+$releaseParent = "C:\AI_SCALPER_RELEASES\$commit"
+New-Item -ItemType Directory -Force $releaseParent | Out-Null
+
+python -B .\build_windows_base_release_suite.py `
+  --output-root "$releaseParent\base-release-suite-v1"
+```
+
+Command menolak source dirty, output yang sudah ada/berada di repository,
+symlink atau junction pada jalur output, role yang tidak lengkap, commit/tree
+campuran, manifest non-canonical, byte/hash mismatch, serta safety lock yang
+berubah. Ia tidak memiliki opsi provider, credential, task, MT5, activation,
+permit, atau order.
+
+Builder role-specific:
+
 ```powershell
 python -I -S -B .\build_windows_release.py `
   --output C:\AI_SCALPER_RELEASES\ai-scalper-deployment-tooling-v1.zip
@@ -187,7 +219,9 @@ python -B .\build_windows_configured_release_tooling.py `
 ```
 
 Gunakan bundle tersebut untuk mengikat masing-masing base release dengan exact
-secret-free reviewed overlay. Sebelum build, gunakan
+secret-free reviewed overlay. Setiap build wajib diberi
+`--base-release-suite-root`, dan base ZIP wajib merupakan path role exact di
+dalam suite tersebut. Sebelum build, gunakan
 `prepare_windows_configured_overlay_candidate.py` dari bundle yang sama untuk
 menurunkan exact profile-template hash dari base ZIP, mengikat reviewed Task
 Scheduler definition, serta membuat canonical factory manifest/descriptor
@@ -195,8 +229,10 @@ secara create-exclusive. Status preparer tetap external-review-required dan
 tidak mengimpor provider. Hasil build berikutnya adalah decision-configured,
 execution-configured, dan status-monitor-configured ZIP dengan identity baru.
 Verifikasi semuanya terhadap configured identity dan base identity yang dipin
-off-host. Extract dan jalankan configured ZIP; jangan menyalin factory ke base
-release setelah ekstraksi.
+off-host. Pre-manual admission memverifikasi ulang kelima base artifact serta
+suite identity; configured release legacy tanpa suite binding ditolak. Extract
+dan jalankan configured ZIP; jangan menyalin factory ke base release setelah
+ekstraksi.
 
 Decision, execution, dan status-monitor bundle wajib menggunakan configured
 release identity, service account, root, state directory, dan in-release

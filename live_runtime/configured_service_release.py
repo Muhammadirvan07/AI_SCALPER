@@ -23,6 +23,15 @@ from typing import Any, Mapping
 import unicodedata
 import zipfile
 
+from .windows_base_release_suite import (
+    BaseReleaseSuiteVerificationError,
+    SUITE_BINDING_SCHEMA,
+    SUITE_PROFILE,
+    SUITE_SCHEMA,
+    suite_binding_for_base_archive,
+    verify_base_release_suite,
+)
+
 
 MANIFEST_MEMBER = "RELEASE_MANIFEST.json"
 CONFIGURED_OVERLAY_SCHEMA = "windows-configured-service-overlay-v1"
@@ -53,6 +62,23 @@ _PROFILE_POLICY = {
         "order_capability": "DISABLED",
     },
 }
+_SUITE_ROLE_BY_PROFILE = {
+    EXECUTION_PROFILE: "EXECUTION",
+    DECISION_PROFILE: "DECISION",
+    MONITOR_PROFILE: "STATUS_MONITOR",
+}
+_SUITE_BINDING_FIELDS = frozenset(
+    {
+        "role",
+        "role_archive_sha256",
+        "role_sidecar_sha256",
+        "schema_version",
+        "suite_identity_sha256",
+        "suite_manifest_sha256",
+        "suite_release_profile",
+        "suite_schema_version",
+    }
+)
 
 _DESCRIPTOR_FIELDS = frozenset(
     {
@@ -1441,11 +1467,43 @@ def build_configured_service_release(
     descriptor_path: str | Path,
     output_path: str | Path,
     *,
+    base_release_suite_root: str | Path | None = None,
     manifest_output_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build one deterministic configured release without materialization."""
 
     base_bytes, base_manifest, base_sources = _load_base_release(base_archive)
+    base_suite_binding: dict[str, object] | None = None
+    if base_release_suite_root is not None:
+        try:
+            verified_suite = verify_base_release_suite(
+                base_release_suite_root
+            )
+            if (
+                verified_suite.git_commit != base_manifest.get("git_commit")
+                or verified_suite.git_tree != base_manifest.get("git_tree")
+            ):
+                raise BaseReleaseSuiteVerificationError(
+                    "BASE_SUITE_GIT_MISMATCH"
+                )
+            base_suite_binding = suite_binding_for_base_archive(
+                verified_suite,
+                base_archive,
+                str(base_manifest["release_profile"]),
+            )
+        except BaseReleaseSuiteVerificationError as exc:
+            raise ConfiguredReleaseError(exc.reason_code) from exc
+        if (
+            base_suite_binding["role_archive_sha256"]
+            != _sha256(base_bytes)
+            or base_suite_binding["role"]
+            != _SUITE_ROLE_BY_PROFILE[
+                str(base_manifest["release_profile"])
+            ]
+        ):
+            raise ConfiguredReleaseError(
+                "BASE_SUITE_ROLE_BINDING_MISMATCH"
+            )
     descriptor_bytes = _read_stable_file(
         Path(descriptor_path),
         code="DESCRIPTOR_UNAVAILABLE",
@@ -1522,6 +1580,8 @@ def build_configured_service_release(
         "task_installation_performed": False,
         "broker_mutation_performed": False,
     }
+    if base_suite_binding is not None:
+        configured_binding["base_release_suite"] = base_suite_binding
     combined = {**base_sources, **overlay}
     unsigned = dict(base_manifest)
     unsigned.pop("release_identity_sha256", None)
@@ -1581,6 +1641,22 @@ def build_configured_service_release(
         "credential_access_performed": False,
         "task_installation_performed": False,
         "broker_mutation_performed": False,
+        "base_release_suite_bound": base_suite_binding is not None,
+        "base_release_suite_identity_sha256": (
+            None
+            if base_suite_binding is None
+            else base_suite_binding["suite_identity_sha256"]
+        ),
+        "base_release_suite_manifest_sha256": (
+            None
+            if base_suite_binding is None
+            else base_suite_binding["suite_manifest_sha256"]
+        ),
+        "base_release_suite_role": (
+            None
+            if base_suite_binding is None
+            else base_suite_binding["role"]
+        ),
     }
 
 
@@ -1595,6 +1671,12 @@ class ConfiguredReleaseVerificationReport:
     factory_contract_sha256: str
     file_count: int
     readiness_blockers: tuple[str, ...]
+    base_release_suite_bound: bool = False
+    base_release_suite_identity_sha256: str | None = None
+    base_release_suite_manifest_sha256: str | None = None
+    base_release_suite_role: str | None = None
+    base_release_suite_role_archive_sha256: str | None = None
+    base_release_suite_role_sidecar_sha256: str | None = None
     production_execution_ready: bool = False
     provider_materialization_performed: bool = False
     credential_access_performed: bool = False
@@ -1631,6 +1713,45 @@ class ConfiguredReleaseVerificationReport:
             raise ValueError("configured release order capability drift")
         if self.schema_version != VERIFICATION_REPORT_SCHEMA:
             raise ValueError("configured release report schema drift")
+        suite_values = (
+            self.base_release_suite_identity_sha256,
+            self.base_release_suite_manifest_sha256,
+            self.base_release_suite_role,
+            self.base_release_suite_role_archive_sha256,
+            self.base_release_suite_role_sidecar_sha256,
+        )
+        if self.base_release_suite_bound:
+            if (
+                any(
+                    not isinstance(value, str) or not value
+                    for value in suite_values
+                )
+                or _HASH_RE.fullmatch(
+                    str(self.base_release_suite_identity_sha256)
+                )
+                is None
+                or _HASH_RE.fullmatch(
+                    str(self.base_release_suite_manifest_sha256)
+                )
+                is None
+                or _HASH_RE.fullmatch(
+                    str(self.base_release_suite_role_archive_sha256)
+                )
+                is None
+                or _HASH_RE.fullmatch(
+                    str(self.base_release_suite_role_sidecar_sha256)
+                )
+                is None
+                or self.base_release_suite_role
+                != _SUITE_ROLE_BY_PROFILE[self.release_profile]
+            ):
+                raise ValueError(
+                    "configured release suite binding drift"
+                )
+        elif any(value is not None for value in suite_values):
+            raise ValueError(
+                "legacy configured release cannot carry suite facts"
+            )
 
 
 def verify_configured_service_release(
@@ -1719,7 +1840,11 @@ def verify_configured_service_release(
             "task_installation_performed",
         }
     )
-    if set(binding) != required_binding_fields:
+    binding_fields = set(binding)
+    if binding_fields not in (
+        set(required_binding_fields),
+        set(required_binding_fields) | {"base_release_suite"},
+    ):
         raise ConfiguredReleaseError("CONFIGURED_BINDING_INVALID")
     if (
         binding.get("base_release_profile") != profile
@@ -1732,6 +1857,59 @@ def verify_configured_service_release(
         or binding.get("broker_mutation_performed") is not False
     ):
         raise ConfiguredReleaseError("CONFIGURED_BINDING_INVALID")
+    suite_binding = binding.get("base_release_suite")
+    suite_bound = suite_binding is not None
+    suite_identity: str | None = None
+    suite_manifest_sha256: str | None = None
+    suite_role: str | None = None
+    suite_role_archive_sha256: str | None = None
+    suite_role_sidecar_sha256: str | None = None
+    if suite_bound:
+        if (
+            not isinstance(suite_binding, Mapping)
+            or set(suite_binding) != _SUITE_BINDING_FIELDS
+            or suite_binding.get("schema_version")
+            != SUITE_BINDING_SCHEMA
+            or suite_binding.get("suite_schema_version") != SUITE_SCHEMA
+            or suite_binding.get("suite_release_profile")
+            != SUITE_PROFILE
+            or suite_binding.get("role")
+            != _SUITE_ROLE_BY_PROFILE[profile]
+        ):
+            raise ConfiguredReleaseError(
+                "CONFIGURED_BASE_SUITE_BINDING_INVALID"
+            )
+        for name in (
+            "suite_identity_sha256",
+            "suite_manifest_sha256",
+            "role_archive_sha256",
+            "role_sidecar_sha256",
+        ):
+            _require_nonzero_hash(
+                suite_binding.get(name),
+                "CONFIGURED_BASE_SUITE_BINDING_INVALID",
+            )
+        if (
+            suite_binding.get("role_archive_sha256")
+            != binding.get("base_release_archive_sha256")
+        ):
+            raise ConfiguredReleaseError(
+                "CONFIGURED_BASE_SUITE_BINDING_INVALID"
+            )
+        suite_identity = str(
+            suite_binding["suite_identity_sha256"]
+        )
+        suite_manifest_sha256 = str(
+            suite_binding["suite_manifest_sha256"]
+        )
+        suite_role = str(suite_binding["role"])
+        suite_role_archive_sha256 = str(
+            suite_binding["role_archive_sha256"]
+        )
+        suite_role_sidecar_sha256 = str(
+            suite_binding["role_sidecar_sha256"]
+        )
+
     base_manifest = binding.get("base_release_manifest")
     if not isinstance(base_manifest, Mapping):
         raise ConfiguredReleaseError("CONFIGURED_BASE_MANIFEST_INVALID")
@@ -1852,6 +2030,16 @@ def verify_configured_service_release(
                     *_READINESS_BLOCKERS,
                 }
             )
+        ),
+        base_release_suite_bound=suite_bound,
+        base_release_suite_identity_sha256=suite_identity,
+        base_release_suite_manifest_sha256=suite_manifest_sha256,
+        base_release_suite_role=suite_role,
+        base_release_suite_role_archive_sha256=(
+            suite_role_archive_sha256
+        ),
+        base_release_suite_role_sidecar_sha256=(
+            suite_role_sidecar_sha256
         ),
         order_capability=str(_PROFILE_POLICY[profile]["order_capability"]),
         _seal=_REPORT_SEAL,

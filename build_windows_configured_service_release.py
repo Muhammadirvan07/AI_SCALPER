@@ -30,6 +30,8 @@ def _bootstrap_release_root() -> Path:
         initializer_meta = initializer.lstat()
         implementation = package / "configured_service_release.py"
         implementation_meta = implementation.lstat()
+        suite_verifier = package / "windows_base_release_suite.py"
+        suite_verifier_meta = suite_verifier.lstat()
     except OSError as exc:
         raise RuntimeError(
             "CONFIGURED_TOOLING_BOOTSTRAP_REJECTED"
@@ -55,6 +57,9 @@ def _bootstrap_release_root() -> Path:
         or not stat.S_ISREG(implementation_meta.st_mode)
         or stat.S_ISLNK(implementation_meta.st_mode)
         or reparse(implementation_meta)
+        or not stat.S_ISREG(suite_verifier_meta.st_mode)
+        or stat.S_ISLNK(suite_verifier_meta.st_mode)
+        or reparse(suite_verifier_meta)
     ):
         raise RuntimeError("CONFIGURED_TOOLING_BOOTSTRAP_REJECTED")
     sys.dont_write_bytecode = True
@@ -81,6 +86,13 @@ def _parser() -> argparse.ArgumentParser:
             "and reviewed, secret-free overlay. No provider is imported or "
             "materialized."
         )
+    )
+    parser.add_argument(
+        "--base-release-suite-root",
+        required=True,
+        help=(
+            "Exact verified five-role atomic base-release suite root."
+        ),
     )
     parser.add_argument(
         "--base-release",
@@ -123,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
             args.overlay_root,
             args.descriptor,
             args.output,
+            base_release_suite_root=args.base_release_suite_root,
             manifest_output_path=args.manifest_output,
         )
         report = verify_configured_service_release(
@@ -156,6 +169,12 @@ def main(argv: list[str] | None = None) -> int:
         "Base release identity SHA-256: "
         f"{report.base_release_identity_sha256}"
     )
+    print(
+        "Base release suite identity SHA-256: "
+        f"{report.base_release_suite_identity_sha256}"
+    )
+    print(f"Base release suite role: {report.base_release_suite_role}")
+    print("Base release suite bound: true")
     print(f"File count: {report.file_count}")
     print(f"Order capability: {report.order_capability}")
     print("Configured release valid: true")

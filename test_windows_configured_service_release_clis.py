@@ -22,6 +22,10 @@ CONFIGURED_IDENTITY = "a" * 64
 BASE_IDENTITY = "b" * 64
 DESCRIPTOR_IDENTITY = "c" * 64
 FACTORY_IDENTITY = "d" * 64
+SUITE_IDENTITY = "1" * 64
+SUITE_MANIFEST_IDENTITY = "2" * 64
+SUITE_ARCHIVE_IDENTITY = "3" * 64
+SUITE_SIDECAR_IDENTITY = "4" * 64
 
 
 def verification_report() -> ConfiguredReleaseVerificationReport:
@@ -35,6 +39,16 @@ def verification_report() -> ConfiguredReleaseVerificationReport:
         factory_contract_sha256=FACTORY_IDENTITY,
         file_count=10,
         readiness_blockers=("EXTERNAL_LAUNCHER_ATTESTATION_REQUIRED",),
+        base_release_suite_bound=True,
+        base_release_suite_identity_sha256=SUITE_IDENTITY,
+        base_release_suite_manifest_sha256=SUITE_MANIFEST_IDENTITY,
+        base_release_suite_role="EXECUTION",
+        base_release_suite_role_archive_sha256=(
+            SUITE_ARCHIVE_IDENTITY
+        ),
+        base_release_suite_role_sidecar_sha256=(
+            SUITE_SIDECAR_IDENTITY
+        ),
         order_capability="GATED_PRESENT",
         _seal=__import__(
             "live_runtime.configured_service_release",
@@ -101,6 +115,8 @@ class ConfiguredServiceReleaseCLITests(unittest.TestCase):
         ):
             code = build_cli.main(
                 [
+                    "--base-release-suite-root",
+                    "base-suite",
                     "--base-release",
                     "base.zip",
                     "--overlay-root",
@@ -117,6 +133,7 @@ class ConfiguredServiceReleaseCLITests(unittest.TestCase):
             "overlay",
             "overlay.json",
             "configured.zip",
+            base_release_suite_root="base-suite",
             manifest_output_path=None,
         )
         verify.assert_called_once_with(
@@ -150,6 +167,8 @@ class ConfiguredServiceReleaseCLITests(unittest.TestCase):
         ):
             code = build_cli.main(
                 [
+                    "--base-release-suite-root",
+                    "base-suite",
                     "--base-release",
                     "base.zip",
                     "--overlay-root",
@@ -269,6 +288,8 @@ class ConfiguredServiceReleaseCLITests(unittest.TestCase):
             ):
                 code = build_cli.main(
                     [
+                        "--base-release-suite-root",
+                        "base-suite",
                         "--base-release",
                         "base.zip",
                         "--overlay-root",

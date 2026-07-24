@@ -10,6 +10,11 @@
   authorization; independent Windows service owners remain required for the
   external acceptance signatures
 
+> **Legacy notice:** This approved v1 contract is retained only for
+> byte-compatible historical diagnostics. New pre-manual and promotion
+> workflows MUST use
+> `specs/windows_three_service_provider_conformance_v2.md`.
+
 ## Context
 
 AI_SCALPER already has deterministic decision, execution, and external-status
@@ -30,10 +35,12 @@ role vocabularies, which makes manual reconciliation error-prone.
 This feature adds an offline, deny-only verifier. It validates one strict JSON
 input, reconstructs all three existing factory templates through their
 authoritative validators, requires exactly one conformance evidence record per
-provider binding, and emits a canonical create-exclusive review packet. The
-packet is suitable as the `details_sha256` target of the existing independent
-RSA acceptance-observation process. It is not provider acceptance, does not
-verify the external evidence bytes, and cannot activate or execute anything.
+provider binding, and emits a canonical create-exclusive review packet. For
+historical interpretation, the packet content hash is a candidate
+`source_evidence_sha256` for the independent RSA acceptance-observation
+process, with a distinct `validation_receipt_sha256`. It is not provider
+acceptance, does not verify the external evidence bytes, and cannot activate
+or execute anything.
 
 ## Functional Requirements
 

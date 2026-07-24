@@ -73,6 +73,7 @@ _BOOTSTRAP_ROOT = _bootstrap_release_root()
 from live_runtime.windows_provider_conformance_input import (
     WindowsProviderConformanceInputError,
     assemble_windows_three_service_provider_conformance_input_file,
+    assemble_windows_three_service_provider_conformance_input_file_v2,
 )
 
 
@@ -121,8 +122,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--configured-release-admission-sha256",
-        required=True,
-        help="Exact non-zero configured-release admission SHA-256.",
+        help=(
+            "Legacy v1-only placeholder admission SHA-256. Omit this "
+            "argument to create the non-circular v2 contract."
+        ),
     )
     parser.add_argument(
         "--output",
@@ -135,30 +138,40 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        result = (
-            assemble_windows_three_service_provider_conformance_input_file(
-                decision_factory_template_path=(
-                    args.decision_factory_template
-                ),
-                execution_factory_template_path=(
-                    args.execution_factory_template
-                ),
-                status_monitor_factory_template_path=(
-                    args.status_monitor_factory_template
-                ),
-                evidence_manifest_path=args.evidence_manifest,
-                output_path=args.output,
-                review_id=args.review_id,
-                operations_plan_sha256=args.operations_plan_sha256,
-                operations_review_bundle_sha256=(
-                    args.operations_review_bundle_sha256
-                ),
-                configured_release_admission_sha256=(
-                    args.configured_release_admission_sha256
-                ),
-                clock_provider=lambda: datetime.now(timezone.utc),
+        common = {
+            "decision_factory_template_path": (
+                args.decision_factory_template
+            ),
+            "execution_factory_template_path": (
+                args.execution_factory_template
+            ),
+            "status_monitor_factory_template_path": (
+                args.status_monitor_factory_template
+            ),
+            "evidence_manifest_path": args.evidence_manifest,
+            "output_path": args.output,
+            "review_id": args.review_id,
+            "operations_plan_sha256": args.operations_plan_sha256,
+            "operations_review_bundle_sha256": (
+                args.operations_review_bundle_sha256
+            ),
+            "clock_provider": lambda: datetime.now(timezone.utc),
+        }
+        if args.configured_release_admission_sha256 is None:
+            result = (
+                assemble_windows_three_service_provider_conformance_input_file_v2(
+                    **common,
+                )
             )
-        )
+        else:
+            result = (
+                assemble_windows_three_service_provider_conformance_input_file(
+                    **common,
+                    configured_release_admission_sha256=(
+                        args.configured_release_admission_sha256
+                    ),
+                )
+            )
     except (
         WindowsProviderConformanceInputError,
         OSError,
@@ -179,6 +192,10 @@ def main(argv: list[str] | None = None) -> int:
 
     print("WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_INPUT_READY")
     print(f"Status: {result.status}")
+    schema_version = result.conformance_input["schema_version"]
+    print(f"Contract schema: {schema_version}")
+    if args.configured_release_admission_sha256 is not None:
+        print("Contract status: LEGACY_DIAGNOSTIC_ONLY")
     print(f"Output: {Path(args.output).expanduser().absolute()}")
     print(f"Output SHA-256: {result.output_sha256}")
     print(f"Evidence set ID: {result.evidence_set_id}")

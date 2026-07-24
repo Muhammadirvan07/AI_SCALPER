@@ -21,6 +21,7 @@ from typing import Any, Callable, Mapping
 
 from .windows_provider_conformance_review import (
     INPUT_SCHEMA_VERSION,
+    INPUT_SCHEMA_VERSION_V2,
     MAXIMUM_PROVIDER_REVIEW_JSON_BYTES,
     SERVICE_ROLES,
     WindowsProviderConformanceError,
@@ -393,10 +394,81 @@ def assemble_windows_three_service_provider_conformance_input(
     evidence_manifest: Mapping[str, object],
     clock_provider: Callable[[], datetime],
 ) -> WindowsProviderConformanceInputAssembly:
-    """Derive and verify a complete existing-schema conformance input."""
+    """Derive and verify one legacy v1 conformance input."""
+
+    return _assemble_windows_three_service_provider_conformance_input(
+        review_id=review_id,
+        operations_plan_sha256=operations_plan_sha256,
+        operations_review_bundle_sha256=(
+            operations_review_bundle_sha256
+        ),
+        configured_release_admission_sha256=(
+            configured_release_admission_sha256
+        ),
+        factory_templates=factory_templates,
+        evidence_manifest=evidence_manifest,
+        clock_provider=clock_provider,
+        input_schema_version=INPUT_SCHEMA_VERSION,
+    )
+
+
+def assemble_windows_three_service_provider_conformance_input_v2(
+    *,
+    review_id: str,
+    operations_plan_sha256: str,
+    operations_review_bundle_sha256: str,
+    factory_templates: Mapping[str, Mapping[str, object]],
+    evidence_manifest: Mapping[str, object],
+    clock_provider: Callable[[], datetime],
+) -> WindowsProviderConformanceInputAssembly:
+    """Derive and verify one non-circular v2 conformance input."""
+
+    return _assemble_windows_three_service_provider_conformance_input(
+        review_id=review_id,
+        operations_plan_sha256=operations_plan_sha256,
+        operations_review_bundle_sha256=(
+            operations_review_bundle_sha256
+        ),
+        configured_release_admission_sha256=None,
+        factory_templates=factory_templates,
+        evidence_manifest=evidence_manifest,
+        clock_provider=clock_provider,
+        input_schema_version=INPUT_SCHEMA_VERSION_V2,
+    )
+
+
+def _assemble_windows_three_service_provider_conformance_input(
+    *,
+    review_id: str,
+    operations_plan_sha256: str,
+    operations_review_bundle_sha256: str,
+    configured_release_admission_sha256: str | None,
+    factory_templates: Mapping[str, Mapping[str, object]],
+    evidence_manifest: Mapping[str, object],
+    clock_provider: Callable[[], datetime],
+    input_schema_version: str,
+) -> WindowsProviderConformanceInputAssembly:
+    """Derive and verify one exact-version conformance input."""
 
     if not callable(clock_provider):
         raise TypeError("clock_provider must be callable")
+    if input_schema_version not in {
+        INPUT_SCHEMA_VERSION,
+        INPUT_SCHEMA_VERSION_V2,
+    }:
+        raise WindowsProviderConformanceInputError(
+            "INPUT_SCHEMA_INVALID"
+        )
+    if (
+        input_schema_version == INPUT_SCHEMA_VERSION
+        and configured_release_admission_sha256 is None
+    ) or (
+        input_schema_version == INPUT_SCHEMA_VERSION_V2
+        and configured_release_admission_sha256 is not None
+    ):
+        raise WindowsProviderConformanceInputError(
+            "INPUT_SCHEMA_INVALID"
+        )
     started_at = _trusted_now(clock_provider)
     targets = _normalize_templates(factory_templates)
     evidence_set_id, evidence = _evidence_by_service(
@@ -406,8 +478,8 @@ def assemble_windows_three_service_provider_conformance_input(
         targets=targets,
         evidence=evidence,
     )
-    candidate = {
-        "schema_version": INPUT_SCHEMA_VERSION,
+    candidate: dict[str, object] = {
+        "schema_version": input_schema_version,
         "review_id": _identifier(review_id),
         "operations_plan_sha256": _hash(
             operations_plan_sha256
@@ -415,11 +487,12 @@ def assemble_windows_three_service_provider_conformance_input(
         "operations_review_bundle_sha256": _hash(
             operations_review_bundle_sha256
         ),
-        "configured_release_admission_sha256": _hash(
-            configured_release_admission_sha256
-        ),
         "services": services,
     }
+    if input_schema_version == INPUT_SCHEMA_VERSION:
+        candidate["configured_release_admission_sha256"] = _hash(
+            configured_release_admission_sha256
+        )
     try:
         review = (
             prepare_windows_three_service_provider_conformance_review(
@@ -433,15 +506,12 @@ def assemble_windows_three_service_provider_conformance_input(
         raise WindowsProviderConformanceInputError(
             "PROVIDER_COUNT_INVALID"
         )
-    canonical_input = {
-        "schema_version": INPUT_SCHEMA_VERSION,
+    canonical_input: dict[str, object] = {
+        "schema_version": input_schema_version,
         "review_id": review.review_id,
         "operations_plan_sha256": review.operations_plan_sha256,
         "operations_review_bundle_sha256": (
             review.operations_review_bundle_sha256
-        ),
-        "configured_release_admission_sha256": (
-            review.configured_release_admission_sha256
         ),
         "services": [
             {
@@ -455,6 +525,10 @@ def assemble_windows_three_service_provider_conformance_input(
             for service in review.services
         ],
     }
+    if input_schema_version == INPUT_SCHEMA_VERSION:
+        canonical_input[
+            "configured_release_admission_sha256"
+        ] = review.configured_release_admission_sha256
     output = _canonical_output(canonical_input)
     completed_at = _trusted_now(clock_provider)
     if completed_at < started_at:
@@ -659,7 +733,85 @@ def assemble_windows_three_service_provider_conformance_input_file(
     configured_release_admission_sha256: str,
     clock_provider: Callable[[], datetime],
 ) -> WindowsProviderConformanceInputAssembly:
-    """Stable-read four files and write one exact existing-schema input."""
+    """Stable-read four files and write one exact legacy v1 input."""
+
+    return _assemble_windows_three_service_provider_conformance_input_file(
+        decision_factory_template_path=(
+            decision_factory_template_path
+        ),
+        execution_factory_template_path=(
+            execution_factory_template_path
+        ),
+        status_monitor_factory_template_path=(
+            status_monitor_factory_template_path
+        ),
+        evidence_manifest_path=evidence_manifest_path,
+        output_path=output_path,
+        review_id=review_id,
+        operations_plan_sha256=operations_plan_sha256,
+        operations_review_bundle_sha256=(
+            operations_review_bundle_sha256
+        ),
+        configured_release_admission_sha256=(
+            configured_release_admission_sha256
+        ),
+        clock_provider=clock_provider,
+        input_schema_version=INPUT_SCHEMA_VERSION,
+    )
+
+
+def assemble_windows_three_service_provider_conformance_input_file_v2(
+    *,
+    decision_factory_template_path: str | Path,
+    execution_factory_template_path: str | Path,
+    status_monitor_factory_template_path: str | Path,
+    evidence_manifest_path: str | Path,
+    output_path: str | Path,
+    review_id: str,
+    operations_plan_sha256: str,
+    operations_review_bundle_sha256: str,
+    clock_provider: Callable[[], datetime],
+) -> WindowsProviderConformanceInputAssembly:
+    """Stable-read four files and write one exact non-circular v2 input."""
+
+    return _assemble_windows_three_service_provider_conformance_input_file(
+        decision_factory_template_path=(
+            decision_factory_template_path
+        ),
+        execution_factory_template_path=(
+            execution_factory_template_path
+        ),
+        status_monitor_factory_template_path=(
+            status_monitor_factory_template_path
+        ),
+        evidence_manifest_path=evidence_manifest_path,
+        output_path=output_path,
+        review_id=review_id,
+        operations_plan_sha256=operations_plan_sha256,
+        operations_review_bundle_sha256=(
+            operations_review_bundle_sha256
+        ),
+        configured_release_admission_sha256=None,
+        clock_provider=clock_provider,
+        input_schema_version=INPUT_SCHEMA_VERSION_V2,
+    )
+
+
+def _assemble_windows_three_service_provider_conformance_input_file(
+    *,
+    decision_factory_template_path: str | Path,
+    execution_factory_template_path: str | Path,
+    status_monitor_factory_template_path: str | Path,
+    evidence_manifest_path: str | Path,
+    output_path: str | Path,
+    review_id: str,
+    operations_plan_sha256: str,
+    operations_review_bundle_sha256: str,
+    configured_release_admission_sha256: str | None,
+    clock_provider: Callable[[], datetime],
+    input_schema_version: str,
+) -> WindowsProviderConformanceInputAssembly:
+    """Stable-read four files and write one exact-version input."""
 
     sources = {
         "DECISION": Path(decision_factory_template_path)
@@ -695,7 +847,7 @@ def assemble_windows_three_service_provider_conformance_input_file(
         for role in SERVICE_ROLES
     }
     evidence = _strict_json(raw["EVIDENCE"])
-    result = assemble_windows_three_service_provider_conformance_input(
+    result = _assemble_windows_three_service_provider_conformance_input(
         review_id=review_id,
         operations_plan_sha256=operations_plan_sha256,
         operations_review_bundle_sha256=(
@@ -707,6 +859,7 @@ def assemble_windows_three_service_provider_conformance_input_file(
         factory_templates=templates,
         evidence_manifest=evidence,
         clock_provider=clock_provider,
+        input_schema_version=input_schema_version,
     )
     _write_exclusive(destination, result.output_bytes)
     return result
@@ -722,4 +875,6 @@ __all__ = [
     "WindowsProviderConformanceInputError",
     "assemble_windows_three_service_provider_conformance_input",
     "assemble_windows_three_service_provider_conformance_input_file",
+    "assemble_windows_three_service_provider_conformance_input_file_v2",
+    "assemble_windows_three_service_provider_conformance_input_v2",
 ]

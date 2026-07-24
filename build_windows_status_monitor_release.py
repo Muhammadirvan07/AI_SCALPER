@@ -81,6 +81,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "live_runtime/windows_external_status_monitor.py",
         "live_runtime/windows_external_status_monitor_entrypoint.py",
         "live_runtime/windows_external_status_monitor_factory_template.py",
+        "live_runtime/windows_base_release_suite.py",
         "run_windows_external_status_monitor.py",
         "validate_windows_external_status_monitor.py",
     }

@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 import execution_policy
+from live_runtime.account_fence import account_runtime_identity
 from live_runtime.contracts import TradeIntent, _mint_decision_snapshot
 from live_runtime.controls import (
     DEFAULT_ENVIRONMENT_ARM_VARIABLE,
@@ -53,7 +54,7 @@ from test_live_runtime_executor import (
     NOW,
     NEWS_SECRET,
     SECRET,
-    StubAdapter,
+    StubAdapter as ExecutorStubAdapter,
     broker,
     context,
     health,
@@ -77,6 +78,17 @@ def digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+class IsolatedStubAdapter(ExecutorStubAdapter):
+    """Keep independent test processes outside the production account fence."""
+
+    def __init__(self, runtime_identity_sha256: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._runtime_identity_sha256 = runtime_identity_sha256
+
+    def execution_fence_identity(self) -> str:
+        return self._runtime_identity_sha256
+
+
 class DormantDemoAutoDispatchTests(unittest.TestCase):
     """Prove composition only under an explicit, scoped release-policy patch."""
 
@@ -84,6 +96,11 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+        self.runtime_fence_identity_sha256 = account_runtime_identity(
+            str(self.root),
+            "Broker-Demo",
+            "DEMO",
+        )
         self.clock = SessionClock(NOW)
         self.journal = ExecutionJournal(
             self.root / "execution.sqlite3",
@@ -96,6 +113,12 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
             lease_seconds=60,
         )
         self._build_authorities()
+
+    def _adapter(self, **kwargs) -> IsolatedStubAdapter:
+        return IsolatedStubAdapter(
+            self.runtime_fence_identity_sha256,
+            **kwargs,
+        )
 
     def _build_authorities(self) -> None:
         stage = stage_test_support.StageAuthorizationTestCase(
@@ -457,7 +480,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
             coordinator.close()
 
     def test_checked_in_release_rejects_before_preflight_or_submit(self) -> None:
-        adapter = StubAdapter()
+        adapter = self._adapter()
         coordinator = ExecutionCoordinator(
             self.journal,
             adapter,
@@ -525,7 +548,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.assertEqual(0, adapter.submit_calls)
 
     def test_reviewed_policy_patch_composes_exact_controls_with_fake_adapter(self) -> None:
-        adapter = StubAdapter()
+        adapter = self._adapter()
         outcome = self._execute(adapter)
         self.assertEqual("FILLED", outcome.state)
         self.assertTrue(outcome.execution_sent)
@@ -540,7 +563,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.assertEqual("COMPLETED", state)
 
     def test_restart_recovers_crash_between_session_and_journal_reservation(self) -> None:
-        adapter = StubAdapter()
+        adapter = self._adapter()
         with patch.object(
             self.journal,
             "reserve_submission",
@@ -571,7 +594,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.assertEqual(0, adapter.submit_calls)
 
     def test_uncertain_submit_blocks_session_until_reconciliation(self) -> None:
-        adapter = StubAdapter(uncertain=True)
+        adapter = self._adapter(uncertain=True)
         intent = self._intent()
         verification = self.session_store.issue_dispatch_verification(
             self.session_lease,
@@ -626,7 +649,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
             )
 
     def test_reconciliation_proof_releases_uncertain_session_reservation(self) -> None:
-        adapter = StubAdapter(uncertain=True)
+        adapter = self._adapter(uncertain=True)
         outcome = self._execute(adapter)
         record = self.journal.get_intent(outcome.intent_id)
         result = reconcile_broker_state(
@@ -660,7 +683,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.assertEqual("RECONCILED", state)
 
     def test_journal_receipt_recovers_session_settlement_write_failure(self) -> None:
-        adapter = StubAdapter()
+        adapter = self._adapter()
         with patch.object(
             DemoAutoSessionCapabilityStore,
             "apply_dispatch_journal_settlement",
@@ -691,7 +714,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.assertEqual("COMPLETED", after)
 
     def test_final_session_failure_is_held_without_broker_send(self) -> None:
-        adapter = StubAdapter()
+        adapter = self._adapter()
         outcome = self._execute(adapter, fail_reserved_verification=True)
         self.assertEqual("REJECTED", outcome.state)
         self.assertEqual("SUBMISSION_HELD_BEFORE_SEND", outcome.status)
@@ -719,7 +742,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.assertEqual("REJECTED", reservation[2])
 
     def test_arbitrary_verifier_object_is_rejected_before_preflight(self) -> None:
-        adapter = StubAdapter()
+        adapter = self._adapter()
         outcome = self._execute(adapter, session_store=lambda lease: lease)
         self.assertEqual("RISK_REJECTED", outcome.state)
         self.assertIn("DEMO_AUTO_SESSION_STORE_REQUIRED", outcome.reason_codes)
@@ -745,7 +768,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
             lease_ttl=timedelta(seconds=30),
         )
         self.clock.now = dispatch_at
-        adapter = StubAdapter()
+        adapter = self._adapter()
         outcome = self._execute(
             adapter,
             session_lease=stale,
@@ -813,7 +836,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.ipc_input = ipc_input
         self.session_lease = renewed
 
-        adapter = StubAdapter()
+        adapter = self._adapter()
         outcome = self._execute(adapter)
         self.assertEqual("FILLED", outcome.state)
         self.assertGreater(renewed.issued_at_utc, original_expiry)

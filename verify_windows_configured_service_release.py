@@ -24,6 +24,8 @@ def _bootstrap_release_root() -> Path:
         initializer_meta = initializer.lstat()
         implementation = package / "configured_service_release.py"
         implementation_meta = implementation.lstat()
+        suite_verifier = package / "windows_base_release_suite.py"
+        suite_verifier_meta = suite_verifier.lstat()
     except OSError as exc:
         raise RuntimeError(
             "CONFIGURED_TOOLING_BOOTSTRAP_REJECTED"
@@ -49,6 +51,9 @@ def _bootstrap_release_root() -> Path:
         or not stat.S_ISREG(implementation_meta.st_mode)
         or stat.S_ISLNK(implementation_meta.st_mode)
         or reparse(implementation_meta)
+        or not stat.S_ISREG(suite_verifier_meta.st_mode)
+        or stat.S_ISLNK(suite_verifier_meta.st_mode)
+        or reparse(suite_verifier_meta)
     ):
         raise RuntimeError("CONFIGURED_TOOLING_BOOTSTRAP_REJECTED")
     sys.dont_write_bytecode = True
@@ -123,6 +128,19 @@ def main(argv: list[str] | None = None) -> int:
         "Base release identity SHA-256: "
         f"{report.base_release_identity_sha256}"
     )
+    print(
+        "Base release suite bound: "
+        f"{str(report.base_release_suite_bound).lower()}"
+    )
+    if report.base_release_suite_bound:
+        print(
+            "Base release suite identity SHA-256: "
+            f"{report.base_release_suite_identity_sha256}"
+        )
+        print(
+            "Base release suite role: "
+            f"{report.base_release_suite_role}"
+        )
     print(
         "Overlay descriptor SHA-256: "
         f"{report.overlay_descriptor_sha256}"

@@ -39,10 +39,12 @@ Repository menyediakan:
   external conformance-evidence hashes dalam packet deny-only yang masih
   membutuhkan signature owner independen;
 - `build_windows_configured_service_release.py`: menggabungkan exact base ZIP
-  dengan exact overlay;
+  dari exact atomic five-role suite dengan exact overlay;
 - `verify_windows_configured_service_release.py`: verifier offline yang
   memerlukan pin configured identity dan base identity;
 - `live_runtime/configured_service_release.py`: builder/verifier fail-closed;
+- `live_runtime/windows_base_release_suite.py`: verifier read-only untuk
+  manifest, lima ZIP, dan lima sidecar atomic suite;
 - `config/windows_configured_release_tooling_allowlist.v1.json`: exact tooling
   inventory; dan
 - `specs/windows_configured_service_release_v1.md` serta
@@ -145,28 +147,38 @@ Ekstrak tooling bundle ke operator-only directory. Untuk setiap process,
 gunakan base release dan overlay yang berbeda:
 
 ```powershell
+$suiteRoot = "C:\AI_SCALPER_RELEASES\<COMMIT>\base-release-suite-v1"
+
 python -I -S -B .\build_windows_configured_service_release.py `
-  --base-release C:\AI_SCALPER_RELEASES\decision-base.zip `
+  --base-release-suite-root $suiteRoot `
+  --base-release "$suiteRoot\decision-base-v1.zip" `
   --overlay-root C:\AI_SCALPER_PRIVATE\decision-overlay `
   --descriptor C:\AI_SCALPER_PRIVATE\decision-overlay.json `
   --output C:\AI_SCALPER_RELEASES\decision-configured.zip
 
 python -I -S -B .\build_windows_configured_service_release.py `
-  --base-release C:\AI_SCALPER_RELEASES\execution-base.zip `
+  --base-release-suite-root $suiteRoot `
+  --base-release "$suiteRoot\execution-base-v1.zip" `
   --overlay-root C:\AI_SCALPER_PRIVATE\execution-overlay `
   --descriptor C:\AI_SCALPER_PRIVATE\execution-overlay.json `
   --output C:\AI_SCALPER_RELEASES\execution-configured.zip
 
 python -I -S -B .\build_windows_configured_service_release.py `
-  --base-release C:\AI_SCALPER_RELEASES\status-monitor-base.zip `
+  --base-release-suite-root $suiteRoot `
+  --base-release "$suiteRoot\status-monitor-base-v1.zip" `
   --overlay-root C:\AI_SCALPER_PRIVATE\status-monitor-overlay `
   --descriptor C:\AI_SCALPER_PRIVATE\status-monitor-overlay.json `
   --output C:\AI_SCALPER_RELEASES\status-monitor-configured.zip
 ```
 
 Builder memverifikasi base manifest, byte-deterministic base ZIP, exact
-overlay, factory contract, full inheritance, configured identity, dan archive
-hasil sebelum menulis output create-exclusive.
+overlay, factory contract, full inheritance, configured identity, serta
+membership role di exact atomic five-role suite sebelum menulis output
+create-exclusive. Configured release legacy tanpa suite binding tetap dapat
+dibaca untuk diagnostics, tetapi ditolak oleh pre-manual admission.
+
+Rincian binding dan command admission tersedia di
+[`WINDOWS_BASE_SUITE_CONFIGURED_RELEASE_BINDING.md`](WINDOWS_BASE_SUITE_CONFIGURED_RELEASE_BINDING.md).
 
 ## Independent verification
 

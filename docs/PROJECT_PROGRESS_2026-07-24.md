@@ -98,7 +98,7 @@ dibangun ulang dari clean commit berikutnya.
 - Provider conformance reviewer kini merekonstruksi tiga authoritative factory
   template dan mengikat seluruh 65 decision/execution/status-monitor provider
   bindings ke fresh external suite/artifact hashes. Packet canonical ini
-  memberi target `details_sha256` yang granular untuk signature owner
+  memberi target `source_evidence_sha256` yang granular untuk signature owner
   independen, tetapi tetap menetapkan `provider_accepted=false`, tidak
   mengimpor provider, dan tidak mempunyai activation/order authority.
 - Provider evidence input assembler kini menghapus transkripsi manual 65

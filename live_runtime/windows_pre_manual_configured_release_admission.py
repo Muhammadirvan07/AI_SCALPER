@@ -52,6 +52,11 @@ from .windows_manual_demo_entry_review import (
     WindowsManualDemoEntryReviewError,
     assess_windows_manual_demo_entry_review,
 )
+from .windows_base_release_suite import (
+    BaseReleaseSuiteVerificationError,
+    VerifiedBaseReleaseSuite,
+    verify_base_release_suite,
+)
 
 
 SCHEMA_VERSION = "windows-pre-manual-configured-release-admission-v1"
@@ -245,6 +250,11 @@ class VerifiedConfiguredArchiveBinding(CanonicalContract):
     factory_manifest_sha256: str
     runtime_configuration_sha256: str
     task_definition_sha256: str
+    base_release_suite_identity_sha256: str
+    base_release_suite_manifest_sha256: str
+    base_release_suite_role: str
+    base_release_suite_role_archive_sha256: str
+    base_release_suite_role_sidecar_sha256: str
     git_commit: str
     git_tree: str
     schema_version: str = field(
@@ -285,12 +295,33 @@ class VerifiedConfiguredArchiveBinding(CanonicalContract):
             "factory_manifest_sha256",
             "runtime_configuration_sha256",
             "task_definition_sha256",
+            "base_release_suite_identity_sha256",
+            "base_release_suite_manifest_sha256",
+            "base_release_suite_role_archive_sha256",
+            "base_release_suite_role_sidecar_sha256",
         ):
             object.__setattr__(
                 self,
                 name,
                 _nonzero_hash(name, getattr(self, name)),
             )
+        suite_role = require_text(
+            "base_release_suite_role",
+            self.base_release_suite_role,
+            upper=True,
+        )
+        expected_suite_role = {
+            item[0]: item[1] for item in _ROLE_CASES
+        }[role]
+        if suite_role != expected_suite_role:
+            raise ValueError(
+                "configured archive base-suite role is invalid"
+            )
+        object.__setattr__(
+            self,
+            "base_release_suite_role",
+            suite_role,
+        )
         object.__setattr__(
             self,
             "git_commit",
@@ -314,6 +345,8 @@ class WindowsPreManualConfiguredReleaseAdmission(CanonicalContract):
     review_bundle_sha256: str
     trust_policy_sha256: str
     pre_manual_entry_review_sha256: str
+    base_release_suite_identity_sha256: str
+    base_release_suite_manifest_sha256: str
     configured_archives: tuple[VerifiedConfiguredArchiveBinding, ...]
     git_commit: str
     git_tree: str
@@ -330,6 +363,7 @@ class WindowsPreManualConfiguredReleaseAdmission(CanonicalContract):
     pending_reasons: Mapping[str, str]
     status: str
     configured_archives_verified: bool
+    base_release_suite_verified: bool
     external_preconditions_complete: bool
     manual_demo_activation_review_required: bool
     manual_demo_authorized: bool = field(default=False, init=False)
@@ -353,6 +387,8 @@ class WindowsPreManualConfiguredReleaseAdmission(CanonicalContract):
             "review_bundle_sha256",
             "trust_policy_sha256",
             "pre_manual_entry_review_sha256",
+            "base_release_suite_identity_sha256",
+            "base_release_suite_manifest_sha256",
             "account_alias_sha256",
             "broker_specification_sha256",
             "decision_ipc_binding_sha256",
@@ -457,6 +493,10 @@ class WindowsPreManualConfiguredReleaseAdmission(CanonicalContract):
             raise TypeError("configured_archives_verified must be bool")
         if self.configured_archives_verified is not True:
             raise ValueError("configured archives must be verified")
+        if type(self.base_release_suite_verified) is not bool:
+            raise TypeError("base_release_suite_verified must be bool")
+        if self.base_release_suite_verified is not True:
+            raise ValueError("base release suite must be verified")
         complete = not pending
         for name in (
             "external_preconditions_complete",
@@ -497,7 +537,9 @@ def _archive_binding(
     *,
     archive_path: str | Path,
     role_binding: ConfiguredServiceRoleBinding,
+    base_suite: VerifiedBaseReleaseSuite,
     expected_role: str,
+    expected_suite_role: str,
     prefix: str,
     expected_profile: str,
 ) -> VerifiedConfiguredArchiveBinding:
@@ -526,6 +568,22 @@ def _archive_binding(
         _reject(prefix, "RELEASE_PROFILE_MISMATCH")
     if report.runtime_mode != "DEMO_AUTO":
         _reject(prefix, "RUNTIME_MODE_MISMATCH")
+    suite_role = base_suite.role(expected_suite_role)
+    if (
+        report.base_release_suite_bound is not True
+        or report.base_release_suite_identity_sha256
+        != base_suite.suite_identity_sha256
+        or report.base_release_suite_manifest_sha256
+        != base_suite.manifest_sha256
+        or report.base_release_suite_role != expected_suite_role
+        or report.base_release_suite_role_archive_sha256
+        != suite_role.archive_sha256
+        or report.base_release_suite_role_sidecar_sha256
+        != suite_role.sidecar_sha256
+        or report.base_release_identity_sha256
+        != suite_role.release_identity_sha256
+    ):
+        _reject(prefix, "BASE_RELEASE_SUITE_BINDING_MISMATCH")
     if archive_sha256 != role_binding.release.archive_sha256:
         _reject(prefix, "ARCHIVE_SHA256_MISMATCH")
 
@@ -591,6 +649,21 @@ def _archive_binding(
         factory_manifest_sha256=factory_manifest_sha256,
         runtime_configuration_sha256=runtime_configuration_sha256,
         task_definition_sha256=str(task_definition_sha256),
+        base_release_suite_identity_sha256=(
+            str(report.base_release_suite_identity_sha256)
+        ),
+        base_release_suite_manifest_sha256=(
+            str(report.base_release_suite_manifest_sha256)
+        ),
+        base_release_suite_role=str(
+            report.base_release_suite_role
+        ),
+        base_release_suite_role_archive_sha256=str(
+            report.base_release_suite_role_archive_sha256
+        ),
+        base_release_suite_role_sidecar_sha256=str(
+            report.base_release_suite_role_sidecar_sha256
+        ),
         git_commit=str(manifest["git_commit"]),
         git_tree=str(manifest["git_tree"]),
         _seal=_BINDING_SEAL,
@@ -599,6 +672,7 @@ def _archive_binding(
 
 def assess_windows_pre_manual_configured_release_admission(
     *,
+    base_release_suite_root: str | Path,
     decision_archive: str | Path,
     execution_archive: str | Path,
     status_monitor_archive: str | Path,
@@ -618,6 +692,14 @@ def assess_windows_pre_manual_configured_release_admission(
         raise WindowsPreManualConfiguredReleaseAdmissionError(
             "REVIEW_BUNDLE_RECONSTRUCTION_FAILED"
         ) from exc
+    try:
+        base_suite = verify_base_release_suite(
+            base_release_suite_root
+        )
+    except BaseReleaseSuiteVerificationError as exc:
+        raise WindowsPreManualConfiguredReleaseAdmissionError(
+            f"BASE_RELEASE_SUITE_INVALID_{exc.reason_code}"
+        ) from exc
 
     archive_paths = (
         decision_archive,
@@ -633,7 +715,9 @@ def assess_windows_pre_manual_configured_release_admission(
         _archive_binding(
             archive_path=archive_path,
             role_binding=role_binding,
+            base_suite=base_suite,
             expected_role=role,
+            expected_suite_role=prefix,
             prefix=prefix,
             expected_profile=profile,
         )
@@ -653,6 +737,23 @@ def assess_windows_pre_manual_configured_release_admission(
     if len(trees) != 1:
         raise WindowsPreManualConfiguredReleaseAdmissionError(
             "CONFIGURED_ARCHIVE_GIT_TREE_MISMATCH"
+        )
+    if (
+        commits != {base_suite.git_commit}
+        or trees != {base_suite.git_tree}
+        or {
+            item.base_release_suite_identity_sha256
+            for item in configured_archives
+        }
+        != {base_suite.suite_identity_sha256}
+        or {
+            item.base_release_suite_manifest_sha256
+            for item in configured_archives
+        }
+        != {base_suite.manifest_sha256}
+    ):
+        raise WindowsPreManualConfiguredReleaseAdmissionError(
+            "CONFIGURED_ARCHIVE_BASE_SUITE_MISMATCH"
         )
 
     try:
@@ -685,6 +786,12 @@ def assess_windows_pre_manual_configured_release_admission(
         review_bundle_sha256=pre_manual.review_bundle_sha256,
         trust_policy_sha256=pre_manual.trust_policy_sha256,
         pre_manual_entry_review_sha256=pre_manual.content_sha256,
+        base_release_suite_identity_sha256=(
+            base_suite.suite_identity_sha256
+        ),
+        base_release_suite_manifest_sha256=(
+            base_suite.manifest_sha256
+        ),
         configured_archives=configured_archives,
         git_commit=pre_manual.git_commit,
         git_tree=pre_manual.git_tree,
@@ -707,6 +814,7 @@ def assess_windows_pre_manual_configured_release_admission(
         pending_reasons=pre_manual.pending_reasons,
         status=COMPLETE_STATUS if complete else BLOCKED_STATUS,
         configured_archives_verified=True,
+        base_release_suite_verified=True,
         external_preconditions_complete=complete,
         manual_demo_activation_review_required=complete,
         _seal=_REPORT_SEAL,

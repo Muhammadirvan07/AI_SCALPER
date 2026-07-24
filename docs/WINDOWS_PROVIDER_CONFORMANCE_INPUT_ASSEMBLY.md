@@ -81,7 +81,7 @@ Jangan tambahkan contract/binding/configuration/custody/kind/credential fields.
 Assembler mengambilnya hanya dari factory template. Missing, extra, duplicate,
 case-colliding, failed, partial, stale, atau future evidence ditolak.
 
-## Perintah Windows
+## Perintah Windows — kontrak v2 untuk candidate baru
 
 Jalankan dari configured-release operator tooling yang telah diekstrak:
 
@@ -94,13 +94,13 @@ python -I -S -B .\prepare_windows_three_service_provider_conformance_input.py `
   --review-id provider-review-jp-window-01 `
   --operations-plan-sha256 <EXACT_OPERATIONS_PLAN_SHA256> `
   --operations-review-bundle-sha256 <EXACT_OPERATIONS_REVIEW_BUNDLE_SHA256> `
-  --configured-release-admission-sha256 <EXACT_CONFIGURED_RELEASE_ADMISSION_SHA256> `
-  --output C:\AI_SCALPER_PRIVATE\providers\three-service-provider-input-v1.json
+  --output C:\AI_SCALPER_PRIVATE\providers\three-service-provider-input-v2.json
 ```
 
 Output sukses harus menampilkan:
 
 ```text
+Contract schema: windows-three-service-provider-conformance-input-v2
 Providers: 65
 Review packet created: false
 External provider acceptance: false
@@ -111,12 +111,23 @@ Setelah itu buat packet deny-only:
 
 ```powershell
 python -I -S -B .\prepare_windows_three_service_provider_conformance_review.py `
-  --input C:\AI_SCALPER_PRIVATE\providers\three-service-provider-input-v1.json `
-  --output C:\AI_SCALPER_PRIVATE\providers\three-service-provider-review-v1.json
+  --input C:\AI_SCALPER_PRIVATE\providers\three-service-provider-input-v2.json `
+  --output C:\AI_SCALPER_PRIVATE\providers\three-service-provider-review-v2.json
 ```
 
 Packet kedua tetap membutuhkan signature owner independen dan tidak membuka
 activation/order.
+
+Argumen `--configured-release-admission-sha256` hanya mempertahankan byte
+compatibility kontrak v1 historis. Jika diberikan, output wajib melaporkan
+`LEGACY_DIAGNOSTIC_ONLY`; artefak itu tidak boleh menjadi source evidence untuk
+candidate pre-manual atau promotion baru.
+
+Urutan candidate baru adalah configured release yang terikat atomic suite,
+operations plan/review, provider-conformance v2, independent validation
+receipt, signed pre-manual observations, lalu pre-manual admission. Hash
+packet v2 dapat menjadi `source_evidence_sha256`; hash objek validasi terpisah
+menjadi `validation_receipt_sha256`.
 
 ## Integrity rules
 
@@ -129,5 +140,6 @@ activation/order.
 - Execution template wajib exact `DEMO_AUTO`.
 - Evidence maksimum berumur 24 jam pada trusted UTC.
 
-Kontrak normatif:
-[`specs/windows_three_service_provider_evidence_input_assembly_v1.md`](../specs/windows_three_service_provider_evidence_input_assembly_v1.md).
+Kontrak normatif candidate baru:
+[`specs/windows_three_service_provider_conformance_v2.md`](../specs/windows_three_service_provider_conformance_v2.md).
+Kontrak assembler v1 tetap tersedia hanya untuk legacy diagnostics.

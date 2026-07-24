@@ -33,12 +33,21 @@ from .windows_service_factory_template import (
 )
 
 
-INPUT_SCHEMA_VERSION = (
+INPUT_SCHEMA_VERSION_V1 = (
     "windows-three-service-provider-conformance-input-v1"
 )
-REVIEW_SCHEMA_VERSION = (
+INPUT_SCHEMA_VERSION_V2 = (
+    "windows-three-service-provider-conformance-input-v2"
+)
+REVIEW_SCHEMA_VERSION_V1 = (
     "windows-three-service-provider-conformance-review-v1"
 )
+REVIEW_SCHEMA_VERSION_V2 = (
+    "windows-three-service-provider-conformance-review-v2"
+)
+# Backward-compatible aliases for existing v1 callers.
+INPUT_SCHEMA_VERSION = INPUT_SCHEMA_VERSION_V1
+REVIEW_SCHEMA_VERSION = REVIEW_SCHEMA_VERSION_V1
 PROVIDER_REVIEW_STATUS = (
     "PROVIDER_CONFORMANCE_PACKET_READY_EXTERNAL_SIGNATURE_REQUIRED"
 )
@@ -62,13 +71,22 @@ _SECRET_ID_RE = re.compile(
     re.IGNORECASE,
 )
 
-_INPUT_FIELDS = frozenset(
+_INPUT_FIELDS_V1 = frozenset(
     {
         "schema_version",
         "review_id",
         "operations_plan_sha256",
         "operations_review_bundle_sha256",
         "configured_release_admission_sha256",
+        "services",
+    }
+)
+_INPUT_FIELDS_V2 = frozenset(
+    {
+        "schema_version",
+        "review_id",
+        "operations_plan_sha256",
+        "operations_review_bundle_sha256",
         "services",
     }
 )
@@ -123,7 +141,7 @@ _SERVICE_REVIEW_FIELDS = frozenset(
         "provider_count",
     }
 )
-_REVIEW_FIELDS = frozenset(
+_REVIEW_FIELDS_V1 = frozenset(
     {
         "schema_version",
         "review_id",
@@ -153,6 +171,9 @@ _REVIEW_FIELDS = frozenset(
         "max_lot",
         "content_sha256",
     }
+)
+_REVIEW_FIELDS_V2 = frozenset(
+    _REVIEW_FIELDS_V1 - {"configured_release_admission_sha256"}
 )
 
 
@@ -629,7 +650,7 @@ class WindowsThreeServiceProviderConformanceReview:
     review_id: str
     operations_plan_sha256: str
     operations_review_bundle_sha256: str
-    configured_release_admission_sha256: str
+    configured_release_admission_sha256: str | None
     services: tuple[Mapping[str, object], ...]
     configured_release_set_sha256: str
     provider_evidence_set_sha256: str
@@ -659,17 +680,29 @@ class WindowsThreeServiceProviderConformanceReview:
             raise TypeError(
                 "provider conformance reviews require the sealed builder"
             )
+        if self.schema_version == REVIEW_SCHEMA_VERSION_V1:
+            if not isinstance(
+                self.configured_release_admission_sha256,
+                str,
+            ):
+                raise ValueError(
+                    "v1 provider review requires legacy admission hash"
+                )
+        elif self.schema_version == REVIEW_SCHEMA_VERSION_V2:
+            if self.configured_release_admission_sha256 is not None:
+                raise ValueError(
+                    "v2 provider review cannot carry admission hash"
+                )
+        else:
+            raise ValueError("provider conformance review schema drift")
 
     def _unsigned_canonical_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "schema_version": self.schema_version,
             "review_id": self.review_id,
             "operations_plan_sha256": self.operations_plan_sha256,
             "operations_review_bundle_sha256": (
                 self.operations_review_bundle_sha256
-            ),
-            "configured_release_admission_sha256": (
-                self.configured_release_admission_sha256
             ),
             "services": json.loads(_canonical_bytes(self.services)),
             "configured_release_set_sha256": (
@@ -703,6 +736,11 @@ class WindowsThreeServiceProviderConformanceReview:
             "order_capability": self.order_capability,
             "max_lot": self.max_lot,
         }
+        if self.schema_version == REVIEW_SCHEMA_VERSION_V1:
+            result["configured_release_admission_sha256"] = (
+                self.configured_release_admission_sha256
+            )
+        return result
 
     @property
     def content_sha256(self) -> str:
@@ -721,8 +759,28 @@ def _build_review(
     checked_at: datetime,
     freshness_time: datetime,
 ) -> WindowsThreeServiceProviderConformanceReview:
-    root = _mapping(payload, _INPUT_FIELDS, "INPUT_SCHEMA_INVALID")
-    if root["schema_version"] != INPUT_SCHEMA_VERSION:
+    if not isinstance(payload, Mapping):
+        raise WindowsProviderConformanceError("INPUT_SCHEMA_INVALID")
+    schema_version = payload.get("schema_version")
+    if schema_version == INPUT_SCHEMA_VERSION_V1:
+        root = _mapping(
+            payload,
+            _INPUT_FIELDS_V1,
+            "INPUT_SCHEMA_INVALID",
+        )
+        review_schema_version = REVIEW_SCHEMA_VERSION_V1
+        configured_release_admission_sha256: str | None = _hash(
+            root["configured_release_admission_sha256"]
+        )
+    elif schema_version == INPUT_SCHEMA_VERSION_V2:
+        root = _mapping(
+            payload,
+            _INPUT_FIELDS_V2,
+            "INPUT_SCHEMA_INVALID",
+        )
+        review_schema_version = REVIEW_SCHEMA_VERSION_V2
+        configured_release_admission_sha256 = None
+    else:
         raise WindowsProviderConformanceError("INPUT_SCHEMA_INVALID")
     review_id = _identifier(root["review_id"])
     services_raw = _list(root["services"], "SERVICE_SET_INVALID")
@@ -796,8 +854,8 @@ def _build_review(
         operations_review_bundle_sha256=_hash(
             root["operations_review_bundle_sha256"]
         ),
-        configured_release_admission_sha256=_hash(
-            root["configured_release_admission_sha256"]
+        configured_release_admission_sha256=(
+            configured_release_admission_sha256
         ),
         services=services,
         configured_release_set_sha256=canonical_sha256(release_set),
@@ -806,6 +864,7 @@ def _build_review(
             int(item["provider_count"]) for item in services
         ),
         checked_at_utc=checked_at,
+        schema_version=review_schema_version,
         _seal=_REVIEW_SEAL,
     )
 
@@ -843,8 +902,24 @@ def verify_windows_three_service_provider_conformance_review(
     if not callable(clock_provider):
         raise TypeError("clock_provider must be callable")
     started_at = _trusted_now(clock_provider)
-    review = _mapping(payload, _REVIEW_FIELDS, "REVIEW_SCHEMA_INVALID")
-    if review["schema_version"] != REVIEW_SCHEMA_VERSION:
+    if not isinstance(payload, Mapping):
+        raise WindowsProviderConformanceError("REVIEW_SCHEMA_INVALID")
+    review_schema_version = payload.get("schema_version")
+    if review_schema_version == REVIEW_SCHEMA_VERSION_V1:
+        review = _mapping(
+            payload,
+            _REVIEW_FIELDS_V1,
+            "REVIEW_SCHEMA_INVALID",
+        )
+        input_schema_version = INPUT_SCHEMA_VERSION_V1
+    elif review_schema_version == REVIEW_SCHEMA_VERSION_V2:
+        review = _mapping(
+            payload,
+            _REVIEW_FIELDS_V2,
+            "REVIEW_SCHEMA_INVALID",
+        )
+        input_schema_version = INPUT_SCHEMA_VERSION_V2
+    else:
         raise WindowsProviderConformanceError("REVIEW_SCHEMA_INVALID")
     supplied_hash = _hash(review["content_sha256"])
     unsigned = dict(review)
@@ -882,21 +957,23 @@ def verify_windows_three_service_provider_conformance_review(
                 "provider_evidence": service["provider_evidence"],
             }
         )
+    reconstructed_input: dict[str, object] = {
+        "schema_version": input_schema_version,
+        "review_id": review["review_id"],
+        "operations_plan_sha256": review[
+            "operations_plan_sha256"
+        ],
+        "operations_review_bundle_sha256": review[
+            "operations_review_bundle_sha256"
+        ],
+        "services": input_services,
+    }
+    if input_schema_version == INPUT_SCHEMA_VERSION_V1:
+        reconstructed_input[
+            "configured_release_admission_sha256"
+        ] = review["configured_release_admission_sha256"]
     expected = _build_review(
-        {
-            "schema_version": INPUT_SCHEMA_VERSION,
-            "review_id": review["review_id"],
-            "operations_plan_sha256": review[
-                "operations_plan_sha256"
-            ],
-            "operations_review_bundle_sha256": review[
-                "operations_review_bundle_sha256"
-            ],
-            "configured_release_admission_sha256": review[
-                "configured_release_admission_sha256"
-            ],
-            "services": input_services,
-        },
+        reconstructed_input,
         checked_at=checked_at,
         freshness_time=started_at,
     )
@@ -1071,10 +1148,14 @@ def prepare_windows_three_service_provider_conformance_review_file(
 
 __all__ = [
     "INPUT_SCHEMA_VERSION",
+    "INPUT_SCHEMA_VERSION_V1",
+    "INPUT_SCHEMA_VERSION_V2",
     "MAXIMUM_PROVIDER_REVIEW_JSON_BYTES",
     "PROVIDER_REVIEW_STATUS",
     "READINESS_BLOCKERS",
     "REVIEW_SCHEMA_VERSION",
+    "REVIEW_SCHEMA_VERSION_V1",
+    "REVIEW_SCHEMA_VERSION_V2",
     "SERVICE_ROLES",
     "WindowsProviderConformanceError",
     "WindowsThreeServiceProviderConformanceReview",
