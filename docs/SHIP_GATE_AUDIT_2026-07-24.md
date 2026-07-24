@@ -33,10 +33,10 @@ not read, modified, staged, tested, or treated as release input.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `1,419 / 1,419 PASS` |
-| Full regression with `PYTHONOPTIMIZE=2` | `1,419 / 1,419 PASS` |
+| Full Python regression | `1,421 / 1,421 PASS` |
+| Full regression with `PYTHONOPTIMIZE=2` | `1,421 / 1,421 PASS` |
 | Tracked Python compilation | PASS |
-| Focused signed-feed/publisher/shadow-closure tests | `38 / 38 PASS` in both modes |
+| Focused signed-feed/publisher/shadow-closure tests | `40 / 40 PASS` in both modes |
 | Publisher spec validator | `100 / 100`, grade A, zero errors/warnings |
 | Git whitespace/error check | PASS |
 | Windows dependency-lock verification | PASS |
@@ -65,6 +65,13 @@ The SQLite query using interpolated identifiers in
 `live_runtime/journal_integrity.py` was manually traced. Its table and order
 column values come only from fixed module tuples; all runtime values remain
 parameterized. It is not a caller-controlled SQL injection path.
+
+The signed-feed write boundary was also reviewed for time-of-check/time-of-use
+drift. The publisher now passes the earlier of the ten-second entry deadline
+and its per-lane publish-lag deadline into the feed. The feed re-reads trusted
+UTC immediately before every new create-exclusive write and rejects a crossed
+deadline before key use or file creation. An identical committed packet remains
+an idempotent read rather than a new publication.
 
 Broad cleanup handlers were also inspected in the execution and supervisor
 paths. They suppress only secondary destructor, heartbeat, export, or

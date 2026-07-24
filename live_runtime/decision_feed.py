@@ -1227,6 +1227,7 @@ class SignedDecisionFeedDirectory:
         observation: FinalizedM15DecisionInput,
         *,
         issued_at_utc: datetime | None = None,
+        publication_deadline_utc: datetime | None = None,
     ) -> SignedDecisionFeedPacket:
         trusted_now = self._clock_pair()
         feed_lane = _publication_lane(self.binding, lane)
@@ -1235,10 +1236,26 @@ class SignedDecisionFeedDirectory:
                 "issued_at_utc",
                 trusted_now if issued_at_utc is None else issued_at_utc,
             )
+            deadline = (
+                None
+                if publication_deadline_utc is None
+                else require_utc(
+                    "publication_deadline_utc",
+                    publication_deadline_utc,
+                )
+            )
         except (TypeError, ValueError) as exc:
             raise DecisionFeedError("FEED_CLOCK_INVALID") from exc
         if issued > trusted_now + _FUTURE_CLOCK_TOLERANCE:
             raise DecisionFeedError("FEED_CLOCK_INVALID")
+        if deadline is not None and (
+            deadline < observation.first_eligible_at
+            or deadline
+            > observation.bar_closed_at
+            + timedelta(seconds=ENTRY_WINDOW_SECONDS)
+            or issued > deadline
+        ):
+            raise DecisionFeedError("FEED_PUBLICATION_DEADLINE_INVALID")
         _, _, _, observation_payload = _observation_parts(
             self.binding,
             feed_lane,
@@ -1262,6 +1279,8 @@ class SignedDecisionFeedDirectory:
             previous = ZERO_SHA256
         if sequence > MAXIMUM_PACKETS_PER_LANE:
             raise DecisionFeedError("FEED_CAPACITY_EXCEEDED")
+        if deadline is not None and self._clock_pair() > deadline:
+            raise DecisionFeedError("FEED_PUBLICATION_DEADLINE_EXCEEDED")
         key = _key(self.binding, self.__key_provider)
         packet = _issue_packet(
             binding=self.binding,

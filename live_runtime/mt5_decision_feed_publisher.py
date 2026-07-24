@@ -830,10 +830,20 @@ class MT5DecisionFeedPublisherService:
                 )
                 continue
             try:
+                publication_deadline = min(
+                    deadline,
+                    observation.first_eligible_at
+                    + timedelta(
+                        milliseconds=(
+                            item.configured_lane.maximum_publish_lag_ms
+                        )
+                    ),
+                )
                 packet = self.__feed_directory.publish(
                     lane,
                     observation,
                     issued_at_utc=final_now,
+                    publication_deadline_utc=publication_deadline,
                 )
             except Exception:
                 results[lane.lane_id] = MT5DecisionFeedLaneResult(

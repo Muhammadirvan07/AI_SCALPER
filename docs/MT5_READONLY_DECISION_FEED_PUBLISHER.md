@@ -38,7 +38,9 @@ Every cycle:
 6. re-attests account/terminal facts after market reads;
 7. rejects clock regression, future ticks, elapsed entry windows, or publish
    lag above the lane budget;
-8. publishes through the existing create-exclusive signed feed.
+8. passes the earlier entry-window/publish-lag deadline to the feed, which
+   re-reads trusted UTC immediately before a new create-exclusive write; and
+9. publishes through the existing create-exclusive signed feed.
 
 One lane data failure is isolated as `HOLD`; trusted clock, read-only
 attestation, server, or account binding failure rejects the whole cycle before

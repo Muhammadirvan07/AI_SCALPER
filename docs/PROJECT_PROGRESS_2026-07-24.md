@@ -17,7 +17,7 @@ baru boleh dimulai setelah acceptance Windows, provider/key custody, sepuluh
 manual-demo lifecycles, dan approval manusia. Live masih membutuhkan soak 30
 hari/50 closed fills/20 XAU, bukti per lane, serta gate statistik dan keamanan.
 
-Validasi lokal terakhir menjalankan **1.419 test** tanpa kegagalan pada mode
+Validasi lokal terakhir menjalankan **1.421 test** tanpa kegagalan pada mode
 normal dan `PYTHONOPTIMIZE=2`. Seluruh tracked Python source berhasil
 dikompilasi, validator decision/execution/status-monitor lulus dengan
 `production_execution_ready=false`, dan safety locks tetap:
@@ -66,7 +66,10 @@ dibangun ulang dari clean commit berikutnya.
   mendelegasikan write ke signed feed. Publisher masuk exact 33-file Windows
   shadow-service closure, tetapi tidak masuk decision process dan tidak
   memiliki order, risk, permit, credential provisioning, atau terminal
-  lifecycle capability.
+  lifecycle capability. Publisher juga mengikat deadline efektif yang lebih
+  awal antara batas entry dan publish lag; signed feed membaca ulang trusted
+  UTC tepat sebelum write baru sehingga pergantian waktu di antara validasi
+  publisher dan create-exclusive write tetap fail-closed.
 - Decision, gated execution/reconciliation, dan external status monitor
   memiliki tiga release profile, allowlist, service identity, runtime root,
   serta state domain yang terpisah.

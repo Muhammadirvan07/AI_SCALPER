@@ -54,8 +54,11 @@ arm, or execution journal.
   eligible bid/ask, and tick time from the feed binding and broker read.
 - FR-8: Publication MUST occur only while trusted UTC remains inside the entry
   window and within the lane's strict publish-lag budget after the first
-  eligible tick. Clock regression, future tick, excessive latency, or source
-  drift MUST fail closed without writing a packet.
+  eligible tick. The publisher MUST pass the earlier of those two deadlines
+  into the signed feed, which MUST re-read trusted UTC immediately before a
+  new create-exclusive write. Clock regression, future tick, excessive
+  latency, write-boundary deadline crossing, or source drift MUST fail closed
+  without writing a packet.
 - FR-9: Publication MUST delegate to the existing
   `SignedDecisionFeedDirectory` using an exact `DecisionFeedLaneBinding`.
   Idempotent replay MAY confirm the existing packet; conflicting same-candle,
@@ -128,7 +131,9 @@ And no packet is published.
 Given a valid first eligible tick but a regressing clock or processing latency
 greater than the bound
 When publication is attempted
-Then the lane or cycle fails closed before a feed write.
+Then the lane or cycle fails closed before a feed write
+And the signed feed independently rejects a new write if its trusted clock has
+crossed the supplied deadline after the publisher's final pre-write check.
 
 ### AC-6: Calendar gaps use an independent receipt source (FR-6, FR-7)
 

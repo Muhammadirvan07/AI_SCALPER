@@ -252,6 +252,43 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
         self.assertEqual("FEED_CANDLE_CONFLICT", caught.exception.reason_code)
         self.assertEqual(1, len(tuple(self.root.iterdir())))
 
+    def test_ac2_publication_deadline_is_rechecked_at_write_boundary(self) -> None:
+        issued = self.clock
+        deadline = self.clock + timedelta(milliseconds=50)
+        self.clock = deadline + timedelta(microseconds=1)
+
+        with self.assertRaises(DecisionFeedError) as caught:
+            self.store.publish(
+                self.feed_lane,
+                observation(),
+                issued_at_utc=issued,
+                publication_deadline_utc=deadline,
+            )
+
+        self.assertEqual(
+            "FEED_PUBLICATION_DEADLINE_EXCEEDED",
+            caught.exception.reason_code,
+        )
+        self.assertEqual((), tuple(self.root.iterdir()))
+
+        for invalid in (
+            QUOTE_AT - timedelta(microseconds=1),
+            BAR_CLOSED_AT + timedelta(seconds=10, microseconds=1),
+        ):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(DecisionFeedError) as invalid_deadline:
+                    self.store.publish(
+                        self.feed_lane,
+                        observation(),
+                        issued_at_utc=issued,
+                        publication_deadline_utc=invalid,
+                    )
+                self.assertEqual(
+                    "FEED_PUBLICATION_DEADLINE_INVALID",
+                    invalid_deadline.exception.reason_code,
+                )
+        self.assertEqual((), tuple(self.root.iterdir()))
+
     def test_ac3_newer_packet_links_verified_head_and_fetch_reads_two_bodies(self) -> None:
         first = self.store.publish(
             self.feed_lane, observation(), issued_at_utc=self.clock

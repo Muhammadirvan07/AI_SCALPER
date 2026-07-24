@@ -371,6 +371,25 @@ class MT5DecisionFeedPublisherTests(unittest.TestCase):
         self.assertEqual("PUBLISHER_CLOCK_INVALID", caught.exception.reason_code)
         self.assertEqual((), tuple(self.root.iterdir()))
 
+    def test_ac5_feed_rechecks_deadline_before_create_exclusive_write(self) -> None:
+        feed_clock = BAR_CLOSED_AT + timedelta(milliseconds=601)
+        self.feed = SignedDecisionFeedDirectory(
+            self.root,
+            binding=self.binding.feed_binding,
+            key_provider=lambda key_id: FEED_KEY,
+            clock_provider=lambda: feed_clock,
+        )
+
+        result = self._service().run_cycle()
+
+        self.assertEqual("HOLD", result.status)
+        self.assertEqual("HOLD", result.lanes[0].status)
+        self.assertEqual(
+            "PUBLISHER_FEED_REJECTED",
+            result.lanes[0].reason_code,
+        )
+        self.assertEqual((), tuple(self.root.iterdir()))
+
     def test_ac6_gap_receipt_source_receives_exact_interval(self) -> None:
         removed_open = START + timedelta(minutes=15 * 100)
         self.broker.rates["EURUSD.ps01"] = [
