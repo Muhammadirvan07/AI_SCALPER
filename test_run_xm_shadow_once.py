@@ -87,12 +87,18 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
             def __init__(self, module):
                 self.module_for_test = module
 
-        def attest_read_only(facade):
+        def attest_read_only(
+            facade,
+            *,
+            require_account_expert_disabled=True,
+        ):
             if attestation_error is not None:
                 raise attestation_error
             return {
                 "account_trade_allowed": False,
-                "account_trade_expert": False,
+                "account_trade_expert": (
+                    False if require_account_expert_disabled else True
+                ),
                 "terminal_trade_allowed": False,
                 "terminal_tradeapi_disabled": True,
             }
@@ -935,7 +941,7 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
         evidence_binding = {
             "candidate_id": "phillip-commodity",
             "key_name": "phillip-commodity-window-01-v1",
-            "contract_id": "phillip-commodity-window-01-diagnostic-v1",
+            "contract_id": "phillip-commodity-window-01-diagnostic-v2",
             "config_files": (),
             "build_identity_provider": lambda: object(),
         }
@@ -1005,6 +1011,29 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
                 for payload in payloads
             )
         )
+        audit_exports = list(
+            self.backups.glob(
+                "phillip-commodity-shadow-invocation-*.audit.json"
+            )
+        )
+        manifests = list(
+            self.backups.glob(
+                "phillip-commodity-shadow-invocation-*.manifest.json"
+            )
+        )
+        self.assertEqual(1, len(audit_exports))
+        self.assertEqual(1, len(manifests))
+        manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+        self.assertEqual(
+            "phillip-commodity-broker-shadow-v1",
+            manifest["runtime_key"],
+        )
+        verified = verify_audit_export_manifest(
+            manifests[0],
+            signing_key=b"synthetic-shadow-key-32-bytes-minimum",
+            expected_runtime_key="phillip-commodity-broker-shadow-v1",
+        )
+        self.assertEqual("HMAC_SHA256", verified.authenticity)
 
     def test_legacy_xm_omission_keeps_zero_argument_initialize(self):
         initialize = mock.Mock(return_value=True)
@@ -1042,6 +1071,30 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
             result = run_xm_shadow_once.main(self.runner_args())
         self.assertEqual(0, result, output.getvalue())
         initialize.assert_called_once_with()
+
+    def test_candidate_attestation_relaxes_only_informational_expert_flag(self):
+        facade = object()
+        attestation = mock.Mock(return_value={"safe": True})
+
+        strict = run_xm_shadow_once._attest_candidate_read_only(
+            attestation,
+            facade,
+            candidate_id="xm",
+        )
+        self.assertEqual({"safe": True}, strict)
+        attestation.assert_called_once_with(facade)
+
+        attestation.reset_mock()
+        broker_neutral = run_xm_shadow_once._attest_candidate_read_only(
+            attestation,
+            facade,
+            candidate_id="phillip-commodity",
+        )
+        self.assertEqual({"safe": True}, broker_neutral)
+        attestation.assert_called_once_with(
+            facade,
+            require_account_expert_disabled=False,
+        )
 
     def test_foreign_cwd_keeps_runtime_paths_and_identity_at_repo_root(self):
         fake_repo = self.root / "repo"

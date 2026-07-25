@@ -319,19 +319,67 @@ AI_SCALPER repository rather than the shell's current Git repository, and a
 late or malformed registration is rejected before a new frozen snapshot is
 created.
 
+### Commodity contract revision after the first Windows probe
+
+The first immutable Commodity contract,
+`phillip-commodity-window-01-diagnostic-v1`, was registered successfully on
+the clean `ebd449f` Windows checkout. Its contract payload SHA-256 is
+`c459a89a48db2cdc00d2df5f70fc2bd604b08ce69d41e20f465e493ce24cb94a`.
+No market evidence was appended to it. The first collector invocation stopped
+at `MT5_READ_ONLY_ATTESTATION_FAILED` because the compatibility runner applied
+the legacy XM rule `account.trade_expert=false` to a Phillip investor session
+whose effective mutation locks were all safe:
+
+```text
+account.trade_allowed = false
+account.trade_expert = true
+terminal.trade_allowed = false
+terminal.tradeapi_disabled = true
+```
+
+That HOLD submitted no broker order and produced a durable audit export. The
+fix keeps the XM legacy policy unchanged and applies the already reviewed
+investor-login policy only to broker-neutral candidates. Account trading,
+terminal trading, and the external trade API must still remain disabled, and
+the facade still exposes no order API. The v2 operational store also binds
+`runtime_key=phillip-commodity-broker-shadow-v1` and uses
+`phillip-commodity-shadow-invocation-*` audit filenames. It rejects an
+existing journal created for another runtime namespace, while XM retains its
+historical runtime key and filenames.
+
+Because the contract binds the exact Git commit/tree, v1 must not be patched,
+overwritten, renamed, or reused after this source correction. The tracked
+Commodity profile therefore advances only its immutable contract namespace to
+`phillip-commodity-window-01-diagnostic-v2`. The discovery, signed plan,
+calendar, evidence key, frozen development snapshot, observation window, and
+all safety flags remain unchanged. Register v2 into the same artifact root;
+the valid frozen snapshot may be reused, while the new forward-contract
+directory and operational journal must be new.
+
+The Windows wheel-manifest probe also exposed host newline translation:
+generated JSON was 9,398 bytes with CRLF instead of the canonical 9,197-byte
+LF object. Generated lock artifacts now write explicit LF, and
+`.gitattributes` pins the exact lock/manifest files to `eol=lf`.
+
 Setelah contract Commodity berhasil didaftarkan dan window sudah eligible,
 jalankan satu cycle evidence dengan terminal yang sama:
 
 ```powershell
-python -I -S -B .\run_broker_shadow_once.py `
+& "$releaseVenv\Scripts\python.exe" -I -S -B `
+  .\run_broker_shadow_once.py `
   --candidate phillip-commodity `
   --terminal-path $commodityTerminal `
-  --artifact-root .\validation_artifacts
+  --artifact-root .\validation_artifacts `
+  --journal .\runtime_state\shadow\phillip-commodity-shadow-cycles-v2.sqlite3 `
+  --audit-export-dir C:\AI_SCALPER_PRIVATE\phillip-commodity-v2-audit-exports
 ```
 
 Runner broker-neutral menolak kandidat non-XM tanpa exact absolute
 `terminal64.exe`. Operational journal hanya menyimpan mode binding dan SHA-256
-path ternormalisasi; raw local path tidak dimasukkan ke receipt.
+path ternormalisasi; raw local path tidak dimasukkan ke receipt. Sebelum
+observation start, cycle v2 yang sehat harus berhenti sebagai `IDLE/NOT_DUE`
+atau status non-append ekuivalen; ia tidak boleh membuat bar evidence lebih
+awal.
 
 Official MT5 documentation states that simultaneous copies require different
 installation directories:

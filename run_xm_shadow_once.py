@@ -101,6 +101,36 @@ def _terminal_path_sha256(path: Path | None) -> str | None:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
+def _operational_runtime_binding(candidate_id: str) -> tuple[str, str]:
+    candidate = _candidate_id(candidate_id)
+    if candidate == "xm":
+        return OPERATIONAL_KEY_NAME, "xm"
+    return f"{candidate}-broker-shadow-v1", candidate
+
+
+def _attest_candidate_read_only(
+    attestation,
+    facade,
+    *,
+    candidate_id: str,
+):
+    """Apply the reviewed read-only policy for one runtime namespace.
+
+    XM keeps the historic stricter policy. Broker-neutral investor sessions
+    may report ``trade_expert=True`` while account and terminal trading remain
+    unavailable; the shared attestation still requires those effective
+    mutation locks and a disabled external trade API.
+    """
+
+    candidate = _candidate_id(candidate_id)
+    if candidate == "xm":
+        return attestation(facade)
+    return attestation(
+        facade,
+        require_account_expert_disabled=False,
+    )
+
+
 def _tracked_repo_file(path: str | Path) -> Path:
     candidate = Path(path)
     if not candidate.is_absolute():
@@ -566,8 +596,15 @@ def main(argv: list[str] | None = None) -> int:
         else args.journal.parent / "audit_exports"
     )
 
+    runtime_key, invocation_namespace = _operational_runtime_binding(
+        args.candidate
+    )
     try:
-        operational = ShadowOperationalStore(args.journal)
+        operational = ShadowOperationalStore(
+            args.journal,
+            runtime_key=runtime_key,
+            invocation_namespace=invocation_namespace,
+        )
     except Exception as exc:
         print("Shadow cycle: HOLD")
         print("Reason: OPERATIONAL_JOURNAL_UNAVAILABLE")
@@ -920,8 +957,10 @@ def main(argv: list[str] | None = None) -> int:
                 outcome="STARTED",
                 reason_code="MT5_READ_ONLY_ATTESTATION_STARTED",
             )
-            read_only_facts = read_only_attestation(
-                read_only_facade_class(mt5)
+            read_only_facts = _attest_candidate_read_only(
+                read_only_attestation,
+                read_only_facade_class(mt5),
+                candidate_id=args.candidate,
             )
             operational.record_stage(
                 invocation_id=invocation_id,

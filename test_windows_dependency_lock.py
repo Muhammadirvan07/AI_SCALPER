@@ -16,6 +16,10 @@ from build_windows_dependency_sbom import (
     build_dependency_sbom,
     canonical_sbom_bytes,
 )
+from build_windows_wheel_manifest import (
+    _write_hashed_requirements,
+    _write_json_create_or_replace,
+)
 from live_runtime.dependency_lock import (
     BOOTSTRAP_REQUIREMENTS_FILE,
     BOOTSTRAP_REQUIREMENTS,
@@ -424,6 +428,50 @@ class WindowsDependencyLockTests(unittest.TestCase):
         self.assertIsInstance(manifest_packages, dict)
         manifest_packages[package_name]["console_scripts"] = [script_name]
         return script
+
+    def test_generated_lock_artifacts_force_lf_on_every_platform(self):
+        attributes = set(
+            (self.repo / ".gitattributes")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
+        for relative in (
+            "pylock.windows-cp312.toml",
+            LIVE_REQUIREMENTS_FILE,
+            BOOTSTRAP_REQUIREMENTS_FILE,
+            RUNTIME_REQUIREMENTS_FILE,
+            DEPENDENCY_SBOM,
+            INSTALL_MANIFEST,
+        ):
+            self.assertIn(f"{relative} text eol=lf", attributes)
+
+        json_path = self.root / "generated" / "manifest.json"
+        with mock.patch.object(
+            Path,
+            "write_text",
+            autospec=True,
+            return_value=1,
+        ) as write_text:
+            _write_json_create_or_replace(json_path, {"status": "SAFE"})
+        self.assertEqual("\n", write_text.call_args.kwargs["newline"])
+        self.assertEqual("utf-8", write_text.call_args.kwargs["encoding"])
+
+        requirements_path = self.root / "generated" / "requirements.txt"
+        packages = {
+            "safe-package": {
+                "version": "1.2.3",
+                "wheel_sha256": "a" * 64,
+            }
+        }
+        with mock.patch.object(
+            Path,
+            "write_text",
+            autospec=True,
+            return_value=1,
+        ) as write_text:
+            _write_hashed_requirements(requirements_path, packages)
+        self.assertEqual("\n", write_text.call_args.kwargs["newline"])
+        self.assertEqual("utf-8", write_text.call_args.kwargs["encoding"])
 
     def test_release_lock_binds_target_direct_pins_and_mt5_wheel(self):
         receipt = validate_windows_dependency_lock(self.lock)

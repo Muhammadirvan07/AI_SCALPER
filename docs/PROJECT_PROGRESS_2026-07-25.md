@@ -251,6 +251,55 @@ lama. Gap multi-terminal itu sekarang ditutup secara lokal:
 5. zero-argument autodiscovery hanya dipertahankan untuk backward-compatible
    XM legacy.
 
+## Windows contract-v1 probe dan remediation v2
+
+Commit `ebd449f` kemudian berhasil melewati dependency lock, membuat isolated
+Windows wheelhouse/venv, dan mendaftarkan immutable contract
+`phillip-commodity-window-01-diagnostic-v1`. Contract payload SHA-256-nya
+`c459a89a48db2cdc00d2df5f70fc2bd604b08ce69d41e20f465e493ce24cb94a`.
+Dependency environment juga terverifikasi exact:
+
+```text
+wheelhouse_sha256 =
+589aa37711beb19c89c0c459bbd57d1192800e58e9542ea0efbc47e8752d8080
+installed_environment_sha256 =
+21aafcbcab4813155c9eb01d21d22c170f3ac19b11a02d3393c01dbec9deb6e2
+```
+
+Siklus runtime pertama berhenti fail-closed sebelum contract verification atau
+evidence append dengan `MT5_READ_ONLY_ATTESTATION_FAILED`. Tidak ada order atau
+broker mutation. Akar masalahnya bukan account yang trade-enabled, melainkan
+runner compatibility masih memaksakan flag informational
+`account.trade_expert=false` milik XM pada Phillip investor-login. Discovery,
+preflight, dan spec Phillip sudah konsisten bahwa `trade_expert=true` boleh
+direkam bila seluruh effective mutation lock tetap:
+
+```text
+account.trade_allowed=false
+terminal.trade_allowed=false
+terminal.tradeapi_disabled=true
+```
+
+Remediation lokal mempertahankan kebijakan XM lama, menerapkan opt-out expert
+flag hanya pada candidate broker-neutral, dan tetap memakai facade tanpa order
+API. Contract v1 tidak diubah dan tidak memiliki market evidence. Profile
+Commodity beralih ke namespace immutable
+`phillip-commodity-window-01-diagnostic-v2`; snapshot, key, discovery,
+plan/calendar, window, dan seluruh safety flag tetap sama.
+
+Audit v1 membuktikan satu gap namespace tambahan: nama export masih
+`xm-shadow-invocation-*` dan payload membawa runtime key XM. Operational store
+v2 sekarang menerima runtime key/namespace yang divalidasi, mengikat status dan
+export Commodity ke `phillip-commodity-broker-shadow-v1`, menghasilkan
+`phillip-commodity-shadow-invocation-*`, serta menolak reuse journal dari
+namespace lain. Default XM dan schema historisnya tetap backward-compatible.
+
+Probe wheel-manifest Windows juga mengungkap CRLF translation: output host
+berukuran 9.398 byte sementara canonical manifest LF berukuran 9.197 byte.
+Writer sekarang menetapkan `newline="\n"` dan `.gitattributes` memaksa LF
+untuk seluruh lock, hashed requirements, install manifest, dan dependency
+SBOM yang terikat hash.
+
 ## Bukti lokal
 
 - Shared-provider-primitives spec validator: `98/100`, grade A, nol error.
@@ -284,10 +333,14 @@ lama. Gap multi-terminal itu sekarang ditutup secara lokal:
 - Acceptance/adversarial suite: `19/19 PASS` normal dan optimized.
 - Suite-binding/provider-v2 focused regression: `95/95 PASS` normal dan
   optimized.
+- Investor-login/collector/dependency/profile/operational-store focused
+  regression setelah remediation v2: `127/127 PASS` normal dan optimized.
+- Candidate-scoped operational namespace/audit regression: `28/28 PASS`
+  normal dan optimized.
 - Full project regression termasuk registration dan exact-terminal
-  hardening: `1.562/1.562 PASS` normal.
+  hardening serta remediation v2: `1.565/1.565 PASS` normal.
 - Full tracked-project regression dengan optimization enabled:
-  `1.562/1.562 PASS`.
+  `1.565/1.565 PASS`.
 - Focused post-activation evidence integration regression:
   `100/100 PASS`.
 - Exact-terminal collector dan broker evidence CLI regression:
@@ -330,10 +383,14 @@ Software foundation dan packaging lokal sudah cukup untuk membuat candidate
 baru. Demo-auto soak belum boleh dimulai hanya karena test lokal hijau.
 Urutan berikutnya:
 
-1. commit/push exact-terminal collector hardening tanpa direktori dashboard;
-2. clean pull commit baru pada Windows, prepare signed Commodity plan/calendar, lalu
-   register immutable diagnostic forward contract;
-3. mulai read-only Commodity evidence collection pada eligible M15 boundary;
+1. commit/push remediation investor-login, contract namespace v2, dan LF
+   portability tanpa direktori dashboard;
+2. clean pull commit baru pada Windows, rebuild exact isolated release
+   wheelhouse/venv, lalu register immutable Commodity contract v2 memakai
+   discovery, plan, calendar, key, dan frozen snapshot yang sama;
+3. jalankan satu pre-window v2 proof cycle dengan journal/audit directory baru,
+   lalu mulai read-only Commodity evidence collection pada eligible M15
+   boundary;
 4. build ulang atomic five-role suite dari commit baru dan verifikasi SHA-256
    serta suite manifest;
 5. siapkan canonical secret-free Decision, Execution, dan Status Monitor

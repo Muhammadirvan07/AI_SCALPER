@@ -33,6 +33,66 @@ class ShadowOperationalGuardTests(unittest.TestCase):
         self.store = ShadowOperationalStore(self.journal)
         self.addCleanup(self.store.close)
 
+    def test_broker_namespace_binds_status_invocation_and_audit_export(self):
+        journal = self.root / "runtime" / "phillip-commodity-v2.sqlite3"
+        runtime_key = "phillip-commodity-broker-shadow-v1"
+        store = ShadowOperationalStore(
+            journal,
+            runtime_key=runtime_key,
+            invocation_namespace="phillip-commodity",
+        )
+        self.addCleanup(store.close)
+        store.install_signing_key(SIGNING_KEY)
+        invocation = store.begin_invocation(NOW)
+        self.assertTrue(
+            invocation.startswith("phillip-commodity-shadow-invocation-")
+        )
+        store.finish_invocation(
+            invocation_id=invocation,
+            observed_at=NOW + timedelta(seconds=1),
+            outcome="PASS",
+            reason_code="CYCLE_IDLE",
+            success_cycle_id="phillip-commodity-cycle-1",
+        )
+        status_payload = json.loads(
+            store.connection.execute(
+                "SELECT payload_json FROM shadow_runtime_status"
+            ).fetchone()[0]
+        )
+        self.assertEqual(runtime_key, status_payload["runtime_key"])
+
+        receipt = store.create_verified_audit_export(
+            export_directory=self.root / "commodity-audit",
+            invocation_id=invocation,
+            observed_at=NOW + timedelta(seconds=2),
+        )
+        self.assertTrue(
+            receipt.export_path.name.startswith(
+                "phillip-commodity-shadow-invocation-"
+            )
+        )
+        export = json.loads(receipt.export_path.read_text(encoding="utf-8"))
+        self.assertEqual(runtime_key, export["runtime_key"])
+        verified = verify_audit_export_manifest(
+            receipt.manifest_path,
+            signing_key=SIGNING_KEY,
+            expected_runtime_key=runtime_key,
+        )
+        self.assertEqual(receipt.export_sha256, verified.export_sha256)
+        with self.assertRaisesRegex(
+            ShadowOperationalGuardError,
+            "safety lock mismatch",
+        ):
+            verify_audit_export_manifest(
+                receipt.manifest_path,
+                signing_key=SIGNING_KEY,
+            )
+        with self.assertRaisesRegex(
+            ShadowOperationalGuardError,
+            "runtime namespace mismatch",
+        ):
+            ShadowOperationalStore(journal)
+
     def test_events_are_hash_chained_append_only_and_status_can_be_stale(self):
         invocation_id = self.store.begin_invocation(NOW)
         self.store.record_stage(

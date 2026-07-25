@@ -9,6 +9,7 @@ import hmac
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import sqlite3
 from typing import Mapping
@@ -26,6 +27,7 @@ OPERATIONAL_STATUS_SCHEMA_VERSION = "xm-shadow-operational-status-v2"
 AUDIT_EXPORT_SCHEMA_VERSION = "xm-shadow-audit-export-v2"
 AUDIT_EXPORT_MANIFEST_SCHEMA_VERSION = "xm-shadow-audit-export-manifest-v2"
 RUNTIME_KEY = "xm-window-02-v3"
+DEFAULT_INVOCATION_NAMESPACE = "xm"
 DEFAULT_MINIMUM_FREE_BYTES = 1_073_741_824
 DEFAULT_HEARTBEAT_STALE_SECONDS = 180
 _ZERO_HASH = "0" * 64
@@ -37,6 +39,7 @@ _EVENT_HMAC_DOMAIN = b"AI_SCALPER_SHADOW_OPERATIONAL_EVENT_V1\0"
 _STATUS_HMAC_DOMAIN = b"AI_SCALPER_SHADOW_RUNTIME_STATUS_V1\0"
 _EXPORT_HMAC_DOMAIN = b"AI_SCALPER_SHADOW_AUDIT_EXPORT_V1\0"
 _MANIFEST_HMAC_DOMAIN = b"AI_SCALPER_SHADOW_AUDIT_MANIFEST_V1\0"
+_RUNTIME_IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9._-]{1,127}$")
 
 
 class ShadowOperationalGuardError(RuntimeError):
@@ -140,6 +143,13 @@ def _is_sha256(value: object) -> bool:
     return len(text) == 64 and all(
         character in "0123456789abcdef" for character in text
     )
+
+
+def _runtime_identifier(value: object, field: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if _RUNTIME_IDENTIFIER.fullmatch(normalized) is None:
+        raise ShadowOperationalGuardError(f"{field} is invalid")
+    return normalized
 
 
 def _verify_exported_event_chain(
@@ -463,11 +473,13 @@ def _projection_from_head_event(
 
 def _status_payload_from_head(
     event: Mapping[str, object],
+    *,
+    runtime_key: str = RUNTIME_KEY,
 ) -> dict[str, object]:
     projection = _projection_from_head_event(event)
     return {
         "schema_version": OPERATIONAL_STATUS_SCHEMA_VERSION,
-        "runtime_key": RUNTIME_KEY,
+        "runtime_key": _runtime_identifier(runtime_key, "runtime key"),
         "invocation_id": str(event["invocation_id"]),
         "recorded_state": projection["recorded_state"],
         "stage": str(event["stage"]),
@@ -556,12 +568,16 @@ def _verify_status_row(
     *,
     signing_key: bytes | None,
     strict_authentication: bool,
+    expected_runtime_key: str = RUNTIME_KEY,
 ) -> dict[str, object]:
     if status_row is None or not events:
         raise ShadowOperationalGuardError(
             "runtime status projection is missing"
         )
-    expected = _status_payload_from_head(events[-1])
+    expected = _status_payload_from_head(
+        events[-1],
+        runtime_key=expected_runtime_key,
+    )
     try:
         (
             runtime_key,
@@ -819,8 +835,19 @@ def check_minimum_free_disk(
 class ShadowOperationalStore:
     """Append-only operational receipts plus mutable heartbeat/status projection."""
 
-    def __init__(self, path: str | Path):
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        runtime_key: str = RUNTIME_KEY,
+        invocation_namespace: str = DEFAULT_INVOCATION_NAMESPACE,
+    ):
         self.path = Path(path)
+        self.runtime_key = _runtime_identifier(runtime_key, "runtime key")
+        self.invocation_namespace = _runtime_identifier(
+            invocation_namespace,
+            "invocation namespace",
+        )
         self._signing_key: bytes | None = None
         self._signing_key_id: str | None = None
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -846,6 +873,17 @@ class ShadowOperationalStore:
                 "operational journal FULL sync is unavailable"
             )
         self._initialize_schema()
+        runtime_keys = {
+            str(row[0])
+            for row in self.connection.execute(
+                "SELECT runtime_key FROM shadow_runtime_status"
+            ).fetchall()
+        }
+        if runtime_keys and runtime_keys != {self.runtime_key}:
+            self.connection.close()
+            raise ShadowOperationalGuardError(
+                "operational journal runtime namespace mismatch"
+            )
 
     def _initialize_schema(self) -> None:
         self.connection.executescript(
@@ -980,13 +1018,14 @@ class ShadowOperationalStore:
                           signing_key_id, payload_json, payload_sha256,
                           status_hmac_sha256
                    FROM shadow_runtime_status WHERE runtime_key=?""",
-                (RUNTIME_KEY,),
+                (self.runtime_key,),
             ).fetchone()
             _verify_status_row(
                 status_row,
                 events,
                 signing_key=normalized_key,
                 strict_authentication=True,
+                expected_runtime_key=self.runtime_key,
             )
         self._signing_key = normalized_key
         self._signing_key_id = key_id
@@ -1010,7 +1049,8 @@ class ShadowOperationalStore:
     def begin_invocation(self, observed_at: datetime) -> str:
         normalized = _require_utc("observed_at", observed_at)
         invocation_id = (
-            "xm-shadow-invocation-"
+            self.invocation_namespace
+            + "-shadow-invocation-"
             + normalized.strftime("%Y%m%dT%H%M%S%fZ")
             + "-"
             + uuid.uuid4().hex[:12]
@@ -1203,7 +1243,10 @@ class ShadowOperationalStore:
                 "previous_event_hmac_sha256": previous_event_hmac,
                 "event_hmac_sha256": event_hmac,
             }
-            status_payload = _status_payload_from_head(event)
+            status_payload = _status_payload_from_head(
+                event,
+                runtime_key=self.runtime_key,
+            )
             status_json = _canonical_json(status_payload)
             status_hash = _sha256_bytes(status_json.encode("utf-8"))
             status_hmac = (
@@ -1239,7 +1282,7 @@ class ShadowOperationalStore:
                     payload_sha256=excluded.payload_sha256,
                     status_hmac_sha256=excluded.status_hmac_sha256""",
                 (
-                    RUNTIME_KEY,
+                    self.runtime_key,
                     normalized_invocation,
                     status_projection["recorded_state"],
                     normalized_stage,
@@ -1342,13 +1385,14 @@ class ShadowOperationalStore:
                       head_event_hmac_sha256, authenticity, signing_key_id,
                       payload_json, payload_sha256, status_hmac_sha256
                FROM shadow_runtime_status WHERE runtime_key=?""",
-            (RUNTIME_KEY,),
+            (self.runtime_key,),
         ).fetchone()
         status = _verify_status_row(
             status_row,
             events,
             signing_key=self._signing_key,
             strict_authentication=True,
+            expected_runtime_key=self.runtime_key,
         )
         heartbeat_at = _parse_utc(status["heartbeat_at_utc"])
         heartbeat_age = (normalized_at - heartbeat_at).total_seconds()
@@ -1492,7 +1536,7 @@ class ShadowOperationalStore:
                           head_event_hmac_sha256, authenticity, signing_key_id,
                           payload_json, payload_sha256, status_hmac_sha256
                    FROM shadow_runtime_status WHERE runtime_key=?""",
-                (RUNTIME_KEY,),
+                (self.runtime_key,),
             ).fetchone()
             self.connection.commit()
         except Exception:
@@ -1598,6 +1642,7 @@ class ShadowOperationalStore:
             source_events,
             signing_key=self._signing_key,
             strict_authentication=self._signing_key is not None,
+            expected_runtime_key=self.runtime_key,
         )
         _verify_receipt_bindings(
             events,
@@ -1635,7 +1680,7 @@ class ShadowOperationalStore:
         payload = {
             "schema_version": AUDIT_EXPORT_SCHEMA_VERSION,
             "created_at_utc": _utc_text(normalized_at),
-            "runtime_key": RUNTIME_KEY,
+            "runtime_key": self.runtime_key,
             "invocation_id": safe_invocation,
             "source_journal_name": self.path.name,
             "source_sqlite_quick_check": "ok",
@@ -1721,7 +1766,7 @@ class ShadowOperationalStore:
         manifest_payload = {
             "schema_version": AUDIT_EXPORT_MANIFEST_SCHEMA_VERSION,
             "created_at_utc": _utc_text(normalized_at),
-            "runtime_key": RUNTIME_KEY,
+            "runtime_key": self.runtime_key,
             "invocation_id": safe_invocation,
             "audit_export_file": export_path.name,
             "audit_export_bytes": len(export_bytes),
@@ -1795,6 +1840,7 @@ class ShadowOperationalStore:
         return verify_audit_export_manifest(
             manifest_path,
             signing_key=self._signing_key,
+            expected_runtime_key=self.runtime_key,
         )
 
 
@@ -1802,7 +1848,12 @@ def verify_audit_export_manifest(
     path: str | Path,
     *,
     signing_key: bytes | None = None,
+    expected_runtime_key: str = RUNTIME_KEY,
 ) -> ShadowAuditExportReceipt:
+    runtime_key = _runtime_identifier(
+        expected_runtime_key,
+        "expected runtime key",
+    )
     manifest_path = Path(path)
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise ShadowOperationalGuardError(
@@ -1824,7 +1875,7 @@ def verify_audit_export_manifest(
             "audit export manifest schema is invalid"
         )
     if (
-        manifest.get("runtime_key") != RUNTIME_KEY
+        manifest.get("runtime_key") != runtime_key
         or manifest.get("live_allowed") is not False
         or manifest.get("safe_to_demo_auto_order") is not False
         or manifest.get("order_capability") != "DISABLED"
@@ -1907,7 +1958,7 @@ def verify_audit_export_manifest(
         raise ShadowOperationalGuardError("audit export is invalid")
     if (
         export.get("schema_version") != AUDIT_EXPORT_SCHEMA_VERSION
-        or export.get("runtime_key") != RUNTIME_KEY
+        or export.get("runtime_key") != runtime_key
         or export.get("live_allowed") is not False
         or export.get("safe_to_demo_auto_order") is not False
         or export.get("order_capability") != "DISABLED"
@@ -2077,6 +2128,7 @@ def verify_audit_export_manifest(
         export["operational_events"],
         signing_key=signing_key if authenticated else None,
         strict_authentication=bool(authenticated),
+        expected_runtime_key=runtime_key,
     )
     startup_guards = export.get("startup_guards")
     shadow_cycles = export.get("shadow_cycles")

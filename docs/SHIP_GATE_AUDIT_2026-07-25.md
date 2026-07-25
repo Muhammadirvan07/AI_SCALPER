@@ -14,8 +14,10 @@ EXECUTION_PROVIDER_PACK = PASS_LOCALLY_EXTERNAL_RUNTIME_REQUIRED
 EXECUTION_CONFIGURED_CANDIDATE = PASS_LOCALLY_EXTERNAL_CONFORMANCE_REQUIRED
 EXECUTION_FACTORY_MATERIALIZATION_PROBE = PASS_LOCALLY_EXTERNAL_WINDOWS_EVIDENCE_REQUIRED
 PHILLIP_COMMODITY_EVIDENCE_REGISTRATION = PASS_EXPLICIT_MANUAL_REVIEW
-PHILLIP_COMMODITY_FORWARD_CONTRACT = NOT_REGISTERED
-EXACT_WINDOWS_CANDIDATE_BUILD = PENDING
+PHILLIP_COMMODITY_FORWARD_CONTRACT_V1 = REGISTERED_EMPTY_SUPERSEDED
+PHILLIP_COMMODITY_FORWARD_CONTRACT_V2 = PENDING_WINDOWS_REGISTRATION
+EXACT_WINDOWS_CANDIDATE_BUILD_V1 = PASS
+EXACT_WINDOWS_CANDIDATE_BUILD_V2 = PENDING
 WINDOWS_OPERATIONAL_ACCEPTANCE = INCOMPLETE
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
 DEMO_AUTO_SOAK = NOT_READY
@@ -42,8 +44,10 @@ dimodifikasi.
 
 | Check | Result |
 |---|---|
-| Full Python regression including factory materialization, registration provenance, and terminal-binding probes | `1,562 / 1,562 PASS` |
-| Full regression with optimization enabled | `1,562 / 1,562 PASS` |
+| Full Python regression including investor-login remediation, factory materialization, registration provenance, and terminal-binding probes | `1,565 / 1,565 PASS` |
+| Full regression with optimization enabled | `1,565 / 1,565 PASS` |
+| Investor-login/collector/dependency/profile/operational-store focused regression | `127 / 127 PASS` in both modes |
+| Candidate-scoped operational namespace/audit regression | `28 / 28 PASS` in both modes |
 | Focused post-activation evidence integration regression | `100 / 100 PASS` |
 | Exact-terminal collector and broker evidence CLI regression | `30 / 30 PASS` |
 | Windows decision/execution/status/base/tooling packaging regression | `87 / 87 PASS` |
@@ -199,16 +203,29 @@ checks remain real blockers.
     `terminal64.exe`; missing, relative, directory, symlink, and wrong-name
     inputs fail before journal/runtime effects. The operational chain stores
     only normalized-path SHA-256 and never the raw local path.
+32. The exact Windows v1 probe registered its immutable contract and verified
+    the isolated dependency environment, then stopped fail-closed at the first
+    MT5 attestation. Root cause was a policy mismatch: the broker-neutral
+    runner still required the legacy XM `account.trade_expert=false` flag even
+    though the Phillip investor account had all effective mutation locks
+    disabled. The v2 remediation relaxes only that informational flag for
+    non-XM candidates, preserves the three effective mutation checks and the
+    capability-reduced facade, advances the Commodity contract namespace,
+    binds the operational status/audit filename to the exact broker namespace,
+    rejects cross-namespace journal reuse, and forces LF for all hash-bound
+    dependency artifacts.
 
 ## Remaining blockers
 
-1. The post-activation exact-terminal collector hardening must be committed,
-   pulled into a clean exact Windows CPython 3.12 checkout, and used as the
-   forward-contract build identity. Commit `334d61c` validly records activation
-   but does not contain this subsequent collector hardening.
-2. Phillip Commodity must prepare its signed plan/calendar and pre-register
-   its immutable diagnostic forward contract before broker evidence capture.
-   This registration has no order authority; Phillip FX remains disabled.
+1. The investor-login/LF remediation and Commodity v2 contract namespace must
+   be committed, pulled into a clean exact Windows CPython 3.12 checkout, and
+   rebuilt as a fresh isolated release identity.
+2. Phillip Commodity v1 remains immutable and has no market evidence. The
+   Windows host must register `phillip-commodity-window-01-diagnostic-v2`
+   before the observation start, using the already signed discovery,
+   plan/calendar, evidence key, and valid frozen snapshot, then prove one
+   pre-window read-only cycle using a new journal and audit directory. This
+   registration has no order authority; Phillip FX remains disabled.
 3. The exact five-role Windows suite must produce canonical secret-free
    Decision, Execution, and Status Monitor provider packs and configured
    candidates, an operations plan/review bundle,
@@ -231,6 +248,6 @@ checks remain real blockers.
 
 ## Decision
 
-The exact-terminal hardening is suitable for an exact reviewed commit after
-final worktree review. Demo-auto and live remain blocked. No lock may be
-changed to manufacture readiness.
+The v2 remediation is suitable for an exact reviewed commit after final
+worktree review; full normal and optimized regression passed. Demo-auto and
+live remain blocked. No lock may be changed to manufacture readiness.
