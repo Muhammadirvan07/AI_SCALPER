@@ -1,7 +1,8 @@
 # AI_SCALPER Progress — 2026-07-25
 
-Status: **ATOMIC FIVE-ROLE BASE SUITE AND CONFIGURED ANCESTRY COMPLETE
-LOCALLY / WINDOWS ACCEPTANCE PENDING / DEMO-AUTO BLOCKED / LIVE DO NOT SHIP**
+Status: **ATOMIC FIVE-ROLE BASE SUITE, CONFIGURED ANCESTRY, AND DECISION
+PROVIDER PACK COMPLETE LOCALLY / WINDOWS ACCEPTANCE PENDING / DEMO-AUTO
+BLOCKED / LIVE DO NOT SHIP**
 
 ## Hasil pengembangan hari ini
 
@@ -71,15 +72,45 @@ instance. Dua belas acceptance process paralel seluruhnya kembali `FILLED`,
 sedangkan dedicated split-brain test tetap memakai identity bersama dan tetap
 membuktikan runtime kedua ditolak.
 
+Slice berikutnya menutup provider nyata untuk role `DECISION` tanpa membuka
+broker authority:
+
+1. strict public parser/verifier merekonstruksi external IPC dan producer
+   checkpoint/CAS acknowledgement tanpa mengekspos minting seal;
+2. Windows Credential Manager provider hanya dapat membaca exact
+   prefix/key/fingerprint yang direview;
+3. trusted UTC membutuhkan fresh signed external attestation dan menolak
+   regression/drift;
+4. external directory CAS memisahkan domain IPC dan producer, menolak
+   symlink/reparse/tamper/fork/rollback/timeout, dan tidak pernah membuat
+   custody signature sendiri;
+5. provider composition memverifikasi seluruh cross-binding dan semua path
+   sebelum credential atau SQLite dibuka;
+6. offline operator tooling menghasilkan tepat empat file overlay secara
+   deterministic/create-exclusive dan memvalidasinya tanpa mengimpor factory
+   atau menyentuh provider;
+7. runtime foundation hanya masuk base release `DECISION`; generator/validator
+   hanya masuk configured-release tooling.
+
+Status pack tetap `EXTERNAL_PROVIDER_ACCEPTANCE_REQUIRED`. Implementasi lokal
+ini belum membuktikan Credential Manager ACL, off-host/WORM custody, signed
+clock issuer, exact Windows configured release, launcher attestation, atau
+Task Scheduler service identity.
+
 ## Bukti lokal
 
-- Spec validator: `100/100`, grade A, tanpa error/warning.
+- Decision-provider-pack spec validator: `100/100`, grade A, tanpa
+  error/warning.
+- Decision-provider focused suite: `28/28 PASS` normal dan optimized.
+- Decision/configured/suite integration suite: `196/196 PASS` normal dan
+  optimized.
 - Acceptance/adversarial suite: `19/19 PASS` normal dan optimized.
 - Suite-binding/provider-v2 focused regression: `95/95 PASS` normal dan
   optimized.
-- Full tracked-project regression: `1.456/1.456 PASS` normal.
+- Full project regression termasuk seluruh provider test baru:
+  `1.485/1.485 PASS` normal.
 - Full tracked-project regression dengan `PYTHONOPTIMIZE=2`:
-  `1.456/1.456 PASS`.
+  `1.485/1.485 PASS`.
 - Focused activation/packaging regression normal dan optimized dijalankan
   bersamaan: `155/155 PASS` pada masing-masing proses.
 - Dormant demo-auto acceptance dijalankan dalam 12 proses paralel:
@@ -118,14 +149,17 @@ Urutan berikutnya:
 1. commit/push exact source ini tanpa direktori dashboard;
 2. clean pull pada Windows dan build atomic five-role suite;
 3. verifikasi SHA-256 serta suite manifest;
-4. buat tiga suite-bound configured service release;
-5. buat operations plan/review lalu provider-conformance v2 dan independent
+4. siapkan canonical secret-free decision-provider input dari exact reviewed
+   Windows custody paths/key fingerprints;
+5. generate dan validate decision provider overlay, lalu buat tiga suite-bound
+   configured service release;
+6. buat operations plan/review lalu provider-conformance v2 dan independent
    validation receipt;
-6. kumpulkan sembilan signed pre-manual observations lalu luluskan exact
+7. kumpulkan sembilan signed pre-manual observations lalu luluskan exact
    configured-release admission;
-7. jalankan 10 controlled manual-demo lifecycles dengan review manusia;
-8. setelah hasil manual-demo diterima, lakukan activation review terpisah;
-9. baru mulai demo-auto soak 30 hari, 50 broker-reconciled closed fills, dan
+8. jalankan 10 controlled manual-demo lifecycles dengan review manusia;
+9. setelah hasil manual-demo diterima, lakukan activation review terpisah;
+10. baru mulai demo-auto soak 30 hari, 50 broker-reconciled closed fills, dan
    minimal 20 XAUUSD closed fills.
 
 Live trading tetap tahap sesudah soak, statistical lane gates, failure drills,

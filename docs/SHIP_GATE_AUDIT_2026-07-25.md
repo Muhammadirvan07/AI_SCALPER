@@ -5,6 +5,7 @@
 ```text
 LOCAL_SOURCE_GATE = PASS
 ATOMIC_FIVE_ROLE_BUILD = PASS_LOCALLY
+DECISION_PROVIDER_PACK = PASS_LOCALLY_EXTERNAL_ACCEPTANCE_REQUIRED
 EXACT_WINDOWS_CANDIDATE_BUILD = PENDING
 WINDOWS_OPERATIONAL_ACCEPTANCE = INCOMPLETE
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
@@ -18,8 +19,9 @@ activation, demo-auto, atau live deployment.
 ## Scope
 
 Audit mencakup perubahan atomic base-release suite, kelima role builder,
-configured-release ancestry binding, canonical manifests, dependency evidence,
-validator decision/execution/status, dan seluruh tracked Python regression.
+configured-release ancestry binding, Windows decision-provider pack,
+canonical manifests, dependency evidence, validator
+decision/execution/status, dan seluruh tracked Python regression.
 Direktori dashboard yang masih untracked dikecualikan dan tidak dibaca atau
 dimodifikasi.
 
@@ -27,8 +29,11 @@ dimodifikasi.
 
 | Check | Result |
 |---|---|
-| Full tracked Python regression | `1,456 / 1,456 PASS` |
-| Full regression with `PYTHONOPTIMIZE=2` | `1,456 / 1,456 PASS` |
+| Full Python regression including new provider suites | `1,485 / 1,485 PASS` |
+| Full regression with `PYTHONOPTIMIZE=2` | `1,485 / 1,485 PASS` |
+| Decision-provider focused tests | `28 / 28 PASS` in both modes |
+| Decision/configured/suite integration | `196 / 196 PASS` in both modes |
+| Decision-provider-pack spec validator | `100 / 100`, grade A, zero errors/warnings |
 | Atomic suite acceptance/adversarial tests | `19 / 19 PASS` in both modes |
 | Suite-binding/provider-v2 focused Windows tests | `95 / 95 PASS` in both modes |
 | Concurrent activation/packaging regression | `155 / 155 PASS` per normal and optimized process |
@@ -78,15 +83,29 @@ checks remain real blockers.
    account-runtime identity per independent test instance. Parallel regression
    no longer creates false split-brain rejection, while the dedicated
    production-fence test still proves the second runtime is denied.
+10. Decision provider configuration now binds exact Credential Manager
+    targets, signed trusted UTC, external IPC/cursor CAS, finalized-M15 feed,
+    session calendar verification, preprovisioned state, and all seven provider
+    hashes before materialization.
+11. Provider paths are rejected when equal or ancestor/descendant across feed,
+    databases, CAS request/response roots, or clock attestation. Rejection
+    occurs before credential access.
+12. The offline four-file generator is deterministic, create-exclusive,
+    secret-free, exact-suite-bound, tamper/symlink/path-traversal resistant, and
+    validates output without importing generated code or touching provider
+    state.
+13. Release isolation is exact: runtime foundation is only in `DECISION`;
+    generator/validator are only in configured-release operator tooling.
 
 ## Remaining blockers
 
 1. The new source must be committed and rebuilt from a clean checkout on exact
    Windows CPython 3.12. Historical artifacts from `d153361` remain valid only
    for that old source identity.
-2. The exact five-role Windows suite must produce suite-bound configured
-   releases, an operations plan/review bundle, provider-conformance v2, and a
-   distinct independent validation receipt.
+2. The exact five-role Windows suite must produce a canonical secret-free
+   decision-provider pack, suite-bound configured releases, an operations
+   plan/review bundle, provider-conformance v2, and a distinct independent
+   validation receipt.
 3. Credential, key, CAS, checkpoint, incident-latch, heartbeat, alert,
    trusted-clock, news, risk, MT5, WORM, task/ACL, and service-account
    providers require external acceptance.

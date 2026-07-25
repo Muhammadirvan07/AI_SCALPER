@@ -19,7 +19,7 @@ from pathlib import Path
 import sqlite3
 import stat
 import time
-from typing import Callable
+from typing import Any, Callable, Mapping
 
 import pandas as pd
 
@@ -982,16 +982,161 @@ def _cursor_from_dict(value: object) -> DecisionProducerLaneCursor:
 
 def _checkpoint_from_json(value: str) -> DecisionProducerCheckpoint:
     try:
-        raw = json.loads(value)
-        raw["issued_at_utc"] = _parse_utc(raw.get("issued_at_utc"))
+        return parse_decision_producer_checkpoint(value)
+    except (TypeError, ValueError) as exc:
+        raise DecisionProducerIntegrityError("stored checkpoint is invalid") from exc
+
+
+def _strict_contract_object(
+    value: Mapping[str, Any] | str | bytes,
+    *,
+    label: str,
+) -> dict[str, Any]:
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"{label} must be UTF-8 JSON") from exc
+    if isinstance(value, str):
+        def exact_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, item in pairs:
+                if key in result:
+                    raise ValueError(f"{label} contains duplicate JSON keys")
+                result[key] = item
+            return result
+
+        try:
+            parsed = json.loads(
+                value,
+                object_pairs_hook=exact_object,
+                parse_constant=lambda _: (_ for _ in ()).throw(
+                    ValueError(f"{label} contains a non-finite number")
+                ),
+            )
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{label} is not valid JSON") from exc
+    elif isinstance(value, Mapping):
+        parsed = dict(value)
+    else:
+        raise TypeError(f"{label} must be an object or JSON object")
+    if type(parsed) is not dict:
+        raise TypeError(f"{label} must be a JSON object")
+    if any(type(key) is not str for key in parsed):
+        raise TypeError(f"{label} field names must be text")
+    return parsed
+
+
+def _require_exact_contract_fields(
+    value: Mapping[str, Any],
+    *,
+    expected: frozenset[str],
+    label: str,
+) -> None:
+    if frozenset(value) != expected:
+        raise ValueError(f"{label} fields do not match the closed schema")
+
+
+_DECISION_PRODUCER_CURSOR_FIELDS = frozenset(
+    {
+        "lane_id",
+        "symbol",
+        "bar_closed_at",
+        "decision_snapshot_sha256",
+        "state",
+    }
+)
+_DECISION_PRODUCER_CHECKPOINT_FIELDS = frozenset(
+    {
+        "service_id",
+        "binding_sha256",
+        "sequence",
+        "previous_checkpoint_sha256",
+        "lane_cursors",
+        "issued_at_utc",
+        "custody_issuer_id",
+        "schema_version",
+    }
+)
+_DECISION_PRODUCER_CAS_ACK_FIELDS = frozenset(
+    {
+        "service_id",
+        "binding_sha256",
+        "expected_previous_checkpoint_sha256",
+        "accepted_checkpoint_sha256",
+        "observed_previous_checkpoint_sha256",
+        "accepted",
+        "issued_at_utc",
+        "custody_issuer_id",
+        "custody_key_id",
+        "custody_key_fingerprint_sha256",
+        "hmac_sha256",
+        "schema_version",
+    }
+)
+
+
+def _parse_public_lane_cursor(value: object) -> DecisionProducerLaneCursor:
+    if not isinstance(value, Mapping):
+        raise TypeError("decision producer lane cursor must be an object")
+    raw = dict(value)
+    _require_exact_contract_fields(
+        raw,
+        expected=_DECISION_PRODUCER_CURSOR_FIELDS,
+        label="decision producer lane cursor",
+    )
+    try:
+        raw["bar_closed_at"] = _parse_utc(raw["bar_closed_at"])
+        return DecisionProducerLaneCursor(**raw)
+    except DecisionProducerIntegrityError as exc:
+        raise ValueError("decision producer lane cursor is invalid") from exc
+
+
+def parse_decision_producer_checkpoint(
+    value: Mapping[str, Any] | str | bytes,
+) -> DecisionProducerCheckpoint:
+    """Strictly reconstruct one externally stored producer checkpoint."""
+
+    raw = _strict_contract_object(value, label="decision producer checkpoint")
+    _require_exact_contract_fields(
+        raw,
+        expected=_DECISION_PRODUCER_CHECKPOINT_FIELDS,
+        label="decision producer checkpoint",
+    )
+    cursors = raw["lane_cursors"]
+    if not isinstance(cursors, (tuple, list)):
+        raise TypeError("decision producer lane_cursors must be a sequence")
+    try:
+        raw["issued_at_utc"] = _parse_utc(raw["issued_at_utc"])
         raw["lane_cursors"] = tuple(
-            _cursor_from_dict(item) for item in raw["lane_cursors"]
+            _parse_public_lane_cursor(item) for item in cursors
         )
         return DecisionProducerCheckpoint(**raw)
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        if isinstance(exc, DecisionProducerIntegrityError):
-            raise
-        raise DecisionProducerIntegrityError("stored checkpoint is invalid") from exc
+    except DecisionProducerIntegrityError as exc:
+        raise ValueError("decision producer checkpoint is invalid") from exc
+
+
+def parse_decision_producer_cas_acknowledgement(
+    value: Mapping[str, Any] | str | bytes,
+) -> DecisionProducerCASAcknowledgement:
+    """Strictly reconstruct one externally stored producer CAS response."""
+
+    raw = _strict_contract_object(
+        value,
+        label="decision producer CAS acknowledgement",
+    )
+    _require_exact_contract_fields(
+        raw,
+        expected=_DECISION_PRODUCER_CAS_ACK_FIELDS,
+        label="decision producer CAS acknowledgement",
+    )
+    try:
+        raw["issued_at_utc"] = _parse_utc(raw["issued_at_utc"])
+        return DecisionProducerCASAcknowledgement(**raw)
+    except DecisionProducerIntegrityError as exc:
+        raise ValueError(
+            "decision producer CAS acknowledgement is invalid"
+        ) from exc
 
 
 class DecisionProducerCursorStore:
@@ -2086,4 +2231,6 @@ __all__ = [
     "make_decision_snapshot_publish_port",
     "make_read_only_finalized_m15_provider",
     "make_verified_session_calendar_port",
+    "parse_decision_producer_cas_acknowledgement",
+    "parse_decision_producer_checkpoint",
 ]

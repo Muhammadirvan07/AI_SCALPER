@@ -504,6 +504,79 @@ def issue_decision_ipc_cas_acknowledgement(
     )
 
 
+def verify_decision_ipc_checkpoint(
+    checkpoint: object,
+    *,
+    binding: DecisionIPCBinding,
+    custody_key: str | bytes,
+) -> bool:
+    """Verify one exact checkpoint without granting a minting capability."""
+
+    if (
+        type(checkpoint) is not DecisionIPCCheckpoint
+        or type(binding) is not DecisionIPCBinding
+    ):
+        return False
+    try:
+        secret = _secret(custody_key)
+        expected = _sign(
+            secret,
+            _CHECKPOINT_DOMAIN,
+            checkpoint.signing_dict,
+        )
+    except Exception:
+        return False
+    return bool(
+        checkpoint.signature_hmac_sha256
+        and hmac.compare_digest(
+            checkpoint.signature_hmac_sha256,
+            expected,
+        )
+        and checkpoint.queue_id == binding.queue_id
+        and checkpoint.binding_sha256 == binding.content_sha256
+        and checkpoint.custody_issuer_id == binding.custody_issuer_id
+        and checkpoint.custody_key_id == binding.custody_key_id
+        and decision_ipc_key_fingerprint(secret)
+        == binding.custody_key_fingerprint_sha256
+    )
+
+
+def verify_decision_ipc_cas_acknowledgement(
+    acknowledgement: object,
+    *,
+    binding: DecisionIPCBinding,
+    custody_key: str | bytes,
+) -> bool:
+    """Authenticate one exact CAS response without interpreting acceptance."""
+
+    if (
+        type(acknowledgement) is not DecisionIPCCASAcknowledgement
+        or type(binding) is not DecisionIPCBinding
+    ):
+        return False
+    try:
+        secret = _secret(custody_key)
+        expected = _sign(
+            secret,
+            _CAS_ACK_DOMAIN,
+            acknowledgement.signing_dict,
+        )
+    except Exception:
+        return False
+    return bool(
+        acknowledgement.signature_hmac_sha256
+        and hmac.compare_digest(
+            acknowledgement.signature_hmac_sha256,
+            expected,
+        )
+        and acknowledgement.queue_id == binding.queue_id
+        and acknowledgement.custody_issuer_id == binding.custody_issuer_id
+        and acknowledgement.custody_key_id == binding.custody_key_id
+        and decision_ipc_key_fingerprint(secret)
+        == binding.custody_key_fingerprint_sha256
+    )
+
+
 def _decision_from_dict(value: Mapping[str, Any]) -> DecisionSnapshot:
     parsed = dict(value)
     for name in ("bar_closed_at", "created_at"):
@@ -534,11 +607,145 @@ def _envelope_from_json(payload_json: str) -> DecisionIPCEnvelope:
 
 def _checkpoint_from_json(payload_json: str) -> DecisionIPCCheckpoint:
     try:
-        raw = json.loads(payload_json)
-        raw["issued_at_utc"] = _parse_utc(raw["issued_at_utc"])
-        return DecisionIPCCheckpoint(**raw, _seal=_CHECKPOINT_SEAL)
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        return parse_decision_ipc_checkpoint(payload_json)
+    except (TypeError, ValueError) as exc:
         raise DecisionIPCIntegrityError("stored decision checkpoint is invalid") from exc
+
+
+def _strict_contract_object(
+    value: Mapping[str, Any] | str | bytes,
+    *,
+    label: str,
+) -> dict[str, Any]:
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"{label} must be UTF-8 JSON") from exc
+    if isinstance(value, str):
+        def exact_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, item in pairs:
+                if key in result:
+                    raise ValueError(f"{label} contains duplicate JSON keys")
+                result[key] = item
+            return result
+
+        try:
+            parsed = json.loads(
+                value,
+                object_pairs_hook=exact_object,
+                parse_constant=lambda _: (_ for _ in ()).throw(
+                    ValueError(f"{label} contains a non-finite number")
+                ),
+            )
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{label} is not valid JSON") from exc
+    elif isinstance(value, Mapping):
+        parsed = dict(value)
+    else:
+        raise TypeError(f"{label} must be an object or JSON object")
+    if type(parsed) is not dict:
+        raise TypeError(f"{label} must be a JSON object")
+    if any(type(key) is not str for key in parsed):
+        raise TypeError(f"{label} field names must be text")
+    return parsed
+
+
+def _require_exact_contract_fields(
+    value: Mapping[str, Any],
+    *,
+    expected: frozenset[str],
+    label: str,
+) -> None:
+    observed = frozenset(value)
+    if observed != expected:
+        raise ValueError(f"{label} fields do not match the closed schema")
+
+
+_DECISION_IPC_CHECKPOINT_FIELDS = frozenset(
+    {
+        "queue_id",
+        "binding_sha256",
+        "published_count",
+        "published_head_sha256",
+        "consumed_count",
+        "consumed_head_sha256",
+        "previous_checkpoint_sha256",
+        "issued_at_utc",
+        "custody_issuer_id",
+        "custody_key_id",
+        "signature_hmac_sha256",
+        "schema_version",
+    }
+)
+_DECISION_IPC_CAS_ACK_FIELDS = frozenset(
+    {
+        "queue_id",
+        "expected_previous_checkpoint_sha256",
+        "accepted_checkpoint_sha256",
+        "observed_previous_checkpoint_sha256",
+        "accepted",
+        "issued_at_utc",
+        "custody_issuer_id",
+        "custody_key_id",
+        "signature_hmac_sha256",
+        "schema_version",
+    }
+)
+
+
+def parse_decision_ipc_checkpoint(
+    value: Mapping[str, Any] | str | bytes,
+) -> DecisionIPCCheckpoint:
+    """Strictly reconstruct one externally stored IPC checkpoint.
+
+    The private minting seal remains internal.  This parser grants no trust:
+    callers must still verify the checkpoint signature and binding through the
+    existing queue/custody verifier.
+    """
+
+    raw = _strict_contract_object(value, label="decision IPC checkpoint")
+    _require_exact_contract_fields(
+        raw,
+        expected=_DECISION_IPC_CHECKPOINT_FIELDS,
+        label="decision IPC checkpoint",
+    )
+    try:
+        raw["issued_at_utc"] = _parse_utc(raw["issued_at_utc"])
+        checkpoint = DecisionIPCCheckpoint(**raw, _seal=_CHECKPOINT_SEAL)
+    except DecisionIPCIntegrityError as exc:
+        raise ValueError("decision IPC checkpoint is invalid") from exc
+    if not checkpoint.signature_hmac_sha256:
+        raise ValueError("decision IPC checkpoint signature is required")
+    return checkpoint
+
+
+def parse_decision_ipc_cas_acknowledgement(
+    value: Mapping[str, Any] | str | bytes,
+) -> DecisionIPCCASAcknowledgement:
+    """Strictly reconstruct one externally stored IPC CAS acknowledgement."""
+
+    raw = _strict_contract_object(
+        value,
+        label="decision IPC CAS acknowledgement",
+    )
+    _require_exact_contract_fields(
+        raw,
+        expected=_DECISION_IPC_CAS_ACK_FIELDS,
+        label="decision IPC CAS acknowledgement",
+    )
+    try:
+        raw["issued_at_utc"] = _parse_utc(raw["issued_at_utc"])
+        acknowledgement = DecisionIPCCASAcknowledgement(
+            **raw,
+            _seal=_CAS_ACK_SEAL,
+        )
+    except DecisionIPCIntegrityError as exc:
+        raise ValueError("decision IPC CAS acknowledgement is invalid") from exc
+    if not acknowledgement.signature_hmac_sha256:
+        raise ValueError("decision IPC CAS acknowledgement signature is required")
+    return acknowledgement
 
 
 _SCHEMA = """
@@ -1716,4 +1923,8 @@ __all__ = [
     "VerifiedDecisionIPCEnvelope",
     "decision_ipc_key_fingerprint",
     "issue_decision_ipc_cas_acknowledgement",
+    "parse_decision_ipc_cas_acknowledgement",
+    "parse_decision_ipc_checkpoint",
+    "verify_decision_ipc_cas_acknowledgement",
+    "verify_decision_ipc_checkpoint",
 ]

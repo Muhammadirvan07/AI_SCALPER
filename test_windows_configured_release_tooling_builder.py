@@ -117,14 +117,18 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
 
     def test_provider_conformance_review_has_exact_safe_import_closure(self):
         required = {
+            "prepare_windows_decision_provider_pack.py",
             "prepare_windows_three_service_provider_conformance_input.py",
             "prepare_windows_three_service_provider_conformance_review.py",
             "live_runtime/contracts.py",
+            "live_runtime/windows_base_release_suite.py",
             "live_runtime/windows_decision_service_factory_template.py",
+            "live_runtime/windows_decision_provider_pack_generator.py",
             "live_runtime/windows_external_status_monitor_factory_template.py",
             "live_runtime/windows_provider_conformance_input.py",
             "live_runtime/windows_provider_conformance_review.py",
             "live_runtime/windows_service_factory_template.py",
+            "validate_windows_decision_provider_pack.py",
         }
         self.assertTrue(required.issubset(APPROVED_SOURCE_PATHS))
         sources = {
@@ -132,6 +136,49 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             for path in APPROVED_SOURCE_PATHS
         }
         _validate_tooling_source_security(sources)
+
+    def test_extracted_decision_provider_pack_clis_bootstrap_in_isolation(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw).resolve()
+            root, allowlist = self._repo(base)
+            archive = base / "tooling.zip"
+            build_configured_release_tooling(root, allowlist, archive)
+            extracted = base / "extracted"
+            with zipfile.ZipFile(archive) as bundle:
+                bundle.extractall(extracted)
+            for script, expected_flag in (
+                (
+                    "prepare_windows_decision_provider_pack.py",
+                    "--pack-input",
+                ),
+                (
+                    "validate_windows_decision_provider_pack.py",
+                    "--pack-root",
+                ),
+            ):
+                with self.subTest(script=script):
+                    result = subprocess.run(
+                        (
+                            sys.executable,
+                            "-I",
+                            "-S",
+                            "-B",
+                            str(extracted / script),
+                            "--help",
+                        ),
+                        cwd=base,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                    self.assertEqual(
+                        0,
+                        result.returncode,
+                        result.stderr,
+                    )
+                    self.assertIn(expected_flag, result.stdout)
 
     def test_extracted_provider_review_cli_bootstraps_under_isolated_mode(self):
         with tempfile.TemporaryDirectory() as raw:
