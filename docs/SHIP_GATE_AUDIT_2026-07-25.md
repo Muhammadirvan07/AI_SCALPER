@@ -33,7 +33,8 @@ shared Windows credential/trusted-clock primitives, Windows Status Monitor
 provider pack/configured candidate, Windows Execution provider
 pack/configured candidate and sealed composition boundary,
 canonical manifests, dependency evidence, validator
-decision/execution/status, dan seluruh tracked Python regression.
+decision/execution/status, exact-terminal broker evidence collector, dan
+seluruh tracked Python regression.
 Direktori dashboard yang masih untracked dikecualikan dan tidak dibaca atau
 dimodifikasi.
 
@@ -41,9 +42,11 @@ dimodifikasi.
 
 | Check | Result |
 |---|---|
-| Full Python regression including factory materialization and registration-provenance probes | `1,558 / 1,558 PASS` |
-| Full regression with `PYTHONOPTIMIZE=2` | `1,558 / 1,558 PASS` |
+| Full Python regression including factory materialization, registration provenance, and terminal-binding probes | `1,562 / 1,562 PASS` |
+| Full regression with optimization enabled | `1,562 / 1,562 PASS` |
 | Focused post-activation evidence integration regression | `100 / 100 PASS` |
+| Exact-terminal collector and broker evidence CLI regression | `30 / 30 PASS` |
+| Windows decision/execution/status/base/tooling packaging regression | `87 / 87 PASS` |
 | Approved activation proposal | exact hash `597b4c5a1c20c836c468652019bc1e50d4545912c4b96920494fef62805421e4`; three canonical after-images match |
 | Execution provider/release/candidate focused suite | `87 / 87 PASS` in both modes |
 | Execution-provider-pack spec | `98 / 100`, grade A, zero errors; one non-applicable generic HTTP warning |
@@ -191,12 +194,18 @@ checks remain real blockers.
     frozen snapshot. Wrong-repository, malformed-identity, identity-drift, and
     late-registration probes fail before snapshot mutation on both XM and the
     generic broker path.
+31. Broker-neutral evidence collection no longer inherits MT5 terminal
+    autodiscovery. Every non-XM invocation requires an exact absolute regular
+    `terminal64.exe`; missing, relative, directory, symlink, and wrong-name
+    inputs fail before journal/runtime effects. The operational chain stores
+    only normalized-path SHA-256 and never the raw local path.
 
 ## Remaining blockers
 
-1. The activation source must be committed and rebuilt from a clean checkout on exact
-   Windows CPython 3.12. Every historical artifact remains valid only for its
-   original Git identity and cannot represent this worktree.
+1. The post-activation exact-terminal collector hardening must be committed,
+   pulled into a clean exact Windows CPython 3.12 checkout, and used as the
+   forward-contract build identity. Commit `334d61c` validly records activation
+   but does not contain this subsequent collector hardening.
 2. Phillip Commodity must prepare its signed plan/calendar and pre-register
    its immutable diagnostic forward contract before broker evidence capture.
    This registration has no order authority; Phillip FX remains disabled.
@@ -222,6 +231,6 @@ checks remain real blockers.
 
 ## Decision
 
-The source change is suitable for an exact reviewed commit after final
-worktree review. Demo-auto and live remain blocked. No lock may be changed to
-manufacture readiness.
+The exact-terminal hardening is suitable for an exact reviewed commit after
+final worktree review. Demo-auto and live remain blocked. No lock may be
+changed to manufacture readiness.

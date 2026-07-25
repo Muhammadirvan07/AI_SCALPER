@@ -70,6 +70,37 @@ def _candidate_id(value: object) -> str:
     return candidate
 
 
+def _validated_terminal_path(
+    path: Path | None,
+    *,
+    required: bool,
+) -> Path | None:
+    """Return one exact MT5 executable path without following a symlink."""
+
+    if path is None:
+        if required:
+            raise ValueError(
+                "--terminal-path is required for broker-neutral evidence collection"
+            )
+        return None
+    if not path.is_absolute():
+        raise ValueError("--terminal-path must be absolute")
+    if path.is_symlink():
+        raise ValueError("--terminal-path must not be a symlink")
+    if path.name.lower() != "terminal64.exe":
+        raise ValueError("--terminal-path must reference terminal64.exe")
+    if not path.is_file():
+        raise ValueError("--terminal-path must be an existing regular file")
+    return path.resolve(strict=True)
+
+
+def _terminal_path_sha256(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    normalized = str(path).replace("\\", "/").casefold()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 def _tracked_repo_file(path: str | Path) -> Path:
     candidate = Path(path)
     if not candidate.is_absolute():
@@ -459,6 +490,15 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("config/broker_evidence_profiles.v1.json"),
     )
     parser.add_argument(
+        "--terminal-path",
+        type=Path,
+        default=None,
+        help=(
+            "Absolute path to the exact terminal64.exe. Required for every "
+            "non-XM candidate; optional only for the legacy XM profile."
+        ),
+    )
+    parser.add_argument(
         "--lock",
         type=Path,
         default=Path(LOCK_FILE_NAME),
@@ -499,6 +539,17 @@ def main(argv: list[str] | None = None) -> int:
         args.candidate = _candidate_id(args.candidate)
     except ValueError as exc:
         parser.error(str(exc))
+    try:
+        args.terminal_path = _validated_terminal_path(
+            args.terminal_path,
+            required=(args.candidate != "xm" and not args.status_only),
+        )
+    except ValueError as exc:
+        print("Shadow cycle: HOLD")
+        print("Reason: TERMINAL_PATH_GATE_BLOCKED")
+        print(f"Terminal path detail: {type(exc).__name__}")
+        print("Order capability: DISABLED")
+        return 2
     args.lock = _repo_path(args.lock)
     args.artifact_root = _repo_path(args.artifact_root)
     args.profile_config = _repo_path(args.profile_config)
@@ -825,14 +876,29 @@ def main(argv: list[str] | None = None) -> int:
             )
 
             current_stage = "MT5_INITIALIZE"
+            terminal_binding = (
+                "EXACT_PATH"
+                if args.terminal_path is not None
+                else "LEGACY_XM_AUTODISCOVERY"
+            )
+            terminal_path_sha256 = _terminal_path_sha256(args.terminal_path)
             operational.record_stage(
                 invocation_id=invocation_id,
                 observed_at=datetime.now(timezone.utc),
                 stage=current_stage,
                 outcome="STARTED",
                 reason_code="MT5_INITIALIZE_STARTED",
+                metadata={
+                    "terminal_binding": terminal_binding,
+                    "terminal_path_sha256": terminal_path_sha256,
+                },
             )
-            if not mt5.initialize():
+            initialized = (
+                mt5.initialize(str(args.terminal_path))
+                if args.terminal_path is not None
+                else mt5.initialize()
+            )
+            if not initialized:
                 raise RuntimeError("MT5 initialize returned false")
             operational.record_stage(
                 invocation_id=invocation_id,
@@ -840,6 +906,10 @@ def main(argv: list[str] | None = None) -> int:
                 stage=current_stage,
                 outcome="PASS",
                 reason_code="MT5_INITIALIZED",
+                metadata={
+                    "terminal_binding": terminal_binding,
+                    "terminal_path_sha256": terminal_path_sha256,
+                },
             )
 
             current_stage = "MT5_READ_ONLY_ATTESTATION"

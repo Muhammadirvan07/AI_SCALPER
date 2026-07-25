@@ -235,6 +235,22 @@ diselesaikan sebelum frozen snapshot dibuat. Invokasi dari repository lain,
 identity kosong/malformed, identity drift, atau registrasi pada/sesudah
 observation start gagal tanpa membuat snapshot baru.
 
+Aktivasi tersebut sudah masuk commit `334d61c` dan dipush ke
+`agent/live-grade-phase3`. Audit pra-registrasi selanjutnya menemukan bahwa
+entry point broker-neutral masih mewarisi autodiscovery terminal dari jalur XM
+lama. Gap multi-terminal itu sekarang ditutup secara lokal:
+
+1. seluruh kandidat non-XM wajib memberikan exact absolute
+   `--terminal-path`;
+2. missing, relative, directory, symlink, wrong-name, atau missing executable
+   ditolak sebelum operational journal, dependency runtime, credential, atau
+   MT5 digunakan;
+3. `MetaTrader5.initialize()` menerima hanya exact resolved path;
+4. operational receipt mengikat mode `EXACT_PATH` dan SHA-256 path
+   ternormalisasi tanpa menyimpan raw path;
+5. zero-argument autodiscovery hanya dipertahankan untuk backward-compatible
+   XM legacy.
+
 ## Bukti lokal
 
 - Shared-provider-primitives spec validator: `98/100`, grade A, nol error.
@@ -268,12 +284,16 @@ observation start gagal tanpa membuat snapshot baru.
 - Acceptance/adversarial suite: `19/19 PASS` normal dan optimized.
 - Suite-binding/provider-v2 focused regression: `95/95 PASS` normal dan
   optimized.
-- Full project regression termasuk seluruh provider dan registration
-  hardening test baru: `1.558/1.558 PASS` normal.
-- Full tracked-project regression dengan `PYTHONOPTIMIZE=2`:
-  `1.558/1.558 PASS`.
+- Full project regression termasuk registration dan exact-terminal
+  hardening: `1.562/1.562 PASS` normal.
+- Full tracked-project regression dengan optimization enabled:
+  `1.562/1.562 PASS`.
 - Focused post-activation evidence integration regression:
   `100/100 PASS`.
+- Exact-terminal collector dan broker evidence CLI regression:
+  `30/30 PASS`.
+- Windows decision/execution/status/base/tooling packaging regression yang
+  aktual: `87/87 PASS`.
 - Focused activation/packaging regression normal dan optimized dijalankan
   bersamaan: `155/155 PASS` pada masing-masing proses.
 - Dormant demo-auto acceptance dijalankan dalam 12 proses paralel:
@@ -310,9 +330,8 @@ Software foundation dan packaging lokal sudah cukup untuk membuat candidate
 baru. Demo-auto soak belum boleh dimulai hanya karena test lokal hijau.
 Urutan berikutnya:
 
-1. commit/push exact activation dan post-activation regression tanpa direktori
-   dashboard;
-2. clean pull pada Windows, prepare signed Commodity plan/calendar, lalu
+1. commit/push exact-terminal collector hardening tanpa direktori dashboard;
+2. clean pull commit baru pada Windows, prepare signed Commodity plan/calendar, lalu
    register immutable diagnostic forward contract;
 3. mulai read-only Commodity evidence collection pada eligible M15 boundary;
 4. build ulang atomic five-role suite dari commit baru dan verifikasi SHA-256

@@ -98,8 +98,9 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
             }
 
         class CycleStore:
-            def __init__(self, path):
+            def __init__(self, path, *, contract_id=None):
                 self.path = path
+                self.contract_id = contract_id
                 self.connection = sqlite3.connect(str(path))
                 self.connection.execute(
                     """CREATE TABLE IF NOT EXISTS shadow_cycles (
@@ -814,8 +815,12 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
         )
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertIn("Run one broker read-only shadow cycle", completed.stdout)
+        self.assertIn("--terminal-path", completed.stdout)
 
     def test_generic_candidate_remains_blocked_before_credential_or_mt5(self):
+        terminal = self.root / "fbs" / "terminal64.exe"
+        terminal.parent.mkdir()
+        terminal.write_bytes(b"fixture")
         output = io.StringIO()
         with (
             mock.patch.object(
@@ -836,11 +841,207 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
             redirect_stdout(output),
         ):
             result = run_xm_shadow_once.main(
-                self.runner_args() + ["--candidate", "fbs"]
+                self.runner_args()
+                + [
+                    "--candidate",
+                    "fbs",
+                    "--terminal-path",
+                    str(terminal),
+                ]
             )
         self.assertEqual(2, result)
         self.assertIn("RUNTIME_IMPORT_FAILED", output.getvalue())
         self.assertIn("Order capability: DISABLED", output.getvalue())
+
+    def test_generic_candidate_requires_terminal_path_before_runtime_effects(self):
+        output = io.StringIO()
+        with (
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_dependency_guard",
+                side_effect=AssertionError("dependency guard must not load"),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_runtime_components",
+                side_effect=AssertionError("runtime must not load"),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_mt5_module",
+                side_effect=AssertionError("MT5 must not load"),
+            ),
+            redirect_stdout(output),
+        ):
+            result = run_xm_shadow_once.main(
+                self.runner_args() + ["--candidate", "phillip-commodity"]
+            )
+        self.assertEqual(2, result)
+        self.assertIn("TERMINAL_PATH_GATE_BLOCKED", output.getvalue())
+        self.assertIn("Order capability: DISABLED", output.getvalue())
+        self.assertFalse(self.journal.exists())
+
+    def test_terminal_path_validator_rejects_ambiguous_paths(self):
+        terminal = self.root / "terminal64.exe"
+        terminal.write_bytes(b"fixture")
+        self.assertEqual(
+            terminal.resolve(),
+            run_xm_shadow_once._validated_terminal_path(
+                terminal.resolve(),
+                required=True,
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "required"):
+            run_xm_shadow_once._validated_terminal_path(None, required=True)
+        with self.assertRaisesRegex(ValueError, "absolute"):
+            run_xm_shadow_once._validated_terminal_path(
+                Path("terminal64.exe"),
+                required=True,
+            )
+        wrong_name = self.root / "other.exe"
+        wrong_name.write_bytes(b"fixture")
+        with self.assertRaisesRegex(ValueError, "terminal64"):
+            run_xm_shadow_once._validated_terminal_path(
+                wrong_name.resolve(),
+                required=True,
+            )
+        missing = self.root / "missing" / "terminal64.exe"
+        with self.assertRaisesRegex(ValueError, "existing regular file"):
+            run_xm_shadow_once._validated_terminal_path(
+                missing.resolve(),
+                required=True,
+            )
+        directory = self.root / "directory" / "terminal64.exe"
+        directory.mkdir(parents=True)
+        with self.assertRaisesRegex(ValueError, "existing regular file"):
+            run_xm_shadow_once._validated_terminal_path(
+                directory.resolve(),
+                required=True,
+            )
+        symlink = self.root / "linked-terminal64.exe"
+        symlink.symlink_to(terminal)
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            run_xm_shadow_once._validated_terminal_path(
+                symlink,
+                required=True,
+            )
+
+    def test_generic_candidate_initializes_exact_terminal_and_hashes_binding(self):
+        terminal = self.root / "phillip" / "terminal64.exe"
+        terminal.parent.mkdir()
+        terminal.write_bytes(b"fixture")
+        initialize = mock.Mock(return_value=True)
+        output = io.StringIO()
+        evidence_binding = {
+            "candidate_id": "phillip-commodity",
+            "key_name": "phillip-commodity-window-01-v1",
+            "contract_id": "phillip-commodity-window-01-diagnostic-v1",
+            "config_files": (),
+            "build_identity_provider": lambda: object(),
+        }
+        with (
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_dependency_guard",
+                return_value=self.passing_guard(),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_runtime_components",
+                return_value=self.runtime_components(),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_evidence_binding",
+                return_value=evidence_binding,
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_mt5_module",
+                return_value=SimpleNamespace(
+                    initialize=initialize,
+                    shutdown=lambda: None,
+                ),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "check_minimum_free_disk",
+                return_value={
+                    "free_bytes": 2_000_000_000,
+                    "minimum_free_bytes": 0,
+                    "status": "PASS",
+                },
+            ),
+            redirect_stdout(output),
+        ):
+            result = run_xm_shadow_once.main(
+                self.runner_args()
+                + [
+                    "--candidate",
+                    "phillip-commodity",
+                    "--terminal-path",
+                    str(terminal),
+                ]
+            )
+        self.assertEqual(0, result, output.getvalue())
+        initialize.assert_called_once_with(str(terminal.resolve()))
+        expected_hash = run_xm_shadow_once._terminal_path_sha256(
+            terminal.resolve()
+        )
+        with sqlite3.connect(self.journal) as connection:
+            payloads = [
+                json.loads(row[0])
+                for row in connection.execute(
+                    "SELECT payload_json FROM shadow_operational_events "
+                    "WHERE stage='MT5_INITIALIZE' ORDER BY sequence"
+                )
+            ]
+        self.assertEqual(2, len(payloads))
+        self.assertTrue(
+            all(
+                payload["metadata"]["terminal_binding"] == "EXACT_PATH"
+                and payload["metadata"]["terminal_path_sha256"] == expected_hash
+                and str(terminal.resolve()) not in json.dumps(payload)
+                for payload in payloads
+            )
+        )
+
+    def test_legacy_xm_omission_keeps_zero_argument_initialize(self):
+        initialize = mock.Mock(return_value=True)
+        output = io.StringIO()
+        with (
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_dependency_guard",
+                return_value=self.passing_guard(),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_runtime_components",
+                return_value=self.runtime_components(),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_mt5_module",
+                return_value=SimpleNamespace(
+                    initialize=initialize,
+                    shutdown=lambda: None,
+                ),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "check_minimum_free_disk",
+                return_value={
+                    "free_bytes": 2_000_000_000,
+                    "minimum_free_bytes": 0,
+                    "status": "PASS",
+                },
+            ),
+            redirect_stdout(output),
+        ):
+            result = run_xm_shadow_once.main(self.runner_args())
+        self.assertEqual(0, result, output.getvalue())
+        initialize.assert_called_once_with()
 
     def test_foreign_cwd_keeps_runtime_paths_and_identity_at_repo_root(self):
         fake_repo = self.root / "repo"

@@ -42,10 +42,12 @@ Modul utama:
   melewati symlink.
 - `run_broker_shadow_once.py`: entry point broker-neutral untuk one-shot
   evidence collection. Ia tetap memakai dependency lock, read-only MT5
-  attestation, exact contract/key/config identity, singleton fence, durable
-  operational receipt, disk guard, heartbeat, serta verified audit export.
-  Profile kandidat yang belum di-enable ditolak sebelum credential dan MT5
-  digunakan.
+  attestation, exact absolute `terminal64.exe` binding, exact
+  contract/key/config identity, singleton fence, durable operational receipt,
+  disk guard, heartbeat, serta verified audit export. Profile kandidat yang
+  belum di-enable ditolak sebelum credential dan MT5 digunakan; missing,
+  relative, symlinked, atau non-`terminal64.exe` paths fail closed sebelum
+  journal/runtime effect.
 - `live_runtime/contracts.py`: broker, decision, intent, dan receipt contracts
   dengan UTC-aware validation serta canonical SHA-256.
 - `live_runtime/decision_core.py`: pure, mode-agnostic decision core yang

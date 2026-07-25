@@ -89,10 +89,12 @@ maintenance untuk seluruh observation window.
    ```powershell
    python -I -S -B .\run_broker_shadow_once.py `
      --candidate fbs `
+     --terminal-path "C:\Program Files\FBS MetaTrader 5\terminal64.exe" `
      --artifact-root .\validation_artifacts
    ```
 
 Setiap invocation membuat durable startup/operational receipt dan verified
 audit export. Export tetap harus dipindahkan ke WORM/off-host store. Local
 SQLite dan local HMAC tidak dapat membuktikan bahwa seluruh host tidak pernah
-di-rollback.
+di-rollback. Kandidat broker-neutral wajib mengikat exact absolute
+`terminal64.exe`; autodiscovery hanya dipertahankan untuk entry point XM lama.

@@ -24,8 +24,8 @@ external gates and must be supplied before a forward contract can be minted.
 ## Functional Requirements
 
 - FR-1: Evidence discovery MUST accept a non-empty subset of the four v1 canonical symbols and MUST reject unknown or duplicate canonical symbols.
-- FR-2: Phillip FX discovery MUST bind exactly AUDUSD, EURUSD, and USDJPY to one explicit terminal executable.
-- FR-3: Phillip commodity discovery MUST bind exactly XAUUSD to a different explicit terminal executable.
+- FR-2: Phillip FX discovery and evidence collection MUST bind exactly AUDUSD, EURUSD, and USDJPY to one explicit terminal executable.
+- FR-3: Phillip commodity discovery and evidence collection MUST bind exactly XAUUSD to a different explicit terminal executable.
 - FR-4: Evidence discovery MUST NOT accept broker login, password, account name, balance, equity, or order parameters.
 - FR-5: Broker calendar templates, prepared plans, and bundles MUST contain exactly the symbols registered for their candidate lane.
 - FR-6: Forward contracts MUST record a non-empty canonical subset and all source, specification, calendar, append, verification, and seal operations MUST use only that recorded subset.
@@ -61,9 +61,12 @@ And its account cohort cannot be combined with the FX receipt.
 
 ### AC-3: Explicit terminal binding (FR-2, FR-3, NFR-S2)
 Given multiple MT5 installations are present
-When the evidence discovery CLI is invoked
+When the evidence discovery CLI or broker-neutral one-shot collector is invoked
 Then it initializes only the explicitly supplied valid `terminal64.exe` path
-And an absent, relative, directory, or incorrectly named path is rejected before MT5 import or initialization.
+And an absent, relative, directory, symlink, or incorrectly named path is
+rejected before MT5 import, operational journal creation, or initialization.
+And operational receipts contain only the normalized-path SHA-256, never the
+raw local terminal path.
 
 ### AC-4: Lane-aware calendar (FR-5, NFR-S3)
 Given an approved lane template, matching signed discovery, and matching candidate config
@@ -120,6 +123,12 @@ interface EvidenceDiscoveryRequest {
   candidate: "phillip-fx" | "phillip-commodity" | string;
   terminalPath: AbsolutePathToTerminal64Exe;
   output: CreateExclusiveJsonPath;
+}
+
+interface EvidenceShadowCycleRequest {
+  candidate: "phillip-fx" | "phillip-commodity" | string;
+  terminalPath: AbsolutePathToTerminal64Exe;
+  artifactRoot: ImmutableEvidenceRoot;
 }
 
 interface EvidenceProfile {

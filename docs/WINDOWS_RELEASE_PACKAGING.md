@@ -54,6 +54,8 @@ Bundle operator juga membawa pipeline evidence broker-neutral:
 `setup_broker_evidence_key.py`, `mt5_readonly_discovery.py`,
 `prepare_broker_window.py`, `build_broker_calendar.py`,
 `register_broker_forward_contract.py`, dan `run_broker_shadow_once.py`.
+Collector broker-neutral wajib menerima exact absolute `--terminal-path`
+untuk setiap kandidat non-XM; ia tidak menggunakan MT5 autodiscovery.
 Tooling review regulatory (`setup_regulatory_review_key.py`,
 `prepare_broker_registration_review.py`,
 `sign_broker_registration_review.py`, dan

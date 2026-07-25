@@ -319,6 +319,20 @@ AI_SCALPER repository rather than the shell's current Git repository, and a
 late or malformed registration is rejected before a new frozen snapshot is
 created.
 
+Setelah contract Commodity berhasil didaftarkan dan window sudah eligible,
+jalankan satu cycle evidence dengan terminal yang sama:
+
+```powershell
+python -I -S -B .\run_broker_shadow_once.py `
+  --candidate phillip-commodity `
+  --terminal-path $commodityTerminal `
+  --artifact-root .\validation_artifacts
+```
+
+Runner broker-neutral menolak kandidat non-XM tanpa exact absolute
+`terminal64.exe`. Operational journal hanya menyimpan mode binding dan SHA-256
+path ternormalisasi; raw local path tidak dimasukkan ke receipt.
+
 Official MT5 documentation states that simultaneous copies require different
 installation directories:
 https://www.metatrader5.com/en/terminal/help/start_advanced/start. Python binds
