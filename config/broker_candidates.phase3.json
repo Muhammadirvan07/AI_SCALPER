@@ -115,26 +115,70 @@
         "terminal_tradeapi_disabled": true
       },
       "regulatory_observation": {
+        "binding_scope": "COMMODITY",
+        "broker_claim_observed": true,
+        "broker_legal_name": "Phillip Securities Japan, Ltd.",
+        "broker_server": "PhillipSecuritiesJP-PROD",
+        "broker_symbols": {
+          "XAUUSD": "XAUUSD.ps01"
+        },
+        "calendar_template_sha256": "ad1f02731e952bdca22e709d7ba44469ff09409f1fd8266c650da50b2dc08eb0",
+        "candidate_id": "phillip-commodity",
+        "decision": "DIAGNOSTIC_EVIDENCE_REGISTRATION_REVIEW_ONLY",
         "entity": "Phillip Securities Japan, Ltd.",
-        "authority": "Japan Financial Services Agency",
-        "registration": "Kanto Finance Bureau (Kinsho) No. 127",
-        "verification_status": "OFFICIAL_JAPAN_REGISTRATION_OBSERVED",
-        "independent_registry_verification": true,
+        "environment": "DEMO",
+        "evidence_bundle_sha256": "a9724c2169a3f2de62772863a5e45a87c6225e525beb5293668d88eb859d5d3f",
+        "execution_enabled": false,
         "independent_registry_sources": [
           {
             "authority": "Japan Financial Services Agency",
-            "url": "https://www.fsa.go.jp/menkyo/menkyo.html",
-            "result": "REGISTERED_FINANCIAL_INSTRUMENTS_BUSINESS_OPERATOR"
-          },
-          {
-            "authority": "Phillip Securities Japan",
-            "url": "https://www.phillip.co.jp/company/outline.php",
-            "result": "COMPANY_REGISTRATION_DISCLOSURE"
+            "captured_content_bytes": 3549091,
+            "captured_content_sha256": "e4d869359d5c0cc916479758492933f5a8febafd05673fdc7eaeadd41ce6ced4",
+            "entity": "Phillip Securities Japan, Ltd.",
+            "observed_at_utc": "2026-07-21T14:41:38Z",
+            "registry_record_id": "KANTO-KINSHO-127",
+            "result": "ENTITY_REGISTERED_FOR_JAPAN_RESIDENTS",
+            "url": "https://www.fsa.go.jp/menkyo/menkyoj/kinyushohin.pdf"
           }
         ],
-        "japan_residency_eligibility": "VERIFIED_REGISTERED_BROKER_DEMO_ACCOUNT_OBSERVED",
+        "independent_registry_verification": true,
+        "indonesia_return_eligibility": "NOT_ASSESSED",
+        "japan_residency_eligibility": "VERIFIED_ELIGIBLE",
         "legal_eligible": true,
-        "decision": "DEMO_READ_ONLY_PREFLIGHT_ALLOWED_DISCOVERY_ORDER_AND_LIVE_REMAIN_BLOCKED"
+        "live_allowed": false,
+        "max_lot": 0.01,
+        "operating_jurisdiction": "JP",
+        "promotion_eligible": false,
+        "regulatory_approvals": [
+          {
+            "approver_id": "muhammad-irvan",
+            "approver_role": "COMPLIANCE_REVIEW",
+            "broker_legal_name": "Phillip Securities Japan, Ltd.",
+            "candidate_id": "phillip-commodity",
+            "evidence_bundle_sha256": "a9724c2169a3f2de62772863a5e45a87c6225e525beb5293668d88eb859d5d3f",
+            "key_id": "phillip-commodity-compliance-review-v1",
+            "operating_jurisdiction": "JP",
+            "schema_version": "regulatory-approval-v1",
+            "signature_hmac_sha256": "1694a3c45f1bef2e706e3fef29c5a49df29b9a0c36bd86f257f67372bd953ba1",
+            "signed_at_utc": "2026-07-25T06:55:23Z"
+          },
+          {
+            "approver_id": "maulana-putra",
+            "approver_role": "LEGAL_REVIEW",
+            "broker_legal_name": "Phillip Securities Japan, Ltd.",
+            "candidate_id": "phillip-commodity",
+            "evidence_bundle_sha256": "a9724c2169a3f2de62772863a5e45a87c6225e525beb5293668d88eb859d5d3f",
+            "key_id": "phillip-commodity-legal-review-v1",
+            "operating_jurisdiction": "JP",
+            "schema_version": "regulatory-approval-v1",
+            "signature_hmac_sha256": "3ea26d45fa59f85bb1ab10623f7fd2f9747a313005cc161ffd7d17e754f2f871",
+            "signed_at_utc": "2026-07-25T06:55:47Z"
+          }
+        ],
+        "safe_to_demo_auto_order": false,
+        "schema_version": "regulatory-evidence-v1",
+        "verification_status": "VERIFIED_ELIGIBLE_SIGNED_REVIEW",
+        "verified_at_utc": "2026-07-21T14:42:09Z"
       },
       "account_identifier_stored": false
     },

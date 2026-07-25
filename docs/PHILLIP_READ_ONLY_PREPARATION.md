@@ -246,17 +246,16 @@ it is not treated as order capability. Discovery still fails unless account
 trading is unavailable, terminal Algo Trading is off, and external Python API
 trading is disabled. The read-only facade exposes no order API.
 
-Do not run `prepare_broker_window.py` or
-`register_broker_forward_contract.py` for Phillip yet. The tracked templates
-now contain reviewed regular schedules and a closure-only prospective
-amendment policy, but `special_hours_review.attested=false` and both profile
-registrations remain disabled. The signed review tooling and exact operator
-workflow are documented in
+The `phillip-commodity` profile has now passed its separate signed
+regulatory/calendar review and exact manual activation proposal. It may run
+`prepare_broker_window.py`, `build_broker_calendar.py`, and
+`register_broker_forward_contract.py` solely to register diagnostic evidence.
+The `phillip-fx` profile remains disabled and must not run contract
+registration. The signed review tooling and exact operator workflow are
+documented in
 [`BROKER_REGISTRATION_REVIEW.md`](BROKER_REGISTRATION_REVIEW.md). Tooling
-availability does not count as either independent human approval and does not
-open the gate. Registration may be enabled only in a later reviewed clean
-commit after the exact signed observation and calendar review are accepted. A
-valid base calendar or discovery receipt does not open that gate.
+availability alone does not count as approval. A valid base calendar or
+discovery receipt does not open a lane whose profile remains disabled.
 
 Reviewed schedule basis:
 
@@ -283,8 +282,42 @@ After both regulatory approvals and the pre-window calendar review have been
 assembled, use the non-mutating review pack documented in
 [`BROKER_REGISTRATION_ACTIVATION_REVIEW.md`](BROKER_REGISTRATION_ACTIVATION_REVIEW.md).
 It verifies the discovery, approvals, clean Git identity, and exact three-file
-proposal together. It has no apply path and leaves both Phillip registrations
-false until a separate explicit human-reviewed commit.
+proposal together. It has no apply path. The exact Commodity proposal was
+applied only after explicit approval; FX remains false until it completes the
+same independent lane workflow.
+
+After pulling the reviewed activation commit on Windows, create new immutable
+filenames and run from a clean checkout. The currently signed Commodity window
+starts at `2026-07-26T16:00:00Z` (`2026-07-27 01:00:00 JST`), so contract
+registration must finish before that instant. If the deadline is missed, do
+not backdate or bypass the gate; create a new pre-window calendar review and
+activation proposal for a future observation window.
+
+```powershell
+python -B .\prepare_broker_window.py `
+  --candidate phillip-commodity `
+  --discovery .\runtime_state\broker_discovery\phillip-commodity-window-01-v3.json `
+  --output .\runtime_state\broker_discovery\phillip-commodity-window-01-plan-v1.json
+
+python -B .\build_broker_calendar.py `
+  --candidate phillip-commodity `
+  --plan .\runtime_state\broker_discovery\phillip-commodity-window-01-plan-v1.json `
+  --output .\runtime_state\broker_discovery\phillip-commodity-window-01-calendar-v1.json
+
+python -B .\register_broker_forward_contract.py `
+  --candidate phillip-commodity `
+  --discovery .\runtime_state\broker_discovery\phillip-commodity-window-01-v3.json `
+  --plan .\runtime_state\broker_discovery\phillip-commodity-window-01-plan-v1.json `
+  --calendar .\runtime_state\broker_discovery\phillip-commodity-window-01-calendar-v1.json `
+  --artifact-root .\validation_artifacts
+```
+
+All three commands remain evidence-only. Any key, discovery, template,
+calendar, approval, clock, clean-build, or lane-binding mismatch must fail
+closed before contract publication. Git provenance is bound to the exact
+AI_SCALPER repository rather than the shell's current Git repository, and a
+late or malformed registration is rejected before a new frozen snapshot is
+created.
 
 Official MT5 documentation states that simultaneous copies require different
 installation directories:

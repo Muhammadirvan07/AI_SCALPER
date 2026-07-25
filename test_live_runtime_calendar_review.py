@@ -124,9 +124,11 @@ def prepare(
 def approved_review(
     root: Path,
     candidate_id: str = "phillip-fx",
+    *,
+    template: dict[str, object] | None = None,
 ) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
-    template = template_for(candidate_id)
-    evidence = prepare(root, candidate_id, template=template)
+    selected_template = template or template_for(candidate_id)
+    evidence = prepare(root, candidate_id, template=selected_template)
     key_id = calendar_review_key_name(candidate_id)
     approval = sign_calendar_review_approval(
         evidence,
@@ -138,11 +140,11 @@ def approved_review(
     review = assemble_prewindow_calendar_review(
         evidence,
         approval,
-        template=template,
+        template=selected_template,
         approval_key_provider={key_id: KEY}.get,
         now_provider=lambda: NOW,
     )
-    return template, evidence, review
+    return selected_template, evidence, review
 
 
 class CalendarReviewTests(unittest.TestCase):

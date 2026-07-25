@@ -346,9 +346,10 @@ class RegistrationReviewTests(unittest.TestCase):
                     now_provider=lambda clock=clock: clock,
                 )
 
-    # AC-6/AC-7: review output never edits or activates tracked profile config.
-    def test_review_artifact_leaves_registration_profiles_disabled(self) -> None:
+    # AC-6/AC-7: review output never edits tracked profile configuration.
+    def test_review_artifact_does_not_change_registration_profiles(self) -> None:
         before = (ROOT / "config/broker_evidence_profiles.v1.json").read_bytes()
+        before_profiles = json.loads(before)
         with tempfile.TemporaryDirectory() as directory:
             evidence = self._evidence(Path(directory))
             assemble_regulatory_observation(
@@ -360,10 +361,7 @@ class RegistrationReviewTests(unittest.TestCase):
             )
         after = (ROOT / "config/broker_evidence_profiles.v1.json").read_bytes()
         self.assertEqual(before, after)
-        profiles = json.loads(after)
-        self.assertTrue(
-            all(not item["registration_enabled"] for item in profiles["profiles"])
-        )
+        self.assertEqual(before_profiles, json.loads(after))
 
     # AC-8/EC-13/EC-17: FX and commodity review packages cannot cross lanes.
     def test_fx_and_commodity_reviews_are_lane_isolated(self) -> None:
@@ -436,7 +434,7 @@ class RegistrationReviewTests(unittest.TestCase):
             with self.assertRaises(RegistrationReviewError):
                 load_regulatory_artifact(path, expected_fields={"schema_version"})
 
-    # AC-9: tracked safety state for all legacy/current candidates remains closed.
+    # AC-9: registration may open per lane, but all execution safety locks remain closed.
     def test_tracked_candidate_and_profile_safety_locks_remain_closed(self) -> None:
         profiles = _json(ROOT / "config/broker_evidence_profiles.v1.json")
         self.assertFalse(self.candidates["execution_enabled"])
@@ -445,7 +443,26 @@ class RegistrationReviewTests(unittest.TestCase):
         self.assertFalse(profiles["live_allowed"])
         self.assertFalse(profiles["safe_to_demo_auto_order"])
         self.assertEqual(0.01, profiles["max_lot"])
-        self.assertTrue(all(not item["registration_enabled"] for item in profiles["profiles"]))
+        by_candidate = {
+            item["candidate_id"]: item for item in profiles["profiles"]
+        }
+        self.assertFalse(by_candidate["phillip-fx"]["registration_enabled"])
+        self.assertTrue(by_candidate["phillip-commodity"]["registration_enabled"])
+        self.assertEqual(
+            "DIAGNOSTIC_EVIDENCE_REGISTRATION_ENABLED_BY_MANUAL_REVIEW",
+            by_candidate["phillip-commodity"]["status"],
+        )
+        commodity = next(
+            item
+            for item in self.candidates["candidates"]
+            if item["candidate_id"] == "phillip-commodity"
+        )
+        observation = commodity["regulatory_observation"]
+        self.assertFalse(observation["execution_enabled"])
+        self.assertFalse(observation["live_allowed"])
+        self.assertFalse(observation["safe_to_demo_auto_order"])
+        self.assertFalse(observation["promotion_eligible"])
+        self.assertEqual(0.01, observation["max_lot"])
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from live_runtime.account_identity import payload_hmac_sha256
+from live_runtime.broker_window_plan import AMENDABLE_TEMPLATE_SCHEMA_VERSION
 from live_runtime.contracts import canonical_sha256
 from live_runtime.evidence_bootstrap import DISCOVERY_RECEIPT_DOMAIN
 from live_runtime.registration_activation import (
@@ -98,7 +99,12 @@ class RegistrationActivationReviewTests(unittest.TestCase):
         self,
         root: Path,
         candidate_id: str = "phillip-fx",
+        *,
+        candidate_config: dict[str, object] | None = None,
+        template: dict[str, object] | None = None,
     ) -> dict[str, object]:
+        selected_candidates = candidate_config or self.candidates
+        selected_template = template or self.templates[candidate_id]
         (root / "fsa-registry.pdf").write_bytes(
             b"official-fsa-registry-fixture-kanto-kinsho-127"
         )
@@ -122,8 +128,8 @@ class RegistrationActivationReviewTests(unittest.TestCase):
             ],
         }
         evidence = prepare_regulatory_evidence(
-            self.candidates,
-            self.templates[candidate_id],
+            selected_candidates,
+            selected_template,
             manifest,
             source_root=root,
             now_provider=lambda: NOW - timedelta(minutes=10),
@@ -145,47 +151,77 @@ class RegistrationActivationReviewTests(unittest.TestCase):
         return assemble_regulatory_observation(
             evidence,
             approvals,
-            self.candidates,
+            selected_candidates,
             approval_key_provider=self.keys.get,
             now_provider=lambda: NOW,
-            template=self.templates[candidate_id],
+            template=selected_template,
         )
 
     def _discovery(
         self,
         candidate_id: str = "phillip-fx",
+        *,
+        template: dict[str, object] | None = None,
     ) -> dict[str, object]:
-        template = self.templates[candidate_id]
+        selected_template = template or self.templates[candidate_id]
         receipt = discovery_receipt(
             candidate_id=candidate_id,
             company="Phillip Securities Japan, Ltd.",
             server="PhillipSecuritiesJP-PROD",
-            required_symbols=tuple(template["broker_symbols"]),
-            broker_symbols=dict(template["broker_symbols"]),
+            required_symbols=tuple(selected_template["broker_symbols"]),
+            broker_symbols=dict(selected_template["broker_symbols"]),
         )
         return _resign_discovery(
             receipt,
             leverage={"phillip-fx": 25, "phillip-commodity": 20}[candidate_id],
         )
 
+    def _pre_activation_inputs(
+        self,
+        candidate_id: str,
+    ) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+        candidates = deepcopy(self.candidates)
+        profiles = deepcopy(self.profiles)
+        template = deepcopy(self.templates[candidate_id])
+
+        selected_profile = next(
+            item
+            for item in profiles["profiles"]
+            if item["candidate_id"] == candidate_id
+        )
+        selected_profile["registration_enabled"] = False
+        selected_profile["status"] = (
+            "BLOCKED_PENDING_SIGNED_REGULATORY_CALENDAR_AND_REGISTRATION_REVIEW"
+        )
+
+        template.pop("prewindow_calendar_review", None)
+        template["schema_version"] = AMENDABLE_TEMPLATE_SCHEMA_VERSION
+        return candidates, profiles, template
+
     def _pack(
         self,
         candidate_id: str = "phillip-fx",
     ) -> dict[str, object]:
+        candidates, profiles, template = self._pre_activation_inputs(candidate_id)
         with tempfile.TemporaryDirectory() as regulatory_directory:
             regulatory = self._regulatory_observation(
-                Path(regulatory_directory), candidate_id
+                Path(regulatory_directory),
+                candidate_id,
+                candidate_config=candidates,
+                template=template,
             )
         with tempfile.TemporaryDirectory() as calendar_directory:
             _, _, calendar_review = approved_review(
-                Path(calendar_directory), candidate_id
+                Path(calendar_directory),
+                candidate_id,
+                template=template,
             )
         return build_registration_activation_review_pack(
             candidate_id=candidate_id,
-            candidate_config=self.candidates,
-            profile_config=self.profiles,
-            template=self.templates[candidate_id],
-            discovery=self._discovery(candidate_id),
+            candidate_config=candidates,
+            profile_config=profiles,
+            template=template,
+            discovery=self._discovery(candidate_id, template=template),
             regulatory_observation=regulatory,
             calendar_review=calendar_review,
             discovery_signing_key=DISCOVERY_KEY,

@@ -589,7 +589,11 @@ class CalendarAmendmentAcceptanceTests(unittest.TestCase):
             if item["candidate_id"].startswith("phillip-")
         }
         self.assertFalse(phillip["phillip-fx"]["registration_enabled"])
-        self.assertFalse(phillip["phillip-commodity"]["registration_enabled"])
+        self.assertTrue(phillip["phillip-commodity"]["registration_enabled"])
+        self.assertEqual(
+            "DIAGNOSTIC_EVIDENCE_REGISTRATION_ENABLED_BY_MANUAL_REVIEW",
+            phillip["phillip-commodity"]["status"],
+        )
 
 
 if __name__ == "__main__":

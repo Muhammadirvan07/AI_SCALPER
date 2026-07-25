@@ -155,18 +155,28 @@ tetap fail-closed tanpa reviewed external runtime.
 - Gate broker generik tidak circular: setup key, discovery, plan, dan calendar
   tunduk pada gate sumber masing-masing; hanya contract registration dan
   evidence collector yang mensyaratkan profile `registration_enabled=true`.
+- Contract bootstrap mengikat Git provenance ke exact absolute repository
+  root, clean worktree, serta commit/tree object ID yang valid dan stabil.
+  Seluruh pre-window, ruleset, source, spec, dan identity gate yang tersedia
+  dijalankan sebelum frozen snapshot dibuat; wrong-repo, malformed identity,
+  drift, atau late registration gagal tanpa memublikasikan contract.
 - Registration-review tooling menghitung hash dari byte dokumen authority
   lokal, mengikat satu candidate/template/symbol lane, dan membutuhkan tepat
   dua approval HMAC dengan role, approver, key ID, serta secret fingerprint
   berbeda. Reviewer key hanya dimuat dari Windows Credential Manager. Final
-  assembly tidak mengubah tracked config dan profile Phillip tetap disabled;
-  plan/contract kelak juga mengulang verifier dengan vault key provider.
+  assembly tidak mengubah tracked config. Setelah proposal exact
+  `597b4c5a1c20c836c468652019bc1e50d4545912c4b96920494fef62805421e4`
+  disetujui manual, hanya profile `phillip-commodity` yang diaktifkan untuk
+  registrasi evidence diagnostic; `phillip-fx` tetap disabled. Plan dan
+  contract tetap mengulang verifier dengan vault key provider.
 - Activation-review pack non-mutating kini mengikat discovery-v3, dua approval
   regulasi, satu signed pre-window calendar review, serta clean Git commit/tree
   dalam satu proposal immutable. Pack membawa base dan after-image lengkap
   untuk tepat tiga tracked file sehingga bounded diff dapat diverifikasi tanpa
-  secret. Tool tidak memiliki apply entrypoint; actual registration, order,
-  promotion, demo-auto, dan live tetap false.
+  secret. Tool tidak memiliki apply entrypoint; penerapan proposal dilakukan
+  sebagai bounded manual patch yang terpisah. Registrasi evidence Commodity
+  sekarang aktif, sedangkan order, execution, promotion, demo-auto, dan live
+  tetap false.
 
 ### Runtime trust boundary
 
@@ -594,10 +604,11 @@ eksternal belum terpenuhi.
    telah diverifikasi, tetapi personal/account eligibility setelah kembali dan
    current-Japan eligibility tetap belum disetujui.
    Phillip Securities Japan adalah candidate path untuk operasi saat ini:
-   exact demo lanes dan regular schedule sudah terikat, namun signed regulatory
-   approval aktual, human acceptance atas profile-registration review pack,
-   dan contract registration belum selesai. XM Window 02 tetap tidak boleh
-   dijalankan. Setiap kandidat
+   exact demo lanes, signed regulatory/calendar review, dan manual activation
+   profile `phillip-commodity` sudah terikat. Immutable diagnostic contract
+   Commodity belum diregistrasikan; `phillip-fx` tetap menunggu review dan
+   activation lane-nya sendiri. XM Window 02 tetap tidak boleh dijalankan.
+   Setiap kandidat
    tetap membutuhkan minimal 20 sesi terpisah.
 2. Jalankan broker read-only shadow pada exact symbols; ekspor signed session
    calendars, finalized M15 bid/ask bars, raw ticks, spread/fill distributions,

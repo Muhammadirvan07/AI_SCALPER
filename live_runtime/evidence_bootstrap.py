@@ -21,7 +21,7 @@ from validation_evidence import (
     verify_frozen_snapshot,
 )
 
-from .contracts import canonical_sha256
+from .contracts import canonical_sha256, require_utc
 from .broker_evidence_profile import BrokerEvidenceProfile
 from .broker_window_plan import (
     BrokerWindowPlanError,
@@ -194,6 +194,103 @@ def _git_identity(repo_root: Path) -> dict[str, object]:
         "tree_sha": run("rev-parse", "HEAD^{tree}"),
         "repo_root": run("rev-parse", "--show-toplevel"),
     }
+
+
+def _registration_git_state_provider(
+    repo_root: Path,
+    provider: Callable[[], Mapping[str, object]] | None,
+) -> Callable[[], Mapping[str, object]]:
+    """Bind contract provenance to the exact AI_SCALPER repository."""
+
+    root = repo_root.resolve()
+    source = provider or (lambda: _git_identity(root))
+
+    def read_verified() -> dict[str, object]:
+        try:
+            state = source()
+        except EvidenceBootstrapError:
+            raise
+        except Exception as exc:
+            raise EvidenceBootstrapError(
+                "Git build identity is unavailable"
+            ) from exc
+        if not isinstance(state, Mapping) or state.get("clean") is not True:
+            raise EvidenceBootstrapError(
+                "Git worktree must remain clean during contract registration"
+            )
+        raw_root = state.get("repo_root")
+        if (
+            not isinstance(raw_root, (str, Path))
+            or not str(raw_root).strip()
+            or not Path(raw_root).is_absolute()
+        ):
+            raise EvidenceBootstrapError(
+                "Git build identity repository root is invalid"
+            )
+        try:
+            observed_root = Path(raw_root).resolve(strict=True)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise EvidenceBootstrapError(
+                "Git build identity repository root is invalid"
+            ) from exc
+        if not observed_root.is_dir() or observed_root != root:
+            raise EvidenceBootstrapError(
+                "Git build identity belongs to a different repository"
+            )
+        normalized = dict(state)
+        for field in ("commit_sha", "tree_sha"):
+            value = str(state.get(field) or "").strip().lower()
+            if (
+                not 40 <= len(value) <= 64
+                or any(character not in "0123456789abcdef" for character in value)
+            ):
+                raise EvidenceBootstrapError(
+                    f"Git build identity {field} is invalid"
+                )
+            normalized[field] = value
+        normalized["repo_root"] = str(observed_root)
+        return normalized
+
+    initial = read_verified()
+    initial_commit = initial.get("commit_sha")
+    initial_tree = initial.get("tree_sha")
+
+    def stable_provider() -> Mapping[str, object]:
+        current = read_verified()
+        if (
+            current.get("commit_sha") != initial_commit
+            or current.get("tree_sha") != initial_tree
+        ):
+            raise EvidenceBootstrapError(
+                "Git build identity changed during contract registration"
+            )
+        return current
+
+    return stable_provider
+
+
+def _require_future_registration_window(
+    plan: Mapping[str, object],
+    *,
+    now_provider: Callable[[], datetime],
+) -> None:
+    try:
+        now = now_provider()
+        require_utc("registration preflight clock", now)
+        observation_start = datetime.fromisoformat(
+            str(plan.get("observation_start_at_utc") or "").replace(
+                "Z", "+00:00"
+            )
+        )
+        require_utc("observation_start_at_utc", observation_start)
+    except (TypeError, ValueError) as exc:
+        raise EvidenceBootstrapError(
+            "contract registration clock or forward window is invalid"
+        ) from exc
+    if now >= observation_start:
+        raise EvidenceBootstrapError(
+            "contract must be registered before the observation window starts"
+        )
 
 
 def build_ruleset(
@@ -624,13 +721,12 @@ def register_xm_diagnostic_contract(
         calendar,
         signing_key=signing_key,
     )
-    snapshot = ensure_frozen_snapshot(
+    effective_git_state_provider = _registration_git_state_provider(
         root,
-        artifact_root,
-        created_at=now_provider(),
+        git_state_provider,
     )
-    key_id = "wincred-" + signing_key_fingerprint(signing_key)
     ruleset = build_ruleset(root)
+    key_id = "wincred-" + signing_key_fingerprint(signing_key)
     broker_sources = _broker_sources(
         plan,
         discovery,
@@ -638,6 +734,12 @@ def register_xm_diagnostic_contract(
         key_id=key_id,
     )
     instrument_specs = _instrument_specs(discovery, calendar)
+    _require_future_registration_window(plan, now_provider=now_provider)
+    snapshot = ensure_frozen_snapshot(
+        root,
+        artifact_root,
+        created_at=now_provider(),
+    )
     # Mint the registration claim only after all local hashing and
     # normalization work that precedes the evidence-core clock check.
     registered_at = now_provider()
@@ -653,7 +755,7 @@ def register_xm_diagnostic_contract(
         observation_start_at=plan["observation_start_at_utc"],
         blind_until=plan["blind_until_utc"],
         validation_profile=str(plan["validation_profile"]),
-        git_state_provider=git_state_provider,
+        git_state_provider=effective_git_state_provider,
         clock_provider=clock_provider,
         signing_key=signing_key,
     )
@@ -723,16 +825,14 @@ def register_broker_diagnostic_contract(
         calendar,
         signing_key=signing_key,
     )
-    snapshot = ensure_frozen_snapshot(
-        root,
-        artifact_root,
-        created_at=now_provider(),
-        snapshot_id=profile.snapshot_id,
-    )
     config_files = (
         "config/broker_candidates.phase3.json",
         profile_config_relative,
         profile.template_path,
+    )
+    effective_git_state_provider = _registration_git_state_provider(
+        root,
+        git_state_provider,
     )
     ruleset = build_ruleset(root, config_files=config_files)
     key_id = "wincred-" + signing_key_fingerprint(signing_key)
@@ -743,6 +843,13 @@ def register_broker_diagnostic_contract(
         key_id=key_id,
     )
     instrument_specs = _instrument_specs(discovery, calendar)
+    _require_future_registration_window(plan, now_provider=now_provider)
+    snapshot = ensure_frozen_snapshot(
+        root,
+        artifact_root,
+        created_at=now_provider(),
+        snapshot_id=profile.snapshot_id,
+    )
     registered_at = now_provider()
     return register_forward_contract(
         artifact_root,
@@ -757,7 +864,7 @@ def register_broker_diagnostic_contract(
         observation_start_at=plan["observation_start_at_utc"],
         blind_until=plan["blind_until_utc"],
         validation_profile="DIAGNOSTIC",
-        git_state_provider=git_state_provider,
+        git_state_provider=effective_git_state_provider,
         clock_provider=clock_provider,
         signing_key=signing_key,
     )

@@ -199,6 +199,42 @@ Semantik ini lulus lokal; Windows receipt aktual masih menunggu externally
 reviewed provider runtime. Default generated factory tetap menolak
 `EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED`.
 
+## Aktivasi registrasi evidence Phillip Commodity
+
+Proposal manual
+`597b4c5a1c20c836c468652019bc1e50d4545912c4b96920494fef62805421e4`
+telah diterapkan sebagai perubahan exact pada tiga file konfigurasi:
+
+1. signed regulatory observation Commodity menggantikan observation lama;
+2. hanya profile `phillip-commodity` berubah menjadi
+   `registration_enabled=true`;
+3. template Commodity berubah ke schema v3 dan mengikat signed pre-window
+   calendar review.
+
+Canonical SHA-256 after-image yang diverifikasi:
+
+```text
+broker_candidates.phase3.json =
+856a980af52bc01f17f0185e7cdf35572fa06785e2beb39b758ffcd30e93519e
+broker_evidence_profiles.v1.json =
+0a6b3cb4abe05689dd67dfe363728eb53b4ce822e17f22618f5e6f84f6fcf7cf
+phillip_commodity_calendar_window_01.template.json =
+1c24fc974f08cd602dc6462ada165a572f182abea685aa0e44f17a6f8a4ef871
+```
+
+Aktivasi ini hanya membuka pembuatan immutable diagnostic forward contract.
+Ia tidak memberi credential broker, permit, arm flag, order, demo-auto,
+promotion, atau live authority. Profile `phillip-fx` tetap disabled dan
+memerlukan review lane terpisah.
+
+Bootstrap registrasi juga telah di-hardening: Git identity sekarang wajib
+berasal dari exact repository root yang eksplisit dan absolut, worktree harus
+tetap bersih, serta commit/tree harus berupa object ID valid dan stabil selama
+registrasi. Validasi Git, ruleset, broker binding, dan batas waktu pre-window
+diselesaikan sebelum frozen snapshot dibuat. Invokasi dari repository lain,
+identity kosong/malformed, identity drift, atau registrasi pada/sesudah
+observation start gagal tanpa membuat snapshot baru.
+
 ## Bukti lokal
 
 - Shared-provider-primitives spec validator: `98/100`, grade A, nol error.
@@ -232,10 +268,12 @@ reviewed provider runtime. Default generated factory tetap menolak
 - Acceptance/adversarial suite: `19/19 PASS` normal dan optimized.
 - Suite-binding/provider-v2 focused regression: `95/95 PASS` normal dan
   optimized.
-- Full project regression termasuk seluruh provider test baru:
-  `1.552/1.552 PASS` normal.
+- Full project regression termasuk seluruh provider dan registration
+  hardening test baru: `1.558/1.558 PASS` normal.
 - Full tracked-project regression dengan `PYTHONOPTIMIZE=2`:
-  `1.552/1.552 PASS`.
+  `1.558/1.558 PASS`.
+- Focused post-activation evidence integration regression:
+  `100/100 PASS`.
 - Focused activation/packaging regression normal dan optimized dijalankan
   bersamaan: `155/155 PASS` pada masing-masing proses.
 - Dormant demo-auto acceptance dijalankan dalam 12 proses paralel:
@@ -262,8 +300,9 @@ promotion_eligible = false
 ```
 
 Execution ZIP tetap memiliki `order_capability=GATED_PRESENT` secara dormant.
-Suite boundary, empat role lain, dan seluruh activation/promotion state tetap
-tertutup.
+Suite boundary, empat role lain, seluruh execution/promotion state, dan semua
+broker-order authority tetap tertutup. Satu-satunya gate yang terbuka adalah
+registrasi evidence diagnostic untuk `phillip-commodity`.
 
 ## Posisi roadmap
 
@@ -271,23 +310,28 @@ Software foundation dan packaging lokal sudah cukup untuk membuat candidate
 baru. Demo-auto soak belum boleh dimulai hanya karena test lokal hijau.
 Urutan berikutnya:
 
-1. commit/push exact source ini tanpa direktori dashboard;
-2. clean pull pada Windows dan build atomic five-role suite;
-3. verifikasi SHA-256 serta suite manifest;
-4. siapkan canonical secret-free Decision, Execution, dan Status Monitor
+1. commit/push exact activation dan post-activation regression tanpa direktori
+   dashboard;
+2. clean pull pada Windows, prepare signed Commodity plan/calendar, lalu
+   register immutable diagnostic forward contract;
+3. mulai read-only Commodity evidence collection pada eligible M15 boundary;
+4. build ulang atomic five-role suite dari commit baru dan verifikasi SHA-256
+   serta suite manifest;
+5. siapkan canonical secret-free Decision, Execution, dan Status Monitor
    provider input dari exact reviewed Windows custody paths/key fingerprints;
-5. generate/validate ketiga provider pack dan assemble/validate ketiga
+6. generate/validate ketiga provider pack dan assemble/validate ketiga
    immutable configured candidate;
-6. provision externally reviewed Execution provider state/hooks pada Windows,
+7. provision externally reviewed Execution provider state/hooks pada Windows,
    jalankan exact RSA-bound `--materialize-only` probe, lalu buktikan restart
    behavior tanpa membuka policy;
-7. verifikasi ketiga configured identity dan buat operations plan/review,
+8. verifikasi ketiga configured identity dan buat operations plan/review,
    provider-conformance v2, serta independent validation receipt;
-8. kumpulkan sembilan signed pre-manual observations lalu luluskan exact
+9. kumpulkan sembilan signed pre-manual observations lalu luluskan exact
    configured-release admission;
-9. jalankan 10 controlled manual-demo lifecycles dengan review manusia;
-10. setelah hasil manual-demo diterima, lakukan activation review terpisah;
-11. baru mulai demo-auto soak 30 hari, 50 broker-reconciled closed fills, dan
+10. jalankan 10 controlled manual-demo lifecycles dengan review manusia;
+11. setelah hasil manual-demo diterima, lakukan demo-auto activation review
+    terpisah;
+12. baru mulai demo-auto soak 30 hari, 50 broker-reconciled closed fills, dan
    minimal 20 XAUUSD closed fills.
 
 Live trading tetap tahap sesudah soak, statistical lane gates, failure drills,

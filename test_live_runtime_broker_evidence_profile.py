@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from live_runtime.broker_evidence_profile import (
     BrokerEvidenceProfile,
@@ -146,20 +147,30 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
                 require_registration_enabled=True,
             )
 
-    def test_tracked_phillip_profiles_are_lane_isolated_and_fail_closed(self) -> None:
+    def test_tracked_phillip_profiles_are_lane_isolated_and_state_aware(self) -> None:
         path = ROOT / "config/broker_evidence_profiles.v1.json"
         fx = load_broker_evidence_profile(path, "phillip-fx")
         commodity = load_broker_evidence_profile(path, "phillip-commodity")
         self.assertNotEqual(fx.key_name, commodity.key_name)
         self.assertNotEqual(fx.contract_id, commodity.contract_id)
         self.assertFalse(fx.registration_enabled)
-        self.assertFalse(commodity.registration_enabled)
+        self.assertTrue(commodity.registration_enabled)
+        self.assertEqual(
+            "DIAGNOSTIC_EVIDENCE_REGISTRATION_ENABLED_BY_MANUAL_REVIEW",
+            commodity.status,
+        )
         with self.assertRaisesRegex(BrokerEvidenceProfileError, "external gates"):
             load_broker_evidence_profile(
                 path,
                 "phillip-fx",
                 require_registration_enabled=True,
             )
+        registered = load_broker_evidence_profile(
+            path,
+            "phillip-commodity",
+            require_registration_enabled=True,
+        )
+        self.assertEqual("phillip-commodity", registered.candidate_id)
 
     def test_profile_rejects_cross_candidate_identity(self) -> None:
         with self.assertRaisesRegex(BrokerEvidenceProfileError, "namespaced"):
@@ -194,7 +205,7 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(BrokerWindowPlanError, "not attested"):
             verify_broker_calendar_template(scaffold)
 
-    def test_phillip_base_calendars_require_amendment_policy_and_stay_gated(self) -> None:
+    def test_phillip_calendars_require_policy_and_match_registration_state(self) -> None:
         profiles = json.loads(
             (ROOT / "config/broker_evidence_profiles.v1.json").read_text(
                 encoding="utf-8"
@@ -202,6 +213,10 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
         )
         profiles_by_candidate = {
             item["candidate_id"]: item for item in profiles["profiles"]
+        }
+        expected_registration = {
+            "phillip-fx": False,
+            "phillip-commodity": True,
         }
         for filename in (
             "phillip_fx_calendar_window_01.template.json",
@@ -213,12 +228,14 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
                 )
                 verify_broker_calendar_template(scaffold)
                 candidate_id = scaffold["candidate_id"]
-                self.assertFalse(
-                    profiles_by_candidate[candidate_id]["registration_enabled"]
+                self.assertEqual(
+                    expected_registration[candidate_id],
+                    profiles_by_candidate[candidate_id]["registration_enabled"],
                 )
                 without_policy = dict(scaffold)
                 without_policy["schema_version"] = "broker-calendar-plan-template-v1"
                 without_policy.pop("calendar_amendment_policy")
+                without_policy.pop("prewindow_calendar_review", None)
                 with self.assertRaisesRegex(BrokerWindowPlanError, "not attested"):
                     verify_broker_calendar_template(without_policy)
 
@@ -382,6 +399,154 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
                     profile=profile,
                     profile_config_path=outside,
                 )
+
+    def test_registration_rejects_wrong_git_repo_before_snapshot_mutation(
+        self,
+    ) -> None:
+        profile = BrokerEvidenceProfile(
+            candidate_id="fbs",
+            key_name="fbs-window-key-v1",
+            snapshot_id="fbs-snapshot-v1",
+            contract_id="fbs-contract-v1",
+            template_path="config/fbs_calendar_window_01.template.json",
+            registration_enabled=True,
+            status="enabled-for-test",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_root = Path(directory)
+            plan_path = temporary_root / "plan.json"
+            discovery_path = temporary_root / "discovery.json"
+            calendar_path = temporary_root / "calendar.json"
+            plan_path.write_text(
+                json.dumps(
+                    {
+                        "candidate_id": "fbs",
+                        "observation_start_at_utc": "2026-07-30T00:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            discovery_path.write_text("{}", encoding="utf-8")
+            calendar_path.write_text("{}", encoding="utf-8")
+
+            with (
+                patch(
+                    "live_runtime.evidence_bootstrap."
+                    "verify_prepared_broker_calendar_plan"
+                ),
+                patch(
+                    "live_runtime.evidence_bootstrap."
+                    "verify_candidate_legal_binding"
+                ),
+                patch(
+                    "live_runtime.evidence_bootstrap._validate_broker_inputs"
+                ),
+                patch(
+                    "live_runtime.evidence_bootstrap.ensure_frozen_snapshot"
+                ) as ensure_snapshot,
+            ):
+                with self.assertRaisesRegex(
+                    EvidenceBootstrapError,
+                    "different repository",
+                ):
+                    register_broker_diagnostic_contract(
+                        ROOT,
+                        temporary_root / "artifacts",
+                        discovery_path,
+                        calendar_path,
+                        TEST_KEY,
+                        plan_path=plan_path,
+                        profile=profile,
+                        git_state_provider=lambda: {
+                            "clean": True,
+                            "commit_sha": "a" * 40,
+                            "tree_sha": "b" * 40,
+                            "repo_root": str(temporary_root),
+                        },
+                    )
+            ensure_snapshot.assert_not_called()
+
+    def test_registration_rejects_started_window_before_snapshot_mutation(
+        self,
+    ) -> None:
+        profile = BrokerEvidenceProfile(
+            candidate_id="fbs",
+            key_name="fbs-window-key-v1",
+            snapshot_id="fbs-snapshot-v1",
+            contract_id="fbs-contract-v1",
+            template_path="config/fbs_calendar_window_01.template.json",
+            registration_enabled=True,
+            status="enabled-for-test",
+        )
+        observation_start = datetime(2026, 7, 30, 0, 0, tzinfo=UTC)
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_root = Path(directory)
+            plan_path = temporary_root / "plan.json"
+            discovery_path = temporary_root / "discovery.json"
+            calendar_path = temporary_root / "calendar.json"
+            plan_path.write_text(
+                json.dumps(
+                    {
+                        "candidate_id": "fbs",
+                        "observation_start_at_utc": (
+                            observation_start.isoformat().replace("+00:00", "Z")
+                        ),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            discovery_path.write_text("{}", encoding="utf-8")
+            calendar_path.write_text("{}", encoding="utf-8")
+
+            with (
+                patch(
+                    "live_runtime.evidence_bootstrap."
+                    "verify_prepared_broker_calendar_plan"
+                ),
+                patch(
+                    "live_runtime.evidence_bootstrap."
+                    "verify_candidate_legal_binding"
+                ),
+                patch(
+                    "live_runtime.evidence_bootstrap._validate_broker_inputs"
+                ),
+                patch(
+                    "live_runtime.evidence_bootstrap.build_ruleset",
+                    return_value={},
+                ),
+                patch(
+                    "live_runtime.evidence_bootstrap._broker_sources",
+                    return_value={},
+                ),
+                patch(
+                    "live_runtime.evidence_bootstrap._instrument_specs",
+                    return_value={},
+                ),
+                patch(
+                    "live_runtime.evidence_bootstrap.ensure_frozen_snapshot"
+                ) as ensure_snapshot,
+            ):
+                with self.assertRaisesRegex(
+                    EvidenceBootstrapError,
+                    "before the observation window",
+                ):
+                    register_broker_diagnostic_contract(
+                        ROOT,
+                        temporary_root / "artifacts",
+                        discovery_path,
+                        calendar_path,
+                        TEST_KEY,
+                        plan_path=plan_path,
+                        profile=profile,
+                        now_provider=lambda: observation_start,
+                        git_state_provider=lambda: {
+                            "clean": True,
+                            "commit_sha": "a" * 40,
+                            "tree_sha": "b" * 40,
+                            "repo_root": str(ROOT),
+                        },
+                    )
+            ensure_snapshot.assert_not_called()
 
 
 if __name__ == "__main__":

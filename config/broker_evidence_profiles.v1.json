@@ -20,8 +20,8 @@
       "snapshot_id": "phillip-commodity-dev-pre-window-01-v1",
       "contract_id": "phillip-commodity-window-01-diagnostic-v1",
       "template_path": "config/phillip_commodity_calendar_window_01.template.json",
-      "registration_enabled": false,
-      "status": "BLOCKED_PENDING_SIGNED_REGULATORY_CALENDAR_AND_REGISTRATION_REVIEW"
+      "registration_enabled": true,
+      "status": "DIAGNOSTIC_EVIDENCE_REGISTRATION_ENABLED_BY_MANUAL_REVIEW"
     },
     {
       "candidate_id": "fbs",

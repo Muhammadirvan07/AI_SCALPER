@@ -13,6 +13,8 @@ STATUS_MONITOR_CONFIGURED_CANDIDATE = PASS_LOCALLY_EXTERNAL_CONFORMANCE_REQUIRED
 EXECUTION_PROVIDER_PACK = PASS_LOCALLY_EXTERNAL_RUNTIME_REQUIRED
 EXECUTION_CONFIGURED_CANDIDATE = PASS_LOCALLY_EXTERNAL_CONFORMANCE_REQUIRED
 EXECUTION_FACTORY_MATERIALIZATION_PROBE = PASS_LOCALLY_EXTERNAL_WINDOWS_EVIDENCE_REQUIRED
+PHILLIP_COMMODITY_EVIDENCE_REGISTRATION = PASS_EXPLICIT_MANUAL_REVIEW
+PHILLIP_COMMODITY_FORWARD_CONTRACT = NOT_REGISTERED
 EXACT_WINDOWS_CANDIDATE_BUILD = PENDING
 WINDOWS_OPERATIONAL_ACCEPTANCE = INCOMPLETE
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
@@ -39,8 +41,10 @@ dimodifikasi.
 
 | Check | Result |
 |---|---|
-| Full Python regression including factory materialization probe | `1,552 / 1,552 PASS` |
-| Full regression with `PYTHONOPTIMIZE=2` | `1,552 / 1,552 PASS` |
+| Full Python regression including factory materialization and registration-provenance probes | `1,558 / 1,558 PASS` |
+| Full regression with `PYTHONOPTIMIZE=2` | `1,558 / 1,558 PASS` |
+| Focused post-activation evidence integration regression | `100 / 100 PASS` |
+| Approved activation proposal | exact hash `597b4c5a1c20c836c468652019bc1e50d4545912c4b96920494fef62805421e4`; three canonical after-images match |
 | Execution provider/release/candidate focused suite | `87 / 87 PASS` in both modes |
 | Execution-provider-pack spec | `98 / 100`, grade A, zero errors; one non-applicable generic HTTP warning |
 | Execution materialization probe/bootstrap/release-builder tests | `50 / 50 PASS` in both modes |
@@ -181,30 +185,39 @@ checks remain real blockers.
     all execution locks, and `mt5_module=None`. Even post-construction object
     mutation fails with `SERVICE_FACTORY_MT5_INJECTION_FORBIDDEN` before any
     runner or broker boundary.
+30. Forward-contract bootstrap no longer inherits Git provenance from process
+    CWD. It requires an explicit exact absolute repository root, clean stable
+    commit/tree object IDs, and a future observation window before creating a
+    frozen snapshot. Wrong-repository, malformed-identity, identity-drift, and
+    late-registration probes fail before snapshot mutation on both XM and the
+    generic broker path.
 
 ## Remaining blockers
 
-1. The new source must be committed and rebuilt from a clean checkout on exact
+1. The activation source must be committed and rebuilt from a clean checkout on exact
    Windows CPython 3.12. Every historical artifact remains valid only for its
    original Git identity and cannot represent this worktree.
-2. The exact five-role Windows suite must produce canonical secret-free
+2. Phillip Commodity must prepare its signed plan/calendar and pre-register
+   its immutable diagnostic forward contract before broker evidence capture.
+   This registration has no order authority; Phillip FX remains disabled.
+3. The exact five-role Windows suite must produce canonical secret-free
    Decision, Execution, and Status Monitor provider packs and configured
    candidates, an operations plan/review bundle,
    provider-conformance v2, and a distinct independent validation receipt.
-3. The externally reviewed Windows Execution runtime must supply exact
+4. The externally reviewed Windows Execution runtime must supply exact
    preprovisioned provider state and materialization hooks for all required
    roles. The generated factory intentionally remains fail-closed without it.
    The exact configured release must then pass `--materialize-only` on Windows
    under a current Execution-profile RSA launcher attestation; no such external
    receipt exists yet.
-4. Credential, key, CAS, checkpoint, incident-latch, heartbeat, alert,
+5. Credential, key, CAS, checkpoint, incident-latch, heartbeat, alert,
    trusted-clock, news, risk, MT5, WORM, task/ACL, and service-account
    providers require external acceptance.
-5. Nine signed pre-manual observations, exact pre-manual configured-release
+6. Nine signed pre-manual observations, exact pre-manual configured-release
    admission, and human stage review are absent.
-6. Ten controlled manual-demo order lifecycles are absent.
-7. The 30-day/50-fill/20-XAU demo-auto soak has not started.
-8. Broker-forward/OOS/statistical/parity/failure-drill gates remain required
+7. Ten controlled manual-demo order lifecycles are absent.
+8. The 30-day/50-fill/20-XAU demo-auto soak has not started.
+9. Broker-forward/OOS/statistical/parity/failure-drill gates remain required
    before XAUUSD live canary.
 
 ## Decision

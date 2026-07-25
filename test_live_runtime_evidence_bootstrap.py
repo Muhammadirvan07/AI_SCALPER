@@ -582,6 +582,144 @@ class EvidenceBootstrapTests(unittest.TestCase):
             locked_verification["failures"],
         )
 
+    def test_registration_git_provider_is_bound_to_exact_repo_and_stable(self):
+        root = self.work_repo.resolve()
+        state = {
+            "clean": True,
+            "commit_sha": "a" * 40,
+            "tree_sha": "b" * 40,
+            "repo_root": str(root),
+        }
+        with patch.object(
+            evidence_bootstrap,
+            "_git_identity",
+            return_value=state,
+        ) as git_identity:
+            provider = evidence_bootstrap._registration_git_state_provider(
+                root,
+                None,
+            )
+            self.assertEqual(state, provider())
+        self.assertEqual(
+            [((root,), {}), ((root,), {})],
+            git_identity.call_args_list,
+        )
+
+        states = iter(
+            (
+                state,
+                {**state, "tree_sha": "c" * 40},
+            )
+        )
+        provider = evidence_bootstrap._registration_git_state_provider(
+            root,
+            lambda: next(states),
+        )
+        with self.assertRaisesRegex(
+            EvidenceBootstrapError,
+            "changed during contract registration",
+        ):
+            provider()
+
+    def test_registration_git_provider_rejects_implicit_root_and_invalid_sha(
+        self,
+    ):
+        root = self.work_repo.resolve()
+        valid_state = {
+            "clean": True,
+            "commit_sha": "a" * 40,
+            "tree_sha": "b" * 40,
+            "repo_root": str(root),
+        }
+        invalid_states = (
+            ({**valid_state, "repo_root": ""}, "repository root is invalid"),
+            ({**valid_state, "repo_root": "."}, "repository root is invalid"),
+            ({**valid_state, "commit_sha": "not-a-git-sha"}, "commit_sha"),
+            ({**valid_state, "tree_sha": "b" * 39}, "tree_sha"),
+        )
+        for state, message in invalid_states:
+            with self.subTest(state=state, message=message):
+                with self.assertRaisesRegex(EvidenceBootstrapError, message):
+                    evidence_bootstrap._registration_git_state_provider(
+                        root,
+                        lambda state=state: state,
+                    )
+
+    def test_wrong_git_repo_is_rejected_before_snapshot_mutation(self):
+        artifact_root = self.root / "wrong-repo-artifacts"
+        wrong_root = self.root / "unrelated-repository"
+        wrong_root.mkdir()
+        with patch.object(
+            evidence_bootstrap,
+            "ensure_frozen_snapshot",
+        ) as ensure_snapshot:
+            with self.assertRaisesRegex(
+                EvidenceBootstrapError,
+                "different repository",
+            ):
+                register_xm_diagnostic_contract(
+                    self.work_repo,
+                    artifact_root,
+                    self.discovery_path,
+                    self.calendar_path,
+                    TEST_KEY,
+                    plan_path=self.plan_path,
+                    now_provider=lambda: datetime(
+                        2026, 7, 16, 5, 0, tzinfo=UTC
+                    ),
+                    clock_provider=lambda: datetime(
+                        2026, 7, 16, 5, 0, tzinfo=UTC
+                    ),
+                    regulatory_approval_key_provider=(
+                        regulatory_approval_key_provider
+                    ),
+                    git_state_provider=lambda: {
+                        "clean": True,
+                        "commit_sha": "a" * 40,
+                        "tree_sha": "b" * 40,
+                        "repo_root": str(wrong_root),
+                    },
+                )
+        ensure_snapshot.assert_not_called()
+        self.assertFalse(artifact_root.exists())
+
+    def test_started_forward_window_is_rejected_before_snapshot_mutation(self):
+        artifact_root = self.root / "late-registration-artifacts"
+        observation_start = datetime.fromisoformat(
+            str(self.plan["observation_start_at_utc"]).replace(
+                "Z", "+00:00"
+            )
+        )
+        with patch.object(
+            evidence_bootstrap,
+            "ensure_frozen_snapshot",
+        ) as ensure_snapshot:
+            with self.assertRaisesRegex(
+                EvidenceBootstrapError,
+                "before the observation window starts",
+            ):
+                register_xm_diagnostic_contract(
+                    self.work_repo,
+                    artifact_root,
+                    self.discovery_path,
+                    self.calendar_path,
+                    TEST_KEY,
+                    plan_path=self.plan_path,
+                    now_provider=lambda: observation_start,
+                    clock_provider=lambda: observation_start,
+                    regulatory_approval_key_provider=(
+                        regulatory_approval_key_provider
+                    ),
+                    git_state_provider=lambda: {
+                        "clean": True,
+                        "commit_sha": "a" * 40,
+                        "tree_sha": "b" * 40,
+                        "repo_root": str(self.work_repo),
+                    },
+                )
+        ensure_snapshot.assert_not_called()
+        self.assertFalse(artifact_root.exists())
+
     def test_registration_claim_is_minted_after_slow_ruleset_hashing(self):
         clock = {"value": datetime(2026, 7, 16, 5, 0, tzinfo=UTC)}
         original_build_ruleset = evidence_bootstrap.build_ruleset
