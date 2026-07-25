@@ -7,6 +7,7 @@ profiles use ``run_broker_shadow_once.py`` and an explicit ``--candidate``.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import importlib
@@ -16,11 +17,21 @@ from pathlib import Path
 import re
 import sqlite3
 import sys
+import time
 from types import ModuleType
+from typing import Callable
 
 
 LOCK_FILE_NAME = "pylock.windows-cp312.toml"
 STARTUP_GUARD_SCHEMA_VERSION = "xm-shadow-startup-guard-v1"
+DEPENDENCY_SESSION_SCHEMA_VERSION = "broker-shadow-dependency-session-v1"
+DEPENDENCY_SESSION_REFERENCE_SCHEMA_VERSION = (
+    "broker-shadow-dependency-session-reference-v1"
+)
+WORKER_CYCLE_SECONDS = 60
+WORKER_CYCLE_OFFSET_SECONDS = 2
+MIN_WORKER_DURATION_SECONDS = 15 * 60
+MAX_WORKER_DURATION_SECONDS = 24 * 60 * 60
 REPO_ROOT = Path(__file__).resolve().parent
 _CANDIDATE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 
@@ -54,6 +65,12 @@ DEFAULT_MINIMUM_FREE_BYTES = _operational_guard.DEFAULT_MINIMUM_FREE_BYTES
 ShadowOperationalStore = _operational_guard.ShadowOperationalStore
 check_minimum_free_disk = _operational_guard.check_minimum_free_disk
 OPERATIONAL_KEY_NAME = _operational_guard.RUNTIME_KEY
+_shadow_fence = _load_local_module(
+    "_ai_scalper_shadow_worker_fence",
+    "live_runtime/shadow_fence.py",
+)
+ShadowCycleAlreadyRunning = _shadow_fence.ShadowCycleAlreadyRunning
+ShadowWorkerFence = _shadow_fence.ShadowWorkerFence
 
 
 def _repo_path(path: str | Path) -> Path:
@@ -164,27 +181,149 @@ def _load_dependency_guard() -> ModuleType:
     return module
 
 
-def _verify_and_activate_dependencies(
-    lock_path: Path,
-) -> tuple[ModuleType, dict[str, object]]:
-    dependency_guard = _load_dependency_guard()
-    dependency_guard.require_current_windows_runtime()
-    dependency_receipt = dependency_guard.verify_installed_lock(lock_path)
+def _canonical_sha256(value: object) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+@dataclass
+class _DependencySession:
+    guard: ModuleType
+    lock_path: Path
+    full_receipt: dict[str, object]
+    full_receipt_sha256: str
+    session_id: str
+    verified_at_utc: str
+    full_receipt_pending: bool = True
+
+
+_ACTIVE_DEPENDENCY_SESSION: _DependencySession | None = None
+
+
+def _activate_dependency_paths(
+    dependency_guard: ModuleType,
+    dependency_receipt: dict[str, object],
+) -> None:
     verified_site_packages = str(
         dependency_guard.activate_verified_site_packages(
             dependency_receipt
         )
     )
     if verified_site_packages not in sys.path:
-        raise RuntimeError(
-            "verified site-packages was not activated"
-        )
+        raise RuntimeError("verified site-packages was not activated")
     repo_path = str(REPO_ROOT)
     while repo_path in sys.path:
         sys.path.remove(repo_path)
     site_index = sys.path.index(verified_site_packages)
     sys.path.insert(site_index, repo_path)
+
+
+def _verify_and_activate_dependencies_fresh(
+    lock_path: Path,
+) -> tuple[ModuleType, dict[str, object]]:
+    dependency_guard = _load_dependency_guard()
+    dependency_guard.require_current_windows_runtime()
+    dependency_receipt = dependency_guard.verify_installed_lock(lock_path)
+    _activate_dependency_paths(dependency_guard, dependency_receipt)
     return dependency_guard, dependency_receipt
+
+
+def _start_dependency_session(lock_path: Path) -> _DependencySession:
+    global _ACTIVE_DEPENDENCY_SESSION
+    if _ACTIVE_DEPENDENCY_SESSION is not None:
+        raise RuntimeError("dependency session is already active")
+    normalized_lock = lock_path.resolve(strict=True)
+    dependency_guard, dependency_receipt = (
+        _verify_and_activate_dependencies_fresh(normalized_lock)
+    )
+    verified_at_utc = datetime.now(timezone.utc).isoformat(
+        timespec="microseconds"
+    ).replace("+00:00", "Z")
+    full_receipt_sha256 = _canonical_sha256(dependency_receipt)
+    session_claim = {
+        "schema_version": DEPENDENCY_SESSION_SCHEMA_VERSION,
+        "verified_at_utc": verified_at_utc,
+        "lock_sha256": dependency_receipt.get("lock_sha256"),
+        "installed_environment_sha256": dependency_receipt.get(
+            "installed_environment_sha256"
+        ),
+        "full_dependency_receipt_sha256": full_receipt_sha256,
+    }
+    session = _DependencySession(
+        guard=dependency_guard,
+        lock_path=normalized_lock,
+        full_receipt=dict(dependency_receipt),
+        full_receipt_sha256=full_receipt_sha256,
+        session_id=_canonical_sha256(session_claim),
+        verified_at_utc=verified_at_utc,
+    )
+    _ACTIVE_DEPENDENCY_SESSION = session
+    return session
+
+
+def _clear_dependency_session() -> None:
+    global _ACTIVE_DEPENDENCY_SESSION
+    _ACTIVE_DEPENDENCY_SESSION = None
+
+
+def _verify_and_activate_dependencies(
+    lock_path: Path,
+) -> tuple[ModuleType, dict[str, object]]:
+    session = _ACTIVE_DEPENDENCY_SESSION
+    if session is None:
+        return _verify_and_activate_dependencies_fresh(lock_path)
+    normalized_lock = lock_path.resolve(strict=True)
+    if normalized_lock != session.lock_path:
+        raise RuntimeError("dependency session lock binding mismatch")
+    session.guard.require_current_windows_runtime()
+    if session.full_receipt_pending:
+        session.full_receipt_pending = False
+        receipt = dict(session.full_receipt)
+        receipt["dependency_session"] = {
+            "schema_version": DEPENDENCY_SESSION_SCHEMA_VERSION,
+            "dependency_session_id": session.session_id,
+            "verified_at_utc": session.verified_at_utc,
+            "full_dependency_receipt_sha256": (
+                session.full_receipt_sha256
+            ),
+        }
+    else:
+        lock_receipt = session.guard.validate_windows_dependency_lock(
+            normalized_lock
+        )
+        for field in ("lock_sha256", "install_manifest_sha256"):
+            if lock_receipt.get(field) != session.full_receipt.get(field):
+                raise RuntimeError(
+                    f"dependency session {field} binding drift"
+                )
+        receipt = {
+            "schema_version": (
+                DEPENDENCY_SESSION_REFERENCE_SCHEMA_VERSION
+            ),
+            "dependency_session_id": session.session_id,
+            "verified_at_utc": session.verified_at_utc,
+            "full_dependency_receipt_sha256": (
+                session.full_receipt_sha256
+            ),
+            "installed_environment_sha256": session.full_receipt[
+                "installed_environment_sha256"
+            ],
+            "lock_file": lock_receipt["lock_file"],
+            "lock_sha256": lock_receipt["lock_sha256"],
+            "install_manifest_sha256": lock_receipt[
+                "install_manifest_sha256"
+            ],
+            "verification_mode": (
+                "LOADED_PROCESS_SESSION_WITH_LOCK_REVALIDATION"
+            ),
+        }
+    _activate_dependency_paths(session.guard, session.full_receipt)
+    return session.guard, receipt
 
 
 def _record_startup_guard(
@@ -511,8 +650,170 @@ def _finalize_invocation(
     return int(exit_code)
 
 
+def _worker_contract_id(
+    candidate_id: str,
+    profile_config: Path,
+) -> str:
+    candidate = _candidate_id(candidate_id)
+    if candidate != "phillip-commodity":
+        raise RuntimeError(
+            "bounded worker is approved only for phillip-commodity"
+        )
+    tracked = _tracked_repo_file(profile_config)
+    try:
+        profile_module = _load_local_module(
+            "_ai_scalper_broker_evidence_profile",
+            "live_runtime/broker_evidence_profile.py",
+        )
+        profile = profile_module.load_broker_evidence_profile(
+            tracked,
+            candidate,
+            require_registration_enabled=True,
+        )
+    except Exception as exc:
+        raise RuntimeError("worker profile configuration is invalid") from exc
+    contract_id = str(profile.contract_id)
+    if contract_id != "phillip-commodity-window-01-diagnostic-v3":
+        raise RuntimeError("worker contract must use the immutable v3 namespace")
+    return contract_id
+
+
+def _worker_one_shot_argv(args: argparse.Namespace) -> list[str]:
+    values = [
+        "--candidate",
+        args.candidate,
+        "--profile-config",
+        str(args.profile_config),
+        "--lock",
+        str(args.lock),
+        "--artifact-root",
+        str(args.artifact_root),
+        "--journal",
+        str(args.journal),
+        "--audit-export-dir",
+        str(args.audit_export_dir),
+        "--minimum-free-bytes",
+        str(args.minimum_free_bytes),
+        "--heartbeat-stale-seconds",
+        str(args.heartbeat_stale_seconds),
+    ]
+    if args.terminal_path is not None:
+        values.extend(("--terminal-path", str(args.terminal_path)))
+    return values
+
+
+def _next_worker_boundary(now_epoch_seconds: float) -> float:
+    shifted = now_epoch_seconds - WORKER_CYCLE_OFFSET_SECONDS
+    boundary_index = int(shifted // WORKER_CYCLE_SECONDS) + 1
+    return (
+        boundary_index * WORKER_CYCLE_SECONDS
+        + WORKER_CYCLE_OFFSET_SECONDS
+    )
+
+
+def _run_worker_loop(
+    run_once: Callable[[], int],
+    *,
+    duration_seconds: float,
+    wall_time: Callable[[], float] = time.time,
+    monotonic: Callable[[], float] = time.monotonic,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> int:
+    started = monotonic()
+    deadline = started + duration_seconds
+    result = int(run_once())
+    if result != 0:
+        return result
+    while True:
+        remaining_runtime = deadline - monotonic()
+        if remaining_runtime <= 0:
+            print("Shadow worker: COMPLETED_BOUNDED_SESSION")
+            print("Order capability: DISABLED")
+            return 0
+        target = _next_worker_boundary(wall_time())
+        if target - wall_time() >= remaining_runtime:
+            print("Shadow worker: COMPLETED_BOUNDED_SESSION")
+            print("Order capability: DISABLED")
+            return 0
+        while True:
+            remaining = target - wall_time()
+            if remaining <= 0:
+                break
+            if deadline - monotonic() <= 0:
+                print("Shadow worker: COMPLETED_BOUNDED_SESSION")
+                print("Order capability: DISABLED")
+                return 0
+            sleeper(min(remaining, 30.0))
+        scheduled_at = datetime.fromtimestamp(
+            target,
+            tz=timezone.utc,
+        ).isoformat(timespec="seconds").replace("+00:00", "Z")
+        print("Shadow worker scheduled cycle UTC: " + scheduled_at)
+        result = int(run_once())
+        if result != 0:
+            print("Shadow worker: HOLD")
+            print("Reason: CHILD_CYCLE_NONZERO")
+            print(f"Child exit code: {result}")
+            print("Order capability: DISABLED")
+            return result
+
+
+def _run_worker(args: argparse.Namespace) -> int:
+    one_shot_argv = _worker_one_shot_argv(args)
+    worker_started = time.monotonic()
+    try:
+        contract_id = _worker_contract_id(
+            args.candidate,
+            args.profile_config,
+        )
+        with ShadowWorkerFence(args.artifact_root, contract_id):
+            _start_dependency_session(args.lock)
+            elapsed_seconds = time.monotonic() - worker_started
+            remaining_seconds = (
+                float(args.worker_duration_seconds) - elapsed_seconds
+            )
+            if remaining_seconds <= 0:
+                raise RuntimeError(
+                    "dependency verification exhausted bounded worker lifetime"
+                )
+            print("Shadow worker: STARTED")
+            print("Contract: " + contract_id)
+            print(
+                "Cycle cadence: 60-second boundary + "
+                f"{WORKER_CYCLE_OFFSET_SECONDS}s"
+            )
+            print(
+                "Bounded duration seconds: "
+                + str(args.worker_duration_seconds)
+            )
+            print(
+                "Dependency verification elapsed seconds: "
+                + f"{elapsed_seconds:.3f}"
+            )
+            print("Order capability: DISABLED")
+            return _run_worker_loop(
+                lambda: main(one_shot_argv),
+                duration_seconds=remaining_seconds,
+            )
+    except ShadowCycleAlreadyRunning:
+        print("Shadow worker: BUSY")
+        print("Reason: SHADOW_WORKER_ALREADY_RUNNING")
+        print("Order capability: DISABLED")
+        return 3
+    except Exception as exc:
+        print("Shadow worker: HOLD")
+        print("Reason: SHADOW_WORKER_STARTUP_FAILED")
+        print(f"Worker failure detail: {type(exc).__name__}")
+        print("Order capability: DISABLED")
+        return 2
+    finally:
+        _clear_dependency_session()
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run one broker read-only shadow cycle")
+    parser = argparse.ArgumentParser(
+        description="Run one broker read-only shadow cycle or bounded worker"
+    )
     parser.add_argument("--candidate", default="xm")
     parser.add_argument(
         "--profile-config",
@@ -564,6 +865,20 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Read the local heartbeat/status projection without loading MT5",
     )
+    parser.add_argument(
+        "--worker",
+        action="store_true",
+        help=(
+            "Run a bounded persistent process with one full installed-"
+            "environment verification and M15 cycle attempts"
+        ),
+    )
+    parser.add_argument(
+        "--worker-duration-seconds",
+        type=int,
+        default=0,
+        help="Required bounded worker lifetime; maximum 86400 seconds",
+    )
     args = parser.parse_args(argv)
     try:
         args.candidate = _candidate_id(args.candidate)
@@ -595,6 +910,33 @@ def main(argv: list[str] | None = None) -> int:
         if args.audit_export_dir is not None
         else args.journal.parent / "audit_exports"
     )
+    if args.worker:
+        if args.status_only:
+            print("Shadow worker: HOLD")
+            print("Reason: WORKER_STATUS_MODE_CONFLICT")
+            print("Order capability: DISABLED")
+            return 2
+        if args.candidate == "xm":
+            print("Shadow worker: HOLD")
+            print("Reason: WORKER_REQUIRES_BROKER_NEUTRAL_CANDIDATE")
+            print("Order capability: DISABLED")
+            return 2
+        if not (
+            MIN_WORKER_DURATION_SECONDS
+            <= args.worker_duration_seconds
+            <= MAX_WORKER_DURATION_SECONDS
+        ):
+            print("Shadow worker: HOLD")
+            print("Reason: WORKER_DURATION_INVALID")
+            print("Order capability: DISABLED")
+            return 2
+        args.audit_export_dir = audit_export_directory
+        return _run_worker(args)
+    if args.worker_duration_seconds != 0:
+        print("Shadow cycle: HOLD")
+        print("Reason: WORKER_DURATION_WITHOUT_WORKER")
+        print("Order capability: DISABLED")
+        return 2
 
     runtime_key, invocation_namespace = _operational_runtime_binding(
         args.candidate

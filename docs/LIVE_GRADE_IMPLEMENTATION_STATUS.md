@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-25 menjalankan **1.565 test** tanpa
+Validasi lokal terakhir pada 2026-07-25 menjalankan **1.575 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac. Itu adalah
 software regression evidence, bukan Windows host acceptance, broker-forward
 evidence, atau izin trading.
@@ -91,7 +91,7 @@ tetap fail-closed tanpa reviewed external runtime.
 |---|---|---|
 | 1. Baseline terkunci | Selesai secara lokal | Seluruh safety lock terjaga; mutable CSV market cache dan legacy JSON runtime sudah dikeluarkan dari release source. Atomic five-role builder sekarang mengikat decision, execution, status monitor, read-only shadow, dan configured-release tooling dari satu clean commit/tree. Real clean-repository build lokal dan independent byte-for-byte rebuild lulus; exact Windows candidate baru masih wajib dibangun setelah commit. |
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, byte-derived regulatory review package with two independent HMAC approvals, byte-derived pre-window base-calendar review with a separate human HMAC approval, prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector dengan mandatory exact-terminal binding tersedia. |
-| 3. Broker read-only shadow | Phillip Commodity v1 registered but empty; v2 remediation pending Windows registration | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip Commodity sanitized discovery-v3, signed regulatory/calendar reviews, dan registration gate telah disetujui. Contract v1 berhasil diregistrasikan pada exact Windows commit tetapi first probe HOLD sebelum evidence append karena legacy XM expert-flag policy; v1 tetap immutable dan kosong. Source lokal menyiapkan namespace v2 dengan investor-login policy yang tetap mutation-locked. Phillip FX tetap registration-disabled. FINEX tidak dipakai untuk observasi baru. |
+| 3. Broker read-only shadow | Phillip Commodity v2 proof verified; deadline-safe immutable v3 worker pending Windows registration/proof | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip Commodity sanitized discovery-v3, signed regulatory/calendar reviews, dan registration gate telah disetujui. Contract v1 tetap immutable/kosong setelah legacy expert-flag HOLD. Contract v2 berhasil diregistrasikan dan pre-window cycle membuktikan HMAC source chain, exact terminal, runtime `HEALTHY`, serta `IDLE` tanpa order. Timestamp proof juga mengukur startup sekitar 202,635 detik—lebih panjang dari append grace 60 detik—karena full installed-environment hash per proses. Source lokal kini menyiapkan namespace v3 dengan bounded persistent worker, single-worker fence, one-full-hash session, per-child lock revalidation, dan cadence satu menit. Phillip FX tetap registration-disabled. FINEX tidak dipakai untuk observasi baru. |
 | 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, bounded Windows composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, non-mutating readiness report, deny-only pre-manual entry verifier, dan exact configured-release admission tersedia. Sembilan signed gate pra-run, review aktivasi manual-demo, serta sepuluh order demo belum selesai. |
 | 5. Demo-auto soak | Local three-service activation foundation and provider-pack boundaries complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision/execution/status-monitor releases, read-only shadow publisher release, deny-only gate catalog, dan atomic five-role base-suite manifest tersedia. Decision, Execution, dan Status Monitor kini memiliki exact provider foundation, deterministic four-file pack generator/validator, shared read-only Credential Manager/trusted-clock primitive, dan immutable suite-bound configured candidate tanpa build-time provider effect. Execution mengikat 46 port; exact `--materialize-only` probe kini tersedia dan berhenti sebelum bootstrap/MT5/runner, tetapi runtime Windows eksternal serta receipt aktual belum ada dan default generated factory tetap fail-closed. Provider conformance, configured-release builder/verifier, exact three-ZIP admission, production decision loader, external status-monitor loader/runner, deny-only provider packet, serta offline evidence-input assembler juga tersedia. Configured build wajib mengikat exact role di satu five-role suite; admission memverifikasi ulang kelima ZIP/sidecar dan menolak configured release legacy atau mixed-suite. Provider-conformance v2 menghapus siklus future-admission dan mengikat operations plan/review sebelum signed observations serta admission. Provider packet hanya dapat menjadi `source_evidence_sha256` dengan independent `validation_receipt_sha256`, dan tetap `provider_accepted=false`. Exact Windows builds/candidates, externally reviewed Execution runtime hooks and provider state, external key/CAS/latch/WORM/MT5 custody, signed acceptance observations, launcher issuance, exact Windows task/ACL activation, policy approval/unlock, sepuluh manual-demo lifecycle, serta actual soak evidence belum ada. |
 | 6. XAUUSD live canary | Not started | Dormant XAUUSD-only symbol scope sudah tersedia, tetapi central live lock, execution-policy approval, promotion evidence/permit/soak, dan 50 closed live trades belum ada. |
@@ -508,8 +508,17 @@ BTCUSD = shadow-only
     hanya ketika account/terminal trading tetap false dan trade API disabled.
     Status/audit v2 juga memakai validated candidate runtime key serta
     candidate-prefixed invocation filename dan menolak journal dengan runtime
-    namespace berbeda; XM legacy tetap backward-compatible.
-    Belum ada successful v2 cycle atau broker evidence append.
+    namespace berbeda; XM legacy tetap backward-compatible. Exact Windows v2
+    proof sudah berhasil dengan authenticated chain from genesis, runtime
+    `HEALTHY`, dan cycle `IDLE`; belum ada broker evidence append karena masih
+    pre-window. Proof timestamp mengungkap startup-to-cycle sekitar 202,635
+    detik, sementara append grace hanya 60 detik. Immutable v3 remediation
+    menambahkan bounded persistent worker: full environment di-hash sekali per
+    proses, child berikutnya memvalidasi ulang lock/install-manifest dan
+    membawa compact HMAC-bound session reference, cycle dicoba setiap menit
+    detik `02`, worker/process fence terpisah mencegah overlap, dan setiap
+    child nonzero menghentikan worker fail-closed. V3 tetap order-disabled dan
+    wajib diregistrasikan/dibuktikan sebelum collection terjadwal.
     Loop broker-tick diagnostic non-promotional juga sudah tersedia.
     Periodic broker reconciliation supervisor lokal kini memiliki durable
     lease/fence, startup reconciliation, hash-chain receipt, dan fail-closed
@@ -622,10 +631,12 @@ eksternal belum terpenuhi.
    current-Japan eligibility tetap belum disetujui.
    Phillip Securities Japan adalah candidate path untuk operasi saat ini:
    exact demo lanes, signed regulatory/calendar review, dan manual activation
-   profile `phillip-commodity` sudah terikat. Immutable Commodity v1 sudah
-   diregistrasikan tetapi kosong dan dihentikan sebelum evidence append oleh
-   policy mismatch. Namespace v2 harus diregistrasikan dari clean remediation
-   commit dan dibuktikan dengan pre-window read-only cycle;
+   profile `phillip-commodity` sudah terikat. Immutable Commodity v1 tetap
+   kosong. Namespace v2 sudah diregistrasikan dan pre-window proof-nya
+   terverifikasi, tetapi tidak dipakai untuk scheduled append karena latency
+   full-environment verification melebihi deadline. Namespace v3 bounded
+   worker harus diregistrasikan dari clean commit, dibuktikan dengan minimal
+   dua child invocation, lalu dipasang sebagai read-only scheduled task;
    `phillip-fx` tetap menunggu review dan activation lane-nya sendiri. XM
    Window 02 tetap tidak boleh dijalankan.
    Setiap kandidat

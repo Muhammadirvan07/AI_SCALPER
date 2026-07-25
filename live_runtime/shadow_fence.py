@@ -15,25 +15,33 @@ _PROCESS_GUARD = threading.Lock()
 _PROCESS_OWNERS: dict[str, object] = {}
 
 
-class ShadowCycleFence:
-    """Hold one persistent kernel lock for the full read-only shadow cycle.
+class _ShadowFence:
+    """Hold one persistent kernel lock for a read-only shadow boundary.
 
     The lock file is never deleted.  Ownership is represented only by the
     kernel lock, so an interpreter or host crash releases it automatically.
     """
 
-    def __init__(self, artifact_root: str | Path, contract_id: str) -> None:
+    def __init__(
+        self,
+        artifact_root: str | Path,
+        contract_id: str,
+        *,
+        lock_name: str,
+        owner_label: str,
+    ) -> None:
         root = Path(artifact_root)
         contract_directory = root / "forward" / str(contract_id)
         if contract_directory.is_symlink():
             raise ShadowCycleAlreadyRunning("shadow contract path cannot be a symlink")
         if not contract_directory.is_dir():
             raise ShadowCycleAlreadyRunning("shadow contract directory is unavailable")
-        self.path = (contract_directory / ".shadow-cycle.lock").resolve()
+        self.path = (contract_directory / lock_name).resolve()
         try:
             self.path.relative_to(contract_directory.resolve())
         except ValueError as exc:
             raise ShadowCycleAlreadyRunning("shadow lock escaped contract directory") from exc
+        self._owner_label = owner_label
         self._identity = str(self.path)
         self._owner_token = object()
         self._descriptor: int | None = None
@@ -45,7 +53,7 @@ class ShadowCycleFence:
         with _PROCESS_GUARD:
             if self._identity in _PROCESS_OWNERS:
                 raise ShadowCycleAlreadyRunning(
-                    "another shadow cycle already owns this evidence contract"
+                    f"another shadow {self._owner_label} already owns this evidence contract"
                 )
             self._acquire_os_lock()
             _PROCESS_OWNERS[self._identity] = self._owner_token
@@ -76,7 +84,7 @@ class ShadowCycleFence:
         except (BlockingIOError, OSError) as exc:
             os.close(descriptor)
             raise ShadowCycleAlreadyRunning(
-                "another shadow cycle already owns this evidence contract"
+                f"another shadow {self._owner_label} already owns this evidence contract"
             ) from exc
         self._descriptor = descriptor
 
@@ -104,7 +112,7 @@ class ShadowCycleFence:
                     os.close(descriptor)
             self._acquired = False
 
-    def __enter__(self) -> ShadowCycleFence:
+    def __enter__(self) -> _ShadowFence:
         self.acquire()
         return self
 
@@ -118,4 +126,32 @@ class ShadowCycleFence:
             pass
 
 
-__all__ = ["ShadowCycleAlreadyRunning", "ShadowCycleFence"]
+class ShadowCycleFence(_ShadowFence):
+    """Hold the per-cycle fence used around one evidence append attempt."""
+
+    def __init__(self, artifact_root: str | Path, contract_id: str) -> None:
+        super().__init__(
+            artifact_root,
+            contract_id,
+            lock_name=".shadow-cycle.lock",
+            owner_label="cycle",
+        )
+
+
+class ShadowWorkerFence(_ShadowFence):
+    """Hold a process-lifetime fence for one persistent shadow worker."""
+
+    def __init__(self, artifact_root: str | Path, contract_id: str) -> None:
+        super().__init__(
+            artifact_root,
+            contract_id,
+            lock_name=".shadow-worker.lock",
+            owner_label="worker",
+        )
+
+
+__all__ = [
+    "ShadowCycleAlreadyRunning",
+    "ShadowCycleFence",
+    "ShadowWorkerFence",
+]

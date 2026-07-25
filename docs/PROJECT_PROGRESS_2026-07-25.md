@@ -300,6 +300,54 @@ Writer sekarang menetapkan `newline="\n"` dan `.gitattributes` memaksa LF
 untuk seluruh lock, hashed requirements, install manifest, dan dependency
 SBOM yang terikat hash.
 
+## Commodity v2 proof dan immutable v3 deadline remediation
+
+Exact Windows v2 registration dan pre-window proof sudah selesai:
+
+```text
+contract_id = phillip-commodity-window-01-diagnostic-v2
+contract_payload_sha256 =
+bd3c98736d661813b111bfba8c91aa14c2e168b67bb556964d7a050f1c9cbc8f
+build_identity_sha256 =
+58a432bbf3b1352d97cf1e3bfaa723136732cfab03bd289653df10a30c5d88d9
+runtime_key = phillip-commodity-broker-shadow-v1
+source_chain_from_genesis = true
+runtime_state = HEALTHY
+cycle_status = IDLE
+authenticity = HMAC_SHA256
+order_capability = DISABLED
+live_allowed = false
+```
+
+Proof tersebut memastikan remediation investor-login dan candidate namespace
+benar, tetapi timestamp-nya juga menemukan gap operasional baru. Startup
+invocation `2026-07-25T14:19:15.605479Z` baru mencapai cycle receipt pada
+`2026-07-25T14:22:38.240694Z`, sekitar 202,635 detik. Full verification
+ribuan manifest, metadata, dan installed-environment files dijalankan ulang
+pada setiap proses, sedangkan contract hanya memberi append grace 60 detik.
+Menjadwalkan one-shot setiap menit karena itu tidak truthful untuk collection
+deadline.
+
+V2 tetap immutable dan tidak diubah. Remediation lokal memajukan profile ke
+`phillip-commodity-window-01-diagnostic-v3` dan menambahkan bounded persistent
+worker pada entry point broker yang sama:
+
+1. process-lifetime worker fence terpisah dari per-cycle fence;
+2. full installed-environment hash tepat sekali per bounded process;
+3. full receipt pada child pertama;
+4. exact dependency-lock/install-manifest revalidation dan compact
+   same-process reference pada child berikutnya;
+5. one-shot invocation setiap UTC minute di detik `02`;
+6. explicit duration 900–86.400 detik dan stop nonzero pada child
+   `HOLD`/`BUSY`;
+7. total duration dihitung sejak worker startup, termasuk full verification;
+8. worker hanya menerima registered `phillip-commodity` v3 profile.
+
+Tidak ada order API atau safety unlock yang ditambahkan. V3 masih harus
+melewati exact Windows clean-pull, immutable contract registration, minimal
+dua-child proof, measured cached-child latency, dan authenticated audit
+verification sebelum Task Scheduler boleh dipasang.
+
 ## Bukti lokal
 
 - Shared-provider-primitives spec validator: `98/100`, grade A, nol error.
@@ -335,12 +383,15 @@ SBOM yang terikat hash.
   optimized.
 - Investor-login/collector/dependency/profile/operational-store focused
   regression setelah remediation v2: `127/127 PASS` normal dan optimized.
+- Bounded-worker/dependency-session/fence/collector focused regression:
+  `94/94 PASS` normal dan optimized.
 - Candidate-scoped operational namespace/audit regression: `28/28 PASS`
   normal dan optimized.
 - Full project regression termasuk registration dan exact-terminal
-  hardening serta remediation v2: `1.565/1.565 PASS` normal.
+  hardening serta bounded-worker v3 remediation:
+  `1.575/1.575 PASS` normal.
 - Full tracked-project regression dengan optimization enabled:
-  `1.565/1.565 PASS`.
+  `1.575/1.575 PASS`.
 - Focused post-activation evidence integration regression:
   `100/100 PASS`.
 - Exact-terminal collector dan broker evidence CLI regression:
@@ -383,31 +434,33 @@ Software foundation dan packaging lokal sudah cukup untuk membuat candidate
 baru. Demo-auto soak belum boleh dimulai hanya karena test lokal hijau.
 Urutan berikutnya:
 
-1. commit/push remediation investor-login, contract namespace v2, dan LF
-   portability tanpa direktori dashboard;
-2. clean pull commit baru pada Windows, rebuild exact isolated release
-   wheelhouse/venv, lalu register immutable Commodity contract v2 memakai
+1. commit/push bounded-worker remediation dan immutable Commodity namespace
+   v3 tanpa direktori dashboard;
+2. clean pull commit baru pada Windows, verify exact isolated dependency
+   environment, lalu register immutable Commodity contract v3 memakai
    discovery, plan, calendar, key, dan frozen snapshot yang sama;
-3. jalankan satu pre-window v2 proof cycle dengan journal/audit directory baru,
-   lalu mulai read-only Commodity evidence collection pada eligible M15
-   boundary;
-4. build ulang atomic five-role suite dari commit baru dan verifikasi SHA-256
+3. jalankan bounded pre-window v3 proof dengan journal/audit directory baru,
+   verifikasi minimal dua child receipt dan cached-child latency di bawah
+   append grace, lalu install read-only worker Task Scheduler;
+4. mulai Commodity evidence collection pada eligible M15 boundary dan
+   mirror setiap authenticated audit pair ke off-host immutable storage;
+5. build ulang atomic five-role suite dari commit baru dan verifikasi SHA-256
    serta suite manifest;
-5. siapkan canonical secret-free Decision, Execution, dan Status Monitor
+6. siapkan canonical secret-free Decision, Execution, dan Status Monitor
    provider input dari exact reviewed Windows custody paths/key fingerprints;
-6. generate/validate ketiga provider pack dan assemble/validate ketiga
+7. generate/validate ketiga provider pack dan assemble/validate ketiga
    immutable configured candidate;
-7. provision externally reviewed Execution provider state/hooks pada Windows,
+8. provision externally reviewed Execution provider state/hooks pada Windows,
    jalankan exact RSA-bound `--materialize-only` probe, lalu buktikan restart
    behavior tanpa membuka policy;
-8. verifikasi ketiga configured identity dan buat operations plan/review,
+9. verifikasi ketiga configured identity dan buat operations plan/review,
    provider-conformance v2, serta independent validation receipt;
-9. kumpulkan sembilan signed pre-manual observations lalu luluskan exact
+10. kumpulkan sembilan signed pre-manual observations lalu luluskan exact
    configured-release admission;
-10. jalankan 10 controlled manual-demo lifecycles dengan review manusia;
-11. setelah hasil manual-demo diterima, lakukan demo-auto activation review
+11. jalankan 10 controlled manual-demo lifecycles dengan review manusia;
+12. setelah hasil manual-demo diterima, lakukan demo-auto activation review
     terpisah;
-12. baru mulai demo-auto soak 30 hari, 50 broker-reconciled closed fills, dan
+13. baru mulai demo-auto soak 30 hari, 50 broker-reconciled closed fills, dan
    minimal 20 XAUUSD closed fills.
 
 Live trading tetap tahap sesudah soak, statistical lane gates, failure drills,

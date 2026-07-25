@@ -44,8 +44,8 @@ dimodifikasi.
 
 | Check | Result |
 |---|---|
-| Full Python regression including investor-login remediation, factory materialization, registration provenance, and terminal-binding probes | `1,565 / 1,565 PASS` |
-| Full regression with optimization enabled | `1,565 / 1,565 PASS` |
+| Full Python regression including bounded-worker v3 remediation, factory materialization, registration provenance, and terminal-binding probes | `1,575 / 1,575 PASS` |
+| Full regression with optimization enabled | `1,575 / 1,575 PASS` |
 | Investor-login/collector/dependency/profile/operational-store focused regression | `127 / 127 PASS` in both modes |
 | Candidate-scoped operational namespace/audit regression | `28 / 28 PASS` in both modes |
 | Focused post-activation evidence integration regression | `100 / 100 PASS` |
@@ -71,6 +71,7 @@ dimodifikasi.
 | Decision-provider-pack spec validator | `100 / 100`, grade A, zero errors/warnings |
 | Atomic suite acceptance/adversarial tests | `19 / 19 PASS` in both modes |
 | Suite-binding/provider-v2 focused Windows tests | `95 / 95 PASS` in both modes |
+| Bounded-worker/dependency-session/fence/collector focused tests | `94 / 94 PASS` in both modes |
 | Concurrent activation/packaging regression | `155 / 155 PASS` per normal and optimized process |
 | Parallel dormant demo-auto fake-adapter acceptance | `12 / 12 FILLED`; account fence isolated per fixture |
 | Provider-conformance v2 spec validator | `100 / 100`, grade A, zero errors/warnings |
@@ -214,18 +215,33 @@ checks remain real blockers.
     binds the operational status/audit filename to the exact broker namespace,
     rejects cross-namespace journal reuse, and forces LF for all hash-bound
     dependency artifacts.
+33. Exact Windows v2 registration and its authenticated pre-window proof now
+    pass: the chain verifies from genesis, the runtime is `HEALTHY`, the cycle
+    is `IDLE`, and order capability remains disabled. The proof timestamps,
+    however, measure approximately 202.635 seconds from invocation start to
+    cycle receipt because every one-shot process rehashes the complete
+    installed environment. That cannot reliably meet the contract's 60-second
+    append grace. V2 therefore remains immutable and is not retrofitted. The
+    v3 remediation uses a bounded Commodity-only persistent worker, a distinct
+    process-lifetime kernel fence, one full dependency hash per process,
+    per-child lock/install-manifest revalidation, HMAC-bound compact session
+    references, and one-minute child cadence. Any child failure stops the
+    worker nonzero without order authority.
 
 ## Remaining blockers
 
-1. The investor-login/LF remediation and Commodity v2 contract namespace must
-   be committed, pulled into a clean exact Windows CPython 3.12 checkout, and
-   rebuilt as a fresh isolated release identity.
-2. Phillip Commodity v1 remains immutable and has no market evidence. The
-   Windows host must register `phillip-commodity-window-01-diagnostic-v2`
-   before the observation start, using the already signed discovery,
-   plan/calendar, evidence key, and valid frozen snapshot, then prove one
-   pre-window read-only cycle using a new journal and audit directory. This
-   registration has no order authority; Phillip FX remains disabled.
+1. The bounded-worker remediation and Commodity v3 contract namespace must be
+   committed, pulled into a clean exact Windows CPython 3.12 checkout, and
+   bound to a fresh build identity.
+2. Phillip Commodity v1 remains immutable and empty; v2 is registered and its
+   pre-window proof is valid but does not solve the measured deadline. The
+   Windows host must register
+   `phillip-commodity-window-01-diagnostic-v3` before the observation start
+   using the already signed discovery, plan/calendar, evidence key, and valid
+   frozen snapshot. It must then prove at least two authenticated worker child
+   invocations with a new journal/audit directory and demonstrate cached-child
+   latency below the append grace before Task Scheduler installation. This
+   path has no order authority; Phillip FX remains disabled.
 3. The exact five-role Windows suite must produce canonical secret-free
    Decision, Execution, and Status Monitor provider packs and configured
    candidates, an operations plan/review bundle,
@@ -248,6 +264,9 @@ checks remain real blockers.
 
 ## Decision
 
-The v2 remediation is suitable for an exact reviewed commit after final
-worktree review; full normal and optimized regression passed. Demo-auto and
-live remain blocked. No lock may be changed to manufacture readiness.
+The v2 proof is accepted as evidence that the investor-login/runtime-namespace
+fix works. It is not accepted as a deadline-safe scheduled collector. The v3
+bounded-worker remediation may advance only after final review plus full
+normal and optimized regression, followed by exact Windows registration and
+multi-child proof. Demo-auto and live remain blocked. No lock may be changed
+to manufacture readiness.

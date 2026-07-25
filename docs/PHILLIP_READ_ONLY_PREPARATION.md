@@ -386,3 +386,93 @@ installation directories:
 https://www.metatrader5.com/en/terminal/help/start_advanced/start. Python binds
 each child to the exact executable path using the documented `initialize(path)`
 interface: https://www.mql5.com/en/docs/python_metatrader5/mt5initialize_py.
+
+### Commodity v2 proof and bounded-worker v3
+
+The immutable v2 remediation was registered and proved successfully on the
+exact Windows release:
+
+```text
+contract_id = phillip-commodity-window-01-diagnostic-v2
+runtime_key = phillip-commodity-broker-shadow-v1
+runtime_state = HEALTHY
+cycle_status = IDLE
+source_chain_from_genesis = true
+authenticity = HMAC_SHA256
+order_capability = DISABLED
+live_allowed = false
+```
+
+That proof also exposed an operational deadline defect before any market
+evidence existed. The invocation began at
+`2026-07-25T14:19:15.605479Z`, while its successful cycle receipt was created
+at `2026-07-25T14:22:38.240694Z`: approximately 202.635 seconds later. The
+one-shot runner was hashing thousands of installed-environment files on every
+launch. A Task Scheduler invocation once per minute therefore could not
+reliably meet the contract's 60-second append grace.
+
+Contract v2 remains immutable and valid, but it must not receive evidence from
+a source revision made after registration. The bounded-worker remediation
+therefore advances Commodity to
+`phillip-commodity-window-01-diagnostic-v3`. It does not modify the discovery,
+signed plan/calendar, observation window, evidence key, symbol scope, or any
+safety flag.
+
+The v3 worker:
+
+- acquires a process-lifetime kernel fence distinct from the per-cycle fence;
+- fully verifies and hashes the installed environment once per bounded
+  process;
+- records the full dependency receipt in its first child invocation;
+- revalidates the exact dependency lock and install-manifest identity before
+  every later child invocation;
+- records an HMAC-bound compact same-process reference to the full receipt;
+- invokes the existing one-shot boundary every UTC minute at second `02`;
+- stops nonzero on any child `HOLD` or `BUSY`; and
+- accepts an explicit lifetime from 900 through 86,400 seconds only.
+
+The cache cannot survive a process restart. No worker path adds an order API,
+changes broker state, or relaxes `live_allowed=false`.
+
+After the v3 source commit is pulled into a clean Windows checkout, register
+the new immutable contract before the signed observation start. Use a new
+journal and audit directory. A bounded pre-window proof may then be run with:
+
+```powershell
+$releasePython = "C:\AI_SCALPER_PRIVATE\phillip-commodity-v3-venv\Scripts\python.exe"
+$commodityTerminal = "C:\Program Files\Phillip Securities Japan MT5 Terminal Commodity\terminal64.exe"
+$v3AuditRoot = "C:\AI_SCALPER_PRIVATE\phillip-commodity-v3-audit-exports"
+
+& $releasePython -I -S -B `
+  .\run_broker_shadow_once.py `
+  --candidate phillip-commodity `
+  --terminal-path $commodityTerminal `
+  --artifact-root .\validation_artifacts `
+  --journal .\runtime_state\shadow\phillip-commodity-shadow-cycles-v3.sqlite3 `
+  --audit-export-dir $v3AuditRoot `
+  --worker `
+  --worker-duration-seconds 900
+```
+
+The proof is acceptable only if at least two consecutive child invocations
+verify successfully, the first contains
+`broker-shadow-dependency-session-v1`, the next contains
+`broker-shadow-dependency-session-reference-v1`, the measured later-child
+latency remains below the append grace, the source chain verifies from
+genesis, and every receipt still reports order capability disabled.
+
+Only after that proof may the same command be installed as a read-only
+scheduled task. The reviewed task shape is:
+
+- run as the same logged-in Windows identity that owns the evidence key and
+  exact Phillip terminal;
+- start Monday through Friday at `06:45 JST`;
+- use `--worker-duration-seconds 84300`;
+- use Task Scheduler `IgnoreNew`;
+- disable catch-up and forced termination; and
+- export every invocation pair to off-host immutable storage.
+
+The Friday worker covers the final Saturday-morning XAU session. Monday starts
+before the published `07:00 JST` commodity open. Scheduled-task installation
+and off-host/WORM acknowledgement remain external operator actions and are not
+evidence until their exact receipts are reviewed.

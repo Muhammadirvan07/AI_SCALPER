@@ -26,6 +26,7 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
+        self.addCleanup(run_xm_shadow_once._clear_dependency_session)
         self.root = Path(self.temp.name)
         self.journal = self.root / "runtime" / "shadow.sqlite3"
         self.artifacts = self.root / "artifacts"
@@ -54,8 +55,23 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
             @staticmethod
             def verify_installed_lock(path: Path) -> dict[str, object]:
                 return {
+                    "lock_file": Path(path).name,
+                    "lock_sha256": "b" * 64,
+                    "install_manifest_sha256": "c" * 64,
                     "installed_environment_sha256": "a" * 64,
                     "hashed_file_count": 1,
+                    "site_packages": (
+                        "C:\\AI_SCALPER\\.venv\\Lib\\site-packages"
+                    ),
+                    "distribution_receipts": ({"name": "fixture"},),
+                }
+
+            @staticmethod
+            def validate_windows_dependency_lock(path: Path):
+                return {
+                    "lock_file": Path(path).name,
+                    "lock_sha256": "b" * 64,
+                    "install_manifest_sha256": "c" * 64,
                 }
 
             @staticmethod
@@ -941,7 +957,7 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
         evidence_binding = {
             "candidate_id": "phillip-commodity",
             "key_name": "phillip-commodity-window-01-v1",
-            "contract_id": "phillip-commodity-window-01-diagnostic-v2",
+            "contract_id": "phillip-commodity-window-01-diagnostic-v3",
             "config_files": (),
             "build_identity_provider": lambda: object(),
         }
@@ -1034,6 +1050,409 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
             expected_runtime_key="phillip-commodity-broker-shadow-v1",
         )
         self.assertEqual("HMAC_SHA256", verified.authenticity)
+
+    def test_dependency_session_hashes_installed_tree_once_and_revalidates_lock(self):
+        lock = self.root / "pylock.windows-cp312.toml"
+        lock.write_text("fixture", encoding="utf-8")
+        calls = {"installed": 0, "lock": 0, "activate": 0}
+        site_packages = (
+            "C:\\AI_SCALPER_PRIVATE\\release\\Lib\\site-packages"
+        )
+
+        class SessionGuard:
+            @staticmethod
+            def require_current_windows_runtime() -> None:
+                return None
+
+            @staticmethod
+            def verify_installed_lock(path):
+                calls["installed"] += 1
+                return {
+                    "lock_file": Path(path).name,
+                    "lock_sha256": "a" * 64,
+                    "install_manifest_sha256": "b" * 64,
+                    "installed_environment_sha256": "c" * 64,
+                    "site_packages": site_packages,
+                    "distribution_receipts": ({"name": "fixture"},),
+                }
+
+            @staticmethod
+            def validate_windows_dependency_lock(path):
+                calls["lock"] += 1
+                return {
+                    "lock_file": Path(path).name,
+                    "lock_sha256": "a" * 64,
+                    "install_manifest_sha256": "b" * 64,
+                }
+
+            @staticmethod
+            def activate_verified_site_packages(receipt):
+                calls["activate"] += 1
+                if site_packages not in sys.path:
+                    sys.path.append(site_packages)
+                return site_packages
+
+        with mock.patch.object(
+            run_xm_shadow_once,
+            "_load_dependency_guard",
+            return_value=SessionGuard,
+        ):
+            session = run_xm_shadow_once._start_dependency_session(lock)
+            _, first = run_xm_shadow_once._verify_and_activate_dependencies(
+                lock
+            )
+            _, second = run_xm_shadow_once._verify_and_activate_dependencies(
+                lock
+            )
+
+        self.assertEqual(1, calls["installed"])
+        self.assertEqual(1, calls["lock"])
+        self.assertEqual(3, calls["activate"])
+        self.assertEqual(
+            session.session_id,
+            first["dependency_session"]["dependency_session_id"],
+        )
+        self.assertIn("distribution_receipts", first)
+        self.assertNotIn("distribution_receipts", second)
+        self.assertEqual(
+            "broker-shadow-dependency-session-reference-v1",
+            second["schema_version"],
+        )
+        self.assertEqual("c" * 64, second["installed_environment_sha256"])
+
+    def test_dependency_session_rejects_lock_identity_drift(self):
+        lock = self.root / "pylock.windows-cp312.toml"
+        lock.write_text("fixture", encoding="utf-8")
+        site_packages = (
+            "C:\\AI_SCALPER_PRIVATE\\release\\Lib\\site-packages"
+        )
+
+        class DriftingGuard:
+            @staticmethod
+            def require_current_windows_runtime() -> None:
+                return None
+
+            @staticmethod
+            def verify_installed_lock(path):
+                return {
+                    "lock_file": Path(path).name,
+                    "lock_sha256": "a" * 64,
+                    "install_manifest_sha256": "b" * 64,
+                    "installed_environment_sha256": "c" * 64,
+                    "site_packages": site_packages,
+                    "distribution_receipts": ({"name": "fixture"},),
+                }
+
+            @staticmethod
+            def validate_windows_dependency_lock(path):
+                return {
+                    "lock_file": Path(path).name,
+                    "lock_sha256": "d" * 64,
+                    "install_manifest_sha256": "b" * 64,
+                }
+
+            @staticmethod
+            def activate_verified_site_packages(receipt):
+                if site_packages not in sys.path:
+                    sys.path.append(site_packages)
+                return site_packages
+
+        with mock.patch.object(
+            run_xm_shadow_once,
+            "_load_dependency_guard",
+            return_value=DriftingGuard,
+        ):
+            run_xm_shadow_once._start_dependency_session(lock)
+            run_xm_shadow_once._verify_and_activate_dependencies(lock)
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "lock_sha256 binding drift",
+            ):
+                run_xm_shadow_once._verify_and_activate_dependencies(lock)
+
+    def test_dependency_session_compact_receipt_remains_audit_verifiable(self):
+        output = io.StringIO()
+        guard = self.passing_guard()
+        cycle_number = {"value": 0}
+
+        def unique_idle_cycle(*args, **kwargs):
+            cycle_number["value"] += 1
+            kwargs["stage_reporter"](
+                "CONTRACT_VERIFICATION",
+                "STARTED",
+                "CONTRACT_VERIFICATION_STARTED",
+            )
+            kwargs["stage_reporter"](
+                "CONTRACT_VERIFICATION",
+                "PASS",
+                "CONTRACT_EVIDENCE_VERIFIED",
+            )
+            kwargs["pre_evidence_mutation_check"]()
+            observed_at = datetime.now(timezone.utc)
+            cycle_id = f"xm-shadow-cycle-session-{cycle_number['value']}"
+            symbol_status = {
+                "AUDUSD": "NOT_DUE",
+                "EURUSD": "NOT_DUE",
+                "USDJPY": "NOT_DUE",
+                "XAUUSD": "NOT_DUE",
+            }
+            payload_sha256 = kwargs["store"].persist_fake(
+                cycle_id=cycle_id,
+                observed_at=observed_at,
+                status="IDLE",
+                symbol_status=symbol_status,
+            )
+            return SimpleNamespace(
+                cycle_id=cycle_id,
+                observed_at=observed_at,
+                status="IDLE",
+                symbol_status=symbol_status,
+                failures=(),
+                payload_sha256=payload_sha256,
+            )
+
+        with (
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_dependency_guard",
+                return_value=guard,
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_runtime_components",
+                return_value=self.runtime_components(run=unique_idle_cycle),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_mt5_module",
+                return_value=SimpleNamespace(
+                    initialize=lambda: True,
+                    shutdown=lambda: None,
+                ),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "check_minimum_free_disk",
+                return_value={
+                    "free_bytes": 2_000_000_000,
+                    "minimum_free_bytes": 0,
+                    "status": "PASS",
+                },
+            ),
+            redirect_stdout(output),
+        ):
+            run_xm_shadow_once._start_dependency_session(
+                Path(run_xm_shadow_once.__file__)
+                .resolve()
+                .with_name("pylock.windows-cp312.toml")
+            )
+            first = run_xm_shadow_once.main(self.runner_args())
+            second = run_xm_shadow_once.main(self.runner_args())
+
+        self.assertEqual((0, 0), (first, second), output.getvalue())
+        with sqlite3.connect(self.journal) as connection:
+            receipts = [
+                json.loads(row[0])["dependency_receipt"]
+                for row in connection.execute(
+                    "SELECT payload_json FROM shadow_startup_guards "
+                    "ORDER BY observed_at_utc, startup_guard_id"
+                )
+            ]
+        self.assertEqual(2, len(receipts))
+        self.assertIn("distribution_receipts", receipts[0])
+        self.assertEqual(
+            "broker-shadow-dependency-session-reference-v1",
+            receipts[1]["schema_version"],
+        )
+        manifests = sorted(self.backups.glob("*.manifest.json"))
+        self.assertEqual(2, len(manifests))
+        for manifest in manifests:
+            verified = verify_audit_export_manifest(
+                manifest,
+                signing_key=b"synthetic-shadow-key-32-bytes-minimum",
+            )
+            self.assertEqual("HMAC_SHA256", verified.authenticity)
+
+    def test_worker_loop_runs_immediately_then_on_next_minute_boundary(self):
+        clock = {"wall": 1000.0, "monotonic": 0.0}
+        calls = []
+
+        def run_once():
+            calls.append(clock["wall"])
+            return 0
+
+        def sleep(seconds):
+            clock["wall"] += seconds
+            clock["monotonic"] += seconds
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = run_xm_shadow_once._run_worker_loop(
+                run_once,
+                duration_seconds=50,
+                wall_time=lambda: clock["wall"],
+                monotonic=lambda: clock["monotonic"],
+                sleeper=sleep,
+            )
+
+        self.assertEqual(0, result)
+        self.assertEqual([1000.0, 1022.0], calls)
+        self.assertIn("COMPLETED_BOUNDED_SESSION", output.getvalue())
+
+    def test_worker_loop_stops_on_first_nonzero_child(self):
+        results = iter((0, 2))
+        clock = {"wall": 1000.0, "monotonic": 0.0}
+
+        def sleep(seconds):
+            clock["wall"] += seconds
+            clock["monotonic"] += seconds
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = run_xm_shadow_once._run_worker_loop(
+                lambda: next(results),
+                duration_seconds=50,
+                wall_time=lambda: clock["wall"],
+                monotonic=lambda: clock["monotonic"],
+                sleeper=sleep,
+            )
+
+        self.assertEqual(2, result)
+        self.assertIn("CHILD_CYCLE_NONZERO", output.getvalue())
+
+    def test_worker_fences_before_hashing_and_bounds_total_lifetime(self):
+        events = []
+        observed_duration = {}
+
+        class WorkerFence:
+            def __init__(self, artifact_root, contract_id):
+                events.append(("fence-created", artifact_root, contract_id))
+
+            def __enter__(self):
+                events.append(("fence-enter",))
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                events.append(("fence-exit",))
+                return False
+
+        args = SimpleNamespace(
+            candidate="phillip-commodity",
+            profile_config=self.root / "profiles.json",
+            lock=self.root / "pylock.windows-cp312.toml",
+            artifact_root=self.artifacts,
+            journal=self.journal,
+            audit_export_dir=self.backups,
+            minimum_free_bytes=0,
+            heartbeat_stale_seconds=180,
+            terminal_path=self.root / "terminal64.exe",
+            worker_duration_seconds=900,
+        )
+
+        def dependency_session(lock):
+            events.append(("dependency", lock))
+
+        def worker_loop(run_once, *, duration_seconds):
+            events.append(("loop",))
+            observed_duration["seconds"] = duration_seconds
+            return 0
+
+        output = io.StringIO()
+        with (
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_worker_contract_id",
+                return_value=(
+                    "phillip-commodity-window-01-diagnostic-v3"
+                ),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "ShadowWorkerFence",
+                WorkerFence,
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_start_dependency_session",
+                side_effect=dependency_session,
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_run_worker_loop",
+                side_effect=worker_loop,
+            ),
+            mock.patch.object(
+                run_xm_shadow_once.time,
+                "monotonic",
+                side_effect=(100.0, 103.5),
+            ),
+            redirect_stdout(output),
+        ):
+            result = run_xm_shadow_once._run_worker(args)
+
+        self.assertEqual(0, result, output.getvalue())
+        self.assertEqual(
+            [
+                (
+                    "fence-created",
+                    self.artifacts,
+                    "phillip-commodity-window-01-diagnostic-v3",
+                ),
+                ("fence-enter",),
+                ("dependency", args.lock),
+                ("loop",),
+                ("fence-exit",),
+            ],
+            events,
+        )
+        self.assertEqual(896.5, observed_duration["seconds"])
+
+    def test_worker_contract_binding_accepts_only_registered_commodity_v3(self):
+        profile = (
+            Path(run_xm_shadow_once.__file__).resolve().parent
+            / "config"
+            / "broker_evidence_profiles.v1.json"
+        )
+        self.assertEqual(
+            "phillip-commodity-window-01-diagnostic-v3",
+            run_xm_shadow_once._worker_contract_id(
+                "phillip-commodity",
+                profile,
+            ),
+        )
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "approved only for phillip-commodity",
+        ):
+            run_xm_shadow_once._worker_contract_id("phillip-fx", profile)
+
+    def test_worker_rejects_unbounded_duration_before_dependency_effects(self):
+        terminal = self.root / "phillip-worker" / "terminal64.exe"
+        terminal.parent.mkdir()
+        terminal.write_bytes(b"fixture")
+        output = io.StringIO()
+        with (
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_dependency_guard",
+                side_effect=AssertionError("dependency guard must not load"),
+            ),
+            redirect_stdout(output),
+        ):
+            result = run_xm_shadow_once.main(
+                self.runner_args()
+                + [
+                    "--candidate",
+                    "phillip-commodity",
+                    "--terminal-path",
+                    str(terminal.resolve()),
+                    "--worker",
+                    "--worker-duration-seconds",
+                    str(run_xm_shadow_once.MAX_WORKER_DURATION_SECONDS + 1),
+                ]
+            )
+        self.assertEqual(2, result)
+        self.assertIn("WORKER_DURATION_INVALID", output.getvalue())
 
     def test_legacy_xm_omission_keeps_zero_argument_initialize(self):
         initialize = mock.Mock(return_value=True)

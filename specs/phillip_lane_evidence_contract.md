@@ -2,7 +2,7 @@
 
 **Author:** AI_SCALPER Engineering
 **Date:** 2026-07-21
-**Status:** Approved
+**Status:** Approved; bounded-worker addendum approved 2026-07-25
 **Reviewer:** Project owner through the approved Live-Grade v1 roadmap and explicit continuation request
 **Related specs:** `phillip_multi_account_binding_probe.md`, `phillip_dual_terminal_shadow.md`
 
@@ -16,10 +16,10 @@ it cannot create truthful lane-isolated discovery, calendar, or forward
 contract inputs for Phillip.
 
 The diagnostic dual shadow is already operational, but its journal is not
-promotion evidence. This feature prepares the immutable evidence pipeline for
-the two Phillip lanes without enabling registration prematurely. Exact holiday
-calendars, signed regulatory approvals, and fresh v3 discovery receipts remain
-external gates and must be supplied before a forward contract can be minted.
+promotion evidence. Commodity discovery, regulatory review, calendar review,
+and manual registration activation were subsequently completed; FX remains
+registration-disabled. Every Commodity source remediation advances to a new
+immutable contract namespace before observation begins.
 
 ## Functional Requirements
 
@@ -33,6 +33,8 @@ external gates and must be supplied before a forward contract can be minted.
 - FR-8: Phillip evidence profiles MUST remain registration-disabled until exact calendars and signed regulatory approvals are reviewed.
 - FR-9: Every generated artifact MUST retain `execution_enabled=false`, `live_allowed=false`, `safe_to_demo_auto_order=false`, and `max_lot=0.01`.
 - FR-10: Existing runtime diagnostic journals MUST NOT be modified, migrated, or counted as forward promotion evidence.
+- FR-11: A bounded persistent worker MUST run the one-shot evidence boundary every 60 seconds at a deterministic offset so the 60-second append deadline is reachable after an expensive installed-environment verification.
+- FR-12: The worker MUST use a new immutable contract and journal namespace whenever its tracked source identity changes.
 
 ## Non-Functional Requirements
 
@@ -42,6 +44,9 @@ external gates and must be supplied before a forward contract can be minted.
 - NFR-S3: Candidate, discovery, plan, calendar, and contract symbol sets MUST match exactly; silent supersets and subsets are prohibited.
 - NFR-R1: Artifact writes MUST remain create-exclusive or atomic and MUST never overwrite an existing immutable artifact.
 - NFR-R2: Existing four-symbol evidence tests and the full project test suite MUST pass without regression.
+- NFR-R3: Exactly one worker process may own a contract at a time through a crash-safe kernel fence distinct from the per-cycle fence.
+- NFR-S4: The worker MUST fully hash the installed environment once per bounded process, MUST revalidate the immutable lock contract on every child invocation, MUST bind compact child receipts to the full session receipt hash, and MUST never cache across a process restart.
+- NFR-S5: Worker duration MUST be explicit, at least 15 minutes, and no longer than 24 hours. Any child `HOLD` or `BUSY` result MUST stop the worker with a nonzero exit.
 - NFR-A1: Contract and discovery CLIs MUST print that order capability remains disabled and MUST not expose secret key material.
 
 ## Acceptance Criteria
@@ -98,6 +103,17 @@ When evidence preparation code is installed
 Then those journals are neither read as forward input nor modified
 And promotion eligibility remains false.
 
+### AC-9: Deadline-safe bounded worker (FR-11, FR-12, NFR-R3, NFR-S4, NFR-S5)
+Given a new immutable Commodity contract, journal, and exact Windows release
+When the bounded worker starts under isolated Python flags
+Then the first child invocation carries the full installed-environment receipt
+And later child invocations revalidate the lock and carry a compact
+same-process session reference
+And child invocations start on each 60-second boundary plus two seconds
+And a second worker cannot acquire the worker fence
+And any nonzero child result stops the worker without enabling order
+capability.
+
 ## Edge Cases and Error Scenarios
 
 - EC-1: Empty symbol map → Reject before account or symbol reads.
@@ -112,6 +128,9 @@ And promotion eligibility remains false.
 - EC-10: Contract symbol is not present in the frozen snapshot → Reject contract registration.
 - EC-11: Append attempts an unregistered symbol → Reject with `SYMBOL_NOT_REGISTERED`.
 - EC-12: Existing artifact path already exists → Reject without overwrite.
+- EC-13: Worker uses a legacy contract namespace, invalid duration, status-only mode, or XM compatibility lane → Reject before worker execution.
+- EC-14: A second worker owns the contract → Return `BUSY`; do not queue or run in parallel.
+- EC-15: Lock or install-manifest identity changes during a worker session → Stop `HOLD` before the next child runtime import.
 
 ## API Contracts
 
@@ -129,6 +148,13 @@ interface EvidenceShadowCycleRequest {
   candidate: "phillip-fx" | "phillip-commodity" | string;
   terminalPath: AbsolutePathToTerminal64Exe;
   artifactRoot: ImmutableEvidenceRoot;
+}
+
+interface EvidenceShadowWorkerRequest extends EvidenceShadowCycleRequest {
+  worker: true;
+  workerDurationSeconds: number; // 900..86400
+  journal: NewContractBoundSQLitePath;
+  auditExportDir: CreateExclusiveAuditDirectory;
 }
 
 interface EvidenceProfile {
@@ -185,7 +211,7 @@ interface GateFailure {
 
 ## Out of Scope
 
-- OS-1: Enabling `registration_enabled` for Phillip — deferred until signed regulatory and exact calendar attestations exist.
+- OS-1: Enabling `registration_enabled` for Phillip FX — deferred until its independent signed regulatory and exact calendar attestations exist. Commodity enablement is already a reviewed evidence-only state.
 - OS-2: Demo-auto or live order submission — excluded by the Live-Grade v1 rollout sequence.
 - OS-3: Reusing diagnostic journal history as forward evidence — prohibited because the contract must be pre-registered.
 - OS-4: Stock/index account support — not part of the v1 symbol lanes.

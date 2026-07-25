@@ -99,6 +99,8 @@ class BrokerEvidenceCLITests(unittest.TestCase):
         )
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertIn("Run one broker read-only shadow cycle", completed.stdout)
+        self.assertIn("--worker", completed.stdout)
+        self.assertIn("--worker-duration-seconds", completed.stdout)
 
     def test_discovery_gate_is_clear_without_loading_mt5(self) -> None:
         output = io.StringIO()

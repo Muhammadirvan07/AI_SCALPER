@@ -5,12 +5,24 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from live_runtime.shadow_fence import ShadowCycleAlreadyRunning, ShadowCycleFence
+from live_runtime.shadow_fence import (
+    ShadowCycleAlreadyRunning,
+    ShadowCycleFence,
+    ShadowWorkerFence,
+)
 
 
 def _try_child_fence(root: str, contract_id: str, queue) -> None:
     try:
         with ShadowCycleFence(root, contract_id):
+            queue.put("ACQUIRED")
+    except ShadowCycleAlreadyRunning:
+        queue.put("BUSY")
+
+
+def _try_child_worker_fence(root: str, contract_id: str, queue) -> None:
+    try:
+        with ShadowWorkerFence(root, contract_id):
             queue.put("ACQUIRED")
     except ShadowCycleAlreadyRunning:
         queue.put("BUSY")
@@ -44,6 +56,27 @@ class ShadowCycleFenceTests(unittest.TestCase):
                 ).is_file()
             )
 
+    def test_worker_fence_is_distinct_from_cycle_fence_and_reusable(self):
+        first_worker = ShadowWorkerFence(self.root, self.contract_id)
+        second_worker = ShadowWorkerFence(self.root, self.contract_id)
+        with first_worker:
+            with ShadowCycleFence(self.root, self.contract_id):
+                self.assertTrue(
+                    (
+                        self.root
+                        / "forward"
+                        / self.contract_id
+                        / ".shadow-worker.lock"
+                    ).is_file()
+                )
+            with self.assertRaisesRegex(
+                ShadowCycleAlreadyRunning,
+                "worker already owns",
+            ):
+                second_worker.acquire()
+        with second_worker:
+            self.assertTrue(second_worker.path.is_file())
+
     @unittest.skipIf(
         __import__("os").name == "nt",
         "fork-based cross-process drill runs on the development host",
@@ -62,6 +95,31 @@ class ShadowCycleFenceTests(unittest.TestCase):
             self.assertEqual("BUSY", queue.get(timeout=1))
         process = context.Process(
             target=_try_child_fence,
+            args=(str(self.root), self.contract_id, queue),
+        )
+        process.start()
+        process.join(timeout=5)
+        self.assertFalse(process.is_alive())
+        self.assertEqual("ACQUIRED", queue.get(timeout=1))
+
+    @unittest.skipIf(
+        __import__("os").name == "nt",
+        "fork-based cross-process drill runs on the development host",
+    )
+    def test_second_worker_process_is_busy_until_owner_exits(self):
+        context = get_context("fork")
+        queue = context.Queue()
+        with ShadowWorkerFence(self.root, self.contract_id):
+            process = context.Process(
+                target=_try_child_worker_fence,
+                args=(str(self.root), self.contract_id, queue),
+            )
+            process.start()
+            process.join(timeout=5)
+            self.assertFalse(process.is_alive())
+            self.assertEqual("BUSY", queue.get(timeout=1))
+        process = context.Process(
+            target=_try_child_worker_fence,
             args=(str(self.root), self.contract_id, queue),
         )
         process.start()

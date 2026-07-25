@@ -1,7 +1,7 @@
 # Phase 3 — Broker Read-Only Shadow
 
-Status: **FBS DIAGNOSTIC SHADOW ACTIVE / EVIDENCE GATES PENDING / XM JAPAN LEGAL-BLOCKED /
-BROKER-FORWARD DATA NOT STARTED / NOT_READY**
+Status: **PHILLIP COMMODITY V2 PROOF VERIFIED / V3 DEADLINE WORKER PENDING /
+FBS DIAGNOSTIC-ONLY / XM JAPAN LEGAL-BLOCKED / NOT_READY**
 
 Belum ada primary evidence broker yang boleh dipromosikan. FBS adalah target
 read-only diagnostic yang dipilih operator dengan binding `FBS-Demo`, akun demo
@@ -80,6 +80,36 @@ registration, dan broker-neutral one-shot collector telah tersedia secara
 lokal. Seluruhnya tetap fail-closed melalui profile
 `registration_enabled=false`; urutan aktivasi dan gate ada di
 `docs/FBS_EVIDENCE_PIPELINE.md`.
+
+## Phillip Commodity current evidence lane
+
+Phillip Commodity is the only currently registration-enabled broker-forward
+lane. Its v2 contract and authenticated pre-window proof are valid:
+`runtime_state=HEALTHY`, `cycle_status=IDLE`,
+`source_chain_from_genesis=true`, and order capability disabled. Phillip FX
+remains independently registration-disabled.
+
+The v2 timestamps measured about 202.635 seconds from process invocation to
+cycle receipt because the exact installed environment was rehashed at every
+one-shot launch. Since the evidence contract allows only 60 seconds of append
+grace, do not install the v2 one-shot command as a once-per-minute task.
+
+The reviewed remediation is a new immutable v3 contract plus the bounded
+worker documented in `docs/PHILLIP_READ_ONLY_PREPARATION.md`. Before any
+scheduled collection:
+
+1. pull the exact v3 commit into a clean Windows checkout;
+2. register `phillip-commodity-window-01-diagnostic-v3` before observation
+   start;
+3. use a new v3 journal and create-exclusive audit directory;
+4. prove at least two child invocations and verify both HMAC manifests;
+5. verify that the second child uses the compact same-process dependency
+   reference and completes inside the append grace; and
+6. only then install the bounded worker task under the exact evidence-key and
+   terminal identity.
+
+Worker failure, stale status, audit-export failure, Task Scheduler overlap, or
+loss of the exact terminal is `HOLD`. The worker does not carry an order API.
 
 ## FINEX future Indonesia preparation
 
