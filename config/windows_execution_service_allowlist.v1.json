@@ -61,6 +61,8 @@
     "live_runtime/signed_release_trust.py",
     "live_runtime/soak_tracker.py",
     "live_runtime/stage_authorization.py",
+    "live_runtime/windows_execution_provider_pack.py",
+    "live_runtime/windows_provider_primitives.py",
     "live_runtime/windows_service_entrypoint.py",
     "live_runtime/windows_service_factory_template.py",
     "pylock.windows-cp312.toml",

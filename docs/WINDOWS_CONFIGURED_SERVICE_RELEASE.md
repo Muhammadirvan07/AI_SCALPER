@@ -230,3 +230,21 @@ kemudian buat packet provider-level sesuai
 Hash packet tersebut adalah detail yang dapat direview dan ditandatangani oleh
 service owner; packet itu sendiri tetap melaporkan
 `provider_accepted=false`.
+
+Untuk Status Monitor, jangan membangun overlay secara manual. Gunakan exact
+four-file pack dan immutable candidate flow pada
+[`WINDOWS_STATUS_MONITOR_PROVIDER_PACK.md`](WINDOWS_STATUS_MONITOR_PROVIDER_PACK.md)
+serta
+[`WINDOWS_STATUS_MONITOR_CONFIGURED_CANDIDATE.md`](WINDOWS_STATUS_MONITOR_CONFIGURED_CANDIDATE.md).
+Candidate tetap membutuhkan external provider conformance sebelum dapat
+dipertimbangkan oleh pre-manual admission.
+
+Execution mengikuti aturan yang sama melalui exact four-file pack dan
+immutable candidate flow pada
+[`WINDOWS_EXECUTION_PROVIDER_PACK.md`](WINDOWS_EXECUTION_PROVIDER_PACK.md)
+serta
+[`WINDOWS_EXECUTION_CONFIGURED_CANDIDATE.md`](WINDOWS_EXECUTION_CONFIGURED_CANDIDATE.md).
+Generated factory tetap berhenti dengan
+`EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED` sampai runtime/provider Windows
+yang direview tersedia; configured candidate tidak mengubah policy atau order
+authority.

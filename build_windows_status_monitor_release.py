@@ -82,6 +82,8 @@ APPROVED_SOURCE_PATHS = frozenset(
         "live_runtime/windows_external_status_monitor_entrypoint.py",
         "live_runtime/windows_external_status_monitor_factory_template.py",
         "live_runtime/windows_base_release_suite.py",
+        "live_runtime/windows_provider_primitives.py",
+        "live_runtime/windows_status_monitor_provider_pack.py",
         "run_windows_external_status_monitor.py",
         "validate_windows_external_status_monitor.py",
     }
@@ -184,7 +186,18 @@ def _validate_monitor_source_security(
             else:
                 modules = []
             for module in modules:
-                if _is_forbidden_import(module):
+                shared_native_credential_import = (
+                    path_text
+                    == "live_runtime/windows_provider_primitives.py"
+                    and (
+                        module.casefold() == "ctypes"
+                        or module.casefold().startswith("ctypes.")
+                    )
+                )
+                if (
+                    _is_forbidden_import(module)
+                    and not shared_native_credential_import
+                ):
                     raise ReleaseBuildError(
                         "forbidden status-monitor import: "
                         f"{path_text}:{module}"

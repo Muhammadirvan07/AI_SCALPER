@@ -2,7 +2,10 @@
 
 AI_SCALPER now has a separate deterministic decision-process profile:
 `WINDOWS_DECISION_SERVICE_V1`. It is not the executor bundle and does not
-contain MT5, risk, permits, reconciliation, credentials, or order primitives.
+contain MT5, risk, permits, reconciliation, credential values/provisioning, or
+order primitives. It does include the reviewed read-only Credential Manager
+and trusted-clock foundation required by an externally accepted configured
+provider pack.
 
 ## Build
 
@@ -55,6 +58,13 @@ in the separate `WINDOWS_READ_ONLY_SHADOW_SERVICE_V1` profile. Its exact
 binding, key/account-identity custody, directory ACL, calendar receipt source,
 clock behavior, and real conformance evidence remain external provider
 responsibilities.
+
+Generic credential and clock behavior lives only in
+`live_runtime/windows_provider_primitives.py`. Decision re-exports the same
+types for source compatibility; provider implementation hashes bind both that
+exact shared file and `windows_decision_provider_pack.py`. The shared module
+has no configured targets or secret material in the base release, and neither
+build nor validate-only can read Credential Manager.
 
 The feed is runtime transport only. A valid packet is not validation evidence,
 does not make `source_aligned` or `data_fresh` semantically true, and cannot

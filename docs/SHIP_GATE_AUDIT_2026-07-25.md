@@ -6,6 +6,12 @@
 LOCAL_SOURCE_GATE = PASS
 ATOMIC_FIVE_ROLE_BUILD = PASS_LOCALLY
 DECISION_PROVIDER_PACK = PASS_LOCALLY_EXTERNAL_ACCEPTANCE_REQUIRED
+SHARED_WINDOWS_PROVIDER_PRIMITIVES = PASS_LOCALLY
+DECISION_CONFIGURED_CANDIDATE = PASS_LOCALLY_EXTERNAL_CONFORMANCE_REQUIRED
+STATUS_MONITOR_PROVIDER_PACK = PASS_LOCALLY_EXTERNAL_ACCEPTANCE_REQUIRED
+STATUS_MONITOR_CONFIGURED_CANDIDATE = PASS_LOCALLY_EXTERNAL_CONFORMANCE_REQUIRED
+EXECUTION_PROVIDER_PACK = PASS_LOCALLY_EXTERNAL_RUNTIME_REQUIRED
+EXECUTION_CONFIGURED_CANDIDATE = PASS_LOCALLY_EXTERNAL_CONFORMANCE_REQUIRED
 EXACT_WINDOWS_CANDIDATE_BUILD = PENDING
 WINDOWS_OPERATIONAL_ACCEPTANCE = INCOMPLETE
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
@@ -20,6 +26,9 @@ activation, demo-auto, atau live deployment.
 
 Audit mencakup perubahan atomic base-release suite, kelima role builder,
 configured-release ancestry binding, Windows decision-provider pack,
+shared Windows credential/trusted-clock primitives, Windows Status Monitor
+provider pack/configured candidate, Windows Execution provider
+pack/configured candidate and sealed composition boundary,
 canonical manifests, dependency evidence, validator
 decision/execution/status, dan seluruh tracked Python regression.
 Direktori dashboard yang masih untracked dikecualikan dan tidak dibaca atau
@@ -29,10 +38,22 @@ dimodifikasi.
 
 | Check | Result |
 |---|---|
-| Full Python regression including new provider suites | `1,485 / 1,485 PASS` |
-| Full regression with `PYTHONOPTIMIZE=2` | `1,485 / 1,485 PASS` |
+| Full Python regression including new provider suites | `1,544 / 1,544 PASS` |
+| Full regression with `PYTHONOPTIMIZE=2` | `1,544 / 1,544 PASS` |
+| Execution provider/release/candidate focused suite | `87 / 87 PASS` in both modes |
+| Execution-provider-pack spec | `98 / 100`, grade A, zero errors; one non-applicable generic HTTP warning |
+| Shared primitive/provider/release/candidate focused suite | `61 / 61 PASS` in both modes |
+| Shared-provider-primitives spec | `98 / 100`, grade A, zero errors; one non-applicable generic HTTP warning |
 | Decision-provider focused tests | `28 / 28 PASS` in both modes |
 | Decision/configured/suite integration | `196 / 196 PASS` in both modes |
+| Configured-template parity and candidate cluster | `169 / 169 PASS` in both modes |
+| Decision configured-candidate focused tests | `7 / 7 PASS` in both modes |
+| Status Monitor provider-pack spec | `100 / 100`, grade A, zero errors/warnings |
+| Status Monitor candidate/pack/runtime focused regression | `143 / 143 PASS` in both modes |
+| Status Monitor configured-candidate focused tests | `5 / 5 PASS` |
+| Configured-release tooling tests | `10 / 10 PASS` in both modes |
+| Decision configured-candidate assembly spec | `100 / 100`, grade A, zero errors/warnings |
+| Configured factory-template binding parity spec | `100 / 100`, grade A, zero errors/warnings |
 | Decision-provider-pack spec validator | `100 / 100`, grade A, zero errors/warnings |
 | Atomic suite acceptance/adversarial tests | `19 / 19 PASS` in both modes |
 | Suite-binding/provider-v2 focused Windows tests | `95 / 95 PASS` in both modes |
@@ -96,24 +117,74 @@ checks remain real blockers.
     state.
 13. Release isolation is exact: runtime foundation is only in `DECISION`;
     generator/validator are only in configured-release operator tooling.
+14. Decision and Status Monitor configured loaders now compare the descriptor
+    against the exact factory-template member hash from the verified nested
+    base manifest; semantic contract-hash substitution is rejected.
+15. Decision configured-candidate assembly preserves the original four-file
+    provider pack, isolates its five-file working overlay, derives bootstrap
+    and seven-provider template bindings, verifies suite ancestry, and seals
+    an exact 15-file candidate without importing or materializing providers.
+16. Credential Manager lookup and trusted-clock verification now have one
+    service-neutral implementation. Decision uses exact re-exports; release
+    partition tests include the shared module only in Decision and Status
+    Monitor.
+17. Decision provider implementation hash v2 binds the exact path+SHA-256 of
+    both Decision foundation and shared primitive members from the verified
+    base ZIP. Missing, empty, oversized, unreadable, or duplicate members fail
+    before output.
+18. Status Monitor now has exact implementations for twelve provider roles.
+    Snapshot/checkpoint/incident protocols verify signed successor state;
+    outbox and transport providers require pre-existing reviewed state and
+    never auto-provision it.
+19. Status Monitor composition validates every path, key, credential
+    fingerprint, runtime/release identity, and provider hash before credential
+    or SQLite access. Non-Windows hosts reject before those effects.
+20. Its offline generator produces a deterministic exact four-file pack and
+    validates it without importing the factory, reading credentials, opening
+    SQLite, issuing requests, starting processes, installing tasks, accessing
+    MT5, or performing broker/order work.
+21. The configured-candidate assembler preserves the original Status Monitor
+    pack, builds a suite-bound configured ZIP in a separate overlay, derives
+    the twelve-provider template, and seals an exact 15-file receipt. Candidate
+    validation is pure-data and isolated from the service entrypoint.
+22. Execution configuration now binds the authoritative exact 46-port
+    inventory, 37 required DEMO roles, nine optional roles, twelve distinct
+    purpose-bound Credential Manager references, and a separate signed-clock
+    trust domain.
+23. Execution materialization rejects non-Windows hosts, service/production
+    config drift, bootstrap drift, and locked DEMO_AUTO before provider
+    effects. A valid reviewed fixture returns only a sealed
+    `WindowsServiceFactoryResult` with `mt5_module=None`.
+24. The default generated Execution factory has no implicit provider registry
+    or dynamic-import escape hatch. Without an externally reviewed Windows
+    runtime it fails with `EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED`.
+25. The Execution four-file pack and suite-bound configured candidate are
+    deterministic, create-exclusive, secret-free, and validated without
+    credential, SQLite, network, task, MT5, process, or broker effects.
+26. The shared Windows provider primitive is now present in exactly Decision,
+    Execution, and Status Monitor release partitions; operator tooling only
+    receives the pure generators and validators it needs.
 
 ## Remaining blockers
 
 1. The new source must be committed and rebuilt from a clean checkout on exact
-   Windows CPython 3.12. Historical artifacts from `d153361` remain valid only
-   for that old source identity.
-2. The exact five-role Windows suite must produce a canonical secret-free
-   decision-provider pack, suite-bound configured releases, an operations
-   plan/review bundle, provider-conformance v2, and a distinct independent
-   validation receipt.
-3. Credential, key, CAS, checkpoint, incident-latch, heartbeat, alert,
+   Windows CPython 3.12. Every historical artifact remains valid only for its
+   original Git identity and cannot represent this worktree.
+2. The exact five-role Windows suite must produce canonical secret-free
+   Decision, Execution, and Status Monitor provider packs and configured
+   candidates, an operations plan/review bundle,
+   provider-conformance v2, and a distinct independent validation receipt.
+3. The externally reviewed Windows Execution runtime must supply exact
+   preprovisioned provider state and materialization hooks for all required
+   roles. The generated factory intentionally remains fail-closed without it.
+4. Credential, key, CAS, checkpoint, incident-latch, heartbeat, alert,
    trusted-clock, news, risk, MT5, WORM, task/ACL, and service-account
    providers require external acceptance.
-4. Nine signed pre-manual observations, exact pre-manual configured-release
+5. Nine signed pre-manual observations, exact pre-manual configured-release
    admission, and human stage review are absent.
-5. Ten controlled manual-demo order lifecycles are absent.
-6. The 30-day/50-fill/20-XAU demo-auto soak has not started.
-7. Broker-forward/OOS/statistical/parity/failure-drill gates remain required
+6. Ten controlled manual-demo order lifecycles are absent.
+7. The 30-day/50-fill/20-XAU demo-auto soak has not started.
+8. Broker-forward/OOS/statistical/parity/failure-drill gates remain required
    before XAUUSD live canary.
 
 ## Decision

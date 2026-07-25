@@ -117,18 +117,32 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
 
     def test_provider_conformance_review_has_exact_safe_import_closure(self):
         required = {
+            "assemble_windows_decision_configured_candidate.py",
+            "assemble_windows_execution_configured_candidate.py",
+            "assemble_windows_status_monitor_configured_candidate.py",
             "prepare_windows_decision_provider_pack.py",
+            "prepare_windows_execution_provider_pack.py",
             "prepare_windows_three_service_provider_conformance_input.py",
             "prepare_windows_three_service_provider_conformance_review.py",
             "live_runtime/contracts.py",
             "live_runtime/windows_base_release_suite.py",
+            "live_runtime/windows_decision_configured_candidate.py",
             "live_runtime/windows_decision_service_factory_template.py",
             "live_runtime/windows_decision_provider_pack_generator.py",
+            "live_runtime/windows_execution_configured_candidate.py",
+            "live_runtime/windows_execution_provider_pack_generator.py",
+            "live_runtime/windows_status_monitor_configured_candidate.py",
+            "live_runtime/windows_status_monitor_provider_pack_generator.py",
             "live_runtime/windows_external_status_monitor_factory_template.py",
             "live_runtime/windows_provider_conformance_input.py",
             "live_runtime/windows_provider_conformance_review.py",
             "live_runtime/windows_service_factory_template.py",
             "validate_windows_decision_provider_pack.py",
+            "validate_windows_decision_configured_candidate.py",
+            "validate_windows_execution_provider_pack.py",
+            "validate_windows_execution_configured_candidate.py",
+            "validate_windows_status_monitor_configured_candidate.py",
+            "validate_windows_status_monitor_provider_pack.py",
         }
         self.assertTrue(required.issubset(APPROVED_SOURCE_PATHS))
         sources = {
@@ -150,12 +164,52 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
                 bundle.extractall(extracted)
             for script, expected_flag in (
                 (
+                    "assemble_windows_decision_configured_candidate.py",
+                    "--provider-pack-root",
+                ),
+                (
                     "prepare_windows_decision_provider_pack.py",
                     "--pack-input",
                 ),
                 (
                     "validate_windows_decision_provider_pack.py",
                     "--pack-root",
+                ),
+                (
+                    "validate_windows_decision_configured_candidate.py",
+                    "--candidate-root",
+                ),
+                (
+                    "assemble_windows_execution_configured_candidate.py",
+                    "--provider-pack-root",
+                ),
+                (
+                    "prepare_windows_execution_provider_pack.py",
+                    "--pack-input",
+                ),
+                (
+                    "validate_windows_execution_provider_pack.py",
+                    "--pack-root",
+                ),
+                (
+                    "validate_windows_execution_configured_candidate.py",
+                    "--candidate-root",
+                ),
+                (
+                    "assemble_windows_status_monitor_configured_candidate.py",
+                    "--provider-pack-root",
+                ),
+                (
+                    "prepare_windows_status_monitor_provider_pack.py",
+                    "--pack-input",
+                ),
+                (
+                    "validate_windows_status_monitor_provider_pack.py",
+                    "--pack-root",
+                ),
+                (
+                    "validate_windows_status_monitor_configured_candidate.py",
+                    "--candidate-root",
                 ),
             ):
                 with self.subTest(script=script):
@@ -179,6 +233,33 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
                         result.stderr,
                     )
                     self.assertIn(expected_flag, result.stdout)
+
+    def test_candidate_assembler_is_isolated_from_service_releases(self):
+        forbidden = {
+            "assemble_windows_decision_configured_candidate.py",
+            "assemble_windows_execution_configured_candidate.py",
+            "assemble_windows_status_monitor_configured_candidate.py",
+            "live_runtime/windows_decision_configured_candidate.py",
+            "live_runtime/windows_execution_configured_candidate.py",
+            "live_runtime/windows_status_monitor_configured_candidate.py",
+            "validate_windows_decision_configured_candidate.py",
+            "validate_windows_execution_configured_candidate.py",
+            "validate_windows_status_monitor_configured_candidate.py",
+        }
+        service_allowlists = (
+            "config/windows_decision_service_allowlist.v1.json",
+            "config/windows_execution_service_allowlist.v1.json",
+            "config/windows_status_monitor_allowlist.v1.json",
+            "config/windows_shadow_service_allowlist.v1.json",
+        )
+        for relative in service_allowlists:
+            with self.subTest(allowlist=relative):
+                payload = json.loads(
+                    (REPO_ROOT / relative).read_text("utf-8")
+                )
+                self.assertTrue(
+                    forbidden.isdisjoint(set(payload["files"]))
+                )
 
     def test_extracted_provider_review_cli_bootstraps_under_isolated_mode(self):
         with tempfile.TemporaryDirectory() as raw:

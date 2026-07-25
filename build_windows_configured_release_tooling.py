@@ -70,6 +70,9 @@ REQUIRED_USAGE_POLICY = {
 }
 APPROVED_SOURCE_PATHS = frozenset(
     {
+        "assemble_windows_decision_configured_candidate.py",
+        "assemble_windows_execution_configured_candidate.py",
+        "assemble_windows_status_monitor_configured_candidate.py",
         "build_windows_configured_service_release.py",
         "config/windows_configured_release_tooling_allowlist.v1.json",
         "live_runtime/__init__.py",
@@ -78,7 +81,12 @@ APPROVED_SOURCE_PATHS = frozenset(
         "live_runtime/windows_decision_service_factory_template.py",
         "live_runtime/windows_external_status_monitor_factory_template.py",
         "live_runtime/windows_base_release_suite.py",
+        "live_runtime/windows_decision_configured_candidate.py",
         "live_runtime/windows_decision_provider_pack_generator.py",
+        "live_runtime/windows_execution_configured_candidate.py",
+        "live_runtime/windows_execution_provider_pack_generator.py",
+        "live_runtime/windows_status_monitor_configured_candidate.py",
+        "live_runtime/windows_status_monitor_provider_pack_generator.py",
         "live_runtime/windows_provider_conformance_input.py",
         "live_runtime/windows_provider_conformance_review.py",
         "live_runtime/windows_service_factory_template.py",
@@ -86,8 +94,15 @@ APPROVED_SOURCE_PATHS = frozenset(
         "prepare_windows_three_service_provider_conformance_review.py",
         "prepare_windows_configured_overlay_candidate.py",
         "prepare_windows_decision_provider_pack.py",
+        "prepare_windows_execution_provider_pack.py",
+        "prepare_windows_status_monitor_provider_pack.py",
         "verify_windows_configured_service_release.py",
         "validate_windows_decision_provider_pack.py",
+        "validate_windows_execution_provider_pack.py",
+        "validate_windows_status_monitor_provider_pack.py",
+        "validate_windows_decision_configured_candidate.py",
+        "validate_windows_execution_configured_candidate.py",
+        "validate_windows_status_monitor_configured_candidate.py",
     }
 )
 READINESS_BLOCKERS = (
@@ -126,7 +141,12 @@ ALLOWED_LOCAL_IMPORTS = frozenset(
         "live_runtime.windows_decision_service_factory_template",
         "live_runtime.windows_external_status_monitor_factory_template",
         "live_runtime.windows_base_release_suite",
+        "live_runtime.windows_decision_configured_candidate",
         "live_runtime.windows_decision_provider_pack_generator",
+        "live_runtime.windows_execution_configured_candidate",
+        "live_runtime.windows_execution_provider_pack_generator",
+        "live_runtime.windows_status_monitor_configured_candidate",
+        "live_runtime.windows_status_monitor_provider_pack_generator",
         "live_runtime.windows_provider_conformance_input",
         "live_runtime.windows_provider_conformance_review",
         "live_runtime.windows_service_factory_template",

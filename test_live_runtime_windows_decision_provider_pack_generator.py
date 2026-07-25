@@ -35,6 +35,7 @@ from live_runtime.windows_decision_provider_pack_generator import (
     GENERATED_PATHS,
     DecisionProviderPackError,
     _extract_provider_configuration,
+    _implementation_hashes,
     prepare_windows_decision_provider_pack,
     validate_windows_decision_provider_pack,
 )
@@ -91,7 +92,14 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
         self.pack_input = self.root / "provider-pack-input.json"
         self.pack_input.write_bytes(canonical_file(self._pack_payload()))
 
-    def _base_suite(self) -> tuple[Path, Path, dict[str, object]]:
+    def _base_suite(
+        self,
+        *,
+        root: Path | None = None,
+        include_primitives: bool = True,
+    ) -> tuple[Path, Path, dict[str, object]]:
+        target_root = self.root if root is None else root
+        target_root.mkdir(parents=True, exist_ok=True)
         source_root = Path(__file__).resolve().parent
         foundation = (
             source_root / "live_runtime/windows_decision_provider_pack.py"
@@ -108,6 +116,10 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
             ).read_bytes(),
             "live_runtime/windows_decision_provider_pack.py": foundation,
         }
+        if include_primitives:
+            sources["live_runtime/windows_provider_primitives.py"] = (
+                source_root / "live_runtime/windows_provider_primitives.py"
+            ).read_bytes()
         unsigned = {
             "schema_version": (
                 "ai-scalper-windows-decision-service-manifest-v1"
@@ -140,7 +152,7 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
                 _canonical_json(unsigned)
             ).hexdigest(),
         }
-        archive = self.root / "decision-base-source.zip"
+        archive = target_root / "decision-base-source.zip"
         archive.write_bytes(
             _create_archive(
                 sources,
@@ -148,7 +160,7 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
             )
         )
         suite, suite_manifest, _manifests = write_suite_from_role_bases(
-            self.root,
+            target_root,
             {"DECISION": (archive, manifest)},
         )
         return (
@@ -427,6 +439,61 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
             },
         )
 
+    def test_implementation_hashes_bind_all_transitive_foundation_bytes(
+        self,
+    ) -> None:
+        provider_module = b"generated decision provider\n"
+        foundation_files = {
+            "live_runtime/windows_decision_provider_pack.py": (
+                b"decision foundation\n"
+            ),
+            "live_runtime/windows_provider_primitives.py": (
+                b"shared primitives v1\n"
+            ),
+        }
+        baseline = _implementation_hashes(
+            foundation_files=foundation_files,
+            provider_module_bytes=provider_module,
+        )
+        changed = _implementation_hashes(
+            foundation_files={
+                **foundation_files,
+                "live_runtime/windows_provider_primitives.py": (
+                    b"shared primitives changed\n"
+                ),
+            },
+            provider_module_bytes=provider_module,
+        )
+        self.assertEqual(set(baseline), set(changed))
+        self.assertTrue(
+            all(
+                baseline[role] != changed[role]
+                for role in baseline
+            )
+        )
+
+    def test_missing_shared_primitive_in_base_fails_before_output(
+        self,
+    ) -> None:
+        alternate = self.root / "missing-primitives"
+        suite, decision_base, _manifest = self._base_suite(
+            root=alternate,
+            include_primitives=False,
+        )
+        output = self.root / "must-not-exist"
+        with self.assertRaises(DecisionProviderPackError) as raised:
+            prepare_windows_decision_provider_pack(
+                base_suite_root=suite,
+                decision_base_release=decision_base,
+                pack_input_path=self.pack_input,
+                output_root=output,
+            )
+        self.assertEqual(
+            "DECISION_PROVIDER_FOUNDATION_MISSING",
+            raised.exception.reason_code,
+        )
+        self.assertFalse(output.exists())
+
     def test_input_and_output_are_secret_free_and_closed(self) -> None:
         payload = self._pack_payload()
         payload["password"] = "do-not-accept"
@@ -459,6 +526,23 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
             self._prepare("wrong-target")
         self.assertEqual(
             "CREDENTIAL_TARGET_BINDING_INVALID",
+            raised.exception.reason_code,
+        )
+
+        payload = self._pack_payload()
+        first = payload["credential_references"][0]
+        second = payload["credential_references"][1]
+        second["key_id"] = first["key_id"].upper()
+        second["target_name"] = (
+            payload["credential_target_prefix"]
+            + "/"
+            + second["key_id"]
+        )
+        self.pack_input.write_bytes(canonical_file(payload))
+        with self.assertRaises(DecisionProviderPackError) as raised:
+            self._prepare("case-colliding-key")
+        self.assertEqual(
+            "CREDENTIAL_REFERENCE_SET_INVALID",
             raised.exception.reason_code,
         )
 

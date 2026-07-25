@@ -44,6 +44,11 @@ PACK_VALIDATION_SCHEMA = "windows-decision-provider-pack-validation-v1"
 PACK_STATUS = "EXTERNAL_PROVIDER_ACCEPTANCE_REQUIRED"
 DECISION_PROFILE = "WINDOWS_DECISION_SERVICE_V1"
 FOUNDATION_PATH = "live_runtime/windows_decision_provider_pack.py"
+PRIMITIVES_PATH = "live_runtime/windows_provider_primitives.py"
+FOUNDATION_PATHS = (
+    FOUNDATION_PATH,
+    PRIMITIVES_PATH,
+)
 GENERATED_PATHS = (
     "config/windows_service_config.json",
     "configured_providers/__init__.py",
@@ -846,7 +851,10 @@ def _credential_references(
     references.sort(key=lambda item: item["key_id"])
     ids = [item["key_id"] for item in references]
     targets = [item["target_name"] for item in references]
-    if len(ids) != len(set(ids)) or len(targets) != len(set(targets)):
+    if (
+        len({item.casefold() for item in ids}) != len(ids)
+        or len({item.casefold() for item in targets}) != len(targets)
+    ):
         raise DecisionProviderPackError(
             "CREDENTIAL_REFERENCE_SET_INVALID"
         )
@@ -1079,7 +1087,7 @@ def _verify_suite_and_foundation(
 ) -> tuple[
     VerifiedBaseReleaseSuite,
     VerifiedBaseReleaseSuiteRole,
-    bytes,
+    dict[str, bytes],
 ]:
     try:
         suite = verify_base_release_suite(base_suite_root)
@@ -1117,23 +1125,39 @@ def _verify_suite_and_foundation(
         )
     try:
         with zipfile.ZipFile(io.BytesIO(archive_bytes), "r") as archive:
-            info = archive.getinfo(FOUNDATION_PATH)
-            if (
-                info.is_dir()
-                or info.file_size <= 0
-                or info.file_size > MAX_FILE_BYTES
-            ):
-                raise DecisionProviderPackError(
-                    "DECISION_PROVIDER_FOUNDATION_MISSING"
-                )
-            foundation = archive.read(info)
+            members: dict[str, bytes] = {}
+            for path in FOUNDATION_PATHS:
+                matching = [
+                    info
+                    for info in archive.infolist()
+                    if info.filename == path
+                ]
+                if len(matching) != 1:
+                    raise DecisionProviderPackError(
+                        "DECISION_PROVIDER_FOUNDATION_MISSING"
+                    )
+                info = matching[0]
+                if (
+                    info.is_dir()
+                    or info.file_size <= 0
+                    or info.file_size > MAX_FILE_BYTES
+                ):
+                    raise DecisionProviderPackError(
+                        "DECISION_PROVIDER_FOUNDATION_MISSING"
+                    )
+                data = archive.read(info)
+                if len(data) != info.file_size:
+                    raise DecisionProviderPackError(
+                        "DECISION_PROVIDER_FOUNDATION_MISSING"
+                    )
+                members[path] = data
     except DecisionProviderPackError:
         raise
     except (KeyError, OSError, zipfile.BadZipFile) as exc:
         raise DecisionProviderPackError(
             "DECISION_PROVIDER_FOUNDATION_MISSING"
         ) from exc
-    return suite, role, foundation
+    return suite, role, members
 
 
 def _provider_configuration(
@@ -1375,26 +1399,41 @@ def _initializer_bytes() -> bytes:
 
 def _implementation_hashes(
     *,
-    foundation_bytes: bytes,
+    foundation_files: Mapping[str, bytes],
     provider_module_bytes: bytes,
 ) -> dict[str, str]:
+    if (
+        set(foundation_files) != set(FOUNDATION_PATHS)
+        or any(
+            not isinstance(data, bytes) or not data
+            for data in foundation_files.values()
+        )
+    ):
+        raise DecisionProviderPackError(
+            "DECISION_PROVIDER_FOUNDATION_MISSING"
+        )
     contracts = provider_contracts()
-    foundation_sha256 = _sha256(foundation_bytes)
+    bound_foundations = [
+        {
+            "path": path,
+            "sha256": _sha256(foundation_files[path]),
+        }
+        for path in sorted(FOUNDATION_PATHS)
+    ]
     module_sha256 = _sha256(provider_module_bytes)
     return {
         role: _sha256(
             _canonical_bytes(
                 {
                     "contract_sha256": contracts[role],
-                    "foundation_path": FOUNDATION_PATH,
-                    "foundation_sha256": foundation_sha256,
+                    "foundation_files": bound_foundations,
                     "generated_provider_path": (
                         "configured_providers/decision_provider.py"
                     ),
                     "generated_provider_sha256": module_sha256,
                     "role": role,
                     "schema_version": (
-                        "windows-decision-provider-implementation-v1"
+                        "windows-decision-provider-implementation-v2"
                     ),
                 }
             )
@@ -1445,7 +1484,7 @@ def _generated_files(
     pack: Mapping[str, Any],
     suite: VerifiedBaseReleaseSuite,
     role: VerifiedBaseReleaseSuiteRole,
-    foundation_bytes: bytes,
+    foundation_files: Mapping[str, bytes],
 ) -> dict[str, bytes]:
     configuration = _provider_configuration(
         pack,
@@ -1456,7 +1495,7 @@ def _generated_files(
     )
     provider_module = _provider_module_bytes(configuration)
     implementations = _implementation_hashes(
-        foundation_bytes=foundation_bytes,
+        foundation_files=foundation_files,
         provider_module_bytes=provider_module,
     )
     configurations = _provider_configuration_hashes(configuration)
@@ -1627,7 +1666,7 @@ def _validated_runtime(
     payload: object,
     *,
     configuration: Mapping[str, Any],
-    foundation_bytes: bytes,
+    foundation_files: Mapping[str, bytes],
     provider_module_bytes: bytes,
 ) -> dict[str, Any]:
     runtime = _mapping(
@@ -1690,7 +1729,7 @@ def _validated_runtime(
         )
     contracts = provider_contracts()
     expected_implementation = _implementation_hashes(
-        foundation_bytes=foundation_bytes,
+        foundation_files=foundation_files,
         provider_module_bytes=provider_module_bytes,
     )
     expected_configuration = _provider_configuration_hashes(
@@ -1846,7 +1885,7 @@ def validate_windows_decision_provider_pack(
 ) -> DecisionProviderPackValidation:
     """Validate one generated pack without importing or materializing it."""
 
-    suite, role, foundation = _verify_suite_and_foundation(
+    suite, role, foundation_files = _verify_suite_and_foundation(
         base_suite_root=base_suite_root,
         decision_base_release=decision_base_release,
     )
@@ -1875,7 +1914,7 @@ def validate_windows_decision_provider_pack(
     _validated_runtime(
         runtime_payload,
         configuration=configuration,
-        foundation_bytes=foundation,
+        foundation_files=foundation_files,
         provider_module_bytes=provider_bytes,
     )
     return _result(
@@ -1948,7 +1987,7 @@ def prepare_windows_decision_provider_pack(
 ) -> DecisionProviderPackValidation:
     """Generate one deterministic, create-exclusive four-file overlay."""
 
-    suite, role, foundation = _verify_suite_and_foundation(
+    suite, role, foundation_files = _verify_suite_and_foundation(
         base_suite_root=base_suite_root,
         decision_base_release=decision_base_release,
     )
@@ -1962,7 +2001,7 @@ def prepare_windows_decision_provider_pack(
         pack=pack,
         suite=suite,
         role=role,
-        foundation_bytes=foundation,
+        foundation_files=foundation_files,
     )
     if (
         set(files) != set(GENERATED_PATHS)

@@ -38,7 +38,6 @@ from .brokerless_decision_producer import (
 )
 from .contracts import (
     CanonicalContract,
-    canonical_sha256,
     require_hash,
     require_int,
     require_text,
@@ -47,7 +46,6 @@ from .windows_decision_service_factory_template import (
     DecisionServiceProviderBinding,
     RELEASE_PROFILE,
     WindowsDecisionServiceFactoryTemplate,
-    windows_decision_service_factory_contract,
 )
 
 
@@ -73,6 +71,9 @@ MAX_RELEASE_DOCUMENT_BYTES = 4 * 1024 * 1024
 MAX_RELEASE_TOTAL_BYTES = 128 * 1024 * 1024
 MAX_RELEASE_MEMBERS = 512
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+DECISION_FACTORY_TEMPLATE_MEMBER = (
+    "live_runtime/windows_decision_service_factory_template.py"
+)
 
 _FACTORY_RESULT_SEAL = object()
 _FACTORY_IMPORT_SCOPE_LOCK = threading.RLock()
@@ -853,16 +854,6 @@ def _validate_configured_descriptor(
         raise DecisionServiceRuntimeError(
             "DECISION_SERVICE_CONFIGURED_DESCRIPTOR_INVALID"
         ) from exc
-    expected_static_contract = canonical_sha256(
-        windows_decision_service_factory_contract()
-    )
-    if (
-        descriptor["reviewed_factory_template_sha256"]
-        != expected_static_contract
-    ):
-        raise DecisionServiceRuntimeError(
-            "DECISION_SERVICE_FACTORY_TEMPLATE_CONTRACT_MISMATCH"
-        )
     for name in (
         "factory_manifest_relative_path",
         "factory_source_relative_path",
@@ -1113,6 +1104,18 @@ def _verify_configured_decision_release(
         raise DecisionServiceRuntimeError(
             "DECISION_SERVICE_CONFIGURED_BASE_MANIFEST_INVALID"
         )
+    template_entry = base_inventory.get(
+        DECISION_FACTORY_TEMPLATE_MEMBER
+    )
+    if (
+        not isinstance(template_entry, Mapping)
+        or template_entry.get("path")
+        != DECISION_FACTORY_TEMPLATE_MEMBER
+        or not isinstance(template_entry.get("sha256"), str)
+    ):
+        raise DecisionServiceRuntimeError(
+            "DECISION_SERVICE_FACTORY_TEMPLATE_MEMBER_MISSING"
+        )
     base_sources = {
         str(item["path"]): member_bytes[str(item["path"])]
         for item in base_entries
@@ -1132,6 +1135,13 @@ def _verify_configured_decision_release(
     descriptor, overlay_inventory = _validate_configured_descriptor(
         binding.get("overlay_descriptor")
     )
+    if (
+        descriptor["reviewed_factory_template_sha256"]
+        != template_entry["sha256"]
+    ):
+        raise DecisionServiceRuntimeError(
+            "DECISION_SERVICE_FACTORY_TEMPLATE_BINDING_MISMATCH"
+        )
     if (
         descriptor["base_release_identity_sha256"] != base_identity
         or descriptor["runtime_mode"] != binding.get("runtime_mode")

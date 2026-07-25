@@ -87,7 +87,11 @@ signed append-only finalized-M15 feed consumer/provider,
 exact strategy dependencies, static factory contract, runtime runner dengan
 jalur `--validate-only` tanpa side effect serta jalur operasional ber-attestation,
 dan dependency lock khusus tanpa MetaTrader5/keyring. Executor, risk, permit,
-reconciliation, broker adapter, credential, data, dan runtime state ditolak.
+reconciliation, broker adapter, credential value/bootstrap/mutation, broker
+data cache, dan runtime state ditolak. Exact read-only Credential Manager serta
+signed-clock primitive berada di shared provider foundation dan baru
+menyentuh credential ketika configured Decision service dimaterialisasi
+setelah external acceptance.
 Panduan lengkap ada di `docs/WINDOWS_DECISION_SERVICE_RELEASE.md`.
 
 Profile `WINDOWS_EXTERNAL_STATUS_MONITOR_V1` dibangun oleh dedicated
@@ -97,7 +101,21 @@ memuat status snapshot/assessment/checkpoint/incident contract, static
 12-provider factory template, exact configured-release verifier, public RSA
 launcher verifier, production loader, validator, dan bounded runner. Profile
 ini tidak membawa MetaTrader5, risk, permit, executor, reconciliation,
-credential resolver, process/network tooling, maupun order primitive.
+configured credential reference, provider materialization, process/network
+tooling, maupun order primitive. Ia memuat shared read-only
+credential/trusted-clock primitive sebagai foundation untuk provider pack
+Status Monitor. Exact provider pack dan configured-candidate operator flow
+tersedia di `docs/WINDOWS_STATUS_MONITOR_PROVIDER_PACK.md` dan
+`docs/WINDOWS_STATUS_MONITOR_CONFIGURED_CANDIDATE.md`; base build, offline
+generation, dan validation tidak mengakses Credential Manager.
+
+Profile `WINDOWS_GATED_EXECUTION_SERVICE_V1` kini juga memuat shared
+credential/trusted-clock primitive dan exact 46-port Execution provider
+foundation. Offline pack dan immutable configured-candidate flow tersedia di
+`docs/WINDOWS_EXECUTION_PROVIDER_PACK.md` serta
+`docs/WINDOWS_EXECUTION_CONFIGURED_CANDIDATE.md`. Base/configured build tidak
+membaca credential atau mematerialisasi provider; generated factory tanpa
+externally reviewed Windows runtime tetap fail-closed.
 
 Factory/config/provider deployment-specific tidak boleh disalin ke base
 decision atau execution release setelah ekstraksi. Repository menyediakan
@@ -112,6 +130,10 @@ memasang task, atau melakukan broker mutation. Generic operator bundle tetap
 mempertahankan byte-level order-primitive prohibition dan tidak dilonggarkan.
 Panduan lengkap ada di
 `docs/WINDOWS_CONFIGURED_SERVICE_RELEASE.md`.
+Bundle yang sama juga membawa CLI generate/validate Decision, Execution, dan
+Status Monitor provider pack serta assemble/validate configured candidate.
+Seluruhnya deny-only dan tidak boleh dijalankan oleh production service
+account.
 
 ## Gate builder
 

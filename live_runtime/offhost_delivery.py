@@ -21,6 +21,16 @@ UTC = timezone.utc
 ARTIFACT_TYPES = frozenset({"HEARTBEAT", "ALERT", "AUDIT", "BACKUP_ANCHOR"})
 MAX_ACK_FUTURE_SECONDS = 5.0
 _VERIFIED_ACK_SEAL = object()
+_OUTBOX_TABLE_SQL = """CREATE TABLE delivery_outbox (
+                    envelope_id TEXT PRIMARY KEY,
+                    idempotency_key TEXT NOT NULL UNIQUE,
+                    envelope_json TEXT NOT NULL,
+                    state TEXT NOT NULL CHECK(state IN ('PENDING','ACKNOWLEDGED')),
+                    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
+                    last_error TEXT,
+                    last_attempt_at_utc TEXT,
+                    acknowledgement_json TEXT
+                )"""
 
 
 def _utc_now() -> datetime:
@@ -266,13 +276,33 @@ class DirectoryDropTransport:
     WORM custody.
     """
 
-    def __init__(self, outbound_directory: str | Path, acknowledgement_directory: str | Path):
+    def __init__(
+        self,
+        outbound_directory: str | Path,
+        acknowledgement_directory: str | Path,
+        *,
+        require_existing: bool = False,
+    ):
+        if type(require_existing) is not bool:
+            raise TypeError("require_existing must be exact bool")
         self.outbound_directory = Path(outbound_directory)
         self.acknowledgement_directory = Path(acknowledgement_directory)
         for directory in (self.outbound_directory, self.acknowledgement_directory):
-            directory.mkdir(parents=True, exist_ok=True)
-            metadata = directory.lstat()
+            if require_existing:
+                try:
+                    metadata = directory.lstat()
+                except FileNotFoundError as exc:
+                    raise OffHostDeliveryError(
+                        "DELIVERY_DIRECTORY_NOT_PROVISIONED"
+                    ) from exc
+            else:
+                directory.mkdir(parents=True, exist_ok=True)
+                metadata = directory.lstat()
             if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+                raise OffHostDeliveryError("DELIVERY_DIRECTORY_INVALID")
+            attributes = getattr(metadata, "st_file_attributes", 0)
+            reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+            if reparse and attributes & reparse:
                 raise OffHostDeliveryError("DELIVERY_DIRECTORY_INVALID")
 
     @staticmethod
@@ -328,10 +358,20 @@ class DirectoryDropTransport:
 
 
 class DeliveryOutbox:
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        require_existing: bool = False,
+    ) -> None:
+        if type(require_existing) is not bool:
+            raise TypeError("require_existing must be exact bool")
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._initialize()
+        if require_existing:
+            self._validate_existing()
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10.0, isolation_level=None)
@@ -367,17 +407,56 @@ class DeliveryOutbox:
     def _initialize(self) -> None:
         with self._transaction() as connection:
             connection.execute(
-                """CREATE TABLE IF NOT EXISTS delivery_outbox (
-                    envelope_id TEXT PRIMARY KEY,
-                    idempotency_key TEXT NOT NULL UNIQUE,
-                    envelope_json TEXT NOT NULL,
-                    state TEXT NOT NULL CHECK(state IN ('PENDING','ACKNOWLEDGED')),
-                    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
-                    last_error TEXT,
-                    last_attempt_at_utc TEXT,
-                    acknowledgement_json TEXT
-                )"""
+                _OUTBOX_TABLE_SQL.replace(
+                    "CREATE TABLE ",
+                    "CREATE TABLE IF NOT EXISTS ",
+                    1,
+                )
             )
+
+    def _validate_existing(self) -> None:
+        try:
+            metadata = self.path.lstat()
+        except FileNotFoundError as exc:
+            raise OffHostDeliveryError(
+                "DELIVERY_OUTBOX_NOT_PROVISIONED"
+            ) from exc
+        attributes = getattr(metadata, "st_file_attributes", 0)
+        reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        if (
+            stat.S_ISLNK(metadata.st_mode)
+            or not stat.S_ISREG(metadata.st_mode)
+            or (reparse and attributes & reparse)
+        ):
+            raise OffHostDeliveryError("DELIVERY_OUTBOX_FILE_INVALID")
+        try:
+            uri = f"{self.path.resolve(strict=True).as_uri()}?mode=ro&immutable=1"
+            connection = sqlite3.connect(uri, uri=True)
+            try:
+                rows = connection.execute(
+                    """SELECT type, name, sql FROM sqlite_master
+                    WHERE name='delivery_outbox'"""
+                ).fetchall()
+                integrity = connection.execute(
+                    "PRAGMA integrity_check"
+                ).fetchall()
+            finally:
+                connection.close()
+        except (OSError, sqlite3.Error) as exc:
+            raise OffHostDeliveryError(
+                "DELIVERY_OUTBOX_SCHEMA_INVALID"
+            ) from exc
+        if (
+            len(rows) != 1
+            or rows[0][0] != "table"
+            or rows[0][1] != "delivery_outbox"
+            or type(rows[0][2]) is not str
+            or "".join(rows[0][2].split()).casefold()
+            != "".join(_OUTBOX_TABLE_SQL.split()).casefold()
+            or not integrity
+            or any(str(row[0]).casefold() != "ok" for row in integrity)
+        ):
+            raise OffHostDeliveryError("DELIVERY_OUTBOX_SCHEMA_INVALID")
 
     def integrity_check(self) -> bool:
         with self._reader() as connection:

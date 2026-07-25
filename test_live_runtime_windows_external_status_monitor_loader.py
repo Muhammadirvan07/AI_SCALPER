@@ -14,6 +14,7 @@ from build_windows_release import _canonical_json, _create_archive
 from live_runtime.configured_service_release import (
     CONFIGURED_OVERLAY_SCHEMA,
     build_configured_service_release,
+    prepare_configured_overlay_candidate,
 )
 from live_runtime.contracts import canonical_sha256
 from live_runtime.windows_external_status_monitor_entrypoint import (
@@ -32,6 +33,9 @@ import test_live_runtime_windows_external_status_monitor_entrypoint as monitor_e
 
 MONITOR_PROFILE = "WINDOWS_EXTERNAL_STATUS_MONITOR_V1"
 MONITOR_MANIFEST_SCHEMA = "ai-scalper-windows-status-monitor-manifest-v1"
+MONITOR_FACTORY_TEMPLATE_MEMBER = (
+    "live_runtime/windows_external_status_monitor_factory_template.py"
+)
 
 
 def _sha(value: bytes) -> str:
@@ -67,6 +71,9 @@ class WindowsExternalStatusMonitorLoaderTests(unittest.TestCase):
                 b"BASE_EXTERNAL_STATUS_MONITOR_RELEASE = True\n"
             ),
             "live_runtime/__init__.py": b"",
+            MONITOR_FACTORY_TEMPLATE_MEMBER: (
+                b"STATIC_STATUS_MONITOR_FACTORY_TEMPLATE = True\n"
+            ),
         }
         unsigned = {
             "schema_version": MONITOR_MANIFEST_SCHEMA,
@@ -112,6 +119,8 @@ class WindowsExternalStatusMonitorLoaderTests(unittest.TestCase):
         ),
         base_archive: Path | None = None,
         base_manifest: dict[str, object] | None = None,
+        use_official_preparer: bool = False,
+        reviewed_template_sha256: str | None = None,
     ) -> tuple[Path, Path, dict[str, object]]:
         if base_archive is None or base_manifest is None:
             if base_archive is not None or base_manifest is not None:
@@ -122,10 +131,20 @@ class WindowsExternalStatusMonitorLoaderTests(unittest.TestCase):
         overlay = self.root / "overlay"
         (overlay / "config").mkdir(parents=True)
         (overlay / "configured_providers").mkdir()
-        factory_relative = "reviewed_status_monitor_factory.py"
-        config_relative = "config/windows_status_monitor_runtime.json"
+        factory_relative = (
+            "reviewed_windows_factory.py"
+            if use_official_preparer
+            else "reviewed_status_monitor_factory.py"
+        )
+        config_relative = (
+            "config/windows_service_config.json"
+            if use_official_preparer
+            else "config/windows_status_monitor_runtime.json"
+        )
         manifest_relative = (
-            "config/windows_status_monitor_factory_manifest.json"
+            "config/windows_factory_manifest.json"
+            if use_official_preparer
+            else "config/windows_status_monitor_factory_manifest.json"
         )
         provider_relative = "configured_providers/__init__.py"
         config_bytes = _canonical_file(
@@ -160,16 +179,22 @@ class WindowsExternalStatusMonitorLoaderTests(unittest.TestCase):
                 "service_config_relative_path": config_relative,
             }
         )
-        payloads = {
+        payloads: dict[str, bytes] = {
             factory_relative: factory_source,
             config_relative: config_bytes,
-            manifest_relative: factory_manifest,
             provider_relative: b"",
         }
+        if not use_official_preparer:
+            payloads[manifest_relative] = factory_manifest
         for relative, data in payloads.items():
             path = overlay / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
+        template_entry = next(
+            item
+            for item in base_manifest["source_files"]
+            if item["path"] == MONITOR_FACTORY_TEMPLATE_MEMBER
+        )
         descriptor = {
             "base_release_identity_sha256": base_manifest[
                 "release_identity_sha256"
@@ -187,8 +212,10 @@ class WindowsExternalStatusMonitorLoaderTests(unittest.TestCase):
             ],
             "overlay_id": "external-status-monitor-runtime-test",
             "provider_source_relative_paths": [provider_relative],
-            "reviewed_factory_template_sha256": canonical_sha256(
-                windows_external_status_monitor_factory_contract()
+            "reviewed_factory_template_sha256": (
+                template_entry["sha256"]
+                if reviewed_template_sha256 is None
+                else reviewed_template_sha256
             ),
             "runtime_mode": "DEMO",
             "safety": {
@@ -204,7 +231,24 @@ class WindowsExternalStatusMonitorLoaderTests(unittest.TestCase):
             "task_definition_sha256": "5" * 64,
         }
         descriptor_path = self.root / "monitor-overlay.json"
-        descriptor_path.write_bytes(_canonical_file(descriptor))
+        if use_official_preparer:
+            task_definition = self.root / "monitor-task.xml"
+            task_definition.write_bytes(b"<Task />\n")
+            prepared = prepare_configured_overlay_candidate(
+                base_archive=base_archive,
+                overlay_root=overlay,
+                task_definition_path=task_definition,
+                overlay_id="external-status-monitor-runtime-test",
+                bootstrap_binding_sha256=bootstrap,
+                runtime_mode="DEMO",
+                descriptor_output_path=descriptor_path,
+            )
+            self.assertEqual(
+                template_entry["sha256"],
+                prepared.reviewed_factory_template_sha256,
+            )
+        else:
+            descriptor_path.write_bytes(_canonical_file(descriptor))
         configured_archive = self.root / "monitor-configured.zip"
         result = build_configured_service_release(
             base_archive,
@@ -244,6 +288,7 @@ class WindowsExternalStatusMonitorLoaderTests(unittest.TestCase):
         root, manifest_path, configured = self._configured_release(
             base_archive=base_archive,
             base_manifest=base_manifest,
+            use_official_preparer=True,
         )
         manifest, runtime_config, context = (
             validate_reviewed_windows_external_status_monitor_factory_manifest(
@@ -260,6 +305,26 @@ class WindowsExternalStatusMonitorLoaderTests(unittest.TestCase):
             configured["release_identity_sha256"],
             context.release_identity_sha256,
         )
+
+    def test_contract_projection_hash_cannot_replace_exact_template_member(
+        self,
+    ) -> None:
+        root, manifest_path, result = self._configured_release(
+            reviewed_template_sha256=canonical_sha256(
+                windows_external_status_monitor_factory_contract()
+            )
+        )
+        with self.assertRaisesRegex(
+            ExternalStatusMonitorRuntimeError,
+            "CONFIGURED_DESCRIPTOR",
+        ):
+            validate_reviewed_windows_external_status_monitor_factory_manifest(
+                release_root=root,
+                manifest_path=manifest_path,
+                expected_release_identity_sha256=result[
+                    "release_identity_sha256"
+                ],
+            )
 
     def test_static_validation_is_exact_and_does_not_import_factory(self):
         root, manifest_path, result = self._configured_release(

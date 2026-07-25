@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-25 menjalankan **1.485 test** tanpa
+Validasi lokal terakhir pada 2026-07-25 menjalankan **1.544 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac. Itu adalah
 software regression evidence, bukan Windows host acceptance, broker-forward
 evidence, atau izin trading.
@@ -28,6 +28,50 @@ broker/order authority. Status output tetap
 `EXTERNAL_PROVIDER_ACCEPTANCE_REQUIRED`; exact Windows build, provider custody,
 ACL, clock, CAS, launcher, task, dan independent conformance belum diterima.
 
+Decision configured-candidate assembler v1 juga lengkap secara source lokal.
+Ia menjaga original four-file pack immutable, membuat working overlay
+terpisah, menurunkan producer bootstrap hash, membangun exact suite-bound
+configured Decision ZIP, dan menghasilkan seven-provider factory template
+serta closed receipt. Loader Decision dan Status Monitor sekarang
+membandingkan descriptor terhadap exact factory-template member dari verified
+nested base inventory. Candidate tetap
+`EXTERNAL_PROVIDER_CONFORMANCE_REQUIRED`; tidak ada provider acceptance,
+credential access, task installation, broker mutation, demo-auto, atau live
+authority.
+
+Primitive Windows lintas service kini juga memiliki satu source of truth.
+Exact read-only Credential Manager lookup dan signed monotonic trusted UTC
+dipindahkan ke modul standard-library-only yang dibundel hanya pada
+`DECISION`, `EXECUTION`, dan `STATUS_MONITOR`. Decision tetap source-compatible melalui
+exact re-export. Provider implementation hash v2 mengikat byte Decision
+foundation dan shared primitive secara transitif; member hilang atau duplikat
+gagal sebelum output. Tahap ekstraksi primitive tidak membaca credential saat
+build atau validation.
+
+Status Monitor provider pack dan configured-candidate v1 sekarang juga lengkap
+secara source lokal. Dua belas provider role terikat ke exact foundation
+bytes, tujuh key/fingerprint terpisah, signed snapshot/checkpoint/incident
+protocol, preprovisioned strict SQLite outbox, dan create-existing-only
+transport. Offline tooling menghasilkan exact four-file pack, lalu assembler
+menjaga pack asli immutable sambil membuat exact suite-bound 15-file candidate.
+Tooling operator tidak mengimpor factory, membaca credential, membuka SQLite,
+mengirim request, memasang task, memulai process, mengakses MT5, atau menyentuh
+broker. Status tetap `EXTERNAL_PROVIDER_CONFORMANCE_REQUIRED`.
+
+Execution provider pack dan configured-candidate v1 kini juga lengkap secara
+source lokal. Foundation mengikat tepat 46 port, 37 port wajib DEMO, sembilan
+port opsional, dua belas referensi Credential Manager yang purpose-bound, dan
+satu signed-clock trust domain independen. Materializer memverifikasi service
+config, production-config source, bootstrap binding, runtime mode, seluruh
+provider value, heartbeat custody, serta policy lock sebelum mengembalikan
+`WindowsServiceFactoryResult` tersegel dengan `mt5_module=None`. Generated
+factory tanpa runtime Windows yang direview menolak stabil dengan
+`EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED`; pack/candidate offline tidak
+membaca credential, membuka SQLite, mengimpor MT5, mengirim jaringan,
+memasang task, atau menyentuh broker. Status lokal adalah
+`PASS_LOCALLY_EXTERNAL_RUNTIME_REQUIRED`, bukan provider acceptance atau
+order authority.
+
 ## Status roadmap
 
 | Tahap | Status | Bukti saat ini |
@@ -36,7 +80,7 @@ ACL, clock, CAS, launcher, task, dan independent conformance belum diterima.
 | 2. Evidence infrastructure | Implemented locally | Frozen snapshot, HMAC-signed forward contract v4, v3 compatibility, byte-derived regulatory review package with two independent HMAC approvals, byte-derived pre-window base-calendar review with a separate human HMAC approval, prospective closure-only amendment chain, final completeness attestation, append chains/heads, seal, blinded receipt, strict UTC/build/source/spec/grid verification, broker-neutral profile/plan/contract binding, dan generic one-shot collector tersedia. |
 | 3. Broker read-only shadow | FBS and Phillip diagnostic bindings observed; evidence not started | FBS forex/metal/crypto diagnostic domains dan Phillip FX/commodity dual-terminal lanes memiliki journal/report terpisah. Phillip sanitized discovery-v3 inputs berhasil dibuat dan reviewed regular M15 base schedules tersedia, tetapi profile registration, regulatory approval, 20-session benchmark, broker-forward contract, dan promotion evidence tetap disabled/pending. FINEX tidak dipakai untuk observasi baru. |
 | 4. Manual demo | Component foundation ready, readiness locked, orders not run | Journal-bound signed permit, one-second process environment arm, signed per-intent operator approval, champion-model binding, signed news guard, broker-native sizing, account-currency-normalized USD risk cap, account-wide fence, risk governor, fenced journal, bounded Windows composition, MT5 preflight/executor/reconciliation, dual-control kill-switch reset, non-mutating readiness report, deny-only pre-manual entry verifier, dan exact configured-release admission tersedia. Sembilan signed gate pra-run, review aktivasi manual-demo, serta sepuluh order demo belum selesai. |
-| 5. Demo-auto soak | Local three-service activation foundation complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision/execution/status-monitor releases, read-only shadow publisher release, deny-only gate catalog, dan atomic five-role base-suite manifest tersedia. Decision provider pack kini menyediakan exact read-only Credential Manager, signed trusted clock, external IPC/cursor CAS, strict checkpoint reconstruction, brokerless composition, serta deterministic secret-free overlay generator/validator. Provider conformance, configured-release builder/verifier, exact three-ZIP admission, production decision loader, external status-monitor loader/runner, deny-only 65-binding provider packet, serta offline evidence-input assembler juga tersedia. Configured build sekarang wajib mengikat exact role di satu five-role suite; admission memverifikasi ulang kelima ZIP/sidecar dan menolak configured release legacy atau mixed-suite. Provider-conformance v2 menghapus siklus future-admission, menurunkan exact configured-release set dari tiga identity, dan mengikat operations plan/review sebelum signed observations serta admission. V1 tetap byte-compatible untuk diagnostics historis saja. Assembler menurunkan binding truth dari tiga exact factory template dan menolak transkripsi manual, tetapi tidak membuat evidence/acceptance. V3 mengikat ketiga configured identity, runtime, IPC, monitor custody, failure manifest, dan tepat tiga validation-only scheduler review; admission membaca byte ZIP secara stabil lalu mengikat archive/manifest/Git/factory/config/task/suite ke signed dossier sebelum pre-manual assessment. Provider packet hanya dapat menjadi `source_evidence_sha256` dengan independent `validation_receipt_sha256`, dan tetap `provider_accepted=false`. Semua verifier hanya dapat meminta activation review. Exact Windows provider pack, external provider/key/CAS/latch custody, signed acceptance observations, launcher issuance, exact Windows task/ACL activation, policy approval/unlock, sepuluh manual-demo lifecycle, serta actual soak evidence belum ada. |
+| 5. Demo-auto soak | Local three-service activation foundation and provider-pack boundaries complete but locked; soak not started | Decision IPC, one-use risk/intent, renewable session CAS, journal-bound dispatch settlement/restart recovery, authenticated soak projection, account-level 30-day/50-fill/20-XAU cohort, mode-aware Windows factory contract, separate decision/execution/status-monitor releases, read-only shadow publisher release, deny-only gate catalog, dan atomic five-role base-suite manifest tersedia. Decision, Execution, dan Status Monitor kini memiliki exact provider foundation, deterministic four-file pack generator/validator, shared read-only Credential Manager/trusted-clock primitive, dan immutable suite-bound configured candidate tanpa build-time provider effect. Execution mengikat 46 port dan hanya dapat materialize melalui runtime Windows yang direview; default generated factory tetap fail-closed. Provider conformance, configured-release builder/verifier, exact three-ZIP admission, production decision loader, external status-monitor loader/runner, deny-only provider packet, serta offline evidence-input assembler juga tersedia. Configured build wajib mengikat exact role di satu five-role suite; admission memverifikasi ulang kelima ZIP/sidecar dan menolak configured release legacy atau mixed-suite. Provider-conformance v2 menghapus siklus future-admission dan mengikat operations plan/review sebelum signed observations serta admission. Provider packet hanya dapat menjadi `source_evidence_sha256` dengan independent `validation_receipt_sha256`, dan tetap `provider_accepted=false`. Exact Windows builds/candidates, externally reviewed Execution runtime hooks and provider state, external key/CAS/latch/WORM/MT5 custody, signed acceptance observations, launcher issuance, exact Windows task/ACL activation, policy approval/unlock, sepuluh manual-demo lifecycle, serta actual soak evidence belum ada. |
 | 6. XAUUSD live canary | Not started | Dormant XAUUSD-only symbol scope sudah tersedia, tetapi central live lock, execution-policy approval, promotion evidence/permit/soak, dan 50 closed live trades belum ada. |
 | 7. Pair expansion | Not started | EURUSD, USDJPY, dan AUDUSD harus mengulang seluruh gate per lane; hasil lane lain tidak boleh menutup kegagalan sebuah pair. |
 | 8. Scaling | Out of v1 | Tidak ada auto-scaling lot maupun risk cap. |

@@ -145,6 +145,16 @@ class WindowsExecutionReleaseBuilderTests(unittest.TestCase):
             "ORDER_CAPABILITY = 'DISABLED'\n",
             encoding="utf-8",
         )
+        (root / "live_runtime" / "windows_execution_provider_pack.py").write_text(
+            "ORDER_CAPABILITY = 'DISABLED'\n"
+            "PRODUCTION_EXECUTION_READY = False\n",
+            encoding="utf-8",
+        )
+        (root / "live_runtime" / "windows_provider_primitives.py").write_text(
+            "ORDER_CAPABILITY = 'DISABLED'\n"
+            "PRODUCTION_EXECUTION_READY = False\n",
+            encoding="utf-8",
+        )
         (root / "validate_windows_gated_execution_service.py").write_text(
             validator_source, encoding="utf-8"
         )
@@ -187,6 +197,8 @@ version = "1.0"
             "live_runtime/production_bootstrap.py",
             "live_runtime/signed_release_trust.py",
             "live_runtime/soak_tracker.py",
+            "live_runtime/windows_execution_provider_pack.py",
+            "live_runtime/windows_provider_primitives.py",
             "live_runtime/windows_service_factory_template.py",
             "pylock.windows-cp312.toml",
             "requirements-live-windows.txt",
@@ -247,6 +259,8 @@ version = "1.0"
                         "live_runtime/production_bootstrap.py",
                         "live_runtime/signed_release_trust.py",
                         "live_runtime/soak_tracker.py",
+                        "live_runtime/windows_execution_provider_pack.py",
+                        "live_runtime/windows_provider_primitives.py",
                         "live_runtime/windows_service_factory_template.py",
                         "pylock.windows-cp312.toml",
                         "requirements-live-windows.txt",

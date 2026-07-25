@@ -120,6 +120,12 @@ REQUIRED_LIVE_GRADE_GATE_CATALOG = "live_runtime/live_grade_gate_catalog.py"
 REQUIRED_SIGNED_RELEASE_TRUST = "live_runtime/signed_release_trust.py"
 REQUIRED_ASYMMETRIC_RELEASE_TRUST = "live_runtime/asymmetric_release_trust.py"
 REQUIRED_FACTORY_TEMPLATE = "live_runtime/windows_service_factory_template.py"
+REQUIRED_EXECUTION_PROVIDER_FOUNDATION = (
+    "live_runtime/windows_execution_provider_pack.py"
+)
+REQUIRED_WINDOWS_PROVIDER_PRIMITIVES = (
+    "live_runtime/windows_provider_primitives.py"
+)
 REQUIRED_CONFIG = "config/windows_execution_service_allowlist.v1.json"
 REQUIRED_DEPENDENCY_FILES = {
     "pylock.windows-cp312.toml",
@@ -1115,6 +1121,8 @@ def load_execution_allowlist(path: Path) -> dict[str, Any]:
         REQUIRED_SIGNED_RELEASE_TRUST,
         REQUIRED_ASYMMETRIC_RELEASE_TRUST,
         REQUIRED_FACTORY_TEMPLATE,
+        REQUIRED_EXECUTION_PROVIDER_FOUNDATION,
+        REQUIRED_WINDOWS_PROVIDER_PRIMITIVES,
         REQUIRED_CONFIG,
         *REQUIRED_DEPENDENCY_FILES,
     }
@@ -1123,7 +1131,7 @@ def load_execution_allowlist(path: Path) -> dict[str, Any]:
             "execution allowlist is missing bootstrap, adapter, MT5 attestation, "
             "DEMO_AUTO IPC/risk-intent/session/soak projection/cohort foundations, "
             "readiness gate catalog, signed release-trust foundation, static factory template, "
-            "validator, or embedded config"
+            "Execution provider foundation, Windows provider primitives, validator, or embedded config"
         )
     result = dict(payload)
     result["files"] = normalized

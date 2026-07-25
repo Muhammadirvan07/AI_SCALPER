@@ -190,6 +190,62 @@ class OffHostDeliveryTests(unittest.TestCase):
             )
             self.assertEqual(transport.deliver(item), ack)
 
+    def test_status_provider_require_existing_transport_never_provisions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outbound = root / "out"
+            acknowledgements = root / "ack"
+            with self.assertRaisesRegex(
+                Exception,
+                "DELIVERY_DIRECTORY_NOT_PROVISIONED",
+            ):
+                DirectoryDropTransport(
+                    outbound,
+                    acknowledgements,
+                    require_existing=True,
+                )
+            self.assertFalse(outbound.exists())
+            self.assertFalse(acknowledgements.exists())
+
+            outbound.mkdir()
+            acknowledgements.mkdir()
+            transport = DirectoryDropTransport(
+                outbound,
+                acknowledgements,
+                require_existing=True,
+            )
+            self.assertEqual(transport.outbound_directory, outbound)
+            self.assertEqual(
+                transport.acknowledgement_directory,
+                acknowledgements,
+            )
+
+    def test_status_provider_require_existing_outbox_never_provisions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = root / "status.sqlite3"
+            with self.assertRaisesRegex(
+                Exception,
+                "DELIVERY_OUTBOX_NOT_PROVISIONED",
+            ):
+                DeliveryOutbox(database, require_existing=True)
+            self.assertFalse(database.exists())
+
+            DeliveryOutbox(database)
+            reopened = DeliveryOutbox(
+                database,
+                require_existing=True,
+            )
+            self.assertTrue(reopened.integrity_check())
+
+            malformed = root / "malformed.sqlite3"
+            malformed.write_bytes(b"not-sqlite")
+            with self.assertRaisesRegex(
+                Exception,
+                "DELIVERY_OUTBOX_SCHEMA_INVALID",
+            ):
+                DeliveryOutbox(malformed, require_existing=True)
+
     def test_acknowledged_row_tamper_is_detected_before_delivery(self):
         outbox = self._outbox()
         item = envelope()

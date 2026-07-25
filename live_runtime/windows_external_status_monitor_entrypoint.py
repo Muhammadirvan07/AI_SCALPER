@@ -80,6 +80,9 @@ MAX_RELEASE_DOCUMENT_BYTES = 4 * 1024 * 1024
 MAX_RELEASE_TOTAL_BYTES = 128 * 1024 * 1024
 MAX_RELEASE_MEMBERS = 512
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+MONITOR_FACTORY_TEMPLATE_MEMBER = (
+    "live_runtime/windows_external_status_monitor_factory_template.py"
+)
 _MODULE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SOURCE_ENTRY_FIELDS = frozenset({"path", "sha256", "size_bytes"})
 _FACTORY_MANIFEST_FIELDS = frozenset(
@@ -967,12 +970,34 @@ def _verify_configured_monitor_release(
             "STATUS_MONITOR_CONFIGURED_DESCRIPTOR_INVALID"
         )
     descriptor = dict(raw_descriptor)
+    raw_base_manifest = binding.get("base_release_manifest")
+    if not isinstance(raw_base_manifest, Mapping):
+        raise ExternalStatusMonitorRuntimeError(
+            "STATUS_MONITOR_CONFIGURED_BASE_MANIFEST_INVALID"
+        )
+    base_manifest = dict(raw_base_manifest)
+    _base_entries, base_inventory = _source_inventory(
+        base_manifest.get("source_files"),
+        code="STATUS_MONITOR_CONFIGURED_BASE_MANIFEST_INVALID",
+    )
+    template_entry = base_inventory.get(
+        MONITOR_FACTORY_TEMPLATE_MEMBER
+    )
+    if (
+        not isinstance(template_entry, Mapping)
+        or template_entry.get("path")
+        != MONITOR_FACTORY_TEMPLATE_MEMBER
+        or not isinstance(template_entry.get("sha256"), str)
+    ):
+        raise ExternalStatusMonitorRuntimeError(
+            "STATUS_MONITOR_FACTORY_TEMPLATE_MEMBER_MISSING"
+        )
     if (
         descriptor.get("schema_version") != CONFIGURED_OVERLAY_SCHEMA
         or descriptor.get("base_release_profile") != RELEASE_PROFILE
         or descriptor.get("runtime_mode") not in {"DEMO", "DEMO_AUTO"}
         or descriptor.get("reviewed_factory_template_sha256")
-        != canonical_monitor_factory_contract_sha256()
+        != template_entry["sha256"]
         or descriptor.get("factory_manifest_relative_path")
         != binding.get("factory_manifest_relative_path")
         or descriptor.get("factory_source_relative_path")

@@ -1,8 +1,9 @@
 # AI_SCALPER Progress — 2026-07-25
 
-Status: **ATOMIC FIVE-ROLE BASE SUITE, CONFIGURED ANCESTRY, AND DECISION
-PROVIDER PACK COMPLETE LOCALLY / WINDOWS ACCEPTANCE PENDING / DEMO-AUTO
-BLOCKED / LIVE DO NOT SHIP**
+Status: **ATOMIC FIVE-ROLE BASE SUITE, CONFIGURED ANCESTRY, SHARED WINDOWS
+PROVIDER PRIMITIVES, AND DECISION/EXECUTION/STATUS MONITOR PROVIDER
+CANDIDATES COMPLETE LOCALLY / WINDOWS RUNTIME ACCEPTANCE PENDING /
+DEMO-AUTO BLOCKED / LIVE DO NOT SHIP**
 
 ## Hasil pengembangan hari ini
 
@@ -97,20 +98,120 @@ ini belum membuktikan Credential Manager ACL, off-host/WORM custody, signed
 clock issuer, exact Windows configured release, launcher attestation, atau
 Task Scheduler service identity.
 
+Audit integrasi berikutnya menemukan dua gap pada jalur configured Decision:
+
+1. generic preparer mengikat `reviewed_factory_template_sha256` ke exact bytes
+   member template pada base archive, sedangkan loader Decision dan Status
+   Monitor membandingkannya dengan semantic contract projection yang berbeda;
+2. alur operator sebelumnya menambahkan factory manifest langsung ke root
+   provider pack sehingga exact evidence empat-file tidak lagi immutable.
+
+Keduanya sekarang ditutup. Loader menurunkan expected template hash dari exact
+nested base inventory yang sudah diverifikasi. Assembler Decision baru
+mempertahankan immutable `provider-pack/`, memakai working
+`configured-overlay/` terpisah, menurunkan bootstrap binding, membangun dan
+memverifikasi suite-bound configured ZIP, menghasilkan exact seven-provider
+factory template, lalu menulis closed receipt terakhir. Assembler dan
+validator hanya berada dalam configured-release operator tooling dan seluruh
+authority tetap false.
+
+Review boundary lintas service selanjutnya menemukan bahwa credential lookup
+dan trusted-clock implementation masih melekat pada Decision foundation.
+Menyalin logika tersebut ke Status Monitor akan menciptakan drift security,
+sedangkan mengimpor seluruh Decision provider pack akan melanggar service
+isolation. Prasyarat ini sekarang ditutup:
+
+1. satu modul standard-library-only menjadi implementasi tunggal exact
+   read-only Windows Credential Manager dan signed monotonic UTC;
+2. Decision mempertahankan import lama dengan exact type identity, schema,
+   HMAC domain, reason code, freshness, drift, dan monotonic behavior;
+3. key ID maupun target Credential Manager yang bertabrakan secara
+   case-insensitive ditolak sebelum backend dibaca;
+4. primitive hanya masuk base release `DECISION`, `EXECUTION`, dan
+   `STATUS_MONITOR`, tidak masuk shadow atau configured tooling;
+5. Status Monitor builder memberi exception `ctypes` hanya pada exact shared
+   primitive file, sementara import terlarang di file lain tetap ditolak;
+6. provider implementation hash v2 mengikat exact path+SHA-256 Decision
+   foundation dan shared primitive bytes dari verified base ZIP, serta
+   menolak member hilang/duplikat sebelum menulis output.
+
+Ekstraksi primitive tidak membaca credential saat build/validation. Slice
+berikutnya sekarang sudah menutup Status Monitor provider boundary:
+
+1. dua belas exact provider role memakai shared credential/trusted-clock,
+   signed snapshot, external checkpoint CAS, incident latch, serta strict
+   preprovisioned outbox/transport;
+2. seluruh path/key/identity/provider hash divalidasi sebelum credential,
+   SQLite, atau provider access;
+3. outbox/transport production menolak state yang belum diprovision,
+   symlink/reparse, schema drift, dan integrity failure tanpa membuat state;
+4. offline generator membuat exact four-file secret-free pack secara
+   deterministic/create-exclusive tanpa mengimpor generated factory;
+5. assembler menjaga pack asli immutable, membuat working overlay, membangun
+   suite-bound configured ZIP, menurunkan twelve-provider factory template,
+   dan menyegel exact 15-file candidate;
+6. assembler/validator hanya berada di configured-release tooling dan tidak
+   memiliki provider, task, MT5, broker, atau order effect.
+
+Status pack tetap `EXTERNAL_PROVIDER_ACCEPTANCE_REQUIRED`; candidate tetap
+`EXTERNAL_PROVIDER_CONFORMANCE_REQUIRED`.
+
+Execution provider boundary berikutnya juga sudah ditutup secara source lokal:
+
+1. exact 46-port inventory direkonstruksi dari authoritative factory contract,
+   termasuk 37 role wajib DEMO, sembilan role opsional, dan dua belas purpose
+   Credential Manager;
+2. signed clock memakai trust domain independen dan tidak boleh memakai ulang
+   key ID maupun fingerprint Execution;
+3. service config, production config, bootstrap binding, mode, policy lock,
+   credential backend, provider value, dan heartbeat custody diverifikasi
+   sebelum factory result disegel;
+4. `mt5_module` selalu `None` saat composition; hanya production bootstrap
+   yang kelak boleh melakukan import/attestation MT5;
+5. generated factory tanpa externally reviewed Windows runtime menolak dengan
+   `EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED`;
+6. offline four-file generator/validator dan suite-bound configured-candidate
+   assembler/validator tidak melakukan credential, SQLite, network, task,
+   process, MT5, atau broker effect.
+
+Status lokal Execution adalah
+`PASS_LOCALLY_EXTERNAL_RUNTIME_REQUIRED`. Exact Windows provider state,
+credential custody, CAS/WORM/clock/news/reconciliation authority, dan
+independent conformance tetap pekerjaan eksternal.
+
 ## Bukti lokal
 
+- Shared-provider-primitives spec validator: `98/100`, grade A, nol error.
+  Satu warning generik meminta HTTP endpoint meskipun kontrak ini secara
+  eksplisit bukan HTTP.
+- Shared primitive/provider/release/candidate focused suite:
+  `61/61 PASS` normal dan optimized.
 - Decision-provider-pack spec validator: `100/100`, grade A, tanpa
   error/warning.
 - Decision-provider focused suite: `28/28 PASS` normal dan optimized.
 - Decision/configured/suite integration suite: `196/196 PASS` normal dan
   optimized.
+- Configured-template parity and Decision-candidate cluster: `169/169 PASS`
+  normal dan optimized.
+- Decision configured-candidate focused suite: `7/7 PASS` normal dan
+  optimized.
+- Status Monitor provider-pack spec validator: `100/100`, grade A, tanpa
+  error/warning.
+- Status Monitor candidate/pack/runtime lintas-batas: `143/143 PASS` normal
+  dan optimized.
+- Status Monitor configured-candidate focused suite: `5/5 PASS`.
+- Execution provider/release/candidate focused suite: `87/87 PASS` normal dan
+  optimized.
+- Execution-provider-pack spec validator: `98/100`, grade A, nol error; satu
+  warning generik non-applicable karena kontraknya bukan HTTP.
+- Configured-release tooling suite: `10/10 PASS` normal dan optimized.
 - Acceptance/adversarial suite: `19/19 PASS` normal dan optimized.
 - Suite-binding/provider-v2 focused regression: `95/95 PASS` normal dan
   optimized.
 - Full project regression termasuk seluruh provider test baru:
-  `1.485/1.485 PASS` normal.
+  `1.544/1.544 PASS` normal.
 - Full tracked-project regression dengan `PYTHONOPTIMIZE=2`:
-  `1.485/1.485 PASS`.
+  `1.544/1.544 PASS`.
 - Focused activation/packaging regression normal dan optimized dijalankan
   bersamaan: `155/155 PASS` pada masing-masing proses.
 - Dormant demo-auto acceptance dijalankan dalam 12 proses paralel:
@@ -149,17 +250,19 @@ Urutan berikutnya:
 1. commit/push exact source ini tanpa direktori dashboard;
 2. clean pull pada Windows dan build atomic five-role suite;
 3. verifikasi SHA-256 serta suite manifest;
-4. siapkan canonical secret-free decision-provider input dari exact reviewed
-   Windows custody paths/key fingerprints;
-5. generate dan validate decision provider overlay, lalu buat tiga suite-bound
-   configured service release;
-6. buat operations plan/review lalu provider-conformance v2 dan independent
-   validation receipt;
-7. kumpulkan sembilan signed pre-manual observations lalu luluskan exact
+4. siapkan canonical secret-free Decision, Execution, dan Status Monitor
+   provider input dari exact reviewed Windows custody paths/key fingerprints;
+5. generate/validate ketiga provider pack dan assemble/validate ketiga
+   immutable configured candidate;
+6. provision externally reviewed Execution provider state/hooks pada Windows,
+   lalu buktikan materialization dan restart behavior tanpa membuka policy;
+7. verifikasi ketiga configured identity dan buat operations plan/review,
+   provider-conformance v2, serta independent validation receipt;
+8. kumpulkan sembilan signed pre-manual observations lalu luluskan exact
    configured-release admission;
-8. jalankan 10 controlled manual-demo lifecycles dengan review manusia;
-9. setelah hasil manual-demo diterima, lakukan activation review terpisah;
-10. baru mulai demo-auto soak 30 hari, 50 broker-reconciled closed fills, dan
+9. jalankan 10 controlled manual-demo lifecycles dengan review manusia;
+10. setelah hasil manual-demo diterima, lakukan activation review terpisah;
+11. baru mulai demo-auto soak 30 hari, 50 broker-reconciled closed fills, dan
    minimal 20 XAUUSD closed fills.
 
 Live trading tetap tahap sesudah soak, statistical lane gates, failure drills,

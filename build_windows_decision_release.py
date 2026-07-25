@@ -90,6 +90,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "live_runtime/windows_decision_provider_pack.py",
         "live_runtime/windows_decision_service_entrypoint.py",
         "live_runtime/windows_decision_service_factory_template.py",
+        "live_runtime/windows_provider_primitives.py",
         "market_data_quality.py",
         "market_regime_filter.py",
         "pylock.decision-windows-cp312.toml",
