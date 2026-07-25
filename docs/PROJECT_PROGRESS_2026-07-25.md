@@ -179,6 +179,26 @@ Status lokal Execution adalah
 credential custody, CAS/WORM/clock/news/reconciliation authority, dan
 independent conformance tetap pekerjaan eksternal.
 
+Execution launcher sekarang menutup satu boundary tambahan sebelum service
+startup:
+
+1. `--validate-only` tetap pure static dan tidak membaca trust/provider;
+2. `--materialize-only` wajib memiliki external RSA launcher attestation
+   yang dipin ke `WINDOWS_GATED_EXECUTION_SERVICE_V1`;
+3. exact reviewed factory dipanggil dan provider composition dapat dibuktikan,
+   tetapi production bootstrap tidak dimaterialisasi;
+4. runner, signal handler, MT5 import/initialize, authorization consumption,
+   dan broker mutation tetap tidak dijalankan;
+5. trust expiry setelah factory invocation tetap ditolak sebelum runner;
+6. exact bootstrap/config/ports dan execution locks diperiksa ulang; bahkan
+   injeksi MT5 pascakonstruksi ditolak sebelum runner;
+7. output sukses hanya
+   `FACTORY_MATERIALIZED_BROKER_NOT_INITIALIZED`.
+
+Semantik ini lulus lokal; Windows receipt aktual masih menunggu externally
+reviewed provider runtime. Default generated factory tetap menolak
+`EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED`.
+
 ## Bukti lokal
 
 - Shared-provider-primitives spec validator: `98/100`, grade A, nol error.
@@ -204,14 +224,18 @@ independent conformance tetap pekerjaan eksternal.
   optimized.
 - Execution-provider-pack spec validator: `98/100`, grade A, nol error; satu
   warning generik non-applicable karena kontraknya bukan HTTP.
+- Execution factory materialization probe/bootstrap/release-builder cluster:
+  `50/50 PASS` normal dan optimized.
+- Execution factory materialization probe spec validator: `98/100`, grade A,
+  nol error; satu warning HTTP generik yang tidak applicable untuk CLI lokal.
 - Configured-release tooling suite: `10/10 PASS` normal dan optimized.
 - Acceptance/adversarial suite: `19/19 PASS` normal dan optimized.
 - Suite-binding/provider-v2 focused regression: `95/95 PASS` normal dan
   optimized.
 - Full project regression termasuk seluruh provider test baru:
-  `1.544/1.544 PASS` normal.
+  `1.552/1.552 PASS` normal.
 - Full tracked-project regression dengan `PYTHONOPTIMIZE=2`:
-  `1.544/1.544 PASS`.
+  `1.552/1.552 PASS`.
 - Focused activation/packaging regression normal dan optimized dijalankan
   bersamaan: `155/155 PASS` pada masing-masing proses.
 - Dormant demo-auto acceptance dijalankan dalam 12 proses paralel:
@@ -255,7 +279,8 @@ Urutan berikutnya:
 5. generate/validate ketiga provider pack dan assemble/validate ketiga
    immutable configured candidate;
 6. provision externally reviewed Execution provider state/hooks pada Windows,
-   lalu buktikan materialization dan restart behavior tanpa membuka policy;
+   jalankan exact RSA-bound `--materialize-only` probe, lalu buktikan restart
+   behavior tanpa membuka policy;
 7. verifikasi ketiga configured identity dan buat operations plan/review,
    provider-conformance v2, serta independent validation receipt;
 8. kumpulkan sembilan signed pre-manual observations lalu luluskan exact

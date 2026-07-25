@@ -248,3 +248,11 @@ Generated factory tetap berhenti dengan
 `EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED` sampai runtime/provider Windows
 yang direview tersedia; configured candidate tidak mengubah policy atau order
 authority.
+
+Setelah runtime eksternal tersedia, gunakan
+`run_windows_gated_execution_service.py --materialize-only` sebagai boundary
+evidence pertama. Ia mewajibkan exact configured identity dan external RSA
+launcher attestation yang dipin khusus profile Execution, memanggil reviewed
+factory, lalu berhenti sebelum bootstrap/MT5/runner. Receipt sukses tetap
+`FACTORY_MATERIALIZED_BROKER_NOT_INITIALIZED` dan belum memenuhi external
+provider conformance maupun pre-manual admission.

@@ -115,6 +115,30 @@ python -B .\run_windows_gated_execution_service.py `
   --release-attestation C:\AI_SCALPER_PRIVATE\launcher-attestation.json
 ```
 
+Sebelum bounded runtime diizinkan, gunakan argumen yang sama dengan
+`--materialize-only`. Mode tersebut mengimpor dan memanggil exact reviewed
+factory di bawah Execution-profile RSA trust, tetapi sengaja tidak membuat
+runner, tidak memanggil production bootstrap materializer, dan tidak
+mengimpor/menginisialisasi MT5:
+
+```powershell
+python -B .\run_windows_gated_execution_service.py `
+  --factory-manifest C:\AI_SCALPER_RELEASES\execution-configured\config\windows_factory_manifest.json `
+  --release-root C:\AI_SCALPER_RELEASES\execution-configured `
+  --expected-release-identity-sha256 <PINNED_CONFIGURED_RELEASE_SHA256> `
+  --release-trust-policy C:\AI_SCALPER_PRIVATE\launcher-policy.json `
+  --expected-release-trust-policy-sha256 <PINNED_POLICY_SHA256> `
+  --release-attestation C:\AI_SCALPER_PRIVATE\launcher-attestation.json `
+  --materialize-only
+```
+
+Hasil sukses hanya boleh menyatakan
+`FACTORY_MATERIALIZED_BROKER_NOT_INITIALIZED`. Ia bukan izin menjalankan
+service atau order. Trust yang salah profile atau kedaluwarsa selama factory
+construction gagal sebelum runner dibuat. Exact bootstrap/config/ports,
+execution locks, dan `mt5_module=None` diperiksa ulang setelah factory;
+injeksi MT5 pascakonstruksi ditolak sebelum runner atau broker boundary.
+
 This verification proves provenance only. It does not grant stage, permit,
 environment-arm, DEMO_AUTO, promotion, or live authority.
 The factory manifest must be an exact member of the configured release and the

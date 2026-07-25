@@ -17,12 +17,16 @@ sys.dont_write_bytecode = True
 
 from live_runtime.contracts import require_int, require_text
 from live_runtime.asymmetric_release_trust import (
+    EXECUTION_RELEASE_PROFILE,
     MAXIMUM_DOCUMENT_BYTES,
     VerifiedExternalLauncherAttestation,
     verify_external_launcher_attestation,
 )
 from live_runtime.live_grade_gate_catalog import classify_gate_codes
-from live_runtime.production_bootstrap import ProductionBootstrapError
+from live_runtime.production_bootstrap import (
+    ProductionBootstrapError,
+    require_brokerless_factory_bootstrap,
+)
 from live_runtime.signed_release_trust import PRODUCTION_RELEASE_TRUST_REQUIREMENT
 from live_runtime.windows_service_entrypoint import (
     WindowsGatedServiceRunner,
@@ -97,10 +101,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "pinned in the ACL-protected service definition"
         ),
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--validate-only",
         action="store_true",
-        help="Verify and materialize no broker component",
+        help="Verify statically without importing the reviewed factory",
+    )
+    mode.add_argument(
+        "--materialize-only",
+        action="store_true",
+        help=(
+            "Import and invoke the exact reviewed factory under external "
+            "launcher trust, but do not materialize the bootstrap or MT5"
+        ),
     )
     return parser.parse_args(argv)
 
@@ -193,6 +206,7 @@ def _verify_external_release_trust(
             expected_release_identity_sha256=(
                 args.expected_release_identity_sha256
             ),
+            expected_release_profile=EXECUTION_RELEASE_PROFILE,
             clock_provider=lambda: datetime.now(UTC),
         )
     except Exception as exc:
@@ -200,6 +214,27 @@ def _verify_external_release_trust(
     if type(verified) is not VerifiedExternalLauncherAttestation:
         raise WindowsServiceError(PRODUCTION_RELEASE_TRUST_REQUIREMENT)
     return verified
+
+
+def _assert_external_release_trust_current(
+    release_trust: VerifiedExternalLauncherAttestation,
+    *,
+    expected_release_identity_sha256: str,
+) -> None:
+    """Recheck trusted-launcher freshness without leaking verifier detail."""
+
+    try:
+        release_trust.assert_current(
+            now=datetime.now(UTC),
+            expected_release_identity_sha256=(
+                expected_release_identity_sha256
+            ),
+            expected_release_profile=EXECUTION_RELEASE_PROFILE,
+        )
+    except Exception as exc:
+        raise WindowsServiceError(
+            PRODUCTION_RELEASE_TRUST_REQUIREMENT
+        ) from exc
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -224,6 +259,8 @@ def main(argv: list[str] | None = None) -> int:
                         "factory_contract_sha256": manifest.factory_contract_sha256,
                         "bootstrap_binding_sha256": manifest.bootstrap_binding_sha256,
                         "factory_imported": False,
+                        "provider_materialized": False,
+                        "production_bootstrap_materialized": False,
                         "credential_or_key_provider_read": False,
                         "broker_component_materialized": False,
                         "broker_mutation_performed": False,
@@ -291,12 +328,80 @@ def main(argv: list[str] | None = None) -> int:
                 args.expected_release_identity_sha256
             ),
         )
-        release_trust.assert_current(
-            now=datetime.now(UTC),
+        _assert_external_release_trust_current(
+            release_trust,
             expected_release_identity_sha256=(
                 args.expected_release_identity_sha256
             ),
         )
+        if args.materialize_only:
+            try:
+                bootstrap = require_brokerless_factory_bootstrap(
+                    result.bootstrap
+                )
+            except AttributeError as exc:
+                raise WindowsServiceError(
+                    "SERVICE_FACTORY_RESULT_INVALID"
+                ) from exc
+            if (
+                bootstrap.config.safe_binding_sha256
+                != manifest.bootstrap_binding_sha256
+            ):
+                raise WindowsServiceError(
+                    "SERVICE_FACTORY_RESULT_BINDING_MISMATCH"
+                )
+            print(
+                json.dumps(
+                    {
+                        "schema_version": (
+                            "windows-gated-service-factory-"
+                            "materialization-probe-v1"
+                        ),
+                        "status": (
+                            "FACTORY_MATERIALIZED_BROKER_NOT_INITIALIZED"
+                        ),
+                        "release_profile": manifest.release_profile,
+                        "release_identity_sha256": (
+                            args.expected_release_identity_sha256
+                        ),
+                        "factory_contract_sha256": (
+                            manifest.factory_contract_sha256
+                        ),
+                        "service_config_file_sha256": (
+                            result.service_config_file_sha256
+                        ),
+                        "bootstrap_binding_sha256": (
+                            manifest.bootstrap_binding_sha256
+                        ),
+                        "factory_imported": True,
+                        "provider_materialized": True,
+                        "provider_effect_boundary": (
+                            "REVIEWED_PROVIDER_DEFINED_NOT_INFERRED"
+                        ),
+                        "credential_or_key_provider_access": (
+                            "PROVIDER_DEFINED_NOT_INFERRED"
+                        ),
+                        "production_bootstrap_materialized": False,
+                        "broker_component_materialized": False,
+                        "service_runner_constructed": False,
+                        "signal_handlers_installed": False,
+                        "mt5_module_injected": False,
+                        "mt5_import_or_initialize_performed": False,
+                        "authorization_consumed": False,
+                        "broker_mutation_performed": False,
+                        "execution_authority_granted": False,
+                        "activation_authorized": False,
+                        "production_execution_ready": False,
+                        "order_capability": "DISABLED",
+                        "live_allowed": False,
+                        "safe_to_demo_auto_order": False,
+                        "max_lot": 0.01,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
         service_id = require_text("service_id", config.get("service_id"))
         owner_id = require_text("owner_id", config.get("owner_id"))
         max_cycles = require_int(

@@ -12,6 +12,7 @@ STATUS_MONITOR_PROVIDER_PACK = PASS_LOCALLY_EXTERNAL_ACCEPTANCE_REQUIRED
 STATUS_MONITOR_CONFIGURED_CANDIDATE = PASS_LOCALLY_EXTERNAL_CONFORMANCE_REQUIRED
 EXECUTION_PROVIDER_PACK = PASS_LOCALLY_EXTERNAL_RUNTIME_REQUIRED
 EXECUTION_CONFIGURED_CANDIDATE = PASS_LOCALLY_EXTERNAL_CONFORMANCE_REQUIRED
+EXECUTION_FACTORY_MATERIALIZATION_PROBE = PASS_LOCALLY_EXTERNAL_WINDOWS_EVIDENCE_REQUIRED
 EXACT_WINDOWS_CANDIDATE_BUILD = PENDING
 WINDOWS_OPERATIONAL_ACCEPTANCE = INCOMPLETE
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
@@ -38,10 +39,12 @@ dimodifikasi.
 
 | Check | Result |
 |---|---|
-| Full Python regression including new provider suites | `1,544 / 1,544 PASS` |
-| Full regression with `PYTHONOPTIMIZE=2` | `1,544 / 1,544 PASS` |
+| Full Python regression including factory materialization probe | `1,552 / 1,552 PASS` |
+| Full regression with `PYTHONOPTIMIZE=2` | `1,552 / 1,552 PASS` |
 | Execution provider/release/candidate focused suite | `87 / 87 PASS` in both modes |
 | Execution-provider-pack spec | `98 / 100`, grade A, zero errors; one non-applicable generic HTTP warning |
+| Execution materialization probe/bootstrap/release-builder tests | `50 / 50 PASS` in both modes |
+| Execution materialization probe spec | `98 / 100`, grade A, zero errors; one non-applicable generic HTTP warning |
 | Shared primitive/provider/release/candidate focused suite | `61 / 61 PASS` in both modes |
 | Shared-provider-primitives spec | `98 / 100`, grade A, zero errors; one non-applicable generic HTTP warning |
 | Decision-provider focused tests | `28 / 28 PASS` in both modes |
@@ -64,7 +67,7 @@ dimodifikasi.
 | Independent real rebuild comparison | all 11 corresponding files byte-identical |
 | Atomic-suite spec validator | `100 / 100`, grade A, zero errors/warnings |
 | Git whitespace/error check | PASS |
-| Windows dependency lock/install manifest | PASS |
+| Windows dependency lock/install manifest, SBOM, vulnerability guards | `44 / 44 PASS` in both modes |
 | CycloneDX dependency SBOM | PASS |
 | Decision/execution/status-monitor port validators | PASS, production false |
 | Focused secret/private-key scan | zero findings |
@@ -164,6 +167,20 @@ checks remain real blockers.
 26. The shared Windows provider primitive is now present in exactly Decision,
     Execution, and Status Monitor release partitions; operator tooling only
     receives the pure generators and validators it needs.
+27. The Execution launcher now pins both initial verification and post-factory
+    freshness to `WINDOWS_GATED_EXECUTION_SERVICE_V1`. Its mutually exclusive
+    `--materialize-only` boundary invokes the exact reviewed factory under
+    external RSA trust, reports provider-defined effects honestly, and exits
+    before bootstrap materialization, runner construction, signal handlers,
+    MT5 initialization, authorization consumption, or broker mutation.
+28. Static `--validate-only` now explicitly reports provider and production
+    bootstrap materialization as false. Trust expiry during factory
+    construction is converted to the stable external-launcher requirement and
+    cannot fall through to an unreviewed runtime exception.
+29. The brokerless factory boundary revalidates exact bootstrap/config/ports,
+    all execution locks, and `mt5_module=None`. Even post-construction object
+    mutation fails with `SERVICE_FACTORY_MT5_INJECTION_FORBIDDEN` before any
+    runner or broker boundary.
 
 ## Remaining blockers
 
@@ -177,6 +194,9 @@ checks remain real blockers.
 3. The externally reviewed Windows Execution runtime must supply exact
    preprovisioned provider state and materialization hooks for all required
    roles. The generated factory intentionally remains fail-closed without it.
+   The exact configured release must then pass `--materialize-only` on Windows
+   under a current Execution-profile RSA launcher attestation; no such external
+   receipt exists yet.
 4. Credential, key, CAS, checkpoint, incident-latch, heartbeat, alert,
    trusted-clock, news, risk, MT5, WORM, task/ACL, and service-account
    providers require external acceptance.

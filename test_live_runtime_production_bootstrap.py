@@ -33,6 +33,7 @@ from live_runtime.production_bootstrap import (
     ProductionRuntimePorts,
     _require_risk_source_checkpoint_binding,
     credential_session_evidence_sha256,
+    require_brokerless_factory_bootstrap,
     require_worm_audit_root,
     validate_production_bootstrap_contract,
     verify_bootstrap_external_receipt,
@@ -316,6 +317,20 @@ class ProductionBootstrapTests(unittest.TestCase):
         values["mt5_module"] = object()
         with self.assertRaisesRegex(TypeError, "module injection"):
             ProductionRuntimePorts(**values)
+        self.assertEqual([], calls)
+
+    def test_factory_boundary_rejects_post_construction_mt5_injection(self):
+        calls, named = self.provider_calls()
+        bootstrap = ProductionRuntimeBootstrap(
+            self.config(),
+            self.ports(named),
+        )
+        object.__setattr__(bootstrap.ports, "mt5_module", object())
+        with self.assertRaisesRegex(
+            ProductionBootstrapError,
+            "SERVICE_FACTORY_MT5_INJECTION_FORBIDDEN",
+        ):
+            require_brokerless_factory_bootstrap(bootstrap)
         self.assertEqual([], calls)
 
     def test_cross_binding_is_rejected_without_provider_or_broker_calls(self):

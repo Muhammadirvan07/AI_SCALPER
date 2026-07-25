@@ -104,6 +104,39 @@ Order capability: DISABLED
 Production execution ready: false
 ```
 
+## Probe factory tanpa menginisialisasi MT5
+
+Setelah external runtime/provider benar-benar direview dan configured
+Execution ZIP sudah terikat ke short-lived RSA launcher attestation, jalankan
+boundary antara static validation dan service startup:
+
+```powershell
+python -B .\run_windows_gated_execution_service.py `
+  --factory-manifest C:\AI_SCALPER_RELEASES\execution-configured\config\windows_factory_manifest.json `
+  --release-root C:\AI_SCALPER_RELEASES\execution-configured `
+  --expected-release-identity-sha256 <PINNED_CONFIGURED_RELEASE_SHA256> `
+  --release-trust-policy C:\AI_SCALPER_PRIVATE\execution-launcher-policy.json `
+  --expected-release-trust-policy-sha256 <PINNED_POLICY_SHA256> `
+  --release-attestation C:\AI_SCALPER_PRIVATE\execution-launcher-attestation.json `
+  --materialize-only
+```
+
+Mode ini mengunci trust profile ke
+`WINDOWS_GATED_EXECUTION_SERVICE_V1`, mengimpor dan memanggil exact reviewed
+factory, lalu berhenti sebelum `ProductionRuntimeBootstrap.materialize()`.
+Output sukses wajib berstatus
+`FACTORY_MATERIALIZED_BROKER_NOT_INITIALIZED`, dengan runner, signal handler,
+MT5 initialization, authorization consumption, dan broker mutation tetap
+false. Factory/provider MAY membaca state preprovisioned sesuai kontraknya;
+karena itu launcher attestation eksternal wajib ada bahkan pada probe ini.
+Exact bootstrap/config/ports dan execution locks diperiksa ulang setelah
+factory invocation; injeksi MT5 pascakonstruksi gagal sebelum runner.
+
+Default generated factory tetap akan menolak
+`EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED` sampai runtime Windows eksternal
+yang direview benar-benar tersedia. Probe bukan acceptance, activation,
+manual-demo approval, atau order authority.
+
 ## Setelah pack valid
 
 Pack valid belum dapat dijalankan sebagai service. Urutannya:
@@ -112,10 +145,11 @@ Pack valid belum dapat dijalankan sebagai service. Urutannya:
 2. validate candidate dari exact bytes;
 3. provision externally reviewed runtime hooks dan pre-existing provider
    state pada Windows;
-4. buktikan factory composition, restart, CAS, uncertain-submit, heartbeat,
-   dan reconciliation behavior dalam independent conformance;
-5. kumpulkan sembilan signed pre-manual observations;
-6. lakukan human activation review;
-7. baru jalankan sepuluh controlled manual-demo lifecycle.
+4. jalankan exact `--materialize-only` probe dan arsipkan deny-only receipt;
+5. buktikan restart, CAS, uncertain-submit, heartbeat, dan reconciliation
+   behavior dalam independent conformance;
+6. kumpulkan sembilan signed pre-manual observations;
+7. lakukan human activation review;
+8. baru jalankan sepuluh controlled manual-demo lifecycle.
 
 Tidak ada langkah dalam dokumen ini yang membuka demo-auto atau live.

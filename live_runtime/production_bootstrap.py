@@ -2152,6 +2152,32 @@ class ProductionRuntimeBootstrap:
         )
 
 
+def require_brokerless_factory_bootstrap(
+    bootstrap: object,
+) -> ProductionRuntimeBootstrap:
+    """Revalidate the sealed factory result before any broker I/O boundary."""
+
+    if type(bootstrap) is not ProductionRuntimeBootstrap:
+        raise ProductionBootstrapError("SERVICE_FACTORY_BOOTSTRAP_NOT_EXACT")
+    if type(bootstrap.config) is not ProductionRuntimeConfig:
+        raise ProductionBootstrapError("SERVICE_FACTORY_CONFIG_NOT_EXACT")
+    if type(bootstrap.ports) is not ProductionRuntimePorts:
+        raise ProductionBootstrapError("SERVICE_FACTORY_PORTS_NOT_EXACT")
+    if bootstrap.ports.mt5_module is not None:
+        raise ProductionBootstrapError(
+            "SERVICE_FACTORY_MT5_INJECTION_FORBIDDEN"
+        )
+    if (
+        bootstrap.config.live_allowed
+        or bootstrap.config.safe_to_demo_auto_order
+        or bootstrap.config.order_capability != ORDER_CAPABILITY
+    ):
+        raise ProductionBootstrapError(
+            "SERVICE_FACTORY_EXECUTION_LOCK_DRIFT"
+        )
+    return bootstrap
+
+
 __all__ = [
     "BOOTSTRAP_SCHEMA_VERSION",
     "EXTERNAL_RECEIPT_SCHEMA_VERSION",
@@ -2166,6 +2192,7 @@ __all__ = [
     "VerifiedCredentialSession",
     "WORM_AUDIT_ROOT_SCHEMA_VERSION",
     "credential_session_evidence_sha256",
+    "require_brokerless_factory_bootstrap",
     "require_worm_audit_root",
     "validate_production_bootstrap_contract",
     "verify_bootstrap_external_receipt",

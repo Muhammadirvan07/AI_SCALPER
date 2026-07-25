@@ -13,6 +13,9 @@ from live_runtime.asymmetric_release_trust import (
     EXECUTION_RELEASE_PROFILE,
     VerifiedExternalLauncherAttestation,
 )
+from live_runtime.signed_release_trust import (
+    PRODUCTION_RELEASE_TRUST_REQUIREMENT,
+)
 import run_windows_gated_execution_service as execution_cli
 
 
@@ -46,11 +49,15 @@ class RunWindowsGatedExecutionServiceRuntimeTests(unittest.TestCase):
         )
 
     @staticmethod
-    def _factory_result(*, mt5_module=None):
+    def _factory_result():
         materialize = Mock(name="bootstrap_materialize")
         bootstrap = SimpleNamespace(
-            ports=SimpleNamespace(mt5_module=mt5_module),
-            config=SimpleNamespace(safe_binding_sha256=BOOTSTRAP_HASH),
+            config=SimpleNamespace(
+                safe_binding_sha256=BOOTSTRAP_HASH,
+                live_allowed=False,
+                safe_to_demo_auto_order=False,
+                order_capability="DISABLED",
+            ),
             materialize=materialize,
         )
         return SimpleNamespace(
@@ -60,10 +67,53 @@ class RunWindowsGatedExecutionServiceRuntimeTests(unittest.TestCase):
         )
 
     def test_validate_and_materialize_modes_are_mutually_exclusive(self) -> None:
-        with self.assertRaises(SystemExit):
+        with (
+            redirect_stderr(io.StringIO()),
+            self.assertRaises(SystemExit),
+        ):
             execution_cli.parse_args(
                 self._args("--validate-only", "--materialize-only")
             )
+
+    def test_validate_only_remains_trust_import_and_provider_free(self) -> None:
+        manifest = SimpleNamespace(
+            release_profile=EXECUTION_RELEASE_PROFILE,
+            factory_contract_sha256=FACTORY_HASH,
+            bootstrap_binding_sha256=BOOTSTRAP_HASH,
+        )
+        stdout = io.StringIO()
+        with (
+            patch.object(
+                execution_cli,
+                "validate_reviewed_windows_service_factory_manifest",
+                return_value=(manifest, {}, object()),
+            ),
+            patch.object(
+                execution_cli,
+                "_verify_external_release_trust",
+                side_effect=AssertionError("trust must not be read"),
+            ),
+            patch.object(
+                execution_cli,
+                "load_reviewed_windows_service_factory",
+                side_effect=AssertionError("factory must not import"),
+            ),
+            redirect_stdout(stdout),
+        ):
+            status = execution_cli.main(
+                self._args("--validate-only")
+            )
+        self.assertEqual(0, status)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(
+            "STATIC_FACTORY_AND_CONFIG_VERIFIED",
+            report["status"],
+        )
+        self.assertFalse(report["factory_imported"])
+        self.assertFalse(report["provider_materialized"])
+        self.assertFalse(report["production_bootstrap_materialized"])
+        self.assertFalse(report["broker_component_materialized"])
+        self.assertFalse(report["broker_mutation_performed"])
 
     def test_materialize_only_requires_external_trust_before_factory(self) -> None:
         stderr = io.StringIO()
@@ -80,7 +130,7 @@ class RunWindowsGatedExecutionServiceRuntimeTests(unittest.TestCase):
             )
         self.assertEqual(2, status)
         self.assertIn(
-            "EXTERNAL_RSA_LAUNCHER_ATTESTATION_REQUIRED",
+            PRODUCTION_RELEASE_TRUST_REQUIREMENT,
             stderr.getvalue(),
         )
 
@@ -118,6 +168,11 @@ class RunWindowsGatedExecutionServiceRuntimeTests(unittest.TestCase):
             ),
             patch.object(
                 execution_cli,
+                "require_brokerless_factory_bootstrap",
+                return_value=result.bootstrap,
+            ) as require_brokerless,
+            patch.object(
+                execution_cli,
                 "WindowsGatedServiceRunner",
                 side_effect=AssertionError("runner must not be constructed"),
             ),
@@ -133,6 +188,7 @@ class RunWindowsGatedExecutionServiceRuntimeTests(unittest.TestCase):
             )
         self.assertEqual(0, status)
         self.assertEqual(["trust", "factory"], events)
+        require_brokerless.assert_called_once_with(result.bootstrap)
         verified.assert_current.assert_called_once_with(
             now=unittest.mock.ANY,
             expected_release_identity_sha256=IDENTITY,
@@ -155,43 +211,6 @@ class RunWindowsGatedExecutionServiceRuntimeTests(unittest.TestCase):
         self.assertFalse(report["live_allowed"])
         self.assertFalse(report["safe_to_demo_auto_order"])
         self.assertEqual(0.01, report["max_lot"])
-
-    def test_materialize_only_rejects_mt5_injection_before_runner(self) -> None:
-        verified = Mock(spec=VerifiedExternalLauncherAttestation)
-        manifest = SimpleNamespace(
-            release_profile=EXECUTION_RELEASE_PROFILE,
-            factory_contract_sha256=FACTORY_HASH,
-            bootstrap_binding_sha256=BOOTSTRAP_HASH,
-        )
-        result = self._factory_result(mt5_module=object())
-        stderr = io.StringIO()
-        with (
-            patch.object(
-                execution_cli,
-                "_verify_external_release_trust",
-                return_value=verified,
-            ),
-            patch.object(
-                execution_cli,
-                "load_reviewed_windows_service_factory",
-                return_value=(manifest, {}, result),
-            ),
-            patch.object(
-                execution_cli,
-                "WindowsGatedServiceRunner",
-                side_effect=AssertionError("runner must not be constructed"),
-            ),
-            redirect_stderr(stderr),
-        ):
-            status = execution_cli.main(
-                self._trusted_args("--materialize-only")
-            )
-        self.assertEqual(2, status)
-        self.assertIn(
-            "SERVICE_FACTORY_MT5_INJECTION_FORBIDDEN",
-            stderr.getvalue(),
-        )
-        result.bootstrap.materialize.assert_not_called()
 
     def test_trust_verifier_is_pinned_to_execution_profile(self) -> None:
         with tempfile.TemporaryDirectory(dir="/private/tmp") as raw:
@@ -223,6 +242,89 @@ class RunWindowsGatedExecutionServiceRuntimeTests(unittest.TestCase):
             EXECUTION_RELEASE_PROFILE,
             verify.call_args.kwargs["expected_release_profile"],
         )
+
+    def test_expired_trust_after_factory_fails_before_runner(self) -> None:
+        verified = Mock(spec=VerifiedExternalLauncherAttestation)
+        verified.assert_current.side_effect = RuntimeError("expired detail")
+        manifest = SimpleNamespace(
+            release_profile=EXECUTION_RELEASE_PROFILE,
+            factory_contract_sha256=FACTORY_HASH,
+            bootstrap_binding_sha256=BOOTSTRAP_HASH,
+        )
+        result = self._factory_result()
+        stderr = io.StringIO()
+        with (
+            patch.object(
+                execution_cli,
+                "_verify_external_release_trust",
+                return_value=verified,
+            ),
+            patch.object(
+                execution_cli,
+                "load_reviewed_windows_service_factory",
+                return_value=(manifest, {}, result),
+            ),
+            patch.object(
+                execution_cli,
+                "WindowsGatedServiceRunner",
+                side_effect=AssertionError("runner must not be constructed"),
+            ),
+            redirect_stderr(stderr),
+        ):
+            status = execution_cli.main(
+                self._trusted_args("--materialize-only")
+            )
+        self.assertEqual(2, status)
+        self.assertIn(
+            PRODUCTION_RELEASE_TRUST_REQUIREMENT,
+            stderr.getvalue(),
+        )
+        self.assertNotIn("expired detail", stderr.getvalue())
+        result.bootstrap.materialize.assert_not_called()
+
+    def test_materialize_only_rejects_mt5_injection_before_runner(self) -> None:
+        verified = Mock(spec=VerifiedExternalLauncherAttestation)
+        manifest = SimpleNamespace(
+            release_profile=EXECUTION_RELEASE_PROFILE,
+            factory_contract_sha256=FACTORY_HASH,
+            bootstrap_binding_sha256=BOOTSTRAP_HASH,
+        )
+        result = self._factory_result()
+        stderr = io.StringIO()
+        with (
+            patch.object(
+                execution_cli,
+                "_verify_external_release_trust",
+                return_value=verified,
+            ),
+            patch.object(
+                execution_cli,
+                "load_reviewed_windows_service_factory",
+                return_value=(manifest, {}, result),
+            ),
+            patch.object(
+                execution_cli,
+                "require_brokerless_factory_bootstrap",
+                side_effect=execution_cli.ProductionBootstrapError(
+                    "SERVICE_FACTORY_MT5_INJECTION_FORBIDDEN"
+                ),
+            ),
+            patch.object(
+                execution_cli,
+                "WindowsGatedServiceRunner",
+                side_effect=AssertionError("runner must not be constructed"),
+            ),
+            redirect_stderr(stderr),
+        ):
+            status = execution_cli.main(
+                self._trusted_args("--materialize-only")
+            )
+        self.assertEqual(2, status)
+        self.assertIn(
+            "SERVICE_FACTORY_MT5_INJECTION_FORBIDDEN",
+            stderr.getvalue(),
+        )
+        result.bootstrap.materialize.assert_not_called()
 
 
 if __name__ == "__main__":

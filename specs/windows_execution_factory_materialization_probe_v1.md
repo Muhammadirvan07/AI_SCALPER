@@ -49,7 +49,8 @@ execution authority.
   `ProductionRuntimeBootstrap.materialize()`, import or initialize MT5, start
   a lifecycle loop, issue a heartbeat, consume an authorization, submit an
   order, or mutate broker state.
-- FR-8: A successful materialization probe MUST emit canonical JSON with
+- FR-8: A successful materialization probe MUST emit deterministic
+  sorted-key JSON with
   status `FACTORY_MATERIALIZED_BROKER_NOT_INITIALIZED`, exact release/factory/
   bootstrap hashes, the provider-effect boundary, and explicit false safety
   claims for bootstrap materialization, MT5 initialization, broker mutation,
@@ -103,7 +104,7 @@ When the factory is loaded
 Then both verification and freshness recheck require the exact Execution
 release profile.
 
-### AC-3: Factory materializes while broker remains untouched (FR-5 through FR-9)
+### AC-3: Factory materializes while broker remains untouched (FR-5, FR-6, FR-7, FR-8, FR-9)
 
 Given a valid exact configured factory and external launcher attestation  
 When `--materialize-only` runs  
@@ -144,16 +145,101 @@ Then every check passes and all execution/live locks remain false.
   exact loader rejects it.
 - EC-6: Factory provider construction fails: report only a stable launcher
   rejection and never attempt the runner.
-- EC-7: `mt5_module` is non-`None`: reject
-  `SERVICE_FACTORY_MT5_INJECTION_FORBIDDEN`.
+- EC-7: A provider attempts to inject an MT5 module, including mutation after
+  sealed construction: `require_brokerless_factory_bootstrap()` rejects with
+  `SERVICE_FACTORY_MT5_INJECTION_FORBIDDEN` before runner construction.
 - EC-8: Provider construction reads preprovisioned state: the output records
   only the declared provider-effect boundary, never raw observations.
 
+## API Contracts
+
+### Execution launcher CLI
+
+```text
+python -B run_windows_gated_execution_service.py
+  --factory-manifest <release-local canonical JSON>
+  --release-root <exact extracted configured release>
+  --expected-release-identity-sha256 <64 lowercase hex>
+  --release-trust-policy <external stable regular JSON file>
+  --expected-release-trust-policy-sha256 <64 lowercase hex>
+  --release-attestation <external stable regular JSON file>
+  --materialize-only
+```
+
+- `--materialize-only` and `--validate-only` are mutually exclusive.
+- A successful materialization probe exits `0` and emits one JSON object.
+- A reviewed rejection exits `2` and writes only
+  `WINDOWS_GATED_SERVICE_REJECTED: <STABLE_REASON_CODE>` to stderr.
+- An unexpected exception exits `3` with only its exception type and no
+  provider data.
+- No HTTP, socket, subprocess, environment-secret, or broker API is part of
+  this contract.
+
+### Factory loader boundary
+
+```python
+load_reviewed_windows_service_factory(
+    *,
+    release_root: str | Path,
+    manifest_path: str | Path,
+    expected_release_identity_sha256: str,
+) -> tuple[
+    WindowsServiceFactoryManifest,
+    Mapping[str, Any],
+    WindowsServiceFactoryResult,
+]
+```
+
+The function is the only factory-import boundary. The returned result is
+exact-type sealed. The `ProductionRuntimePorts` constructor forbids MT5 module
+injection, and `require_brokerless_factory_bootstrap()` revalidates the exact
+bootstrap, config, ports, execution locks, and `mt5_module=None` immediately
+after factory materialization.
+
+## Data Models
+
+### `windows-gated-service-factory-materialization-probe-v1`
+
+Required output fields:
+
+| Field | Type | Required value or rule |
+|---|---|---|
+| `schema_version` | string | Exact schema name above |
+| `status` | string | `FACTORY_MATERIALIZED_BROKER_NOT_INITIALIZED` |
+| `release_profile` | string | `WINDOWS_GATED_EXECUTION_SERVICE_V1` |
+| `release_identity_sha256` | string | Independently pinned 64-char lowercase SHA-256 |
+| `factory_contract_sha256` | string | Exact verified factory contract |
+| `service_config_file_sha256` | string | Exact verified configured service file |
+| `bootstrap_binding_sha256` | string | Exact verified bootstrap binding |
+| `factory_imported` | boolean | `true` |
+| `provider_materialized` | boolean | `true` |
+| `provider_effect_boundary` | string | `REVIEWED_PROVIDER_DEFINED_NOT_INFERRED` |
+| `credential_or_key_provider_access` | string | `PROVIDER_DEFINED_NOT_INFERRED` |
+| `production_bootstrap_materialized` | boolean | `false` |
+| `broker_component_materialized` | boolean | `false` |
+| `service_runner_constructed` | boolean | `false` |
+| `signal_handlers_installed` | boolean | `false` |
+| `mt5_module_injected` | boolean | `false` |
+| `mt5_import_or_initialize_performed` | boolean | `false` |
+| `authorization_consumed` | boolean | `false` |
+| `broker_mutation_performed` | boolean | `false` |
+| `execution_authority_granted` | boolean | `false` |
+| `activation_authorized` | boolean | `false` |
+| `production_execution_ready` | boolean | `false` |
+| `order_capability` | string | `DISABLED` |
+| `live_allowed` | boolean | `false` |
+| `safe_to_demo_auto_order` | boolean | `false` |
+| `max_lot` | number | `0.01` |
+
+The report contains no raw credential, provider observation, signature,
+account login, permit, token, or order payload.
+
 ## Out of Scope
 
-- Provisioning credentials, provider state, RSA private keys, or trust policy.
-- Creating launcher attestations.
-- Importing or initializing MetaTrader5.
-- Starting Decision, Execution, or Status Monitor services.
-- Manual-demo activation, DEMO_AUTO activation, soak admission, live permit,
-  or any broker order.
+- OS-1: Provisioning credentials, provider state, RSA private keys, or trust
+  policy.
+- OS-2: Creating launcher attestations.
+- OS-3: Importing or initializing MetaTrader5.
+- OS-4: Starting Decision, Execution, or Status Monitor services.
+- OS-5: Manual-demo activation, DEMO_AUTO activation, soak admission, live
+  permit, or any broker order.

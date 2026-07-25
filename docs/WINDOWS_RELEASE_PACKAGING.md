@@ -116,6 +116,10 @@ foundation. Offline pack dan immutable configured-candidate flow tersedia di
 `docs/WINDOWS_EXECUTION_CONFIGURED_CANDIDATE.md`. Base/configured build tidak
 membaca credential atau mematerialisasi provider; generated factory tanpa
 externally reviewed Windows runtime tetap fail-closed.
+Launcher Execution juga menyediakan `--materialize-only`: exact configured
+factory boleh dipanggil hanya setelah external RSA trust diverifikasi dan
+dipin ke profile Execution, kemudian proses berhenti sebelum bootstrap
+materialization, MT5 initialization, runner, atau broker mutation.
 
 Factory/config/provider deployment-specific tidak boleh disalin ke base
 decision atau execution release setelah ekstraksi. Repository menyediakan
