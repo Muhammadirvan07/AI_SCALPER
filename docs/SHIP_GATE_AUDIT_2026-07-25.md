@@ -230,18 +230,21 @@ checks remain real blockers.
 
 ## Remaining blockers
 
-1. The bounded-worker remediation and Commodity v3 contract namespace must be
+1. The corrected bounded-worker remediation and Commodity v4 contract
+   namespace must be
    committed, pulled into a clean exact Windows CPython 3.12 checkout, and
    bound to a fresh build identity.
 2. Phillip Commodity v1 remains immutable and empty; v2 is registered and its
    pre-window proof is valid but does not solve the measured deadline. The
    Windows host must register
-   `phillip-commodity-window-01-diagnostic-v3` before the observation start
+   `phillip-commodity-window-01-diagnostic-v4` before the observation start
    using the already signed discovery, plan/calendar, evidence key, and valid
    frozen snapshot. It must then prove at least two authenticated worker child
    invocations with a new journal/audit directory and demonstrate cached-child
    latency below the append grace before Task Scheduler installation. This
-   path has no order authority; Phillip FX remains disabled.
+   path has no order authority; Phillip FX remains disabled. The immutable v3
+   attempt is retained as fail-closed evidence of the rejected repeated
+   site-packages activation.
 3. The exact five-role Windows suite must produce canonical secret-free
    Decision, Execution, and Status Monitor provider packs and configured
    candidates, an operations plan/review bundle,

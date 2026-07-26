@@ -328,7 +328,7 @@ pada setiap proses, sedangkan contract hanya memberi append grace 60 detik.
 Menjadwalkan one-shot setiap menit karena itu tidak truthful untuk collection
 deadline.
 
-V2 tetap immutable dan tidak diubah. Remediation lokal memajukan profile ke
+V2 tetap immutable dan tidak diubah. Remediation awal memajukan profile ke
 `phillip-commodity-window-01-diagnostic-v3` dan menambahkan bounded persistent
 worker pada entry point broker yang sama:
 
@@ -343,7 +343,14 @@ worker pada entry point broker yang sama:
 7. total duration dihitung sejak worker startup, termasuk full verification;
 8. worker hanya menerima registered `phillip-commodity` v3 profile.
 
-Tidak ada order API atau safety unlock yang ditambahkan. V3 masih harus
+Exact Windows V3 proof kemudian menemukan satu fail-closed regression sebelum
+broker collection: process-level verification sudah mengaktifkan
+site-packages, tetapi child pertama memanggil aktivator non-idempoten itu lagi.
+V3 contract, failed journal, dan audit export tetap immutable. Remediation V4
+mengaktifkan dependency path tepat sekali, memvalidasi ulang lock pada setiap
+child, dan menolak path/precedence drift tanpa memanggil ulang aktivator.
+
+Tidak ada order API atau safety unlock yang ditambahkan. V4 masih harus
 melewati exact Windows clean-pull, immutable contract registration, minimal
 dua-child proof, measured cached-child latency, dan authenticated audit
 verification sebelum Task Scheduler boleh dipasang.

@@ -412,17 +412,22 @@ launch. A Task Scheduler invocation once per minute therefore could not
 reliably meet the contract's 60-second append grace.
 
 Contract v2 remains immutable and valid, but it must not receive evidence from
-a source revision made after registration. The bounded-worker remediation
-therefore advances Commodity to
-`phillip-commodity-window-01-diagnostic-v3`. It does not modify the discovery,
+a source revision made after registration. The first bounded-worker contract,
+`phillip-commodity-window-01-diagnostic-v3`, is also immutable and preserves a
+fail-closed first-child rejection caused by repeated non-idempotent
+site-packages activation. The corrected bounded-worker remediation therefore
+advances Commodity to `phillip-commodity-window-01-diagnostic-v4`. It does not
+modify the discovery,
 signed plan/calendar, observation window, evidence key, symbol scope, or any
 safety flag.
 
-The v3 worker:
+The v4 worker:
 
 - acquires a process-lifetime kernel fence distinct from the per-cycle fence;
 - fully verifies and hashes the installed environment once per bounded
   process;
+- activates the verified site-packages path exactly once, then checks its
+  repo/path precedence on every child without re-entering the activator;
 - records the full dependency receipt in its first child invocation;
 - revalidates the exact dependency lock and install-manifest identity before
   every later child invocation;

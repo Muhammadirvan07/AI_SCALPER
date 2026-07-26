@@ -109,6 +109,9 @@ When the bounded worker starts under isolated Python flags
 Then the first child invocation carries the full installed-environment receipt
 And later child invocations revalidate the lock and carry a compact
 same-process session reference
+And the verified site-packages path is activated exactly once per process
+And every child verifies that the repo/site-packages path binding and
+precedence have not drifted without re-entering the non-idempotent activator
 And child invocations start on each 60-second boundary plus two seconds
 And a second worker cannot acquire the worker fence
 And any nonzero child result stops the worker without enabling order

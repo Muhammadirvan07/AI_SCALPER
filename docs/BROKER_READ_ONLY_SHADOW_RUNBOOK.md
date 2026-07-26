@@ -1,6 +1,7 @@
 # Phase 3 — Broker Read-Only Shadow
 
-Status: **PHILLIP COMMODITY V2 PROOF VERIFIED / V3 DEADLINE WORKER PENDING /
+Status: **PHILLIP COMMODITY V2 PROOF VERIFIED / V3 FAILURE PRESERVED /
+V4 DEADLINE WORKER PENDING /
 FBS DIAGNOSTIC-ONLY / XM JAPAN LEGAL-BLOCKED / NOT_READY**
 
 Belum ada primary evidence broker yang boleh dipromosikan. FBS adalah target
@@ -94,17 +95,22 @@ cycle receipt because the exact installed environment was rehashed at every
 one-shot launch. Since the evidence contract allows only 60 seconds of append
 grace, do not install the v2 one-shot command as a once-per-minute task.
 
-The reviewed remediation is a new immutable v3 contract plus the bounded
+The first bounded-worker v3 contract is preserved as failed evidence. Its
+first child correctly failed closed because the session re-entered the
+non-idempotent site-packages activator after the process-level verification.
+No broker mutation occurred. The reviewed correction is a new immutable v4
+contract plus the bounded
 worker documented in `docs/PHILLIP_READ_ONLY_PREPARATION.md`. Before any
 scheduled collection:
 
-1. pull the exact v3 commit into a clean Windows checkout;
-2. register `phillip-commodity-window-01-diagnostic-v3` before observation
+1. pull the exact v4 remediation commit into a clean Windows checkout;
+2. register `phillip-commodity-window-01-diagnostic-v4` before observation
    start;
-3. use a new v3 journal and create-exclusive audit directory;
+3. use a new v4 journal and create-exclusive audit directory;
 4. prove at least two child invocations and verify both HMAC manifests;
 5. verify that the second child uses the compact same-process dependency
-   reference and completes inside the append grace; and
+   reference, without a second path activation, and completes inside the
+   append grace; and
 6. only then install the bounded worker task under the exact evidence-key and
    terminal identity.
 

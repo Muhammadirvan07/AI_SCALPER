@@ -13,6 +13,7 @@ import hashlib
 import importlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import sqlite3
@@ -205,6 +206,10 @@ class _DependencySession:
 _ACTIVE_DEPENDENCY_SESSION: _DependencySession | None = None
 
 
+def _normalized_runtime_path(value: str) -> str:
+    return os.path.normcase(os.path.abspath(value))
+
+
 def _activate_dependency_paths(
     dependency_guard: ModuleType,
     dependency_receipt: dict[str, object],
@@ -217,10 +222,48 @@ def _activate_dependency_paths(
     if verified_site_packages not in sys.path:
         raise RuntimeError("verified site-packages was not activated")
     repo_path = str(REPO_ROOT)
-    while repo_path in sys.path:
-        sys.path.remove(repo_path)
+    normalized_repo = _normalized_runtime_path(repo_path)
+    sys.path[:] = [
+        entry
+        for entry in sys.path
+        if not (
+            isinstance(entry, str)
+            and entry
+            and _normalized_runtime_path(entry) == normalized_repo
+        )
+    ]
     site_index = sys.path.index(verified_site_packages)
     sys.path.insert(site_index, repo_path)
+    _require_dependency_paths_active(dependency_receipt)
+
+
+def _require_dependency_paths_active(
+    dependency_receipt: dict[str, object],
+) -> None:
+    """Verify the one-time dependency activation without mutating ``sys.path``."""
+
+    verified_site_packages = dependency_receipt.get("site_packages")
+    if not isinstance(verified_site_packages, str) or not verified_site_packages:
+        raise RuntimeError("verified site-packages receipt is invalid")
+
+    repo_path = str(REPO_ROOT)
+
+    normalized_paths = [
+        _normalized_runtime_path(entry)
+        for entry in sys.path
+        if isinstance(entry, str) and entry
+    ]
+    normalized_repo = _normalized_runtime_path(repo_path)
+    normalized_site = _normalized_runtime_path(verified_site_packages)
+    if (
+        normalized_paths.count(normalized_repo) != 1
+        or normalized_paths.count(normalized_site) != 1
+    ):
+        raise RuntimeError("verified dependency path activation drift")
+    repo_index = normalized_paths.index(normalized_repo)
+    site_index = normalized_paths.index(normalized_site)
+    if repo_index + 1 != site_index:
+        raise RuntimeError("verified dependency path precedence drift")
 
 
 def _verify_and_activate_dependencies_fresh(
@@ -322,7 +365,7 @@ def _verify_and_activate_dependencies(
                 "LOADED_PROCESS_SESSION_WITH_LOCK_REVALIDATION"
             ),
         }
-    _activate_dependency_paths(session.guard, session.full_receipt)
+    _require_dependency_paths_active(session.full_receipt)
     return session.guard, receipt
 
 
@@ -673,8 +716,8 @@ def _worker_contract_id(
     except Exception as exc:
         raise RuntimeError("worker profile configuration is invalid") from exc
     contract_id = str(profile.contract_id)
-    if contract_id != "phillip-commodity-window-01-diagnostic-v3":
-        raise RuntimeError("worker contract must use the immutable v3 namespace")
+    if contract_id != "phillip-commodity-window-01-diagnostic-v4":
+        raise RuntimeError("worker contract must use the immutable v4 namespace")
     return contract_id
 
 

@@ -517,8 +517,11 @@ BTCUSD = shadow-only
     proses, child berikutnya memvalidasi ulang lock/install-manifest dan
     membawa compact HMAC-bound session reference, cycle dicoba setiap menit
     detik `02`, worker/process fence terpisah mencegah overlap, dan setiap
-    child nonzero menghentikan worker fail-closed. V3 tetap order-disabled dan
-    wajib diregistrasikan/dibuktikan sebelum collection terjadwal.
+    child nonzero menghentikan worker fail-closed. Exact V3 proof mempertahankan
+    kegagalan first-child akibat aktivasi site-packages berulang. V4
+    memperbaikinya dengan aktivasi satu kali plus validasi path/precedence per
+    child. V4 tetap order-disabled dan wajib diregistrasikan/dibuktikan sebelum
+    collection terjadwal.
     Loop broker-tick diagnostic non-promotional juga sudah tersedia.
     Periodic broker reconciliation supervisor lokal kini memiliki durable
     lease/fence, startup reconciliation, hash-chain receipt, dan fail-closed

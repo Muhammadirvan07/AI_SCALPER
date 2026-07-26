@@ -27,6 +27,10 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.addCleanup(run_xm_shadow_once._clear_dependency_session)
+        original_sys_path = list(sys.path)
+        self.addCleanup(
+            lambda: sys.path.__setitem__(slice(None), original_sys_path)
+        )
         self.root = Path(self.temp.name)
         self.journal = self.root / "runtime" / "shadow.sqlite3"
         self.artifacts = self.root / "artifacts"
@@ -957,7 +961,7 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
         evidence_binding = {
             "candidate_id": "phillip-commodity",
             "key_name": "phillip-commodity-window-01-v1",
-            "contract_id": "phillip-commodity-window-01-diagnostic-v3",
+            "contract_id": "phillip-commodity-window-01-diagnostic-v4",
             "config_files": (),
             "build_identity_provider": lambda: object(),
         }
@@ -1088,8 +1092,11 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
             @staticmethod
             def activate_verified_site_packages(receipt):
                 calls["activate"] += 1
-                if site_packages not in sys.path:
-                    sys.path.append(site_packages)
+                if site_packages in sys.path:
+                    raise RuntimeError(
+                        "site-packages was active before dependency verification"
+                    )
+                sys.path.append(site_packages)
                 return site_packages
 
         with mock.patch.object(
@@ -1107,7 +1114,7 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
 
         self.assertEqual(1, calls["installed"])
         self.assertEqual(1, calls["lock"])
-        self.assertEqual(3, calls["activate"])
+        self.assertEqual(1, calls["activate"])
         self.assertEqual(
             session.session_id,
             first["dependency_session"]["dependency_session_id"],
@@ -1119,6 +1126,59 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
             second["schema_version"],
         )
         self.assertEqual("c" * 64, second["installed_environment_sha256"])
+
+    def test_dependency_session_rejects_activated_path_drift(self):
+        lock = self.root / "pylock.windows-cp312.toml"
+        lock.write_text("fixture", encoding="utf-8")
+        site_packages = (
+            "C:\\AI_SCALPER_PRIVATE\\release\\Lib\\site-packages"
+        )
+
+        class SessionGuard:
+            @staticmethod
+            def require_current_windows_runtime() -> None:
+                return None
+
+            @staticmethod
+            def verify_installed_lock(path):
+                return {
+                    "lock_file": Path(path).name,
+                    "lock_sha256": "a" * 64,
+                    "install_manifest_sha256": "b" * 64,
+                    "installed_environment_sha256": "c" * 64,
+                    "site_packages": site_packages,
+                    "distribution_receipts": ({"name": "fixture"},),
+                }
+
+            @staticmethod
+            def validate_windows_dependency_lock(path):
+                return {
+                    "lock_file": Path(path).name,
+                    "lock_sha256": "a" * 64,
+                    "install_manifest_sha256": "b" * 64,
+                }
+
+            @staticmethod
+            def activate_verified_site_packages(receipt):
+                if site_packages in sys.path:
+                    raise RuntimeError(
+                        "site-packages was active before dependency verification"
+                    )
+                sys.path.append(site_packages)
+                return site_packages
+
+        with mock.patch.object(
+            run_xm_shadow_once,
+            "_load_dependency_guard",
+            return_value=SessionGuard,
+        ):
+            run_xm_shadow_once._start_dependency_session(lock)
+            sys.path.remove(site_packages)
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "verified dependency path activation drift",
+            ):
+                run_xm_shadow_once._verify_and_activate_dependencies(lock)
 
     def test_dependency_session_rejects_lock_identity_drift(self):
         lock = self.root / "pylock.windows-cp312.toml"
@@ -1363,7 +1423,7 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
                 run_xm_shadow_once,
                 "_worker_contract_id",
                 return_value=(
-                    "phillip-commodity-window-01-diagnostic-v3"
+                    "phillip-commodity-window-01-diagnostic-v4"
                 ),
             ),
             mock.patch.object(
@@ -1396,7 +1456,7 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
                 (
                     "fence-created",
                     self.artifacts,
-                    "phillip-commodity-window-01-diagnostic-v3",
+                    "phillip-commodity-window-01-diagnostic-v4",
                 ),
                 ("fence-enter",),
                 ("dependency", args.lock),
@@ -1407,14 +1467,14 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
         )
         self.assertEqual(896.5, observed_duration["seconds"])
 
-    def test_worker_contract_binding_accepts_only_registered_commodity_v3(self):
+    def test_worker_contract_binding_accepts_only_registered_commodity_v4(self):
         profile = (
             Path(run_xm_shadow_once.__file__).resolve().parent
             / "config"
             / "broker_evidence_profiles.v1.json"
         )
         self.assertEqual(
-            "phillip-commodity-window-01-diagnostic-v3",
+            "phillip-commodity-window-01-diagnostic-v4",
             run_xm_shadow_once._worker_contract_id(
                 "phillip-commodity",
                 profile,
