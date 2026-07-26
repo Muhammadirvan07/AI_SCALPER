@@ -47,7 +47,11 @@ immutable contract namespace before observation begins.
 - NFR-R3: Exactly one worker process may own a contract at a time through a crash-safe kernel fence distinct from the per-cycle fence.
 - NFR-S4: The worker MUST fully hash the installed environment once per bounded process, MUST revalidate the immutable lock contract on every child invocation, MUST bind compact child receipts to the full session receipt hash, and MUST never cache across a process restart.
 - NFR-S5: Worker duration MUST be explicit, at least 15 minutes, and no longer than 24 hours. Any child `HOLD` or `BUSY` result MUST stop the worker with a nonzero exit.
-- NFR-S6: A scheduled worker MUST run with the effective Task Scheduler principal level `Limited`. Because the Task Scheduler schema permits an omitted XML `RunLevel` element, validation MUST use the effective principal property and MUST reject an XML node when present unless it is `LeastPrivilege`.
+- NFR-S6: A scheduled worker MUST run with effective Task Scheduler principal level `Limited` and the exact reviewed effective settings. XML validation MUST apply the Task Scheduler XSD default only when an optional node is absent, MUST reject a missing non-default setting, and MUST independently verify every effective CIM value. Installer and health checks MUST use the same side-effect-free validator and MUST never access an optional XML child through dynamic dotted properties under StrictMode.
+- NFR-S7: A scheduler-only remediation MAY retain an already proof-verified frozen worker commit, contract, journal, and audit chain when no worker source or evidence binding changes. It MUST use a new task name and create-exclusive task evidence root, preserve every failed prior task disabled, and bind the exact prior proof receipt hash.
+- NFR-S8: Scheduled-worker freshness MUST use the latest HMAC-verified `runtime_status.heartbeat_at_utc`, require strictly monotonic authenticated source-event counts and heartbeats, reject future skew above 60 seconds, and reject age above 180 seconds during an active interval after startup allowance. File and SQLite mtimes MUST NOT be treated as freshness evidence.
+- NFR-S9: A scheduler remediation MUST register disabled, validate before enablement, require at least 900 seconds of installation lead, verify the exact first `NextRunTime`, and on any later failure attempt both stop and disable before proving effective state `Disabled`. Disable or state-query failure MUST surface as a distinct fail-closed error.
+- NFR-S10: Online scheduler health MUST bind the exact fixed proof-child inventory and every successor predecessor sequence/event-hash/signed-HMAC transition. A full initial walk MUST create an HMAC-signed checkpoint; later checks MAY authenticate only the exact new suffix when they append a signed successor checkpoint, but the resulting audit/checkpoint head MUST exactly equal the read-only HMAC-authenticated live journal count, event hash, signed-head HMAC, status HMAC, and heartbeat. Verification through checkpoint commit MUST be serialized across health processes, and an existing checkpoint MAY be reconciled only when byte-identical. A new checkpoint MUST be flushed under a non-chain temporary name and atomically moved to its create-exclusive final name. Installation MUST fully re-read the historical archive, and an explicit full-archive mode MUST remain available because online incremental health does not re-read checkpointed historical bytes; that explicit mode MUST require a `Ready` task, no active worker interval, and at least 3600 seconds before the next trigger. The manifest is the publication commit marker: an audit without a manifest MAY be ignored as in progress, while a manifest with unavailable or invalid audit bytes MUST fail closed. Phase MUST be sampled after evidence verification, startup grace MAY accept `Queued` only before a current-boundary attempt, MUST reject a task that already attempted and exited, and schedule calculations MUST NOT infer a trigger beyond `EndBoundary`.
 - NFR-A1: Contract and discovery CLIs MUST print that order capability remains disabled and MUST not expose secret key material.
 
 ## Acceptance Criteria
@@ -118,14 +122,47 @@ And a second worker cannot acquire the worker fence
 And any nonzero child result stops the worker without enabling order
 capability.
 
-### AC-10: Effective least-privilege task identity (NFR-S6)
+### AC-10: Effective Task Scheduler contract (NFR-S6)
 Given a proof-verified read-only worker and an exported Task Scheduler XML
 When the installed task is validated
 Then its effective CIM principal run level is `Limited`
 And an omitted optional XML `RunLevel` node is accepted
 And a present XML node is accepted only when it is `LeastPrivilege`
-And every elevated or unreadable effective run level fails closed before any
-scheduled worker run.
+And schema-default omissions such as `StartWhenAvailable=false` are accepted
+only when the corresponding effective CIM value matches
+And every missing non-default setting, duplicate node, invalid lexical value,
+wrong effective setting, extra action/trigger, or unreadable property fails
+closed before any scheduled worker run.
+
+### AC-11: Scheduler-only immutable remediation (NFR-R1, NFR-S7)
+Given a valid V5 proof receipt and a V5 task disabled by validator failure
+When the scheduler validator is remediated without changing worker source
+Then V4 and V5 tasks and their evidence remain present and disabled
+And V6 uses a new task name and create-exclusive review, export, and receipt
+paths
+And V6 continues the exact frozen V5 contract, journal, and HMAC audit chain
+And no contract registration, manual task start, order call, or broker
+mutation occurs.
+
+### AC-12: Authenticated health and scheduler rollback (NFR-S8, NFR-S9)
+Given the exact V5 HMAC audit chain and the new V6 task namespace
+When installation or health validation runs
+Then no file timestamp contributes to runtime freshness
+And active-window freshness is derived from a monotonic signed heartbeat
+And V6 cannot be enabled with less than 900 seconds of installation lead
+And the first `NextRunTime` equals the reviewed boundary
+And the exact V5 proof children and every new predecessor transition are
+authenticated through an append-only signed checkpoint chain
+And the checkpoint/audit head exactly matches the authenticated live journal
+And concurrent health checks cannot fork the checkpoint chain
+And installation or explicit full-archive mode authenticates every historical
+pair while online mode reports that it validates only the suffix
+And incomplete audit publication is distinguished from a committed invalid
+pair without using file timestamps
+And scheduler phase is resampled after evidence verification without accepting
+an early startup exit or inventing a post-expiry run
+And any post-registration failure stops and disables V6 or returns
+`V6_FAIL_CLOSED_DISABLE_FAILED`.
 
 ## Edge Cases and Error Scenarios
 
@@ -144,7 +181,19 @@ scheduled worker run.
 - EC-13: Worker uses a legacy contract namespace, invalid duration, status-only mode, or XM compatibility lane → Reject before worker execution.
 - EC-14: A second worker owns the contract → Return `BUSY`; do not queue or run in parallel.
 - EC-15: Lock or install-manifest identity changes during a worker session → Stop `HOLD` before the next child runtime import.
-- EC-16: Exported task XML omits optional `RunLevel` while the effective CIM value is `Limited` → Accept; reject a present non-`LeastPrivilege` XML value or any effective value other than `Limited`.
+- EC-16: Exported task XML omits optional `RunLevel` while effective CIM is `Limited`, or omits a setting whose XSD default equals the reviewed value → Accept only when effective CIM also matches.
+- EC-17: Exported task XML omits `StartWhenAvailable=false` → Accept as an XSD-default elision when effective CIM is exactly `false`; reject wrong or unreadable CIM, a wrong explicit value, duplicates, or invalid boolean syntax.
+- EC-18: Exported task XML omits a reviewed non-default setting such as `AllowHardTerminate=false`, `AllowStartOnDemand=false`, or `ExecutionTimeLimit=PT0S` → Reject with a named semantic failure rather than `PropertyNotFoundStrict`.
+- EC-19: An audit file is touched without a new signed heartbeat, a WAL transaction leaves the main SQLite mtime unchanged, a signed heartbeat goes backward, or it exceeds future/stale limits → Ignore mtimes and reject according to the authenticated heartbeat contract.
+- EC-20: V6 enablement is too close to the first boundary, `NextRunTime` differs, rollback disable/query fails, or an instance remains running → Reject installation; attempt stop and disable; require the distinct fail-closed rollback result when `Disabled` cannot be proven.
+- EC-21: A proof child is substituted, the proof signing-key/runtime identity drifts, or a middle post-proof audit pair is removed → Reject the proof/checkpoint predecessor chain.
+- EC-22: The audit file is visible before its matching manifest → Retain the last signed checkpoint and retry/ignore the uncommitted publication; once the manifest is visible, any missing, reparse-point, changing, or invalid audit bytes are rejected.
+- EC-23: Health crosses a trigger boundary during evidence verification, a worker exits during the five-minute startup allowance, or the observation is after the final bounded worker ends → Recompute phase after verification and require the exact `ACTIVE`, `GAP`, or `EXPIRED` state without an invented trigger.
+- EC-24: The newest signed checkpoint and matching audit suffix are removed while the live journal remains ahead → Reject live-journal/audit-head mismatch rather than accepting an older valid prefix.
+- EC-25: Two health checks race to append a successor, an identical checkpoint already exists, or Task Scheduler reports `Queued` during startup → Serialize through a named mutex; accept only byte-identical checkpoint state and accept `Queued` only before a current-boundary attempt.
+- EC-26: A checkpointed historical audit byte changes → Default online mode reports that historical bytes were not re-read; installation or explicit full-archive audit MUST reject the drift.
+- EC-27: Explicit full-archive audit is requested while the task is not `Ready`, a worker interval is active, or the next trigger is less than 3600 seconds away → Reject before scanning historical bytes.
+- EC-28: Power is lost after a checkpoint temporary file is flushed but before publication → Leave at most an ignored non-chain temporary file; the final checkpoint is either atomically complete or absent.
 
 ## API Contracts
 

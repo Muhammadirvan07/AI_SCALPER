@@ -1,7 +1,7 @@
 # Phase 3 — Broker Read-Only Shadow
 
-Status: **PHILLIP COMMODITY V4 PROOF VERIFIED / V3 FAILURE PRESERVED /
-V4 TASK-XML FAILURE PRESERVED / V5 TASK REMEDIATION PENDING /
+Status: **PHILLIP COMMODITY V5 PROOF VERIFIED / V4 AND V5 TASK FAILURES
+PRESERVED / V6 SCHEDULER-ONLY REMEDIATION PREPARED /
 FBS DIAGNOSTIC-ONLY / XM JAPAN LEGAL-BLOCKED / NOT_READY**
 
 Belum ada primary evidence broker yang boleh dipromosikan. FBS adalah target
@@ -106,21 +106,46 @@ optional `RunLevel` element from exported XML; the handler disabled the task
 before scheduled execution. The v4 contract, proof receipt, task XML, and
 disabled task remain preserved.
 
-The v5 remediation validates the effective Task Scheduler principal through
-the CIM `Principal.RunLevel=Limited` property. An exported XML `RunLevel` node
-may be omitted by Windows; if present it must still be `LeastPrivilege`.
-Before any scheduled collection:
+The v5 bounded worker proof is valid: it binds the immutable v5 contract,
+12 authenticated children, one dependency session, and a source chain from
+genesis. Its task installation then failed closed after Windows legally
+elided the XSD-default node `StartWhenAvailable=false`. The StrictMode
+validator accessed that missing XML child dynamically, raised
+`PropertyNotFoundStrict`, and disabled V5 before its scheduled run. V5 proof,
+task, review XML, and installed XML remain immutable.
 
-1. pull the exact v5 remediation commit into a clean Windows checkout;
-2. register `phillip-commodity-window-01-diagnostic-v5` before observation
-   start;
-3. use a new v5 journal and create-exclusive audit directory;
-4. prove at least two child invocations and verify both HMAC manifests;
-5. verify that the second child uses the compact same-process dependency
-   reference, without a second path activation, and completes inside the
-   append grace; and
-6. only then install the bounded worker task under the exact evidence-key and
-   terminal identity.
+V6 is a scheduler-only remediation. It retains frozen worker commit
+`290cc23d9d87f93e914612afdfecfc481d2c232f`, contract
+`phillip-commodity-window-01-diagnostic-v5`, the V5 journal/audit chain, and
+the exact proof receipt SHA-256
+`29e14f81bbd87d460f171484d59a40e9bdd6ae00611c3453ade4aa6c846b3aec`.
+It creates only a new V6 task and create-exclusive V6 task evidence. The
+shared validator applies XSD defaults to omitted optional nodes, rejects
+missing non-default settings, and independently validates every effective
+CIM value. It registers V6 disabled, requires 900 seconds of lead, verifies
+the exact first `NextRunTime`, and enables only after the disabled definition
+passes. Rollback unconditionally attempts stop plus disable and must prove
+effective state `Disabled`. Health freshness comes only from the monotonic
+HMAC-signed runtime heartbeat, never audit/journal file mtimes. The installer
+anchors every exact V5 proof child and the full predecessor sequence/hash/HMAC
+chain into a signed genesis checkpoint. Health checks append signed
+checkpoints and verify only the new committed-manifest suffix; an audit without
+its manifest is treated as an in-progress publication, while a manifest with
+missing or invalid audit bytes fails closed. The signed checkpoint/audit head
+must exactly equal the authenticated read-only SQLite journal head, preventing
+tail rollback. A named mutex serializes health plus checkpoint commit, and
+only a byte-identical collision is idempotent. Installation performs a full
+archive audit; later operators can request the same re-read with
+`Test-PhillipCommodityV6TaskHealth.ps1 -FullArchiveAudit`, but only while the
+task is `Ready`, outside an active interval, and at least 3600 seconds before
+the next start. Checkpoints are flushed to a non-chain temporary file and
+atomically moved to their create-exclusive final name. Default online health
+intentionally revalidates only the new suffix plus live journal head.
+Phase is recomputed after evidence verification, `Queued` is accepted only
+during startup grace before any run attempt, immediate startup exits are
+rejected, and the end boundary cannot invent a post-expiry trigger. V4 and V5
+must remain present and
+`Disabled`; they are never deleted or overwritten.
 
 Worker failure, stale status, audit-export failure, Task Scheduler overlap, or
 loss of the exact terminal is `HOLD`. The worker does not carry an order API.

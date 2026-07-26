@@ -44,8 +44,9 @@ dimodifikasi.
 
 | Check | Result |
 |---|---|
-| Full Python regression including bounded-worker v3 remediation, factory materialization, registration provenance, and terminal-binding probes | `1,575 / 1,575 PASS` |
-| Full regression with optimization enabled | `1,575 / 1,575 PASS` |
+| Full Python regression including V6 scheduler remediation, factory materialization, registration provenance, and terminal-binding probes | `1,634 OK` (`1` PowerShell-only self-test skipped on macOS) |
+| Full regression with optimization enabled | `1,634 OK` (`1` PowerShell-only self-test skipped on macOS) |
+| Final V6 scheduler/journal/HMAC/archive/rollback focused regression | `49 OK` normal and optimized (`1` PowerShell-only self-test skipped on macOS) |
 | Investor-login/collector/dependency/profile/operational-store focused regression | `127 / 127 PASS` in both modes |
 | Candidate-scoped operational namespace/audit regression | `28 / 28 PASS` in both modes |
 | Focused post-activation evidence integration regression | `100 / 100 PASS` |
@@ -230,22 +231,39 @@ checks remain real blockers.
 
 ## Remaining blockers
 
-1. The Task Scheduler XML remediation and Commodity v5 contract
-   namespace must be
-   committed, pulled into a clean exact Windows CPython 3.12 checkout, and
-   bound to a fresh build identity.
-2. Phillip Commodity v1 remains immutable and empty; v2 is registered and its
-   pre-window proof is valid but does not solve the measured deadline. The
-   Windows host must register
-   `phillip-commodity-window-01-diagnostic-v5` before the observation start
-   using the already signed discovery, plan/calendar, evidence key, and valid
-   frozen snapshot. It must then prove at least two authenticated worker child
-   invocations with a new journal/audit directory and demonstrate cached-child
-   latency below the append grace before Task Scheduler installation. This
-   path has no order authority; Phillip FX remains disabled. The immutable v3
-   attempt retains the rejected repeated site-packages activation. The
-   immutable v4 proof is valid, while its disabled task and XML retain the
-   fail-closed missing-optional-`RunLevel` installation outcome.
+1. The V6 scheduler-only package must be built from its committed source,
+   transferred to Windows, and installed before the first scheduled start.
+   V4 and V5 tasks must remain present and disabled. V6 must pass the shared
+   XSD-default/effective-CIM validator and health check without a manual task
+   start. Installation must retain at least 900 seconds of lead, verify the
+   exact first `NextRunTime`, and use stop+disable rollback that proves
+   `Disabled`. Active health must use the monotonic HMAC heartbeat rather than
+   audit or SQLite file mtimes. The fixed V5 proof children and exact
+   predecessor sequence/hash/HMAC chain must seed a signed checkpoint; online
+   health may validate only the new committed-manifest suffix when it appends
+   a signed successor checkpoint, but its head must equal the authenticated
+   live SQLite journal count/hash/signed-HMAC/status/heartbeat so checkpoint
+   and audit tail truncation fails closed. A named mutex must serialize
+   verification through checkpoint commit. Installation must fully re-read the
+   historical archive, and `-FullArchiveAudit` must expose that explicit gate
+   later only while the task is `Ready`, outside an active interval, and at
+   least 3600 seconds before the next start. Checkpoint publication must flush
+   a non-chain temporary file and atomically move it to the create-exclusive
+   final name; default online mode does not claim to re-read checkpointed bytes.
+   In-progress audit-without-manifest
+   publication must not create a transient failure, but a committed manifest
+   with missing/invalid audit bytes must fail closed. Phase must be resampled
+   after evidence verification, with `Queued` limited to pre-attempt startup
+   grace and early startup exit/post-expiry invented triggers rejected.
+2. Phillip Commodity v1 remains immutable and empty; v2 is registered but
+   cannot satisfy the measured append deadline; v3 preserves the rejected
+   repeated-activation attempt; and v4 proof is valid while its disabled task
+   retains the missing-optional-`RunLevel` failure. V5 proof is now valid with
+   12 authenticated children, one dependency session, and source chain from
+   genesis. Its task is disabled and preserves the
+   `StartWhenAvailable=false` StrictMode-validator failure. V6 retains the
+   exact frozen V5 worker, contract, journal, audit chain, and proof receipt;
+   it adds no order authority and no new forward contract.
 3. The exact five-role Windows suite must produce canonical secret-free
    Decision, Execution, and Status Monitor provider packs and configured
    candidates, an operations plan/review bundle,

@@ -425,7 +425,58 @@ remediation therefore advances Commodity to
 signed plan/calendar, observation window, evidence key, symbol scope, or any
 safety flag.
 
-The v5 worker and installer:
+The v5 worker proof is valid, but the v5 task installer is preserved as a
+fail-closed result. Windows legally omitted the optional XSD-default
+`StartWhenAvailable=false` element and the StrictMode validator attempted a
+dynamic dotted-property read. The handler disabled the V5 task before any
+scheduled run. This does not invalidate the V5 worker proof and did not
+perform broker mutation.
+
+The V6 scheduler-only remediation keeps the frozen V5 worker source,
+contract, journal, audit chain, and exact proof receipt. It adds no worker
+source change and therefore does not register a new forward contract. It
+uses a new task name and create-exclusive V6 task evidence, requires both V4
+and V5 tasks to remain disabled, and shares one side-effect-free validator
+between installer and health checks. That validator:
+
+- resolves omitted default-valued Task Scheduler XML nodes using the official
+  XSD defaults;
+- rejects missing non-default settings such as
+  `AllowHardTerminate=false`, `AllowStartOnDemand=false`, and
+  `ExecutionTimeLimit=PT0S`;
+- validates the effective CIM principal and all 13 reviewed settings;
+- rejects duplicate or invalid XML values and extra actions or triggers; and
+- never reads an optional XML child through a dynamic dotted property.
+
+The installer additionally requires 900 seconds of lead, registers V6
+disabled, validates before enablement, and verifies the exact first
+`NextRunTime`. A post-registration failure attempts stop plus disable and must
+prove `Disabled`; otherwise it returns `V6_FAIL_CLOSED_DISABLE_FAILED`.
+Health freshness is based only on the HMAC-verified, strictly monotonic runtime
+heartbeat with explicit future/stale limits. Audit/journal file mtimes are not
+accepted as evidence. The exact V5 proof-child inventory, runtime/signing-key
+identity, and every predecessor sequence/hash/HMAC transition are anchored by
+a create-exclusive signed genesis checkpoint. Later health checks validate the
+append-only checkpoint chain and only its new committed-manifest suffix, so
+the eight-week soak does not repeatedly parse the full history. Every online
+result also authenticates the read-only SQLite journal head and requires exact
+count/hash/signed-HMAC/heartbeat equality with the committed audit head; tail
+rollback is rejected. A named mutex serializes health and checkpoint commit,
+and only a byte-identical create-exclusive collision is reconciled. The
+installer performs a full historical archive audit, and
+`Test-PhillipCommodityV6TaskHealth.ps1 -FullArchiveAudit` repeats it only when
+the task is `Ready`, no worker interval is active, and the next start is at
+least 3600 seconds away. Checkpoints use a flushed same-directory temporary
+file followed by an atomic create-exclusive move, so an interruption cannot
+publish a partial final checkpoint. Default online health does not re-read
+checkpointed historical bytes. A lone audit
+without a manifest is an incomplete publication; a committed manifest with a
+missing or invalid audit is rejected. Scheduler phase is recomputed after the
+evidence check, accepts `Queued` only before a startup attempt, rejects an
+attempted worker that exits during startup grace,
+and clamps the final worker to the reviewed end boundary.
+
+The proof-verified v5 worker:
 
 - acquires a process-lifetime kernel fence distinct from the per-cycle fence;
 - fully verifies and hashes the installed environment once per bounded
@@ -439,16 +490,19 @@ The v5 worker and installer:
 - invokes the existing one-shot boundary every UTC minute at second `02`;
 - stops nonzero on any child `HOLD` or `BUSY`; and
 - accepts an explicit lifetime from 900 through 86,400 seconds only;
-- verifies the effective scheduled-task run level as CIM `Limited`; and
-- permits an omitted optional XML `RunLevel` node, while rejecting every
-  present value other than `LeastPrivilege`.
+- remains bound to effective scheduled-task run level CIM `Limited`; and
+- carries no Task Scheduler or order mutation primitive itself.
 
 The cache cannot survive a process restart. No worker path adds an order API,
 changes broker state, or relaxes `live_allowed=false`.
 
-After the v5 source commit is pulled into a clean Windows checkout, register
-the new immutable contract before the signed observation start. Use a new
-journal and audit directory. A bounded pre-window proof may then be run with:
+The immutable v5 contract was already registered before observation and the
+bounded proof completed successfully. Do not register it again or create a
+replacement journal. Install only the reviewed V6 scheduler package before
+the first scheduled start and while at least 900 seconds remain; do not
+manually start the task.
+
+The earlier bounded proof command remains documented for forensic context:
 
 ```powershell
 $releasePython = "C:\AI_SCALPER_PRIVATE\phillip-commodity-v3-venv\Scripts\python.exe"

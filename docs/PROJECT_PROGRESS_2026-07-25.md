@@ -358,9 +358,35 @@ V4 tetap immutable. Remediation V5 memverifikasi effective CIM run level
 `Limited`, menerima node XML yang absent, dan tetap menolak nilai present yang
 bukan `LeastPrivilege`.
 
-Tidak ada order API atau safety unlock yang ditambahkan. V5 masih harus
-melewati exact Windows clean-pull, immutable contract registration, proof, dan
-Task Scheduler health verification sebelum collection terjadwal.
+Exact Windows V5 proof kemudian lulus dengan 12 authenticated children, satu
+dependency session, source chain dari genesis, dan order capability disabled.
+Instalasi task V5 gagal tertutup setelah Windows menghilangkan node
+XSD-default `StartWhenAvailable=false`; validator lama membacanya secara
+dinamis di bawah StrictMode. Handler menonaktifkan task sebelum scheduled run.
+
+Remediation V6 sekarang scheduler-only: frozen worker commit, contract,
+journal, audit chain, dan exact proof receipt V5 dipertahankan. Satu shared
+validator memeriksa default XSD, seluruh effective CIM setting, duplicate dan
+invalid XML, action/trigger inventory, SID, command, dan schedule. V4/V5 tetap
+disabled dan evidence-nya tidak ditimpa. V6 juga register-disabled-first,
+mensyaratkan lead 900 detik, memverifikasi exact first `NextRunTime`, dan
+rollback stop+disable harus membuktikan state `Disabled`. Freshness memakai
+heartbeat HMAC monotonic, bukan mtime audit/SQLite. Tidak ada order API atau
+safety unlock yang ditambahkan. Full proof-child inventory dan exact
+predecessor sequence/hash/HMAC chain sekarang membentuk signed genesis
+checkpoint. Health mengappend signed successor checkpoint dan hanya membaca
+suffix baru, menggunakan manifest sebagai publication commit marker,
+mengikat head itu ke exact HMAC-authenticated live SQLite journal head, dan
+menolak penghapusan tail checkpoint/audit. Named mutex menserialkan verifier,
+task validation, dan create-exclusive checkpoint commit; collision hanya
+idempotent bila byte identik. Installer menjalankan full historical archive
+audit, sedangkan health online membaca suffix baru; full re-audit dapat diminta
+dengan `-FullArchiveAudit` hanya saat task `Ready`, di luar active interval,
+dan sedikitnya 3600 detik sebelum start berikutnya. Checkpoint diflush ke file
+temporary non-chain lalu dipindah atomik ke nama final create-exclusive. Fase
+scheduler dihitung ulang setelah verifikasi,
+`Queued` hanya diterima sebelum startup attempt, early exit ditolak, dan tidak
+mengarang trigger setelah end boundary.
 
 ## Bukti lokal
 
@@ -401,11 +427,13 @@ Task Scheduler health verification sebelum collection terjadwal.
   `94/94 PASS` normal dan optimized.
 - Candidate-scoped operational namespace/audit regression: `28/28 PASS`
   normal dan optimized.
-- Full project regression termasuk registration dan exact-terminal
-  hardening serta bounded-worker v3 remediation:
-  `1.575/1.575 PASS` normal.
+- Final V6 scheduler/journal/HMAC/archive/rollback focused regression:
+  `49 OK` normal dan optimized (`1` PowerShell-only self-test skipped on
+  macOS and executed by the Windows installer).
+- Full project regression termasuk V6 scheduler remediation:
+  `1.634 OK` (`1` PowerShell-only self-test skipped on macOS).
 - Full tracked-project regression dengan optimization enabled:
-  `1.575/1.575 PASS`.
+  `1.634 OK` (`1` PowerShell-only self-test skipped on macOS).
 - Focused post-activation evidence integration regression:
   `100/100 PASS`.
 - Exact-terminal collector dan broker evidence CLI regression:
@@ -448,14 +476,12 @@ Software foundation dan packaging lokal sudah cukup untuk membuat candidate
 baru. Demo-auto soak belum boleh dimulai hanya karena test lokal hijau.
 Urutan berikutnya:
 
-1. commit/push bounded-worker remediation dan immutable Commodity namespace
-   v3 tanpa direktori dashboard;
-2. clean pull commit baru pada Windows, verify exact isolated dependency
-   environment, lalu register immutable Commodity contract v3 memakai
-   discovery, plan, calendar, key, dan frozen snapshot yang sama;
-3. jalankan bounded pre-window v3 proof dengan journal/audit directory baru,
-   verifikasi minimal dua child receipt dan cached-child latency di bawah
-   append grace, lalu install read-only worker Task Scheduler;
+1. commit/push V6 scheduler-only remediation tanpa direktori dashboard;
+2. build dan transfer exact V6 operator ZIP, sidecar manifest, dan expansion
+   helper dari committed source identity;
+3. pada Windows, pertahankan V4/V5 disabled, install task V6 tanpa manual
+   start dengan lead minimum 900 detik, lalu luluskan shared-validator dan
+   authenticated-heartbeat health check;
 4. mulai Commodity evidence collection pada eligible M15 boundary dan
    mirror setiap authenticated audit pair ke off-host immutable storage;
 5. build ulang atomic five-role suite dari commit baru dan verifikasi SHA-256
