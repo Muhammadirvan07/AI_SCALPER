@@ -388,6 +388,17 @@ scheduler dihitung ulang setelah verifikasi,
 `Queued` hanya diterima sebelum startup attempt, early exit ditolak, dan tidak
 mengarang trigger setelah end boundary.
 
+Transport V6 pertama berhenti fail-closed sebelum task installation. ZIP
+memiliki enam file yang benar, tetapi Windows PowerShell 5.1 mengembalikan
+array JSON top-level sebagai satu pipeline object sehingga helper lama
+membandingkan enam entry hasil ekstraksi dengan expected count satu. Revisi
+transport V6.1 menyimpan hasil parse lalu mere-enumerasinya secara eksplisit,
+mengikat count ke sidecar manifest, memvalidasi path/size/SHA-256 setiap member,
+dan menolak entry atau directory tambahan secara rekursif. Root V6 gagal serta
+transfer lama dipreservasi; V6.1 memakai root baru yang terikat exact commit.
+Tidak ada instalasi task, manual start, MT5 initialization, atau broker mutation
+yang terjadi pada failure tersebut.
+
 ## Bukti lokal
 
 - Shared-provider-primitives spec validator: `98/100`, grade A, nol error.
@@ -427,13 +438,14 @@ mengarang trigger setelah end boundary.
   `94/94 PASS` normal dan optimized.
 - Candidate-scoped operational namespace/audit regression: `28/28 PASS`
   normal dan optimized.
-- Final V6 scheduler/journal/HMAC/archive/rollback focused regression:
-  `49 OK` normal dan optimized (`1` PowerShell-only self-test skipped on
-  macOS and executed by the Windows installer).
+- Final V6.1 extraction/scheduler/journal/HMAC/archive/rollback focused
+  regression: `52 OK` normal dan optimized (`3` PowerShell-dependent tests
+  skipped on macOS; actual helper execution remains a Windows acceptance
+  gate).
 - Full project regression termasuk V6 scheduler remediation:
-  `1.634 OK` (`1` PowerShell-only self-test skipped on macOS).
+  `1.637 OK` (`3` PowerShell-dependent tests skipped on macOS).
 - Full tracked-project regression dengan optimization enabled:
-  `1.634 OK` (`1` PowerShell-only self-test skipped on macOS).
+  `1.637 OK` (`3` PowerShell-dependent tests skipped on macOS).
 - Focused post-activation evidence integration regression:
   `100/100 PASS`.
 - Exact-terminal collector dan broker evidence CLI regression:
@@ -476,9 +488,10 @@ Software foundation dan packaging lokal sudah cukup untuk membuat candidate
 baru. Demo-auto soak belum boleh dimulai hanya karena test lokal hijau.
 Urutan berikutnya:
 
-1. commit/push V6 scheduler-only remediation tanpa direktori dashboard;
-2. build dan transfer exact V6 operator ZIP, sidecar manifest, dan expansion
-   helper dari committed source identity;
+1. commit/push V6.1 extraction remediation tanpa direktori dashboard;
+2. build dan transfer exact V6.1 operator ZIP, sidecar manifest, dan expansion
+   helper dari committed source identity ke direktori transfer baru; jangan
+   menghapus atau memakai ulang root/transfer V6 yang gagal;
 3. pada Windows, pertahankan V4/V5 disabled, install task V6 tanpa manual
    start dengan lead minimum 900 detik, lalu luluskan shared-validator dan
    authenticated-heartbeat health check;

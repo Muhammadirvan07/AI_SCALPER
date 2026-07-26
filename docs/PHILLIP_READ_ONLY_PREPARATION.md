@@ -476,6 +476,13 @@ evidence check, accepts `Queued` only before a startup attempt, rejects an
 attempted worker that exits during startup grace,
 and clamps the final worker to the reviewed end boundary.
 
+The first V6 transfer helper failed closed before task installation because
+Windows PowerShell 5.1 exposed the valid six-member top-level JSON inventory
+as one pipeline object. V6.1 explicitly re-enumerates the parsed inventory,
+binds it to the sidecar count and every member size/hash, rejects recursive
+unexpected entries, and uses a fresh commit-specific operator root. Preserve
+the failed V6 operator root and transfer artifacts without modification.
+
 The proof-verified v5 worker:
 
 - acquires a process-lifetime kernel fence distinct from the per-cycle fence;

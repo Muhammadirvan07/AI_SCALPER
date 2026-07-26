@@ -147,6 +147,15 @@ rejected, and the end boundary cannot invent a post-expiry trigger. V4 and V5
 must remain present and
 `Disabled`; they are never deleted or overwritten.
 
+The first V6 transport attempt failed before task installation: Windows
+PowerShell 5.1 treated the parsed top-level JSON inventory as one pipeline
+object although the valid ZIP extracted six files. Use only the V6.1 transfer
+revision. It explicitly re-enumerates that object, verifies the six-member
+inventory recursively, and defaults to a commit-specific operator root. Keep
+`C:\AI_SCALPER_TRANSFER\phillip-v6-scheduler` and
+`C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator` unchanged for
+forensic review.
+
 Worker failure, stale status, audit-export failure, Task Scheduler overlap, or
 loss of the exact terminal is `HOLD`. The worker does not carry an order API.
 

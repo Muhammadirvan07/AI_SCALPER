@@ -44,9 +44,9 @@ dimodifikasi.
 
 | Check | Result |
 |---|---|
-| Full Python regression including V6 scheduler remediation, factory materialization, registration provenance, and terminal-binding probes | `1,634 OK` (`1` PowerShell-only self-test skipped on macOS) |
-| Full regression with optimization enabled | `1,634 OK` (`1` PowerShell-only self-test skipped on macOS) |
-| Final V6 scheduler/journal/HMAC/archive/rollback focused regression | `49 OK` normal and optimized (`1` PowerShell-only self-test skipped on macOS) |
+| Full Python regression including V6.1 extraction remediation, scheduler remediation, factory materialization, registration provenance, and terminal-binding probes | `1,637 OK` (`3` PowerShell-dependent tests skipped on macOS) |
+| Full regression with optimization enabled | `1,637 OK` (`3` PowerShell-dependent tests skipped on macOS) |
+| Final V6.1 extraction/scheduler/journal/HMAC/archive/rollback focused regression | `52 OK` normal and optimized (`3` PowerShell-dependent tests skipped on macOS) |
 | Investor-login/collector/dependency/profile/operational-store focused regression | `127 / 127 PASS` in both modes |
 | Candidate-scoped operational namespace/audit regression | `28 / 28 PASS` in both modes |
 | Focused post-activation evidence integration regression | `100 / 100 PASS` |
@@ -264,6 +264,12 @@ checks remain real blockers.
    `StartWhenAvailable=false` StrictMode-validator failure. V6 retains the
    exact frozen V5 worker, contract, journal, audit chain, and proof receipt;
    it adds no order authority and no new forward contract.
+   The first V6 transfer helper failed before task installation because
+   Windows PowerShell 5.1 represented its top-level JSON inventory as one
+   pipeline object. V6.1 explicitly re-enumerates the parsed inventory,
+   verifies every extracted entry recursively, binds a fresh commit-specific
+   operator root, and requires the failed root and transfer artifacts to remain
+   unmodified. Actual Windows PowerShell extraction is still required.
 3. The exact five-role Windows suite must produce canonical secret-free
    Decision, Execution, and Status Monitor provider packs and configured
    candidates, an operations plan/review bundle,

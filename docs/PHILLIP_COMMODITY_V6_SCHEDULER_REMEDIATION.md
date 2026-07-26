@@ -2,6 +2,13 @@
 
 Status: **PREPARED / READ-ONLY / ORDER CAPABILITY DISABLED**
 
+Transport revision V6.1 replaces only the extraction boundary. The original
+V6 ZIP was valid, but its helper used a Windows PowerShell 5.1-incompatible
+top-level JSON-array pipeline and observed the six extracted files as an
+expected inventory count of one. Preserve the failed operator root and its
+transfer directory unchanged for forensic review; V6.1 uses a new
+commit-specific operator root.
+
 V5 proof is valid. V5 task installation failed only because
 `Export-ScheduledTask` omitted the schema-default
 `StartWhenAvailable=false` node and the StrictMode validator read that
@@ -35,6 +42,10 @@ Copy these three files into one new Windows directory:
 3. `Expand-PhillipCommodityV6SchedulerPackage.ps1`
 
 Do not place them in the existing V5 operator directory.
+Do not delete, rename, or reuse either failed V6 location:
+
+- `C:\AI_SCALPER_TRANSFER\phillip-v6-scheduler`
+- `C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator`
 
 ## Source and package verification
 
@@ -45,7 +56,7 @@ $repo = "C:\AI_SCALPER"
 $branch = "agent/live-grade-phase3"
 $expectedCommit = "__REMEDIATION_COMMIT__"
 $expectedTree = "__REMEDIATION_TREE__"
-$transferRoot = "C:\AI_SCALPER_TRANSFER\phillip-v6-scheduler"
+$transferRoot = "C:\AI_SCALPER_TRANSFER\phillip-v6r1-scheduler"
 
 Set-Location $repo
 git fetch --no-tags origin $branch
@@ -77,15 +88,15 @@ if (-not $?) {
 
 The extractor verifies archive filename, archive SHA-256, source identity,
 member inventory, every member size/hash, safety flags, exact V5 proof hash,
-and the frozen worker identity before creating
-`C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator`.
+and the frozen worker identity before creating the fresh, commit-bound root
+`C:\AI_SCALPER_PRIVATE\__OPERATOR_ROOT_NAME__`.
 
 ## Install and health check
 
 ```powershell
 $operatorRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-v6-scheduler-operator"
+  "__OPERATOR_ROOT_NAME__"
 )
 
 & "$operatorRoot\Install-PhillipCommodityV6ReadOnlyTask.ps1"

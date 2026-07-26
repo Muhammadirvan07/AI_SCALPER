@@ -21,6 +21,15 @@ PROOF_SHA256 = (
     "29e14f81bbd87d460f171484d59a40e9"
     "bdd6ae00611c3453ade4aa6c846b3aec"
 )
+FAILED_TRANSFER_SOURCE_COMMIT = "94fbad3add48570ac1cc2f67c4bf4bc51c5295f6"
+FAILED_TRANSFER_ARCHIVE_SHA256 = (
+    "73ff33fd8107e3a395ee061386b8827431f4f6045b1f951ebae5e752081ac3f6"
+)
+FAILED_TRANSFER_OPERATOR_ROOT = (
+    r"C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator"
+)
+TRANSPORT_REVISION = "V6.1"
+EXTRACTION_INVENTORY_MODE = "WINDOWS_POWERSHELL_5_1_FLATTENED_EXACT_V2"
 TEMPLATE_PATHS = (
     "windows_operator/PhillipCommodityTaskContract.ps1",
     "windows_operator/Install-PhillipCommodityV6ReadOnlyTask.ps1",
@@ -103,6 +112,7 @@ def _render(
     task_contract_sha256: str,
     evidence_verifier_sha256: str,
     package_name: str,
+    operator_root_name: str,
 ) -> bytes:
     text = source.decode("utf-8")
     replacements = {
@@ -111,6 +121,7 @@ def _render(
         "__TASK_CONTRACT_SHA256__": task_contract_sha256,
         "__EVIDENCE_VERIFIER_SHA256__": evidence_verifier_sha256,
         "__PACKAGE_NAME__": package_name,
+        "__OPERATOR_ROOT_NAME__": operator_root_name,
     }
     for placeholder, value in replacements.items():
         text = text.replace(placeholder, value)
@@ -161,6 +172,9 @@ def _expand_helper(
     inventory = base64.b64encode(
         _json_bytes([member.manifest_row() for member in members])
     ).decode("ascii")
+    operator_root_name = (
+        "phillip-commodity-v6-scheduler-operator-" + commit[:8]
+    )
     source = f'''[CmdletBinding()]
 param(
   [Parameter()]
@@ -172,7 +186,7 @@ param(
   [Parameter()]
   [string]$OperatorRoot = (
     "C:\\AI_SCALPER_PRIVATE\\" +
-    "phillip-commodity-v6-scheduler-operator"
+    "{operator_root_name}"
   )
 )
 
@@ -185,6 +199,12 @@ $expectedArchiveSha256 = "{archive_sha256}"
 $expectedManifestSha256 = "{manifest_sha256}"
 $expectedCommit = "{commit}"
 $expectedTree = "{tree}"
+$expectedOperatorRoot = (
+  "C:\\AI_SCALPER_PRIVATE\\" +
+  "{operator_root_name}"
+)
+$failedTransferOperatorRoot = "{FAILED_TRANSFER_OPERATOR_ROOT}"
+$failedTransferRoot = "C:\\AI_SCALPER_TRANSFER\\phillip-v6-scheduler"
 $memberInventoryBase64 = "{inventory}"
 
 function Get-ExactLeaf {{
@@ -235,11 +255,13 @@ $manifest = Get-Content -LiteralPath $manifestFile.FullName -Raw |
 if (
   $manifest.schema_version -ne
     "phillip-commodity-v6-scheduler-transfer-v1" -or
+  $manifest.transport_revision -ne "{TRANSPORT_REVISION}" -or
   $manifest.archive.path -ne $expectedArchiveName -or
   [int64]$manifest.archive.size_bytes -ne $expectedArchiveSize -or
   $manifest.archive.sha256 -ne $expectedArchiveSha256 -or
   $manifest.source.commit -ne $expectedCommit -or
   $manifest.source.tree -ne $expectedTree -or
+  $manifest.operator_root -ne $expectedOperatorRoot -or
   $manifest.worker.source_commit -ne "{WORKER_COMMIT}" -or
   $manifest.worker.source_tree -ne "{WORKER_TREE}" -or
   $manifest.worker.contract_id -ne "{CONTRACT_ID}" -or
@@ -253,6 +275,16 @@ if (
     "NAMED_MUTEX_CREATE_EXCLUSIVE_V1" -or
   $manifest.checkpoint_publication -ne
     "FLUSHED_TEMP_ATOMIC_MOVE_V1" -or
+  $manifest.extraction_inventory_mode -ne
+    "{EXTRACTION_INVENTORY_MODE}" -or
+  $manifest.failed_transfer.source_commit -ne
+    "{FAILED_TRANSFER_SOURCE_COMMIT}" -or
+  $manifest.failed_transfer.archive_sha256 -ne
+    "{FAILED_TRANSFER_ARCHIVE_SHA256}" -or
+  $manifest.failed_transfer.operator_root -ne
+    $failedTransferOperatorRoot -or
+  $manifest.failed_transfer.required_disposition -ne
+    "PRESERVE_UNMODIFIED" -or
   $manifest.safety.order_capability -ne "DISABLED" -or
   $manifest.safety.live_allowed -ne $false -or
   $manifest.safety.safe_to_demo_auto_order -ne $false
@@ -260,10 +292,60 @@ if (
   throw "V6 transfer manifest identity or safety mismatch."
 }}
 
+$resolvedOperatorRoot = [System.IO.Path]::GetFullPath(
+  $OperatorRoot
+).TrimEnd([char[]]@('\\', '/'))
+foreach ($preservedRootInput in @(
+  $failedTransferOperatorRoot,
+  $failedTransferRoot
+)) {{
+  $preservedRoot = [System.IO.Path]::GetFullPath(
+    $preservedRootInput
+  ).TrimEnd([char[]]@('\\', '/'))
+  if (
+    [string]::Equals(
+      $resolvedOperatorRoot,
+      $preservedRoot,
+      [System.StringComparison]::OrdinalIgnoreCase
+    ) -or
+    $resolvedOperatorRoot.StartsWith(
+      $preservedRoot + [System.IO.Path]::DirectorySeparatorChar,
+      [System.StringComparison]::OrdinalIgnoreCase
+    )
+  ) {{
+    throw "V6 operator root would modify preserved forensic evidence."
+  }}
+}}
+$OperatorRoot = $resolvedOperatorRoot
+
 $expectedMembersJson = [System.Text.Encoding]::UTF8.GetString(
   [System.Convert]::FromBase64String($memberInventoryBase64)
 )
-$expectedMembers = @($expectedMembersJson | ConvertFrom-Json)
+$parsedExpectedMembers = $expectedMembersJson | ConvertFrom-Json
+$expectedMembers = @(
+  $parsedExpectedMembers |
+    ForEach-Object {{ $_ }}
+)
+if (
+  $expectedMembers.Count -lt 1 -or
+  [int]$manifest.archive.member_count -ne $expectedMembers.Count
+) {{
+  throw "Embedded V6 inventory count mismatch."
+}}
+$expectedMemberPaths = @{{}}
+foreach ($expected in $expectedMembers) {{
+  $expectedPath = [string]$expected.path
+  if (
+    [string]::IsNullOrWhiteSpace($expectedPath) -or
+    [System.IO.Path]::GetFileName($expectedPath) -ne $expectedPath -or
+    $expectedMemberPaths.ContainsKey($expectedPath) -or
+    [int64]$expected.size_bytes -lt 0 -or
+    [string]$expected.sha256 -notmatch '^[0-9a-f]{{64}}$'
+  ) {{
+    throw "Embedded V6 inventory member is invalid or duplicated."
+  }}
+  $expectedMemberPaths.Add($expectedPath, $true)
+}}
 if (Test-Path -LiteralPath $OperatorRoot) {{
   throw "V6 operator root already exists; preserve it for review."
 }}
@@ -274,12 +356,27 @@ try {{
   Expand-Archive `
     -LiteralPath $archive.FullName `
     -DestinationPath $OperatorRoot
-  $observed = @(Get-ChildItem -LiteralPath $OperatorRoot -Force)
+  $observed = @(
+    Get-ChildItem `
+      -LiteralPath $OperatorRoot `
+      -Force `
+      -Recurse `
+      -ErrorAction Stop
+  )
+  $observedDirectories = @(
+    $observed |
+      Where-Object {{ $_.PSIsContainer }}
+  )
   if (
     $observed.Count -ne $expectedMembers.Count -or
-    @($observed | Where-Object {{ $_.PSIsContainer }}).Count -ne 0
+    $observedDirectories.Count -ne 0
   ) {{
-    throw "Extracted V6 inventory count or type mismatch."
+    throw (
+      "Extracted V6 inventory count or type mismatch. " +
+      "ExpectedFiles=$($expectedMembers.Count); " +
+      "ObservedEntries=$($observed.Count); " +
+      "ObservedDirectories=$($observedDirectories.Count)."
+    )
   }}
   foreach ($expected in $expectedMembers) {{
     $memberPath = Join-Path $OperatorRoot ([string]$expected.path)
@@ -306,7 +403,9 @@ catch {{
 
 [PSCustomObject]@{{
   Status = "PHILLIP_COMMODITY_V6_SCHEDULER_TRANSFER_VERIFIED"
+  TransportRevision = "{TRANSPORT_REVISION}"
   ArchiveSHA256 = $archiveHash
+  OperatorRoot = $OperatorRoot
   RemediationSourceCommit = $expectedCommit
   RemediationSourceTree = $expectedTree
   FrozenWorkerCommit = "{WORKER_COMMIT}"
@@ -348,6 +447,9 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         evidence_verifier_data
     ).hexdigest()
     package_name = output.name
+    operator_root_name = (
+        "phillip-commodity-v6-scheduler-operator-" + commit[:8]
+    )
     members = [
         Member("PhillipCommodityTaskContract.ps1", contract_data),
         Member(
@@ -359,6 +461,7 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
                 task_contract_sha256=contract_sha256,
                 evidence_verifier_sha256=evidence_verifier_sha256,
                 package_name=package_name,
+                operator_root_name=operator_root_name,
             ),
         ),
         Member(
@@ -370,6 +473,7 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
                 task_contract_sha256=contract_sha256,
                 evidence_verifier_sha256=evidence_verifier_sha256,
                 package_name=package_name,
+                operator_root_name=operator_root_name,
             ),
         ),
         Member(
@@ -385,11 +489,13 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
                 task_contract_sha256=contract_sha256,
                 evidence_verifier_sha256=evidence_verifier_sha256,
                 package_name=package_name,
+                operator_root_name=operator_root_name,
             ),
         ),
     ]
     artifacts = {
         "schema_version": "phillip-commodity-v6-scheduler-artifacts-v1",
+        "transport_revision": TRANSPORT_REVISION,
         "execution_status": "PREPARED_NOT_EXECUTED_ON_WINDOWS",
         "remediation_source": {"branch": BRANCH, "commit": commit, "tree": tree},
         "worker": {
@@ -420,6 +526,14 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         "health_checkpoint_serialization": "NAMED_MUTEX_CREATE_EXCLUSIVE_V1",
         "checkpoint_publication": "FLUSHED_TEMP_ATOMIC_MOVE_V1",
         "audit_publication_commit_marker": "MANIFEST",
+        "extraction_inventory_mode": EXTRACTION_INVENTORY_MODE,
+        "operator_root": rf"C:\AI_SCALPER_PRIVATE\{operator_root_name}",
+        "failed_transfer": {
+            "source_commit": FAILED_TRANSFER_SOURCE_COMMIT,
+            "archive_sha256": FAILED_TRANSFER_ARCHIVE_SHA256,
+            "operator_root": FAILED_TRANSFER_OPERATOR_ROOT,
+            "required_disposition": "PRESERVE_UNMODIFIED",
+        },
         "members": [member.manifest_row() for member in members],
         "safety": {
             "order_capability": "DISABLED",
@@ -437,6 +551,7 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
     archive_sha256 = hashlib.sha256(archive_data).hexdigest()
     manifest = {
         "schema_version": "phillip-commodity-v6-scheduler-transfer-v1",
+        "transport_revision": TRANSPORT_REVISION,
         "archive": {
             "path": output.name,
             "size_bytes": len(archive_data),
@@ -459,6 +574,14 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         "health_checkpoint_serialization": "NAMED_MUTEX_CREATE_EXCLUSIVE_V1",
         "checkpoint_publication": "FLUSHED_TEMP_ATOMIC_MOVE_V1",
         "audit_publication_commit_marker": "MANIFEST",
+        "extraction_inventory_mode": EXTRACTION_INVENTORY_MODE,
+        "operator_root": rf"C:\AI_SCALPER_PRIVATE\{operator_root_name}",
+        "failed_transfer": {
+            "source_commit": FAILED_TRANSFER_SOURCE_COMMIT,
+            "archive_sha256": FAILED_TRANSFER_ARCHIVE_SHA256,
+            "operator_root": FAILED_TRANSFER_OPERATOR_ROOT,
+            "required_disposition": "PRESERVE_UNMODIFIED",
+        },
         "members": [member.manifest_row() for member in members],
         "safety": {
             "order_capability": "DISABLED",
