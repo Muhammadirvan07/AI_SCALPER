@@ -1,0 +1,99 @@
+{
+  "schema_version": "ai-scalper-windows-broker-preparation-profiles-v1",
+  "official_branch": "agent/live-grade-phase3",
+  "safety": {
+    "live_allowed": false,
+    "safe_to_demo_auto_order": false,
+    "promotion_eligible": false,
+    "max_lot": 0.01,
+    "order_capability": "DISABLED"
+  },
+  "profiles": [
+    {
+      "candidate_id": "xm",
+      "release_profile": "WINDOWS_XM_JAPAN_LEGAL_HOLD_PREPARATION_V1",
+      "archive_name": "xm-japan-legal-hold-preparation-v1.zip",
+      "helper_name": "Expand-XMJapanLegalHoldPreparationPackage.ps1",
+      "operator_template_path": "windows_operator/Test-XMPreparationGate.ps1",
+      "operator_entry_point": "Test-XMPreparationGate.ps1",
+      "default_extraction_root": "C:\\AI_SCALPER_PRIVATE\\xm-japan-legal-hold-preparation-v1",
+      "eligibility": {
+        "operating_jurisdiction": "JP",
+        "status": "LEGAL_BLOCKED_CURRENT_JAPAN",
+        "discovery_allowed": false,
+        "contract_registration_allowed": false,
+        "task_installation_allowed": false
+      },
+      "capabilities": {
+        "read_only_preflight_allowed": false,
+        "mt5_initialization_allowed": false,
+        "credential_access_allowed": false,
+        "evidence_creation_allowed": false
+      },
+      "instrument_claims": {
+        "reviewed_categories": [
+          "FOREX",
+          "PRECIOUS_METALS",
+          "ENERGIES",
+          "EQUITY_INDICES",
+          "PUBLIC_CRYPTO_DERIVATIVES_MARKETING_ONLY"
+        ],
+        "crypto_status": "ACCOUNT_ENTITY_DISCOVERY_REQUIRED",
+        "broker_symbol_map_added": false,
+        "official_sources": [
+          "https://www.xmtrading.com/jp/crypto-derivatives",
+          "https://www.fsa.go.jp/ordinary/chuui/mutouroku/04.html"
+        ]
+      },
+      "required_repo_files": [
+        "config/broker_candidates.phase3.json",
+        "docs/XM_READ_ONLY_SHADOW_RUNBOOK.md"
+      ]
+    },
+    {
+      "candidate_id": "finex",
+      "release_profile": "WINDOWS_FINEX_READ_ONLY_PREPARATION_V1",
+      "archive_name": "finex-read-only-preparation-v1.zip",
+      "helper_name": "Expand-FINEXReadOnlyPreparationPackage.ps1",
+      "operator_template_path": "windows_operator/Test-FINEXReadOnlyPreflight.ps1",
+      "operator_entry_point": "Test-FINEXReadOnlyPreflight.ps1",
+      "default_extraction_root": "C:\\AI_SCALPER_PRIVATE\\finex-read-only-preparation-v1",
+      "eligibility": {
+        "operating_jurisdiction": "JP",
+        "status": "PREPARATION_ONLY_ELIGIBILITY_PENDING",
+        "discovery_allowed": false,
+        "contract_registration_allowed": false,
+        "task_installation_allowed": false
+      },
+      "capabilities": {
+        "read_only_preflight_allowed": true,
+        "mt5_initialization_allowed": true,
+        "credential_access_allowed": false,
+        "evidence_creation_allowed": false
+      },
+      "instrument_claims": {
+        "reviewed_categories": [
+          "FOREX",
+          "METALS_AND_ENERGY",
+          "EQUITY_INDICES",
+          "STOCKS"
+        ],
+        "crypto_status": "NOT_LISTED_IN_REVIEWED_OFFICIAL_INVENTORY",
+        "broker_symbol_map_added": false,
+        "official_sources": [
+          "https://bappebti.go.id/pialang_berjangka/detail/133",
+          "https://finex.co.id/trading/instruments"
+        ]
+      },
+      "required_repo_files": [
+        "config/broker_candidates.phase3.json",
+        "docs/FINEX_READ_ONLY_PREPARATION.md",
+        "run_mt5_readonly_preflight.py",
+        "verify_windows_dependency_lock.py",
+        "live_runtime/mt5_preflight.py",
+        "live_runtime/mt5_readonly.py",
+        "live_runtime/secure_files.py"
+      ]
+    }
+  ]
+}
