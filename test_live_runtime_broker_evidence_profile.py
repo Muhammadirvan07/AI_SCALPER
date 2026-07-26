@@ -154,7 +154,7 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
         self.assertNotEqual(fx.key_name, commodity.key_name)
         self.assertNotEqual(fx.contract_id, commodity.contract_id)
         self.assertEqual(
-            "phillip-commodity-window-01-diagnostic-v4",
+            "phillip-commodity-window-01-diagnostic-v5",
             commodity.contract_id,
         )
         self.assertFalse(fx.registration_enabled)

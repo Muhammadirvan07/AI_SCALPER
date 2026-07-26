@@ -1,7 +1,7 @@
 # Phase 3 — Broker Read-Only Shadow
 
-Status: **PHILLIP COMMODITY V2 PROOF VERIFIED / V3 FAILURE PRESERVED /
-V4 DEADLINE WORKER PENDING /
+Status: **PHILLIP COMMODITY V4 PROOF VERIFIED / V3 FAILURE PRESERVED /
+V4 TASK-XML FAILURE PRESERVED / V5 TASK REMEDIATION PENDING /
 FBS DIAGNOSTIC-ONLY / XM JAPAN LEGAL-BLOCKED / NOT_READY**
 
 Belum ada primary evidence broker yang boleh dipromosikan. FBS adalah target
@@ -98,15 +98,23 @@ grace, do not install the v2 one-shot command as a once-per-minute task.
 The first bounded-worker v3 contract is preserved as failed evidence. Its
 first child correctly failed closed because the session re-entered the
 non-idempotent site-packages activator after the process-level verification.
-No broker mutation occurred. The reviewed correction is a new immutable v4
-contract plus the bounded
-worker documented in `docs/PHILLIP_READ_ONLY_PREPARATION.md`. Before any
-scheduled collection:
+No broker mutation occurred. The immutable v4 contract then proved the
+corrected bounded worker with 13 authenticated children, one dependency
+session, and a source chain verified from genesis. Its Task Scheduler
+installation failed closed after registration because Windows omitted the
+optional `RunLevel` element from exported XML; the handler disabled the task
+before scheduled execution. The v4 contract, proof receipt, task XML, and
+disabled task remain preserved.
 
-1. pull the exact v4 remediation commit into a clean Windows checkout;
-2. register `phillip-commodity-window-01-diagnostic-v4` before observation
+The v5 remediation validates the effective Task Scheduler principal through
+the CIM `Principal.RunLevel=Limited` property. An exported XML `RunLevel` node
+may be omitted by Windows; if present it must still be `LeastPrivilege`.
+Before any scheduled collection:
+
+1. pull the exact v5 remediation commit into a clean Windows checkout;
+2. register `phillip-commodity-window-01-diagnostic-v5` before observation
    start;
-3. use a new v4 journal and create-exclusive audit directory;
+3. use a new v5 journal and create-exclusive audit directory;
 4. prove at least two child invocations and verify both HMAC manifests;
 5. verify that the second child uses the compact same-process dependency
    reference, without a second path activation, and completes inside the

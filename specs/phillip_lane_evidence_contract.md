@@ -47,6 +47,7 @@ immutable contract namespace before observation begins.
 - NFR-R3: Exactly one worker process may own a contract at a time through a crash-safe kernel fence distinct from the per-cycle fence.
 - NFR-S4: The worker MUST fully hash the installed environment once per bounded process, MUST revalidate the immutable lock contract on every child invocation, MUST bind compact child receipts to the full session receipt hash, and MUST never cache across a process restart.
 - NFR-S5: Worker duration MUST be explicit, at least 15 minutes, and no longer than 24 hours. Any child `HOLD` or `BUSY` result MUST stop the worker with a nonzero exit.
+- NFR-S6: A scheduled worker MUST run with the effective Task Scheduler principal level `Limited`. Because the Task Scheduler schema permits an omitted XML `RunLevel` element, validation MUST use the effective principal property and MUST reject an XML node when present unless it is `LeastPrivilege`.
 - NFR-A1: Contract and discovery CLIs MUST print that order capability remains disabled and MUST not expose secret key material.
 
 ## Acceptance Criteria
@@ -117,6 +118,15 @@ And a second worker cannot acquire the worker fence
 And any nonzero child result stops the worker without enabling order
 capability.
 
+### AC-10: Effective least-privilege task identity (NFR-S6)
+Given a proof-verified read-only worker and an exported Task Scheduler XML
+When the installed task is validated
+Then its effective CIM principal run level is `Limited`
+And an omitted optional XML `RunLevel` node is accepted
+And a present XML node is accepted only when it is `LeastPrivilege`
+And every elevated or unreadable effective run level fails closed before any
+scheduled worker run.
+
 ## Edge Cases and Error Scenarios
 
 - EC-1: Empty symbol map → Reject before account or symbol reads.
@@ -134,6 +144,7 @@ capability.
 - EC-13: Worker uses a legacy contract namespace, invalid duration, status-only mode, or XM compatibility lane → Reject before worker execution.
 - EC-14: A second worker owns the contract → Return `BUSY`; do not queue or run in parallel.
 - EC-15: Lock or install-manifest identity changes during a worker session → Stop `HOLD` before the next child runtime import.
+- EC-16: Exported task XML omits optional `RunLevel` while the effective CIM value is `Limited` → Accept; reject a present non-`LeastPrivilege` XML value or any effective value other than `Limited`.
 
 ## API Contracts
 

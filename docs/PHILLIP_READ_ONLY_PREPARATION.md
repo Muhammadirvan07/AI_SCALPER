@@ -415,13 +415,17 @@ Contract v2 remains immutable and valid, but it must not receive evidence from
 a source revision made after registration. The first bounded-worker contract,
 `phillip-commodity-window-01-diagnostic-v3`, is also immutable and preserves a
 fail-closed first-child rejection caused by repeated non-idempotent
-site-packages activation. The corrected bounded-worker remediation therefore
-advances Commodity to `phillip-commodity-window-01-diagnostic-v4`. It does not
-modify the discovery,
+site-packages activation. Contract v4 proves the corrected bounded worker with
+13 authenticated children and one dependency session. Its scheduled-task
+installation then failed closed because exported Windows Task Scheduler XML
+omitted the optional `RunLevel` node. The task was disabled before scheduled
+execution and all v4 artifacts remain immutable. The task-validation
+remediation therefore advances Commodity to
+`phillip-commodity-window-01-diagnostic-v5`. It does not modify the discovery,
 signed plan/calendar, observation window, evidence key, symbol scope, or any
 safety flag.
 
-The v4 worker:
+The v5 worker and installer:
 
 - acquires a process-lifetime kernel fence distinct from the per-cycle fence;
 - fully verifies and hashes the installed environment once per bounded
@@ -434,12 +438,15 @@ The v4 worker:
 - records an HMAC-bound compact same-process reference to the full receipt;
 - invokes the existing one-shot boundary every UTC minute at second `02`;
 - stops nonzero on any child `HOLD` or `BUSY`; and
-- accepts an explicit lifetime from 900 through 86,400 seconds only.
+- accepts an explicit lifetime from 900 through 86,400 seconds only;
+- verifies the effective scheduled-task run level as CIM `Limited`; and
+- permits an omitted optional XML `RunLevel` node, while rejecting every
+  present value other than `LeastPrivilege`.
 
 The cache cannot survive a process restart. No worker path adds an order API,
 changes broker state, or relaxes `live_allowed=false`.
 
-After the v3 source commit is pulled into a clean Windows checkout, register
+After the v5 source commit is pulled into a clean Windows checkout, register
 the new immutable contract before the signed observation start. Use a new
 journal and audit directory. A bounded pre-window proof may then be run with:
 

@@ -716,8 +716,8 @@ def _worker_contract_id(
     except Exception as exc:
         raise RuntimeError("worker profile configuration is invalid") from exc
     contract_id = str(profile.contract_id)
-    if contract_id != "phillip-commodity-window-01-diagnostic-v4":
-        raise RuntimeError("worker contract must use the immutable v4 namespace")
+    if contract_id != "phillip-commodity-window-01-diagnostic-v5":
+        raise RuntimeError("worker contract must use the immutable v5 namespace")
     return contract_id
 
 

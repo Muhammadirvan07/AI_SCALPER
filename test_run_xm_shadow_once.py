@@ -961,7 +961,7 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
         evidence_binding = {
             "candidate_id": "phillip-commodity",
             "key_name": "phillip-commodity-window-01-v1",
-            "contract_id": "phillip-commodity-window-01-diagnostic-v4",
+            "contract_id": "phillip-commodity-window-01-diagnostic-v5",
             "config_files": (),
             "build_identity_provider": lambda: object(),
         }
@@ -1423,7 +1423,7 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
                 run_xm_shadow_once,
                 "_worker_contract_id",
                 return_value=(
-                    "phillip-commodity-window-01-diagnostic-v4"
+                    "phillip-commodity-window-01-diagnostic-v5"
                 ),
             ),
             mock.patch.object(
@@ -1456,7 +1456,7 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
                 (
                     "fence-created",
                     self.artifacts,
-                    "phillip-commodity-window-01-diagnostic-v4",
+                    "phillip-commodity-window-01-diagnostic-v5",
                 ),
                 ("fence-enter",),
                 ("dependency", args.lock),
@@ -1467,14 +1467,14 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
         )
         self.assertEqual(896.5, observed_duration["seconds"])
 
-    def test_worker_contract_binding_accepts_only_registered_commodity_v4(self):
+    def test_worker_contract_binding_accepts_only_registered_commodity_v5(self):
         profile = (
             Path(run_xm_shadow_once.__file__).resolve().parent
             / "config"
             / "broker_evidence_profiles.v1.json"
         )
         self.assertEqual(
-            "phillip-commodity-window-01-diagnostic-v4",
+            "phillip-commodity-window-01-diagnostic-v5",
             run_xm_shadow_once._worker_contract_id(
                 "phillip-commodity",
                 profile,

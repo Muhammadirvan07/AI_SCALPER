@@ -350,10 +350,17 @@ V3 contract, failed journal, dan audit export tetap immutable. Remediation V4
 mengaktifkan dependency path tepat sekali, memvalidasi ulang lock pada setiap
 child, dan menolak path/precedence drift tanpa memanggil ulang aktivator.
 
-Tidak ada order API atau safety unlock yang ditambahkan. V4 masih harus
-melewati exact Windows clean-pull, immutable contract registration, minimal
-dua-child proof, measured cached-child latency, dan authenticated audit
-verification sebelum Task Scheduler boleh dipasang.
+Exact Windows V4 kemudian lulus proof dengan 13 authenticated children, satu
+dependency session, dan source chain dari genesis. Instalasi Task Scheduler
+setelah proof gagal tertutup ketika XML hasil ekspor Windows menghilangkan
+elemen opsional `RunLevel`; handler menonaktifkan task sebelum scheduled run.
+V4 tetap immutable. Remediation V5 memverifikasi effective CIM run level
+`Limited`, menerima node XML yang absent, dan tetap menolak nilai present yang
+bukan `LeastPrivilege`.
+
+Tidak ada order API atau safety unlock yang ditambahkan. V5 masih harus
+melewati exact Windows clean-pull, immutable contract registration, proof, dan
+Task Scheduler health verification sebelum collection terjadwal.
 
 ## Bukti lokal
 

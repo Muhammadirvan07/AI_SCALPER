@@ -18,7 +18,7 @@
       "candidate_id": "phillip-commodity",
       "key_name": "phillip-commodity-window-01-v1",
       "snapshot_id": "phillip-commodity-dev-pre-window-01-v1",
-      "contract_id": "phillip-commodity-window-01-diagnostic-v4",
+      "contract_id": "phillip-commodity-window-01-diagnostic-v5",
       "template_path": "config/phillip_commodity_calendar_window_01.template.json",
       "registration_enabled": true,
       "status": "DIAGNOSTIC_EVIDENCE_REGISTRATION_ENABLED_BY_MANUAL_REVIEW"
