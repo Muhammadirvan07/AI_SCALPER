@@ -49,6 +49,7 @@ class SafetyState(ApiModel):
     demo_auto_order: Literal["OUT_OF_SCOPE"] = "OUT_OF_SCOPE"
     bridge_mode: str | None = None
     guard_enabled: bool | None = None
+    order_capability: str | None = None
     safety_violation: bool = False
     violations: list[str] = Field(default_factory=list)
 
@@ -281,6 +282,58 @@ class SourceContractStatus(ApiModel):
     issues: list[str] = Field(default_factory=list)
 
 
+class EvidenceGate(ApiModel):
+    key: str
+    label: str
+    status: Literal["PASSED", "BLOCKED", "WAIT", "UNVERIFIED"]
+    passed: bool | None = None
+    source: str
+    reason: str | None = None
+
+
+class ProjectProgress(ApiModel):
+    stage: str | None = None
+    status: str = "UNVERIFIED"
+    source_status: SourceState = "unavailable"
+    gates_passed: int | None = None
+    gates_total: int | None = None
+    gates: list[EvidenceGate] = Field(default_factory=list)
+    milestones_completed: list[str] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+    observation_start_at: datetime | None = None
+    blind_until: datetime | None = None
+    observation_window_status: str = "UNVERIFIED"
+    expected_complete_sessions: int | None = None
+    promotion_eligible: bool | None = None
+    promotion_reason: str | None = None
+    sources: list[str] = Field(default_factory=list)
+
+
+class BrokerReadiness(ApiModel):
+    candidate_id: str
+    display_name: str
+    role: str | None = None
+    environment: str | None = None
+    server: str | None = None
+    account_type: str | None = None
+    account_currency: str | None = None
+    leverage: str | None = None
+    symbols_found: dict[str, str] = Field(default_factory=dict)
+    discovery: str = "UNVERIFIED"
+    regulatory_evidence: str = "UNVERIFIED"
+    calendar_review: str = "UNVERIFIED"
+    contract_registration: str = "UNVERIFIED"
+    shadow_runtime: str = "UNVERIFIED"
+    demo_auto_order_eligibility: str = "BLOCKED"
+    live_eligibility: str = "BLOCKED"
+    promotion_eligible: bool | None = None
+    observation_start_at: datetime | None = None
+    blind_until: datetime | None = None
+    expected_complete_sessions: int | None = None
+    source_status: SourceState = "unavailable"
+    sources: list[str] = Field(default_factory=list)
+
+
 class SessionState(ApiModel):
     current_session: str | None = None
     day_type: Literal["WEEKDAY", "WEEKEND"] | None = None
@@ -335,7 +388,7 @@ class ExecutionStage(ApiModel):
 
 
 class DashboardSnapshot(ApiModel):
-    schema_version: Literal["1.1"] = "1.1"
+    schema_version: Literal["1.2"] = "1.2"
     snapshot_id: str
     version: int
     generated_at: datetime
@@ -362,6 +415,8 @@ class DashboardSnapshot(ApiModel):
     analytics: dict[str, Any] = Field(default_factory=dict)
     news: NewsState
     source_contracts: dict[str, SourceContractStatus] = Field(default_factory=dict)
+    project_progress: ProjectProgress
+    broker_readiness: list[BrokerReadiness] = Field(default_factory=list)
     activity: list[ActivityItem] = Field(default_factory=list)
     sources: dict[str, SourceMeta] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)

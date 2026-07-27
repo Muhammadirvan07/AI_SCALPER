@@ -167,6 +167,97 @@ def dashboard_root(tmp_path: Path) -> Path:
                 }
             ],
         },
+        "broker_candidates.phase3.json": {
+            "status": "READ_ONLY_SHADOW_EVIDENCE",
+            "operational_priority": {
+                "selected_target_bindings": ["phillip-fx"],
+            },
+            "candidates": [
+                {
+                    "candidate_id": "phillip-fx",
+                    "display_name": "Phillip FX Test",
+                    "role": "SELECTED_TARGET_PREPARATION",
+                    "environment": "DEMO",
+                    "server": "Phillip-Test",
+                    "account_type": "FX_DEMO",
+                    "account_currency": "JPY",
+                    "leverage": "25:1",
+                    "broker_symbols_observed": {"EURUSD": "EURUSD.test"},
+                    "binding_probe_observation": {"status": "BINDING_READY"},
+                    "regulatory_observation": {
+                        "verification_status": "OFFICIAL_REGISTRATION_OBSERVED",
+                        "promotion_eligible": False,
+                    },
+                },
+                {
+                    "candidate_id": "xm",
+                    "display_name": "XM Test",
+                    "role": "BLOCKED_CURRENT_JURISDICTION",
+                    "environment": "DEMO",
+                    "server": "XM-Test",
+                    "account_currency": "JPY",
+                    "leverage": "500:1",
+                    "broker_symbols_observed": {"EURUSD": "EURUSD."},
+                    "discovery_receipt": {"status": "LEGACY_DISCOVERY_INVALID"},
+                    "regulatory_observation": {
+                        "verification_status": "VERIFIED_INELIGIBLE",
+                    },
+                },
+            ],
+        },
+        "broker_evidence_profiles.v1.json": {
+            "profiles": [
+                {
+                    "candidate_id": "phillip-fx",
+                    "status": "BLOCKED_PENDING_SIGNED_REVIEW",
+                }
+            ],
+            "live_allowed": False,
+            "safe_to_demo_auto_order": False,
+        },
+        "windows_broker_preparation_profiles.v1.json": {
+            "profiles": [
+                {
+                    "candidate_id": "xm",
+                    "eligibility": {"status": "LEGAL_BLOCKED_CURRENT_JAPAN"},
+                }
+            ],
+        },
+        "manual_demo_readiness.v1.json": {
+            "status": "LOCKED_PENDING_EXTERNAL_GATES",
+            "execution_enabled": False,
+            "live_allowed": False,
+            "max_lot": 0.01,
+            "order_capability": "DISABLED",
+            "safe_to_demo_auto_order": False,
+            "global_gates": {"WINDOWS_HARDENING_REQUIRED": False},
+            "candidate_gates": {
+                "phillip-fx": {"BROKER_FORWARD_SAMPLE_REQUIRED": False},
+            },
+        },
+        "demo_readiness_evaluator.json": {
+            "status": "DEMO_OBSERVATION_ONLY_READY",
+            "passed_checks": ["profit_factor_ready"],
+            "failed_checks": ["clean_sample_target_met"],
+        },
+        "phase4_clean_sample_gate.json": {
+            "status": "BLOCKED",
+            "live_allowed": False,
+        },
+        "phillip_fx_calendar_window_01.template.json": {
+            "candidate_id": "phillip-fx",
+            "observation_start_at_utc": "2026-07-26T16:00:00Z",
+            "blind_until_utc": "2026-09-21T15:00:00Z",
+            "expected_complete_sessions": 40,
+            "safe_to_demo_auto_order": False,
+            "live_allowed": False,
+        },
+        "xm_calendar_window_01.json": {
+            "candidate_id": "xm",
+            "observation_start_at_utc": "2026-07-19T21:00:00Z",
+            "blind_until_utc": "2026-08-01T21:00:00Z",
+            "expected_complete_sessions": 10,
+        },
     }
     for name, payload in fixtures.items():
         (tmp_path / name).write_text(json.dumps(payload), encoding="utf-8")
@@ -178,6 +269,17 @@ def dashboard_root(tmp_path: Path) -> Path:
         "2026-07-25T00:15:00Z,1.1010,1.1020,1.1000,1.1000,120\n",
         encoding="utf-8",
     )
+    documents = {
+        "docs/LIVE_GRADE_ARCHITECTURE.md": "# Arsitektur uji\n",
+        "docs/BROKER_READ_ONLY_SHADOW_RUNBOOK.md": "# Runbook uji\n",
+        "docs/ARCHITECTURE_FOUNDATION_COMPLETION_2026-07-21.md": "# Rilis uji\n",
+        "docs/SHIP_GATE_AUDIT_2026-07-25.md": "# Audit uji\n",
+        "dashboard_api/CONTRACTS.md": "# Kontrak uji\n",
+    }
+    for relative_path, content in documents.items():
+        target = tmp_path / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
     return tmp_path
 
 

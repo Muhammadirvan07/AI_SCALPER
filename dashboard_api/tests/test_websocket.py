@@ -15,6 +15,8 @@ def test_rest_health_and_snapshot(test_settings) -> None:
         news = client.get("/api/v1/news")
         readiness = client.get("/api/v1/decision-readiness")
         contracts = client.get("/api/v1/source-contracts")
+        progress = client.get("/api/v1/project-progress")
+        brokers = client.get("/api/v1/broker-readiness")
         assert health.status_code == 200
         assert health.json()["watcher_running"] is True
         assert snapshot.status_code == 200
@@ -23,7 +25,25 @@ def test_rest_health_and_snapshot(test_settings) -> None:
         assert news.status_code == 200
         assert news.json()["news"]["events"][0]["id"] == "NEWS-EUR-1"
         assert readiness.json()["decision_readiness"]["decision_ready"] is False
-        assert contracts.json()["schema_version"] == "1.1"
+        assert contracts.json()["schema_version"] == "1.2"
+        assert progress.json()["project_progress"]["gates_total"] == 4
+        assert len(brokers.json()["broker_readiness"]) == 2
+
+
+def test_documentation_endpoints_are_allowlisted_and_read_only(test_settings) -> None:
+    with TestClient(create_app(test_settings)) as client:
+        listing = client.get("/api/v1/documentation")
+        document = client.get("/api/v1/documentation/api-contract")
+        missing = client.get("/api/v1/documentation/../../etc/passwd")
+        openapi = client.get("/openapi.json").json()
+
+        assert listing.status_code == 200
+        assert len(listing.json()["documents"]) == 5
+        assert document.status_code == 200
+        assert document.text.startswith("# Kontrak uji")
+        assert missing.status_code == 404
+        for path_item in openapi["paths"].values():
+            assert not {"post", "put", "patch", "delete"}.intersection(path_item)
 
 
 def test_websocket_initial_snapshot_and_heartbeat(test_settings) -> None:

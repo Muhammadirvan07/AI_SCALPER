@@ -170,7 +170,11 @@ export function QuantHeader({
               <CalendarDays aria-hidden="true" className="size-3.5" />
               {jstCalendar}
             </time>
-            <TerminalStatusBadge label="MODE PAPER" tone="positive" compact />
+            <TerminalStatusBadge
+              label={data ? `MODE ${data.summary.mode}` : 'MODE TIDAK TERVERIFIKASI'}
+              tone={data ? 'positive' : 'caution'}
+              compact
+            />
             <TerminalStatusBadge label="LIVE TERKUNCI (LOCKED)" tone="blocked" compact />
             <button
               type="button"

@@ -26,6 +26,22 @@ SOURCE_FILE_NAMES: dict[str, tuple[str, ...]] = {
     "bridge_status": ("bridge_status.json",),
     "bridge_rejected_signals": ("bridge_rejected_signals.json",),
     "collector_status": ("data_collector_status.json",),
+    "broker_candidates": ("broker_candidates.phase3.json",),
+    "broker_evidence_profiles": ("broker_evidence_profiles.v1.json",),
+    "windows_broker_preparation": (
+        "windows_broker_preparation_profiles.v1.json",
+    ),
+    "manual_demo_readiness": ("manual_demo_readiness.v1.json",),
+    "demo_readiness_evaluator": ("demo_readiness_evaluator.json",),
+    "clean_sample_gate": ("phase4_clean_sample_gate.json",),
+    "phillip_fx_calendar": (
+        "phillip_fx_calendar_window_01.template.json",
+    ),
+    "phillip_commodity_calendar": (
+        "phillip_commodity_calendar_window_01.template.json",
+    ),
+    "xm_calendar": ("xm_calendar_window_01.json",),
+    "fbs_calendar": ("fbs_calendar_window_01.template.json",),
     "market_news": (
         "market_news.json",
         "economic_calendar.json",
@@ -95,6 +111,13 @@ class Settings:
             "AI_SCALPER_STALE_AFTER_SECONDS",
             180.0,
             1.0,
+        )
+    )
+    evidence_stale_after_seconds: float = field(
+        default_factory=lambda: _float_env(
+            "AI_SCALPER_EVIDENCE_STALE_AFTER_SECONDS",
+            2_592_000.0,
+            86_400.0,
         )
     )
     market_stale_m5_seconds: float = field(

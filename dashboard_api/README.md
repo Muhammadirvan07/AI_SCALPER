@@ -13,7 +13,7 @@ Provider pasar (Yahoo M15 finalized)
   -> data_collector.py (atomic CSV + status)
 File JSON/CSV AI_SCALPER
   -> registry recursive + pembaca aman read-only
-  -> normalizer schema 1.1 + audit kontrak producer
+  -> normalizer schema 1.2 + audit kontrak producer
   -> dashboard snapshot tunggal di memori
   -> REST initial load / fallback polling
   -> WebSocket snapshot updates + heartbeat
@@ -44,6 +44,13 @@ prioritas file pada path paling dangkal:
 - `bridge_status.json`
 - `bridge_rejected_signals.json`
 - `data_collector_status.json`
+- `broker_candidates.phase3.json`
+- `broker_evidence_profiles.v1.json`
+- `windows_broker_preparation_profiles.v1.json`
+- `manual_demo_readiness.v1.json`
+- `demo_readiness_evaluator.json`
+- `phase4_clean_sample_gate.json`
+- calendar window kandidat broker yang terdaftar di `app/config.py`
 - `market_news.json|economic_calendar.json|news_feed.json`
 - kalender ekonomi mingguan publik (fallback remote read-only)
 - `regime_analytics.json|market_regime_history.json`
@@ -104,6 +111,7 @@ Frontend menerjemahkan hash lama seperti `#overview` ke route halaman
 | `AI_SCALPER_WATCH_INTERVAL_SECONDS` | `1.0` | Interval mtime polling |
 | `AI_SCALPER_DEBOUNCE_MS` | `200` | Debounce perubahan cepat |
 | `AI_SCALPER_STALE_AFTER_SECONDS` | `180` | Ambang stale default |
+| `AI_SCALPER_EVIDENCE_STALE_AFTER_SECONDS` | `2592000` | Ambang 30 hari untuk evidence konfigurasi/broker non-telemetry |
 | `AI_SCALPER_MARKET_STALE_M5_SECONDS` | `900` | Ambang M5 termasuk finalization lag |
 | `AI_SCALPER_MARKET_STALE_M15_SECONDS` | `2700` | Ambang M15 termasuk finalization lag |
 | `AI_SCALPER_MARKET_STALE_M30_SECONDS` | `5400` | Ambang M30 termasuk finalization lag |
@@ -159,6 +167,10 @@ Semua route data adalah `GET`:
 - `GET /api/v1/news`
 - `GET /api/v1/decision-readiness`
 - `GET /api/v1/source-contracts`
+- `GET /api/v1/project-progress`
+- `GET /api/v1/broker-readiness`
+- `GET /api/v1/documentation`
+- `GET /api/v1/documentation/{slug}`
 
 Tidak ada route `POST`, `PUT`, `PATCH`, atau `DELETE`.
 
@@ -217,6 +229,22 @@ last-known-good tetap digunakan dengan status `partial`; satu file invalid tidak
 menjatuhkan API. Stale dihitung per sumber dan per panel. Status seluruh koneksi
 baru menjadi stale bila sumber kritis ikut stale, bukan hanya karena satu file
 lama.
+
+Evidence konfigurasi, broker, dan calendar window memakai ambang terpisah 30 hari
+karena bukan telemetry frekuensi tinggi. Evaluator readiness, signal, decision
+health, dan data pasar tetap mengikuti ambang aktual masing-masing; pemisahan ini
+mencegah konfigurasi statis memicu notifikasi stale palsu.
+
+## Landing operasional
+
+Snapshot schema `1.2` menambahkan `project_progress` dan `broker_readiness`.
+Keduanya dinormalisasi dari evidence proyek yang ditemukan registry, bukan dari
+nilai dekoratif frontend. Jika evidence tidak ada, field nullable dan status
+`unavailable|partial|invalid` dipertahankan. Landing `/` menampilkan ringkasan
+eksekutif fail-closed, sedangkan `/overview` tetap menjadi terminal analitik.
+
+Dokumentasi landing dilayani oleh endpoint GET berbasis allowlist. Slug tidak
+dapat memilih path arbitrer dan endpoint tidak menyediakan fungsi tulis.
 
 ## Pengunci keselamatan
 

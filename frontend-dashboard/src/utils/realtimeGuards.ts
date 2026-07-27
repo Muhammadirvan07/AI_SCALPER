@@ -21,6 +21,15 @@ export const isIsoTimestamp = (value: unknown): value is string =>
 const isNullableIsoTimestamp = (value: unknown) =>
   value === null || isIsoTimestamp(value)
 
+const isNullableString = (value: unknown): value is string | null =>
+  value === null || typeof value === 'string'
+
+const isNullableBoolean = (value: unknown): value is boolean | null =>
+  value === null || typeof value === 'boolean'
+
+const isNullableNonNegativeInteger = (value: unknown): value is number | null =>
+  value === null || isNonNegativeInteger(value)
+
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
 
@@ -35,6 +44,65 @@ const recordsHaveStrings = (
   value.every((item) =>
     requiredFields.every((field) => isNonEmptyString(item[field])),
   )
+
+const sourceStates = new Set(['fresh', 'stale', 'partial', 'unavailable', 'invalid'])
+
+const isSourceState = (value: unknown) =>
+  typeof value === 'string' && sourceStates.has(value)
+
+const isEvidenceGate = (value: unknown) =>
+  isRecord(value) &&
+  isNonEmptyString(value.key) &&
+  isNonEmptyString(value.label) &&
+  ['PASSED', 'BLOCKED', 'WAIT', 'UNVERIFIED'].includes(String(value.status)) &&
+  isNullableBoolean(value.passed) &&
+  isNonEmptyString(value.source) &&
+  isNullableString(value.reason)
+
+const isProjectProgress = (value: unknown) =>
+  isRecord(value) &&
+  isNullableString(value.stage) &&
+  isNonEmptyString(value.status) &&
+  isSourceState(value.source_status) &&
+  isNullableNonNegativeInteger(value.gates_passed) &&
+  isNullableNonNegativeInteger(value.gates_total) &&
+  Array.isArray(value.gates) &&
+  value.gates.every(isEvidenceGate) &&
+  isStringArray(value.milestones_completed) &&
+  isStringArray(value.blockers) &&
+  isNullableIsoTimestamp(value.observation_start_at) &&
+  isNullableIsoTimestamp(value.blind_until) &&
+  isNonEmptyString(value.observation_window_status) &&
+  isNullableNonNegativeInteger(value.expected_complete_sessions) &&
+  isNullableBoolean(value.promotion_eligible) &&
+  isNullableString(value.promotion_reason) &&
+  isStringArray(value.sources)
+
+const isBrokerReadiness = (value: unknown) =>
+  isRecord(value) &&
+  isNonEmptyString(value.candidate_id) &&
+  isNonEmptyString(value.display_name) &&
+  isNullableString(value.role) &&
+  isNullableString(value.environment) &&
+  isNullableString(value.server) &&
+  isNullableString(value.account_type) &&
+  isNullableString(value.account_currency) &&
+  isNullableString(value.leverage) &&
+  isRecord(value.symbols_found) &&
+  Object.values(value.symbols_found).every((symbol) => typeof symbol === 'string') &&
+  isNonEmptyString(value.discovery) &&
+  isNonEmptyString(value.regulatory_evidence) &&
+  isNonEmptyString(value.calendar_review) &&
+  isNonEmptyString(value.contract_registration) &&
+  isNonEmptyString(value.shadow_runtime) &&
+  isNonEmptyString(value.demo_auto_order_eligibility) &&
+  isNonEmptyString(value.live_eligibility) &&
+  isNullableBoolean(value.promotion_eligible) &&
+  isNullableIsoTimestamp(value.observation_start_at) &&
+  isNullableIsoTimestamp(value.blind_until) &&
+  isNullableNonNegativeInteger(value.expected_complete_sessions) &&
+  isSourceState(value.source_status) &&
+  isStringArray(value.sources)
 
 const isMarketRecord = (value: unknown) => {
   if (!isRecord(value)) return false
@@ -101,7 +169,7 @@ export const isDashboardSnapshot = (value: unknown): value is DashboardApiSnapsh
     return false
   }
   return (
-    (value.schema_version === '1.0' || value.schema_version === '1.1') &&
+    value.schema_version === '1.2' &&
     isNonEmptyString(value.snapshot_id) &&
     isNonNegativeInteger(value.version) &&
     isIsoTimestamp(value.generated_at) &&
@@ -120,6 +188,7 @@ export const isDashboardSnapshot = (value: unknown): value is DashboardApiSnapsh
     safety.safe_to_demo_observe === true &&
     safety.safe_to_demo_auto_order === false &&
     safety.demo_auto_order === 'OUT_OF_SCOPE' &&
+    isNullableString(safety.order_capability) &&
     isStringArray(safety.violations) &&
     summary.max_lot === 0.01 &&
     Array.isArray(performance.equity_curve) &&
@@ -154,6 +223,9 @@ export const isDashboardSnapshot = (value: unknown): value is DashboardApiSnapsh
     isRecord(value.analytics) &&
     isNewsRecord(value.news) &&
     isRecord(value.source_contracts) &&
+    isProjectProgress(value.project_progress) &&
+    Array.isArray(value.broker_readiness) &&
+    value.broker_readiness.every(isBrokerReadiness) &&
     recordsHaveStrings(value.activity, ['timestamp', 'category', 'title']) &&
     Object.values(sources).every(isRecord) &&
     isStringArray(value.warnings)

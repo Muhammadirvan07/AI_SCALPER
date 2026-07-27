@@ -4,6 +4,13 @@ Dashboard React/Vite/TypeScript untuk observasi data AI_SCALPER. Satu
 `DashboardRealtimeProvider` menangani REST initial load, WebSocket, reconnect,
 fallback REST polling, stale state, dan mock fallback development yang berlabel.
 
+Route `/` adalah executive operational landing yang membaca snapshot schema 1.2
+untuk status koneksi, safety boundary, gate proyek, evidence broker, performa
+paper, aktivitas, dan langkah operator. Route `/overview` tetap menjadi terminal
+analitik mendalam. Saat API gagal atau snapshot tidak valid, landing tidak
+menampilkan angka mock pada build production dan seluruh nilai yang tidak dapat
+dibuktikan diberi label `TIDAK TERVERIFIKASI`.
+
 ```bash
 cp .env.example .env.local
 npm install

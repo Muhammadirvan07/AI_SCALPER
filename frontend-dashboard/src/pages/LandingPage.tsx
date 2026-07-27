@@ -1,13 +1,23 @@
-import { HeroSection } from '../components/dashboard/HeroSection'
+import { AlertTriangle, LoaderCircle } from 'lucide-react'
+import { BrokerReadinessSection } from '../components/landing/BrokerReadinessSection'
+import { DocumentationLinksSection } from '../components/landing/DocumentationLinksSection'
+import { NextActionSection } from '../components/landing/NextActionSection'
+import { OperationalActivitySection } from '../components/landing/OperationalActivitySection'
+import { OperationalLandingHero } from '../components/landing/OperationalLandingHero'
+import { OperationalStatusSection } from '../components/landing/OperationalStatusSection'
+import { PerformanceSummarySection } from '../components/landing/PerformanceSummarySection'
+import { ProjectProgressSection } from '../components/landing/ProjectProgressSection'
+import { SafetyBoundarySection } from '../components/landing/SafetyBoundarySection'
 import { DataStatusBanner } from '../components/dashboard/DataStatusBanner'
-import { Panel } from '../components/ui/Panel'
-import { PanelState } from '../components/ui/PanelState'
-import type { DashboardSummary, DataStatus } from '../types/dashboard'
-import type { DashboardSourceMode } from '../types/dashboardApi'
+import type { DataStatus } from '../types/dashboard'
+import type {
+  DashboardApiSnapshot,
+  RealtimeConnectionInfo,
+} from '../types/dashboardApi'
 
 interface LandingPageProps {
-  summary: DashboardSummary | null
-  sourceMode: DashboardSourceMode
+  snapshot: DashboardApiSnapshot | null
+  connection: RealtimeConnectionInfo
   status: DataStatus
   error: string | null
   lastSuccessfulUpdate: string | null
@@ -15,44 +25,67 @@ interface LandingPageProps {
 }
 
 export function LandingPage({
-  summary,
-  sourceMode,
+  snapshot,
+  connection,
   status,
   error,
   lastSuccessfulUpdate,
   onRefresh,
 }: LandingPageProps) {
-  const unavailableState = status === 'loading'
-    ? 'loading'
-    : status === 'disconnected'
-      ? 'disconnected'
-      : 'error'
+  const mockDevelopment = connection.sourceMode === 'MOCK FALLBACK'
+  const pending = !snapshot && status === 'loading'
+
   return (
-    <main id="main-content" className="future-landing text-slate-200">
-      {summary ? (
-        <>
-          <div className="page-container pt-6">
-            <DataStatusBanner
-              status={status}
-              error={error}
-              lastSuccessfulUpdate={lastSuccessfulUpdate}
-              onRefresh={onRefresh}
-            />
+    <main id="main-content" className="future-landing ops-landing">
+      <OperationalLandingHero snapshot={snapshot} sourceMode={connection.sourceMode} />
+
+      <div className="page-container ops-landing__body">
+        <DataStatusBanner
+          status={status}
+          error={error}
+          lastSuccessfulUpdate={lastSuccessfulUpdate}
+          onRefresh={onRefresh}
+        />
+
+        {!snapshot ? (
+          <div
+            className={`ops-fail-closed ${pending ? 'is-loading' : 'is-blocked'}`}
+            role={pending ? 'status' : 'alert'}
+          >
+            {pending ? (
+              <LoaderCircle aria-hidden="true" className="size-5 motion-safe:animate-spin" />
+            ) : (
+              <AlertTriangle aria-hidden="true" className="size-5" />
+            )}
+            <div>
+              <strong>
+                {pending ? 'Memvalidasi snapshot operasional' : 'Data observasi belum tersedia'}
+              </strong>
+              <p>
+                {mockDevelopment
+                  ? 'MOCK DEVELOPMENT — BUKAN DATA AKTUAL. Nilai mock tidak digunakan untuk status operasional landing.'
+                  : 'Data tidak diganti dengan mock. Seluruh nilai operasional ditandai tidak terverifikasi dan live order tetap terkunci.'}
+              </p>
+            </div>
           </div>
-          <HeroSection summary={summary} sourceMode={sourceMode} />
-        </>
-      ) : (
-        <div className="page-container py-16">
-          <Panel className="p-4 sm:p-6">
-            <PanelState
-              state={unavailableState}
-              title="Data observasi belum tersedia"
-              message="Dashboard tidak menampilkan data simulasi ketika sumber aktual belum terverifikasi. Trading live tetap TERKUNCI (LOCKED)."
-              onRetry={status === 'error' ? onRefresh : undefined}
-            />
-          </Panel>
+        ) : null}
+
+        <div className="ops-landing__priority-grid">
+          <OperationalStatusSection snapshot={snapshot} connection={connection} />
+          <SafetyBoundarySection snapshot={snapshot} />
         </div>
-      )}
+
+        <ProjectProgressSection snapshot={snapshot} />
+        <BrokerReadinessSection brokers={snapshot?.broker_readiness ?? []} />
+        <PerformanceSummarySection snapshot={snapshot} />
+
+        <div className="ops-landing__secondary-grid">
+          <OperationalActivitySection snapshot={snapshot} connection={connection} />
+          <NextActionSection snapshot={snapshot} sourceMode={connection.sourceMode} />
+        </div>
+
+        <DocumentationLinksSection />
+      </div>
     </main>
   )
 }

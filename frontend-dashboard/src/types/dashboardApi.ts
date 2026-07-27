@@ -212,8 +212,60 @@ export interface ApiSourceContract {
   issues: string[]
 }
 
+export interface ApiEvidenceGate {
+  key: string
+  label: string
+  status: 'PASSED' | 'BLOCKED' | 'WAIT' | 'UNVERIFIED'
+  passed: boolean | null
+  source: string
+  reason: string | null
+}
+
+export interface ApiProjectProgress {
+  stage: string | null
+  status: string
+  source_status: ApiSourceState
+  gates_passed: number | null
+  gates_total: number | null
+  gates: ApiEvidenceGate[]
+  milestones_completed: string[]
+  blockers: string[]
+  observation_start_at: string | null
+  blind_until: string | null
+  observation_window_status: string
+  expected_complete_sessions: number | null
+  promotion_eligible: boolean | null
+  promotion_reason: string | null
+  sources: string[]
+}
+
+export interface ApiBrokerReadiness {
+  candidate_id: string
+  display_name: string
+  role: string | null
+  environment: string | null
+  server: string | null
+  account_type: string | null
+  account_currency: string | null
+  leverage: string | null
+  symbols_found: Record<string, string>
+  discovery: string
+  regulatory_evidence: string
+  calendar_review: string
+  contract_registration: string
+  shadow_runtime: string
+  demo_auto_order_eligibility: string
+  live_eligibility: string
+  promotion_eligible: boolean | null
+  observation_start_at: string | null
+  blind_until: string | null
+  expected_complete_sessions: number | null
+  source_status: ApiSourceState
+  sources: string[]
+}
+
 export interface DashboardApiSnapshot {
-  schema_version: '1.0' | '1.1'
+  schema_version: '1.2'
   snapshot_id: string
   version: number
   generated_at: string
@@ -239,6 +291,7 @@ export interface DashboardApiSnapshot {
     demo_auto_order: 'OUT_OF_SCOPE'
     bridge_mode: string | null
     guard_enabled: boolean | null
+    order_capability: string | null
     safety_violation: boolean
     violations: string[]
   }
@@ -338,6 +391,8 @@ export interface DashboardApiSnapshot {
     note: string
   }
   source_contracts: Record<string, ApiSourceContract>
+  project_progress: ApiProjectProgress
+  broker_readiness: ApiBrokerReadiness[]
   activity: Array<{
     timestamp: string
     category: string

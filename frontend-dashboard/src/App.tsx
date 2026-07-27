@@ -66,8 +66,8 @@ function App() {
     if (pathname === '/') {
       return (
         <LandingPage
-          summary={staticSnapshot?.summary ?? null}
-          sourceMode={realtime.connection.sourceMode}
+          snapshot={realtime.apiSnapshot}
+          connection={realtime.connection}
           status={realtime.dataStatus}
           error={realtime.error}
           lastSuccessfulUpdate={realtime.lastSuccessfulUpdate}

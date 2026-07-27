@@ -14,6 +14,7 @@ from .data_normalizer import DashboardDataNormalizer
 from .file_registry import FileRegistry
 from .models import ConnectionInfo, DashboardSnapshot, MarketSeries, SourceMeta
 from .news_provider import RemoteNewsProvider
+from .operational_normalizer import OperationalDataNormalizer
 from .safe_json_reader import SafeJsonReader
 from .safety_guard import DashboardSafetyGuard
 
@@ -31,6 +32,7 @@ class SnapshotBuilder:
             candle_limit=settings.market_candle_limit,
         )
         self.normalizer = DashboardDataNormalizer()
+        self.operational_normalizer = OperationalDataNormalizer()
         self.safety_guard = DashboardSafetyGuard()
         self.news_provider = RemoteNewsProvider(settings)
         self.raw_values: dict[str, Any] = {}
@@ -116,6 +118,17 @@ class SnapshotBuilder:
     def _source_freshness_threshold(self, key: str) -> float:
         if key in {"market_news", "news_remote"}:
             return self.settings.news_stale_after_seconds
+        if key in {
+            "broker_candidates",
+            "broker_evidence_profiles",
+            "windows_broker_preparation",
+            "manual_demo_readiness",
+            "phillip_fx_calendar",
+            "phillip_commodity_calendar",
+            "xm_calendar",
+            "fbs_calendar",
+        }:
+            return self.settings.evidence_stale_after_seconds
         if key.startswith("market:"):
             market = self.markets.get(key.split(":", 1)[1])
             if market is not None:
@@ -257,6 +270,14 @@ class SnapshotBuilder:
                 orders,
             )
             safety = self.safety_guard.enforce(self.raw_values)
+            project_progress = self.operational_normalizer.normalize_project_progress(
+                self.raw_values,
+                self.source_meta,
+            )
+            broker_readiness = self.operational_normalizer.normalize_broker_readiness(
+                self.raw_values,
+                self.source_meta,
+            )
             connection_status, connection_stale, stale_count = self._connection_status(
                 self.source_meta
             )
@@ -309,6 +330,8 @@ class SnapshotBuilder:
                     self.raw_values,
                     self.source_meta,
                 ),
+                project_progress=project_progress,
+                broker_readiness=broker_readiness,
                 activity=self.normalizer.normalize_activity(self.source_meta),
                 sources=dict(sorted(self.source_meta.items())),
                 warnings=list(dict.fromkeys(warnings)),

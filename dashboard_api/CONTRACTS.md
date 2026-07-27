@@ -46,3 +46,18 @@ News dapat berasal dari `market_news.json`, `economic_calendar.json`,
 `news_feed.json`, atau provider HTTP read-only. Arah tidak diturunkan bila
 provider tidak memberikan `direction_bias`. Mapping pair dari currency ditandai
 sebagai interpretasi turunan, bukan signal trading.
+
+## Snapshot dashboard 1.2
+
+Snapshot dashboard read-only versi `1.2` menambahkan kontrak landing operasional:
+
+- `project_progress`: tahap, evidence gate, observation window, blind-until date,
+  dan promotion eligibility;
+- `broker_readiness`: kandidat dinamis, server/environment, discovery, evidence
+  regulasi, calendar review, contract registration, runtime shadow, dan eligibility;
+- `safety.order_capability`: kemampuan order yang dibaca dari kebijakan readiness,
+  nullable bila sumber tidak tersedia.
+
+Nilai nullable tidak boleh diganti asumsi oleh frontend. Runtime validator menolak
+snapshot yang mengendurkan `live_allowed=false`, `live_trading=LOCKED`,
+`safe_to_demo_auto_order=false`, atau `max_lot=0.01`.

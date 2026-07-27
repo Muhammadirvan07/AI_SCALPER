@@ -14,7 +14,7 @@ from .connection_manager import DashboardConnectionManager
 from .file_registry import FileRegistry
 from .file_watcher import AsyncFileWatcher
 from .logging_config import configure_logging
-from .routers import health, market, orders, signals, snapshot, system
+from .routers import documentation, health, market, orders, signals, snapshot, system
 from .snapshot_builder import SnapshotBuilder
 from .websocket_events import make_event
 
@@ -207,6 +207,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(orders.router)
     app.include_router(market.router)
     app.include_router(system.router)
+    app.include_router(documentation.router)
 
     @app.websocket("/ws/v1/dashboard")
     async def dashboard_websocket(websocket: WebSocket) -> None:

@@ -15,7 +15,7 @@ def test_snapshot_schema_and_actual_sources(test_settings) -> None:
         builder.rebuild(watcher_running=False, force=True)
     )
     assert changed is True
-    assert snapshot.schema_version == "1.1"
+    assert snapshot.schema_version == "1.2"
     assert snapshot.version == 1
     assert snapshot.safety.live_allowed is False
     assert snapshot.safety.live_trading == "LOCKED"
@@ -29,6 +29,22 @@ def test_snapshot_schema_and_actual_sources(test_settings) -> None:
     assert snapshot.news.events[0].id == "NEWS-EUR-1"
     assert snapshot.decision_readiness.decision_ready is False
     assert snapshot.source_contracts["market_news"].compliant is True
+    assert snapshot.safety.order_capability == "DISABLED"
+    assert snapshot.project_progress.stage == "DEMO_OBSERVATION_ONLY_READY"
+    assert snapshot.project_progress.gates_passed == 1
+    assert snapshot.project_progress.gates_total == 4
+    assert snapshot.project_progress.promotion_eligible is False
+    assert snapshot.project_progress.blind_until is not None
+    assert len(snapshot.broker_readiness) == 2
+    phillip = next(
+        broker
+        for broker in snapshot.broker_readiness
+        if broker.candidate_id == "phillip-fx"
+    )
+    assert phillip.server == "Phillip-Test"
+    assert phillip.symbols_found == {"EURUSD": "EURUSD.test"}
+    assert phillip.demo_auto_order_eligibility == "BLOCKED"
+    assert phillip.live_eligibility == "BLOCKED"
 
     unchanged_snapshot, unchanged = asyncio.run(
         builder.rebuild(set(), watcher_running=False)

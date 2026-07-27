@@ -32,6 +32,8 @@ class DashboardSafetyGuard:
         violations: list[str] = []
         bridge_mode: str | None = None
         guard_enabled: bool | None = None
+        order_capability: str | None = None
+        unsafe_order_capability = False
 
         bridge_status = raw_sources.get("bridge_status")
         if isinstance(bridge_status, Mapping):
@@ -39,6 +41,12 @@ class DashboardSafetyGuard:
             bridge_mode = str(mode) if mode is not None else None
             raw_guard = bridge_status.get("guard_enabled")
             guard_enabled = raw_guard if isinstance(raw_guard, bool) else None
+
+        manual_readiness = raw_sources.get("manual_demo_readiness")
+        if isinstance(manual_readiness, Mapping):
+            raw_capability = manual_readiness.get("order_capability")
+            if raw_capability is not None:
+                order_capability = str(raw_capability).strip() or None
 
         for source_key, source_value in raw_sources.items():
             if source_value is None:
@@ -70,6 +78,20 @@ class DashboardSafetyGuard:
                     violations.append(
                         f"{location} meminta demo auto-order; dashboard memaksa false."
                     )
+                elif leaf == "order_capability" and value is not None:
+                    normalized_capability = str(value).strip().upper()
+                    if normalized_capability not in {
+                        "DISABLED",
+                        "NONE",
+                        "READ_ONLY",
+                        "OUT_OF_SCOPE",
+                        "UNAVAILABLE",
+                    }:
+                        unsafe_order_capability = True
+                        violations.append(
+                            f"{location} meminta order_capability={value!r}; "
+                            "dashboard memaksa capability nonaktif."
+                        )
 
         violations = sorted(set(violations))
         signature = tuple(violations)
@@ -89,6 +111,11 @@ class DashboardSafetyGuard:
             ),
             bridge_mode=bridge_mode,
             guard_enabled=guard_enabled,
+            order_capability=(
+                "DISABLED_BY_DASHBOARD_SAFETY_GUARD"
+                if unsafe_order_capability
+                else order_capability
+            ),
             safety_violation=bool(violations),
             violations=violations,
         )

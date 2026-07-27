@@ -62,3 +62,21 @@ async def get_source_contracts(request: Request) -> dict[str, object]:
         "source_contracts": snapshot.source_contracts,
         "version": snapshot.version,
     }
+
+
+@router.get("/project-progress")
+async def get_project_progress(request: Request) -> dict[str, object]:
+    snapshot = _snapshot(request)
+    return {
+        "project_progress": snapshot.project_progress,
+        "version": snapshot.version,
+    }
+
+
+@router.get("/broker-readiness")
+async def get_broker_readiness(request: Request) -> dict[str, object]:
+    snapshot = _snapshot(request)
+    return {
+        "broker_readiness": snapshot.broker_readiness,
+        "version": snapshot.version,
+    }
