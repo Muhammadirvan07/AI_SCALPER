@@ -44,9 +44,9 @@ dimodifikasi.
 
 | Check | Result |
 |---|---|
-| Full Python regression including V6.1 extraction remediation, scheduler remediation, factory materialization, registration provenance, and terminal-binding probes | `1,637 OK` (`3` PowerShell-dependent tests skipped on macOS) |
-| Full regression with optimization enabled | `1,637 OK` (`3` PowerShell-dependent tests skipped on macOS) |
-| Final V6.1 extraction/scheduler/journal/HMAC/archive/rollback focused regression | `52 OK` normal and optimized (`3` PowerShell-dependent tests skipped on macOS) |
+| Full Python regression including V6.2 extraction/schedule remediation, factory materialization, registration provenance, and terminal-binding probes | `1,638 OK` (`3` PowerShell-dependent tests skipped on macOS) |
+| Full regression with optimization enabled | `1,638 OK` (`3` PowerShell-dependent tests skipped on macOS) |
+| Final V6.2 extraction/scheduler/journal/HMAC/archive/rollback focused regression | `53 OK` normal and optimized (`3` PowerShell-dependent tests skipped on macOS) |
 | Investor-login/collector/dependency/profile/operational-store focused regression | `127 / 127 PASS` in both modes |
 | Candidate-scoped operational namespace/audit regression | `28 / 28 PASS` in both modes |
 | Focused post-activation evidence integration regression | `100 / 100 PASS` |
@@ -266,10 +266,12 @@ checks remain real blockers.
    it adds no order authority and no new forward contract.
    The first V6 transfer helper failed before task installation because
    Windows PowerShell 5.1 represented its top-level JSON inventory as one
-   pipeline object. V6.1 explicitly re-enumerates the parsed inventory,
-   verifies every extracted entry recursively, binds a fresh commit-specific
-   operator root, and requires the failed root and transfer artifacts to remain
-   unmodified. Actual Windows PowerShell extraction is still required.
+   pipeline object. V6.1 explicitly re-enumerated the parsed inventory but its
+   first boundary expired before transfer. V6.2 retains recursive exact-entry
+   verification, moves the first start to `2026-07-30T06:45:00+09:00`, binds a
+   fresh commit-specific operator root, and preserves V6/V6.1 roots and
+   transfer artifacts if present without requiring absent paths to exist.
+   Actual Windows PowerShell extraction is still required.
 3. The exact five-role Windows suite must produce canonical secret-free
    Decision, Execution, and Status Monitor provider packs and configured
    candidates, an operations plan/review bundle,

@@ -188,6 +188,8 @@ class PhillipCommodityTaskContractStaticTests(unittest.TestCase):
             'Phase = "ACTIVE"',
             'Phase = "GAP"',
             'Phase = "EXPIRED"',
+            'At = [datetime]::Parse("2026-07-30T06:44:59")',
+            'At = [datetime]::Parse("2026-07-31T06:20:00")',
             'At = [datetime]::Parse("2026-09-22T01:00:00")',
             'Last = [datetime]::Parse("2026-09-21T06:45:00")',
         ):

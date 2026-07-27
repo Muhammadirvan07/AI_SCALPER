@@ -394,10 +394,13 @@ array JSON top-level sebagai satu pipeline object sehingga helper lama
 membandingkan enam entry hasil ekstraksi dengan expected count satu. Revisi
 transport V6.1 menyimpan hasil parse lalu mere-enumerasinya secara eksplisit,
 mengikat count ke sidecar manifest, memvalidasi path/size/SHA-256 setiap member,
-dan menolak entry atau directory tambahan secara rekursif. Root V6 gagal serta
-transfer lama dipreservasi; V6.1 memakai root baru yang terikat exact commit.
-Tidak ada instalasi task, manual start, MT5 initialization, atau broker mutation
-yang terjadi pada failure tersebut.
+dan menolak entry atau directory tambahan secara rekursif. V6.1 tidak sempat
+ditransfer sebelum immutable first boundary sehingga late-install guard
+menolaknya secara benar. V6.2 mempertahankan extraction fix, mengikat jadwal
+baru `2026-07-30T06:45:00+09:00` di manifest/installer/health/contract, dan
+memakai root commit baru. Root/transfer V6 atau V6.1 dipreservasi jika ada;
+ketiadaan path tidak lagi dianggap blocker. Tidak ada instalasi task, manual
+start, MT5 initialization, atau broker mutation pada kedua failure tersebut.
 
 ## Bukti lokal
 
@@ -438,14 +441,14 @@ yang terjadi pada failure tersebut.
   `94/94 PASS` normal dan optimized.
 - Candidate-scoped operational namespace/audit regression: `28/28 PASS`
   normal dan optimized.
-- Final V6.1 extraction/scheduler/journal/HMAC/archive/rollback focused
-  regression: `52 OK` normal dan optimized (`3` PowerShell-dependent tests
+- Final V6.2 extraction/scheduler/journal/HMAC/archive/rollback focused
+  regression: `53 OK` normal dan optimized (`3` PowerShell-dependent tests
   skipped on macOS; actual helper execution remains a Windows acceptance
   gate).
-- Full project regression termasuk V6 scheduler remediation:
-  `1.637 OK` (`3` PowerShell-dependent tests skipped on macOS).
+- Full project regression termasuk V6.2 scheduler remediation:
+  `1.638 OK` (`3` PowerShell-dependent tests skipped on macOS).
 - Full tracked-project regression dengan optimization enabled:
-  `1.637 OK` (`3` PowerShell-dependent tests skipped on macOS).
+  `1.638 OK` (`3` PowerShell-dependent tests skipped on macOS).
 - Focused post-activation evidence integration regression:
   `100/100 PASS`.
 - Exact-terminal collector dan broker evidence CLI regression:
@@ -488,12 +491,12 @@ Software foundation dan packaging lokal sudah cukup untuk membuat candidate
 baru. Demo-auto soak belum boleh dimulai hanya karena test lokal hijau.
 Urutan berikutnya:
 
-1. commit/push V6.1 extraction remediation tanpa direktori dashboard;
-2. build dan transfer exact V6.1 operator ZIP, sidecar manifest, dan expansion
+1. commit/push V6.2 schedule remediation tanpa direktori dashboard;
+2. build dan transfer exact V6.2 operator ZIP, sidecar manifest, dan expansion
    helper dari committed source identity ke direktori transfer baru; jangan
-   menghapus atau memakai ulang root/transfer V6 yang gagal;
+   menghapus atau memakai ulang root/transfer V6/V6.1 bila ada;
 3. pada Windows, pertahankan V4/V5 disabled, install task V6 tanpa manual
-   start dengan lead minimum 900 detik, lalu luluskan shared-validator dan
+   start sebelum `2026-07-30T06:30:00+09:00`, lalu luluskan shared-validator dan
    authenticated-heartbeat health check;
 4. mulai Commodity evidence collection pada eligible M15 boundary dan
    mirror setiap authenticated audit pair ke off-host immutable storage;

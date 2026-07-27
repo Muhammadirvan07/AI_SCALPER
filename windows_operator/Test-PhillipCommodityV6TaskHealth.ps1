@@ -46,7 +46,7 @@ $priorTaskNames = @(
   "AI_SCALPER-PhillipCommodityV4-ReadOnlyShadow",
   "AI_SCALPER-PhillipCommodityV5-ReadOnlyShadow"
 )
-$firstScheduledStart = [datetime]::Parse("2026-07-27T06:45:00")
+$firstScheduledStart = [datetime]::Parse("2026-07-30T06:45:00")
 $scheduleEndBoundary = [datetime]::Parse("2026-09-22T00:16:00")
 $workerDurationSeconds = 84300
 $startupAllowanceSeconds = 300
@@ -239,11 +239,11 @@ if (
   [string]::IsNullOrWhiteSpace(
     [string]$receipt.initial_evidence_checkpoint_hmac_sha256
   ) -or
-  $receipt.start_boundary -ne "2026-07-27T06:45:00+09:00" -or
+  $receipt.start_boundary -ne "2026-07-30T06:45:00+09:00" -or
   $receipt.end_boundary -ne "2026-09-22T00:16:00+09:00" -or
   [int]$receipt.worker_duration_seconds -ne 84300 -or
   [int]$receipt.minimum_installation_lead_seconds -ne 900 -or
-  $receipt.verified_next_run_time -ne "2026-07-27T06:45:00" -or
+  $receipt.verified_next_run_time -ne "2026-07-30T06:45:00" -or
   $receipt.task_started_manually -ne $false -or
   $receipt.order_capability -ne "DISABLED" -or
   $receipt.live_allowed -ne $false -or
@@ -632,7 +632,7 @@ $semanticFailures = @(
     -ExpectedArguments $expectedArguments `
     -ExpectedWorkingDirectory $RuntimeRepo `
     -ExpectedStart ([DateTimeOffset]::Parse(
-      "2026-07-27T06:45:00+09:00"
+      "2026-07-30T06:45:00+09:00"
     )) `
     -ExpectedEnd ([DateTimeOffset]::Parse(
       "2026-09-22T00:16:00+09:00"

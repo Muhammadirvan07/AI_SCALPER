@@ -851,32 +851,32 @@ function Get-PhillipCommodityV6SchedulePhase {
 }
 
 function Assert-PhillipCommodityV6SchedulePhaseSelfTest {
-  $first = [datetime]::Parse("2026-07-27T06:45:00")
+  $first = [datetime]::Parse("2026-07-30T06:45:00")
   $end = [datetime]::Parse("2026-09-22T00:16:00")
   $cases = @(
     [PSCustomObject]@{
-      At = [datetime]::Parse("2026-07-27T06:44:59")
+      At = [datetime]::Parse("2026-07-30T06:44:59")
       Phase = "PRE_START"
       Startup = $false
       Last = $null
     },
     [PSCustomObject]@{
-      At = [datetime]::Parse("2026-07-27T06:47:00")
+      At = [datetime]::Parse("2026-07-30T06:47:00")
       Phase = "ACTIVE"
       Startup = $true
-      Last = [datetime]::Parse("2026-07-27T06:45:00")
+      Last = [datetime]::Parse("2026-07-30T06:45:00")
     },
     [PSCustomObject]@{
-      At = [datetime]::Parse("2026-07-27T06:55:00")
+      At = [datetime]::Parse("2026-07-30T06:55:00")
       Phase = "ACTIVE"
       Startup = $false
-      Last = [datetime]::Parse("2026-07-27T06:45:00")
+      Last = [datetime]::Parse("2026-07-30T06:45:00")
     },
     [PSCustomObject]@{
-      At = [datetime]::Parse("2026-07-28T06:20:00")
+      At = [datetime]::Parse("2026-07-31T06:20:00")
       Phase = "GAP"
       Startup = $false
-      Last = [datetime]::Parse("2026-07-27T06:45:00")
+      Last = [datetime]::Parse("2026-07-30T06:45:00")
     },
     [PSCustomObject]@{
       At = [datetime]::Parse("2026-09-22T01:00:00")
@@ -1048,7 +1048,7 @@ function Assert-PhillipCommodityTaskContractSelfTest {
       -ExpectedArguments "-B worker.py" `
       -ExpectedWorkingDirectory "C:\runtime" `
       -ExpectedStart ([DateTimeOffset]::Parse(
-        "2026-07-27T06:45:00+09:00"
+        "2026-07-30T06:45:00+09:00"
       )) `
       -ExpectedEnd ([DateTimeOffset]::Parse(
         "2026-09-22T00:16:00+09:00"

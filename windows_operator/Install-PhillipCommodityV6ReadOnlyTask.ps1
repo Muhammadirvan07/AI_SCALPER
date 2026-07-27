@@ -48,7 +48,7 @@ $expectedProofReceiptSha256 = (
 )
 $expectedTaskContractSha256 = "__TASK_CONTRACT_SHA256__"
 $expectedEvidenceVerifierSha256 = "__EVIDENCE_VERIFIER_SHA256__"
-$firstTaskStart = [DateTimeOffset]::Parse("2026-07-26T21:45:00Z")
+$firstTaskStart = [DateTimeOffset]::Parse("2026-07-29T21:45:00Z")
 $minimumInstallationLeadSeconds = 900
 $priorTaskNames = @(
   "AI_SCALPER-PhillipCommodityV4-ReadOnlyShadow",
@@ -443,7 +443,7 @@ $taskXml = @"
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
-      <StartBoundary>2026-07-27T06:45:00+09:00</StartBoundary>
+      <StartBoundary>2026-07-30T06:45:00+09:00</StartBoundary>
       <EndBoundary>2026-09-22T00:16:00+09:00</EndBoundary>
       <Enabled>true</Enabled>
       <ScheduleByWeek>
@@ -559,7 +559,7 @@ try {
       -ExpectedArguments $workerArguments `
       -ExpectedWorkingDirectory $RuntimeRepo `
       -ExpectedStart ([DateTimeOffset]::Parse(
-        "2026-07-27T06:45:00+09:00"
+        "2026-07-30T06:45:00+09:00"
       )) `
       -ExpectedEnd ([DateTimeOffset]::Parse(
         "2026-09-22T00:16:00+09:00"
@@ -607,7 +607,7 @@ try {
       -ExpectedArguments $workerArguments `
       -ExpectedWorkingDirectory $RuntimeRepo `
       -ExpectedStart ([DateTimeOffset]::Parse(
-        "2026-07-27T06:45:00+09:00"
+        "2026-07-30T06:45:00+09:00"
       )) `
       -ExpectedEnd ([DateTimeOffset]::Parse(
         "2026-09-22T00:16:00+09:00"
@@ -618,7 +618,7 @@ try {
     $finalFailures += "FinalReadyState"
   }
   $expectedNextRunTime = [datetime]::ParseExact(
-    "2026-07-27T06:45:00",
+    "2026-07-30T06:45:00",
     "yyyy-MM-ddTHH:mm:ss",
     [System.Globalization.CultureInfo]::InvariantCulture
   )
@@ -682,7 +682,7 @@ try {
     working_directory = $RuntimeRepo
     frozen_runtime_repo = $RuntimeRepo
     frozen_runtime_worktree_lock = $worktreeLock
-    start_boundary = "2026-07-27T06:45:00+09:00"
+    start_boundary = "2026-07-30T06:45:00+09:00"
     end_boundary = "2026-09-22T00:16:00+09:00"
     worker_duration_seconds = 84300
     minimum_installation_lead_seconds = $minimumInstallationLeadSeconds

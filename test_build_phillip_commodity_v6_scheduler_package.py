@@ -155,8 +155,40 @@ class PhillipCommodityV6SchedulerPackageBuilderTests(unittest.TestCase):
             manifest["failed_transfer"]["operator_root"],
         )
         self.assertEqual(
-            "PRESERVE_UNMODIFIED",
+            builder.FAILED_TRANSFER_ROOT,
+            manifest["failed_transfer"]["transfer_root"],
+        )
+        self.assertEqual(
+            "PRESERVE_IF_PRESENT",
             manifest["failed_transfer"]["required_disposition"],
+        )
+        self.assertEqual(
+            builder.SUPERSEDED_TRANSFER_SOURCE_COMMIT,
+            manifest["superseded_transfer"]["source_commit"],
+        )
+        self.assertEqual(
+            builder.SUPERSEDED_TRANSFER_ARCHIVE_SHA256,
+            manifest["superseded_transfer"]["archive_sha256"],
+        )
+        self.assertEqual(
+            builder.SUPERSEDED_TRANSFER_OPERATOR_ROOT,
+            manifest["superseded_transfer"]["operator_root"],
+        )
+        self.assertEqual(
+            builder.SUPERSEDED_TRANSFER_ROOT,
+            manifest["superseded_transfer"]["transfer_root"],
+        )
+        self.assertEqual(
+            "PRESERVE_IF_PRESENT",
+            manifest["superseded_transfer"]["required_disposition"],
+        )
+        self.assertEqual(
+            {
+                "first_scheduled_start_utc": builder.FIRST_SCHEDULED_START_UTC,
+                "start_boundary": builder.FIRST_SCHEDULED_START_LOCAL,
+                "end_boundary": builder.SCHEDULE_END_LOCAL,
+            },
+            manifest["schedule"],
         )
         self.assertEqual(
             rf"C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator-{commit[:8]}",
@@ -200,6 +232,44 @@ class PhillipCommodityV6SchedulerPackageBuilderTests(unittest.TestCase):
         self.assertIn(evidence_verifier_hash, installer)
         self.assertIn(evidence_verifier_hash, health)
         self.assertEqual(6, result["member_count"])
+
+    def test_schedule_identity_is_consistent_across_package_members(self):
+        archive, _ = self._build("schedule-identity")
+        with zipfile.ZipFile(archive) as package:
+            installer = package.read(
+                "Install-PhillipCommodityV6ReadOnlyTask.ps1"
+            ).decode("utf-8")
+            health = package.read(
+                "Test-PhillipCommodityV6TaskHealth.ps1"
+            ).decode("utf-8")
+            contract = package.read(
+                "PhillipCommodityTaskContract.ps1"
+            ).decode("utf-8")
+            runbook = package.read(
+                "PHILLIP_COMMODITY_V6_SCHEDULER_REMEDIATION.md"
+            ).decode("utf-8")
+            artifacts = json.loads(
+                package.read(
+                    "PHILLIP_COMMODITY_V6_OPERATOR_ARTIFACTS.json"
+                )
+            )
+        self.assertIn(builder.FIRST_SCHEDULED_START_UTC, installer)
+        for member in (installer, health, contract, runbook):
+            self.assertIn(builder.FIRST_SCHEDULED_START_LOCAL, member)
+            self.assertNotIn("2026-07-27T06:45:00+09:00", member)
+        for member in (installer, health, contract, runbook):
+            self.assertIn(builder.FIRST_NEXT_RUN_LOCAL, member)
+        self.assertEqual(
+            builder.FIRST_SCHEDULED_START_UTC,
+            artifacts["first_scheduled_start_utc"],
+        )
+        self.assertEqual(
+            {
+                "start_boundary": builder.FIRST_SCHEDULED_START_LOCAL,
+                "end_boundary": builder.SCHEDULE_END_LOCAL,
+            },
+            artifacts["schedule"],
+        )
 
     def test_helper_normalizes_inventory_for_windows_powershell_array_shape(self):
         archive, _ = self._build("powershell-shape")
@@ -270,6 +340,16 @@ class PhillipCommodityV6SchedulerPackageBuilderTests(unittest.TestCase):
             "$manifest.failed_transfer.operator_root -ne",
             helper_text,
         )
+        self.assertIn(
+            "$manifest.superseded_transfer.operator_root -ne",
+            helper_text,
+        )
+        self.assertIn(
+            builder.SUPERSEDED_TRANSFER_OPERATOR_ROOT,
+            helper_text,
+        )
+        self.assertIn(builder.SUPERSEDED_TRANSFER_ROOT, helper_text)
+        self.assertIn('"PRESERVE_IF_PRESENT"', helper_text)
         self.assertIn(
             "V6 operator root would modify preserved forensic evidence.",
             helper_text,

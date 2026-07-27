@@ -149,12 +149,13 @@ must remain present and
 
 The first V6 transport attempt failed before task installation: Windows
 PowerShell 5.1 treated the parsed top-level JSON inventory as one pipeline
-object although the valid ZIP extracted six files. Use only the V6.1 transfer
-revision. It explicitly re-enumerates that object, verifies the six-member
-inventory recursively, and defaults to a commit-specific operator root. Keep
-`C:\AI_SCALPER_TRANSFER\phillip-v6-scheduler` and
-`C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator` unchanged for
-forensic review.
+object although the valid ZIP extracted six files. V6.1 corrected extraction,
+but its immutable first scheduler boundary expired before transfer and no V6.1
+task was installed. Use only transport V6.2. It retains exact recursive
+six-member verification, moves the first start to
+`2026-07-30T06:45:00+09:00`, and defaults to a new commit-specific operator
+root. Keep any V6/V6.1 transfer or operator path that exists unchanged for
+forensic review; absence of a never-created path is not an error.
 
 Worker failure, stale status, audit-export failure, Task Scheduler overlap, or
 loss of the exact terminal is `HOLD`. The worker does not carry an order API.

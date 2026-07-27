@@ -2,11 +2,18 @@
 
 Status: **PREPARED / READ-ONLY / ORDER CAPABILITY DISABLED**
 
-Transport revision V6.1 replaces only the extraction boundary. The original
-V6 ZIP was valid, but its helper used a Windows PowerShell 5.1-incompatible
-top-level JSON-array pipeline and observed the six extracted files as an
-expected inventory count of one. Preserve the failed operator root and its
-transfer directory unchanged for forensic review; V6.1 uses a new
+Transport revision V6.2 retains the corrected Windows PowerShell 5.1
+extraction boundary from V6.1 and moves only the immutable first scheduler
+boundary. V6.1 was not copied and installed before its reviewed start, so its
+late-install guard correctly made that package unusable. V6.2 starts on
+`2026-07-30T06:45:00+09:00`; installation must finish before
+`2026-07-30T06:30:00+09:00`.
+
+The original V6 ZIP used a Windows PowerShell 5.1-incompatible top-level
+JSON-array pipeline and observed the six extracted files as an expected
+inventory count of one. Preserve any V6 or V6.1 transfer/operator path that
+is present for forensic review. A path that was never created is explicitly
+`PRESERVE_IF_PRESENT` and its absence does not block V6.2. V6.2 uses a new
 commit-specific operator root.
 
 V5 proof is valid. V5 task installation failed only because
@@ -15,7 +22,7 @@ V5 proof is valid. V5 task installation failed only because
 optional XML child dynamically. The V5 catch handler disabled the task before
 its scheduled run.
 
-Install V6 only while at least 900 seconds remain before the first boundary.
+Install V6.2 only while at least 900 seconds remain before the first boundary.
 The installer enforces that lead before registration and again before
 enablement; a late installation remains blocked and disabled.
 
@@ -47,6 +54,12 @@ Do not delete, rename, or reuse either failed V6 location:
 - `C:\AI_SCALPER_TRANSFER\phillip-v6-scheduler`
 - `C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator`
 
+Also preserve these V6.1 locations if they exist; do not create them merely
+to satisfy the check:
+
+- `C:\AI_SCALPER_TRANSFER\phillip-v6r1-scheduler`
+- `C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator-3ebb8576`
+
 ## Source and package verification
 
 Run PowerShell from `C:\AI_SCALPER`:
@@ -56,7 +69,7 @@ $repo = "C:\AI_SCALPER"
 $branch = "agent/live-grade-phase3"
 $expectedCommit = "__REMEDIATION_COMMIT__"
 $expectedTree = "__REMEDIATION_TREE__"
-$transferRoot = "C:\AI_SCALPER_TRANSFER\phillip-v6r1-scheduler"
+$transferRoot = "C:\AI_SCALPER_TRANSFER\phillip-v6r2-scheduler"
 
 Set-Location $repo
 git fetch --no-tags origin $branch
@@ -127,7 +140,7 @@ Expected installation status:
 ```text
 PHILLIP_COMMODITY_V6_TASK_INSTALLED_VERIFIED
 State: Ready
-NextRunTime: 2026-07-27 06:45:00
+NextRunTime: 2026-07-30 06:45:00
 OrderCapability: DISABLED
 LiveAllowed: False
 StartScheduledTask: NOT_PERFORMED
@@ -148,8 +161,8 @@ TaskSchedulerMutation: NOT_PERFORMED
 BrokerMutation: NOT_PERFORMED
 ```
 
-Do not run `Start-ScheduledTask`. The first start remains the reviewed
-calendar boundary `2026-07-27T06:45:00+09:00`.
+Do not run `Start-ScheduledTask`. The first start is the reviewed calendar
+boundary `2026-07-30T06:45:00+09:00`.
 
 ## Validator behavior
 

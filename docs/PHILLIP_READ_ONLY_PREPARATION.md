@@ -478,10 +478,12 @@ and clamps the final worker to the reviewed end boundary.
 
 The first V6 transfer helper failed closed before task installation because
 Windows PowerShell 5.1 exposed the valid six-member top-level JSON inventory
-as one pipeline object. V6.1 explicitly re-enumerates the parsed inventory,
-binds it to the sidecar count and every member size/hash, rejects recursive
-unexpected entries, and uses a fresh commit-specific operator root. Preserve
-the failed V6 operator root and transfer artifacts without modification.
+as one pipeline object. V6.1 explicitly re-enumerated the parsed inventory,
+bound it to the sidecar count and every member size/hash, and rejected
+recursive unexpected entries, but its first boundary expired before transfer.
+V6.2 retains that extraction fix and uses a new commit-specific root with a
+first start of `2026-07-30T06:45:00+09:00`. Preserve V6/V6.1 roots and transfer
+artifacts if present; a path that was never created does not block V6.2.
 
 The proof-verified v5 worker:
 

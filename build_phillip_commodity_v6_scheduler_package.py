@@ -28,7 +28,25 @@ FAILED_TRANSFER_ARCHIVE_SHA256 = (
 FAILED_TRANSFER_OPERATOR_ROOT = (
     r"C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator"
 )
-TRANSPORT_REVISION = "V6.1"
+FAILED_TRANSFER_ROOT = r"C:\AI_SCALPER_TRANSFER\phillip-v6-scheduler"
+SUPERSEDED_TRANSFER_SOURCE_COMMIT = (
+    "3ebb857688f1fb1b6682d85727457aa754478278"
+)
+SUPERSEDED_TRANSFER_ARCHIVE_SHA256 = (
+    "79d4b59961c378442721c8e78a49a13b"
+    "ce17cd91fadc516d6bd1b0ae3884103f"
+)
+SUPERSEDED_TRANSFER_OPERATOR_ROOT = (
+    r"C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator-3ebb8576"
+)
+SUPERSEDED_TRANSFER_ROOT = (
+    r"C:\AI_SCALPER_TRANSFER\phillip-v6r1-scheduler"
+)
+TRANSPORT_REVISION = "V6.2"
+FIRST_SCHEDULED_START_UTC = "2026-07-29T21:45:00Z"
+FIRST_SCHEDULED_START_LOCAL = "2026-07-30T06:45:00+09:00"
+FIRST_NEXT_RUN_LOCAL = "2026-07-30T06:45:00"
+SCHEDULE_END_LOCAL = "2026-09-22T00:16:00+09:00"
 EXTRACTION_INVENTORY_MODE = "WINDOWS_POWERSHELL_5_1_FLATTENED_EXACT_V2"
 TEMPLATE_PATHS = (
     "windows_operator/PhillipCommodityTaskContract.ps1",
@@ -204,7 +222,9 @@ $expectedOperatorRoot = (
   "{operator_root_name}"
 )
 $failedTransferOperatorRoot = "{FAILED_TRANSFER_OPERATOR_ROOT}"
-$failedTransferRoot = "C:\\AI_SCALPER_TRANSFER\\phillip-v6-scheduler"
+$failedTransferRoot = "{FAILED_TRANSFER_ROOT}"
+$supersededTransferOperatorRoot = "{SUPERSEDED_TRANSFER_OPERATOR_ROOT}"
+$supersededTransferRoot = "{SUPERSEDED_TRANSFER_ROOT}"
 $memberInventoryBase64 = "{inventory}"
 
 function Get-ExactLeaf {{
@@ -283,8 +303,26 @@ if (
     "{FAILED_TRANSFER_ARCHIVE_SHA256}" -or
   $manifest.failed_transfer.operator_root -ne
     $failedTransferOperatorRoot -or
+  $manifest.failed_transfer.transfer_root -ne
+    $failedTransferRoot -or
   $manifest.failed_transfer.required_disposition -ne
-    "PRESERVE_UNMODIFIED" -or
+    "PRESERVE_IF_PRESENT" -or
+  $manifest.superseded_transfer.source_commit -ne
+    "{SUPERSEDED_TRANSFER_SOURCE_COMMIT}" -or
+  $manifest.superseded_transfer.archive_sha256 -ne
+    "{SUPERSEDED_TRANSFER_ARCHIVE_SHA256}" -or
+  $manifest.superseded_transfer.operator_root -ne
+    $supersededTransferOperatorRoot -or
+  $manifest.superseded_transfer.transfer_root -ne
+    $supersededTransferRoot -or
+  $manifest.superseded_transfer.required_disposition -ne
+    "PRESERVE_IF_PRESENT" -or
+  $manifest.schedule.first_scheduled_start_utc -ne
+    "{FIRST_SCHEDULED_START_UTC}" -or
+  $manifest.schedule.start_boundary -ne
+    "{FIRST_SCHEDULED_START_LOCAL}" -or
+  $manifest.schedule.end_boundary -ne
+    "{SCHEDULE_END_LOCAL}" -or
   $manifest.safety.order_capability -ne "DISABLED" -or
   $manifest.safety.live_allowed -ne $false -or
   $manifest.safety.safe_to_demo_auto_order -ne $false
@@ -297,7 +335,9 @@ $resolvedOperatorRoot = [System.IO.Path]::GetFullPath(
 ).TrimEnd([char[]]@('\\', '/'))
 foreach ($preservedRootInput in @(
   $failedTransferOperatorRoot,
-  $failedTransferRoot
+  $failedTransferRoot,
+  $supersededTransferOperatorRoot,
+  $supersededTransferRoot
 )) {{
   $preservedRoot = [System.IO.Path]::GetFullPath(
     $preservedRootInput
@@ -517,7 +557,11 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
             },
         ],
         "new_task_name": "AI_SCALPER-PhillipCommodityV6-ReadOnlyShadow",
-        "first_scheduled_start_utc": "2026-07-26T21:45:00Z",
+        "first_scheduled_start_utc": FIRST_SCHEDULED_START_UTC,
+        "schedule": {
+            "start_boundary": FIRST_SCHEDULED_START_LOCAL,
+            "end_boundary": SCHEDULE_END_LOCAL,
+        },
         "evidence_checkpoint_mode": (
             "HMAC_SIGNED_INCREMENTAL_WITH_LIVE_JOURNAL_HEAD_V2"
         ),
@@ -532,7 +576,15 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
             "source_commit": FAILED_TRANSFER_SOURCE_COMMIT,
             "archive_sha256": FAILED_TRANSFER_ARCHIVE_SHA256,
             "operator_root": FAILED_TRANSFER_OPERATOR_ROOT,
-            "required_disposition": "PRESERVE_UNMODIFIED",
+            "transfer_root": FAILED_TRANSFER_ROOT,
+            "required_disposition": "PRESERVE_IF_PRESENT",
+        },
+        "superseded_transfer": {
+            "source_commit": SUPERSEDED_TRANSFER_SOURCE_COMMIT,
+            "archive_sha256": SUPERSEDED_TRANSFER_ARCHIVE_SHA256,
+            "operator_root": SUPERSEDED_TRANSFER_OPERATOR_ROOT,
+            "transfer_root": SUPERSEDED_TRANSFER_ROOT,
+            "required_disposition": "PRESERVE_IF_PRESENT",
         },
         "members": [member.manifest_row() for member in members],
         "safety": {
@@ -576,11 +628,24 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         "audit_publication_commit_marker": "MANIFEST",
         "extraction_inventory_mode": EXTRACTION_INVENTORY_MODE,
         "operator_root": rf"C:\AI_SCALPER_PRIVATE\{operator_root_name}",
+        "schedule": {
+            "first_scheduled_start_utc": FIRST_SCHEDULED_START_UTC,
+            "start_boundary": FIRST_SCHEDULED_START_LOCAL,
+            "end_boundary": SCHEDULE_END_LOCAL,
+        },
         "failed_transfer": {
             "source_commit": FAILED_TRANSFER_SOURCE_COMMIT,
             "archive_sha256": FAILED_TRANSFER_ARCHIVE_SHA256,
             "operator_root": FAILED_TRANSFER_OPERATOR_ROOT,
-            "required_disposition": "PRESERVE_UNMODIFIED",
+            "transfer_root": FAILED_TRANSFER_ROOT,
+            "required_disposition": "PRESERVE_IF_PRESENT",
+        },
+        "superseded_transfer": {
+            "source_commit": SUPERSEDED_TRANSFER_SOURCE_COMMIT,
+            "archive_sha256": SUPERSEDED_TRANSFER_ARCHIVE_SHA256,
+            "operator_root": SUPERSEDED_TRANSFER_OPERATOR_ROOT,
+            "transfer_root": SUPERSEDED_TRANSFER_ROOT,
+            "required_disposition": "PRESERVE_IF_PRESENT",
         },
         "members": [member.manifest_row() for member in members],
         "safety": {
