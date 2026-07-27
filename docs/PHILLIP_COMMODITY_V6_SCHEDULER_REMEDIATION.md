@@ -2,19 +2,24 @@
 
 Status: **PREPARED / READ-ONLY / ORDER CAPABILITY DISABLED**
 
-Transport revision V6.2 retains the corrected Windows PowerShell 5.1
-extraction boundary from V6.1 and moves only the immutable first scheduler
-boundary. V6.1 was not copied and installed before its reviewed start, so its
-late-install guard correctly made that package unusable. V6.2 starts on
+Transport revision V6.3 retains the corrected Windows PowerShell 5.1
+extraction boundary and immutable schedule from V6.2. V6.2 extracted and
+verified successfully, but its pre-registration contract self-test passed an
+empty `<Principal />` through the Windows PowerShell XML property adapter.
+PowerShell 5.1 projected that empty element as `String("")`, which the typed
+`XmlElement` boundary correctly rejected. V6.3 resolves every self-test parent
+element with exact XPath selection and requires the result to be one
+`XmlElement`. No V6 task was registered by the failed V6.2 attempt. V6.3 starts
+on
 `2026-07-30T06:45:00+09:00`; installation must finish before
 `2026-07-30T06:30:00+09:00`.
 
 The original V6 ZIP used a Windows PowerShell 5.1-incompatible top-level
 JSON-array pipeline and observed the six extracted files as an expected
-inventory count of one. Preserve any V6 or V6.1 transfer/operator path that
-is present for forensic review. A path that was never created is explicitly
-`PRESERVE_IF_PRESENT` and its absence does not block V6.2. V6.2 uses a new
-commit-specific operator root.
+inventory count of one. Preserve any V6, V6.1, or V6.2 transfer/operator path
+that is present for forensic review. A path that was never created is
+explicitly `PRESERVE_IF_PRESENT` and its absence does not block V6.3. V6.3
+uses a new commit-specific operator root.
 
 V5 proof is valid. V5 task installation failed only because
 `Export-ScheduledTask` omitted the schema-default
@@ -22,7 +27,7 @@ V5 proof is valid. V5 task installation failed only because
 optional XML child dynamically. The V5 catch handler disabled the task before
 its scheduled run.
 
-Install V6.2 only while at least 900 seconds remain before the first boundary.
+Install V6.3 only while at least 900 seconds remain before the first boundary.
 The installer enforces that lead before registration and again before
 enablement; a late installation remains blocked and disabled.
 
@@ -60,6 +65,12 @@ to satisfy the check:
 - `C:\AI_SCALPER_TRANSFER\phillip-v6r1-scheduler`
 - `C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator-3ebb8576`
 
+Preserve the verified V6.2 extraction that exposed the pre-registration
+self-test failure:
+
+- `C:\AI_SCALPER_TRANSFER\phillip-v6r2-scheduler`
+- `C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator-13accd44`
+
 ## Source and package verification
 
 Run PowerShell from `C:\AI_SCALPER`:
@@ -69,7 +80,7 @@ $repo = "C:\AI_SCALPER"
 $branch = "agent/live-grade-phase3"
 $expectedCommit = "__REMEDIATION_COMMIT__"
 $expectedTree = "__REMEDIATION_TREE__"
-$transferRoot = "C:\AI_SCALPER_TRANSFER\phillip-v6r2-scheduler"
+$transferRoot = "C:\AI_SCALPER_TRANSFER\phillip-v6r3-scheduler"
 
 Set-Location $repo
 git fetch --no-tags origin $branch

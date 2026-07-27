@@ -481,9 +481,13 @@ Windows PowerShell 5.1 exposed the valid six-member top-level JSON inventory
 as one pipeline object. V6.1 explicitly re-enumerated the parsed inventory,
 bound it to the sidecar count and every member size/hash, and rejected
 recursive unexpected entries, but its first boundary expired before transfer.
-V6.2 retains that extraction fix and uses a new commit-specific root with a
-first start of `2026-07-30T06:45:00+09:00`. Preserve V6/V6.1 roots and transfer
-artifacts if present; a path that was never created does not block V6.2.
+V6.2 retained that extraction fix and extracted successfully. Its installer
+then failed before registration because Windows PowerShell 5.1 projected the
+self-test's empty `<Principal />` as `String("")` instead of `XmlElement`.
+V6.3 selects self-test elements through exact XPath, retains the first start
+`2026-07-30T06:45:00+09:00`, and uses another commit-specific root. Preserve
+V6/V6.1/V6.2 roots and transfer artifacts if present; a path that was never
+created does not block V6.3.
 
 The proof-verified v5 worker:
 

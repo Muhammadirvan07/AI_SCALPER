@@ -151,11 +151,14 @@ The first V6 transport attempt failed before task installation: Windows
 PowerShell 5.1 treated the parsed top-level JSON inventory as one pipeline
 object although the valid ZIP extracted six files. V6.1 corrected extraction,
 but its immutable first scheduler boundary expired before transfer and no V6.1
-task was installed. Use only transport V6.2. It retains exact recursive
-six-member verification, moves the first start to
+task was installed. V6.2 retained exact recursive verification and extracted
+successfully, but Windows PowerShell 5.1 coerced the self-test's empty
+`<Principal />` element to `String("")` before the typed `XmlElement` boundary;
+the installer stopped before task registration. Use only transport V6.3. It
+uses exact XPath element selection, retains the reviewed start
 `2026-07-30T06:45:00+09:00`, and defaults to a new commit-specific operator
-root. Keep any V6/V6.1 transfer or operator path that exists unchanged for
-forensic review; absence of a never-created path is not an error.
+root. Keep any V6/V6.1/V6.2 transfer or operator path that exists unchanged
+for forensic review; absence of a never-created path is not an error.
 
 Worker failure, stale status, audit-export failure, Task Scheduler overlap, or
 loss of the exact terminal is `HOLD`. The worker does not carry an order API.

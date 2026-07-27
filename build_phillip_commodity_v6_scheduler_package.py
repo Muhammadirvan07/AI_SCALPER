@@ -42,12 +42,25 @@ SUPERSEDED_TRANSFER_OPERATOR_ROOT = (
 SUPERSEDED_TRANSFER_ROOT = (
     r"C:\AI_SCALPER_TRANSFER\phillip-v6r1-scheduler"
 )
-TRANSPORT_REVISION = "V6.2"
+FAILED_INSTALL_SOURCE_COMMIT = "13accd44083625bbc621e99bd672c9419c041676"
+FAILED_INSTALL_ARCHIVE_SHA256 = (
+    "9252d42740d7455fb7a856acaf59485a"
+    "be00ca1f3e8e69d99e5e1d93cfd27b83"
+)
+FAILED_INSTALL_OPERATOR_ROOT = (
+    r"C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-scheduler-operator-13accd44"
+)
+FAILED_INSTALL_TRANSFER_ROOT = (
+    r"C:\AI_SCALPER_TRANSFER\phillip-v6r2-scheduler"
+)
+FAILED_INSTALL_CODE = "POWERSHELL_XML_ADAPTER_EMPTY_ELEMENT_COERCION"
+TRANSPORT_REVISION = "V6.3"
 FIRST_SCHEDULED_START_UTC = "2026-07-29T21:45:00Z"
 FIRST_SCHEDULED_START_LOCAL = "2026-07-30T06:45:00+09:00"
 FIRST_NEXT_RUN_LOCAL = "2026-07-30T06:45:00"
 SCHEDULE_END_LOCAL = "2026-09-22T00:16:00+09:00"
 EXTRACTION_INVENTORY_MODE = "WINDOWS_POWERSHELL_5_1_FLATTENED_EXACT_V2"
+XML_ELEMENT_RESOLUTION_MODE = "XPATH_EXACT_XMLELEMENT_V1"
 TEMPLATE_PATHS = (
     "windows_operator/PhillipCommodityTaskContract.ps1",
     "windows_operator/Install-PhillipCommodityV6ReadOnlyTask.ps1",
@@ -225,6 +238,8 @@ $failedTransferOperatorRoot = "{FAILED_TRANSFER_OPERATOR_ROOT}"
 $failedTransferRoot = "{FAILED_TRANSFER_ROOT}"
 $supersededTransferOperatorRoot = "{SUPERSEDED_TRANSFER_OPERATOR_ROOT}"
 $supersededTransferRoot = "{SUPERSEDED_TRANSFER_ROOT}"
+$failedInstallOperatorRoot = "{FAILED_INSTALL_OPERATOR_ROOT}"
+$failedInstallRoot = "{FAILED_INSTALL_TRANSFER_ROOT}"
 $memberInventoryBase64 = "{inventory}"
 
 function Get-ExactLeaf {{
@@ -297,6 +312,8 @@ if (
     "FLUSHED_TEMP_ATOMIC_MOVE_V1" -or
   $manifest.extraction_inventory_mode -ne
     "{EXTRACTION_INVENTORY_MODE}" -or
+  $manifest.xml_element_resolution_mode -ne
+    "{XML_ELEMENT_RESOLUTION_MODE}" -or
   $manifest.failed_transfer.source_commit -ne
     "{FAILED_TRANSFER_SOURCE_COMMIT}" -or
   $manifest.failed_transfer.archive_sha256 -ne
@@ -316,6 +333,22 @@ if (
   $manifest.superseded_transfer.transfer_root -ne
     $supersededTransferRoot -or
   $manifest.superseded_transfer.required_disposition -ne
+    "PRESERVE_IF_PRESENT" -or
+  $manifest.failed_install.source_commit -ne
+    "{FAILED_INSTALL_SOURCE_COMMIT}" -or
+  $manifest.failed_install.archive_sha256 -ne
+    "{FAILED_INSTALL_ARCHIVE_SHA256}" -or
+  $manifest.failed_install.operator_root -ne
+    $failedInstallOperatorRoot -or
+  $manifest.failed_install.transfer_root -ne
+    $failedInstallRoot -or
+  $manifest.failed_install.failure_code -ne
+    "{FAILED_INSTALL_CODE}" -or
+  $manifest.failed_install.failure_stage -ne
+    "PRE_REGISTRATION_CONTRACT_SELF_TEST" -or
+  $manifest.failed_install.task_scheduler_mutation -ne
+    "NOT_PERFORMED" -or
+  $manifest.failed_install.required_disposition -ne
     "PRESERVE_IF_PRESENT" -or
   $manifest.schedule.first_scheduled_start_utc -ne
     "{FIRST_SCHEDULED_START_UTC}" -or
@@ -337,7 +370,9 @@ foreach ($preservedRootInput in @(
   $failedTransferOperatorRoot,
   $failedTransferRoot,
   $supersededTransferOperatorRoot,
-  $supersededTransferRoot
+  $supersededTransferRoot,
+  $failedInstallOperatorRoot,
+  $failedInstallRoot
 )) {{
   $preservedRoot = [System.IO.Path]::GetFullPath(
     $preservedRootInput
@@ -571,6 +606,7 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         "checkpoint_publication": "FLUSHED_TEMP_ATOMIC_MOVE_V1",
         "audit_publication_commit_marker": "MANIFEST",
         "extraction_inventory_mode": EXTRACTION_INVENTORY_MODE,
+        "xml_element_resolution_mode": XML_ELEMENT_RESOLUTION_MODE,
         "operator_root": rf"C:\AI_SCALPER_PRIVATE\{operator_root_name}",
         "failed_transfer": {
             "source_commit": FAILED_TRANSFER_SOURCE_COMMIT,
@@ -584,6 +620,16 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
             "archive_sha256": SUPERSEDED_TRANSFER_ARCHIVE_SHA256,
             "operator_root": SUPERSEDED_TRANSFER_OPERATOR_ROOT,
             "transfer_root": SUPERSEDED_TRANSFER_ROOT,
+            "required_disposition": "PRESERVE_IF_PRESENT",
+        },
+        "failed_install": {
+            "source_commit": FAILED_INSTALL_SOURCE_COMMIT,
+            "archive_sha256": FAILED_INSTALL_ARCHIVE_SHA256,
+            "operator_root": FAILED_INSTALL_OPERATOR_ROOT,
+            "transfer_root": FAILED_INSTALL_TRANSFER_ROOT,
+            "failure_code": FAILED_INSTALL_CODE,
+            "failure_stage": "PRE_REGISTRATION_CONTRACT_SELF_TEST",
+            "task_scheduler_mutation": "NOT_PERFORMED",
             "required_disposition": "PRESERVE_IF_PRESENT",
         },
         "members": [member.manifest_row() for member in members],
@@ -627,6 +673,7 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         "checkpoint_publication": "FLUSHED_TEMP_ATOMIC_MOVE_V1",
         "audit_publication_commit_marker": "MANIFEST",
         "extraction_inventory_mode": EXTRACTION_INVENTORY_MODE,
+        "xml_element_resolution_mode": XML_ELEMENT_RESOLUTION_MODE,
         "operator_root": rf"C:\AI_SCALPER_PRIVATE\{operator_root_name}",
         "schedule": {
             "first_scheduled_start_utc": FIRST_SCHEDULED_START_UTC,
@@ -645,6 +692,16 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
             "archive_sha256": SUPERSEDED_TRANSFER_ARCHIVE_SHA256,
             "operator_root": SUPERSEDED_TRANSFER_OPERATOR_ROOT,
             "transfer_root": SUPERSEDED_TRANSFER_ROOT,
+            "required_disposition": "PRESERVE_IF_PRESENT",
+        },
+        "failed_install": {
+            "source_commit": FAILED_INSTALL_SOURCE_COMMIT,
+            "archive_sha256": FAILED_INSTALL_ARCHIVE_SHA256,
+            "operator_root": FAILED_INSTALL_OPERATOR_ROOT,
+            "transfer_root": FAILED_INSTALL_TRANSFER_ROOT,
+            "failure_code": FAILED_INSTALL_CODE,
+            "failure_stage": "PRE_REGISTRATION_CONTRACT_SELF_TEST",
+            "task_scheduler_mutation": "NOT_PERFORMED",
             "required_disposition": "PRESERVE_IF_PRESENT",
         },
         "members": [member.manifest_row() for member in members],

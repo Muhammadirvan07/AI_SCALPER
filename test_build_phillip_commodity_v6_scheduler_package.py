@@ -143,6 +143,10 @@ class PhillipCommodityV6SchedulerPackageBuilderTests(unittest.TestCase):
             manifest["extraction_inventory_mode"],
         )
         self.assertEqual(
+            builder.XML_ELEMENT_RESOLUTION_MODE,
+            manifest["xml_element_resolution_mode"],
+        )
+        self.assertEqual(
             builder.FAILED_TRANSFER_SOURCE_COMMIT,
             manifest["failed_transfer"]["source_commit"],
         )
@@ -181,6 +185,38 @@ class PhillipCommodityV6SchedulerPackageBuilderTests(unittest.TestCase):
         self.assertEqual(
             "PRESERVE_IF_PRESENT",
             manifest["superseded_transfer"]["required_disposition"],
+        )
+        self.assertEqual(
+            builder.FAILED_INSTALL_SOURCE_COMMIT,
+            manifest["failed_install"]["source_commit"],
+        )
+        self.assertEqual(
+            builder.FAILED_INSTALL_ARCHIVE_SHA256,
+            manifest["failed_install"]["archive_sha256"],
+        )
+        self.assertEqual(
+            builder.FAILED_INSTALL_OPERATOR_ROOT,
+            manifest["failed_install"]["operator_root"],
+        )
+        self.assertEqual(
+            builder.FAILED_INSTALL_TRANSFER_ROOT,
+            manifest["failed_install"]["transfer_root"],
+        )
+        self.assertEqual(
+            builder.FAILED_INSTALL_CODE,
+            manifest["failed_install"]["failure_code"],
+        )
+        self.assertEqual(
+            "PRE_REGISTRATION_CONTRACT_SELF_TEST",
+            manifest["failed_install"]["failure_stage"],
+        )
+        self.assertEqual(
+            "NOT_PERFORMED",
+            manifest["failed_install"]["task_scheduler_mutation"],
+        )
+        self.assertEqual(
+            "PRESERVE_IF_PRESENT",
+            manifest["failed_install"]["required_disposition"],
         )
         self.assertEqual(
             {
@@ -349,6 +385,14 @@ class PhillipCommodityV6SchedulerPackageBuilderTests(unittest.TestCase):
             helper_text,
         )
         self.assertIn(builder.SUPERSEDED_TRANSFER_ROOT, helper_text)
+        self.assertIn(builder.FAILED_INSTALL_OPERATOR_ROOT, helper_text)
+        self.assertIn(builder.FAILED_INSTALL_TRANSFER_ROOT, helper_text)
+        self.assertIn(builder.FAILED_INSTALL_CODE, helper_text)
+        self.assertIn(
+            "$manifest.failed_install.task_scheduler_mutation -ne",
+            helper_text,
+        )
+        self.assertIn(builder.XML_ELEMENT_RESOLUTION_MODE, helper_text)
         self.assertIn('"PRESERVE_IF_PRESENT"', helper_text)
         self.assertIn(
             "V6 operator root would modify preserved forensic evidence.",

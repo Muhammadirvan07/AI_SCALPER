@@ -34,6 +34,28 @@ function Get-TaskXmlSingleChildText {
   }
 }
 
+function Get-TaskXmlRequiredElement {
+  param(
+    [Parameter(Mandatory = $true)]
+    [xml]$Document,
+
+    [Parameter(Mandatory = $true)]
+    [string]$XPath,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Label
+  )
+
+  $nodes = @($Document.SelectNodes($XPath))
+  if (
+    $nodes.Count -ne 1 -or
+    -not ($nodes[0] -is [System.Xml.XmlElement])
+  ) {
+    throw "Task XML fixture requires exactly one $Label element."
+  }
+  return [System.Xml.XmlElement]$nodes[0]
+}
+
 function Get-EffectiveTaskSetting {
   param(
     [Parameter(Mandatory = $true)]
@@ -909,6 +931,11 @@ function Assert-PhillipCommodityV6SchedulePhaseSelfTest {
 }
 
 function Assert-PhillipCommodityTaskContractSelfTest {
+  $principalXPath = (
+    "/*[local-name()='Task']/*[local-name()='Principals']" +
+    "/*[local-name()='Principal']"
+  )
+  $settingsXPath = "/*[local-name()='Task']/*[local-name()='Settings']"
   [xml]$defaultElided = @"
 <Task>
   <Principals><Principal /></Principals>
@@ -921,12 +948,20 @@ function Assert-PhillipCommodityTaskContractSelfTest {
   </Settings>
 </Task>
 "@
+  $defaultPrincipal = Get-TaskXmlRequiredElement `
+    -Document $defaultElided `
+    -XPath $principalXPath `
+    -Label "default Principal"
+  $defaultSettings = Get-TaskXmlRequiredElement `
+    -Document $defaultElided `
+    -XPath $settingsXPath `
+    -Label "default Settings"
   $validTask = New-PhillipCommodityTaskContractSelfTestTask
   $validFailures = @(
     Get-PhillipCommodityTaskContractFailures `
       -Task $validTask `
-      -PrincipalXml $defaultElided.Task.Principals.Principal `
-      -SettingsXml $defaultElided.Task.Settings
+      -PrincipalXml $defaultPrincipal `
+      -SettingsXml $defaultSettings
   )
   if ($validFailures.Count -ne 0) {
     throw (
@@ -939,13 +974,21 @@ function Assert-PhillipCommodityTaskContractSelfTest {
     "</Settings>",
     "<Enabled>false</Enabled></Settings>"
   )
+  $disabledPrincipal = Get-TaskXmlRequiredElement `
+    -Document $disabledXml `
+    -XPath $principalXPath `
+    -Label "disabled Principal"
+  $disabledSettings = Get-TaskXmlRequiredElement `
+    -Document $disabledXml `
+    -XPath $settingsXPath `
+    -Label "disabled Settings"
   $disabledTask = New-PhillipCommodityTaskContractSelfTestTask
   $disabledTask.Settings.CimInstanceProperties["Enabled"].Value = $false
   $disabledFailures = @(
     Get-PhillipCommodityTaskContractFailures `
       -Task $disabledTask `
-      -PrincipalXml $disabledXml.Task.Principals.Principal `
-      -SettingsXml $disabledXml.Task.Settings `
+      -PrincipalXml $disabledPrincipal `
+      -SettingsXml $disabledSettings `
       -ExpectedEnabled $false
   )
   if ($disabledFailures.Count -ne 0) {
@@ -956,11 +999,19 @@ function Assert-PhillipCommodityTaskContractSelfTest {
     "</Settings>",
     "<StartWhenAvailable>true</StartWhenAvailable></Settings>"
   )
+  $wrongOptionalPrincipal = Get-TaskXmlRequiredElement `
+    -Document $wrongOptional `
+    -XPath $principalXPath `
+    -Label "wrong-optional Principal"
+  $wrongOptionalSettings = Get-TaskXmlRequiredElement `
+    -Document $wrongOptional `
+    -XPath $settingsXPath `
+    -Label "wrong-optional Settings"
   $wrongOptionalFailures = @(
     Get-PhillipCommodityTaskContractFailures `
       -Task $validTask `
-      -PrincipalXml $wrongOptional.Task.Principals.Principal `
-      -SettingsXml $wrongOptional.Task.Settings
+      -PrincipalXml $wrongOptionalPrincipal `
+      -SettingsXml $wrongOptionalSettings
   )
   if ("XmlStartWhenAvailableMismatch" -notin $wrongOptionalFailures) {
     throw "Task validator accepted incorrect optional XML."
@@ -970,11 +1021,19 @@ function Assert-PhillipCommodityTaskContractSelfTest {
     "<AllowHardTerminate>false</AllowHardTerminate>",
     ""
   )
+  $missingRequiredPrincipal = Get-TaskXmlRequiredElement `
+    -Document $missingRequired `
+    -XPath $principalXPath `
+    -Label "missing-required Principal"
+  $missingRequiredSettings = Get-TaskXmlRequiredElement `
+    -Document $missingRequired `
+    -XPath $settingsXPath `
+    -Label "missing-required Settings"
   $missingRequiredFailures = @(
     Get-PhillipCommodityTaskContractFailures `
       -Task $validTask `
-      -PrincipalXml $missingRequired.Task.Principals.Principal `
-      -SettingsXml $missingRequired.Task.Settings
+      -PrincipalXml $missingRequiredPrincipal `
+      -SettingsXml $missingRequiredSettings
   )
   if ("XmlAllowHardTerminateMissing" -notin $missingRequiredFailures) {
     throw "Task validator accepted an omitted non-default setting."
@@ -987,11 +1046,19 @@ function Assert-PhillipCommodityTaskContractSelfTest {
       "<StartWhenAvailable>false</StartWhenAvailable></Settings>"
     )
   )
+  $duplicateOptionalPrincipal = Get-TaskXmlRequiredElement `
+    -Document $duplicateOptional `
+    -XPath $principalXPath `
+    -Label "duplicate-optional Principal"
+  $duplicateOptionalSettings = Get-TaskXmlRequiredElement `
+    -Document $duplicateOptional `
+    -XPath $settingsXPath `
+    -Label "duplicate-optional Settings"
   $duplicateFailures = @(
     Get-PhillipCommodityTaskContractFailures `
       -Task $validTask `
-      -PrincipalXml $duplicateOptional.Task.Principals.Principal `
-      -SettingsXml $duplicateOptional.Task.Settings
+      -PrincipalXml $duplicateOptionalPrincipal `
+      -SettingsXml $duplicateOptionalSettings
   )
   if ("XmlStartWhenAvailableDuplicate" -notin $duplicateFailures) {
     throw "Task validator accepted duplicate XML settings."
@@ -1001,11 +1068,19 @@ function Assert-PhillipCommodityTaskContractSelfTest {
     "</Settings>",
     "<StartWhenAvailable>not-a-bool</StartWhenAvailable></Settings>"
   )
+  $invalidBooleanPrincipal = Get-TaskXmlRequiredElement `
+    -Document $invalidBoolean `
+    -XPath $principalXPath `
+    -Label "invalid-boolean Principal"
+  $invalidBooleanSettings = Get-TaskXmlRequiredElement `
+    -Document $invalidBoolean `
+    -XPath $settingsXPath `
+    -Label "invalid-boolean Settings"
   $invalidFailures = @(
     Get-PhillipCommodityTaskContractFailures `
       -Task $validTask `
-      -PrincipalXml $invalidBoolean.Task.Principals.Principal `
-      -SettingsXml $invalidBoolean.Task.Settings
+      -PrincipalXml $invalidBooleanPrincipal `
+      -SettingsXml $invalidBooleanSettings
   )
   if ("XmlStartWhenAvailableMismatch" -notin $invalidFailures) {
     throw "Task validator accepted invalid XML boolean syntax."
@@ -1016,8 +1091,8 @@ function Assert-PhillipCommodityTaskContractSelfTest {
   $effectiveFailures = @(
     Get-PhillipCommodityTaskContractFailures `
       -Task $effectiveDrift `
-      -PrincipalXml $defaultElided.Task.Principals.Principal `
-      -SettingsXml $defaultElided.Task.Settings
+      -PrincipalXml $defaultPrincipal `
+      -SettingsXml $defaultSettings
   )
   if ("EffectiveStartWhenAvailableMismatch" -notin $effectiveFailures) {
     throw "Task validator accepted effective setting drift."
@@ -1028,8 +1103,8 @@ function Assert-PhillipCommodityTaskContractSelfTest {
   $missingEffectiveFailures = @(
     Get-PhillipCommodityTaskContractFailures `
       -Task $missingEffective `
-      -PrincipalXml $defaultElided.Task.Principals.Principal `
-      -SettingsXml $defaultElided.Task.Settings
+      -PrincipalXml $defaultPrincipal `
+      -SettingsXml $defaultSettings
   )
   if (
     "EffectiveStartWhenAvailableUnreadable" -notin

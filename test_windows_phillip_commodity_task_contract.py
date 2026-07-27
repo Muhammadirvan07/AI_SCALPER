@@ -77,6 +77,15 @@ class PhillipCommodityTaskContractStaticTests(unittest.TestCase):
         ):
             self.assertIn(f"${marker}", self.source)
 
+    def test_self_test_resolves_empty_xml_elements_without_adapter_coercion(self):
+        self.assertIn("function Get-TaskXmlRequiredElement", self.source)
+        self.assertIn("$Document.SelectNodes($XPath)", self.source)
+        self.assertIn("[System.Xml.XmlElement]$nodes[0]", self.source)
+        self.assertNotIn(".Task.Principals.Principal", self.source)
+        self.assertNotIn(".Task.Settings", self.source)
+        self.assertIn("-PrincipalXml $defaultPrincipal", self.source)
+        self.assertIn("-SettingsXml $defaultSettings", self.source)
+
     def test_contract_contains_no_order_or_broker_mutation_primitive(self):
         lowered = self.source.lower()
         for forbidden in (
