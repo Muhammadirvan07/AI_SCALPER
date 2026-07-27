@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.ai-scalper.dashboard-api</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/muhammadirvan/Documents/AI_SCALPER/.venv-dashboard/bin/uvicorn</string>
+    <string>dashboard_api.app.main:app</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>8000</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/muhammadirvan/Documents/AI_SCALPER</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AI_SCALPER_ROOT</key>
+    <string>/Users/muhammadirvan/Documents/AI_SCALPER</string>
+    <key>AI_SCALPER_DASHBOARD_LOG_FILE</key>
+    <string>/Users/muhammadirvan/Documents/AI_SCALPER/dashboard_api/logs/dashboard-api.log</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/muhammadirvan/Documents/AI_SCALPER/dashboard_api/logs/launchd.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/muhammadirvan/Documents/AI_SCALPER/dashboard_api/logs/launchd.stderr.log</string>
+</dict>
+</plist>

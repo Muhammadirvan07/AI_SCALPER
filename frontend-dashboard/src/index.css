@@ -1,0 +1,267 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans:
+    Inter, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, ui-sans-serif, system-ui,
+    sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --animate-status-pulse: statusPulse 2s ease-in-out infinite;
+  --animate-radar-ping: radarPing 2.8s ease-out infinite;
+  --animate-rise-in: riseIn 600ms ease-out both;
+  --animate-progress-in: progressIn 800ms ease-out both;
+}
+
+:root {
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --background: #050b17;
+  --panel: rgba(10, 19, 34, 0.76);
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--background);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(34, 211, 238, 0.045), transparent 28rem),
+    radial-gradient(circle at 86% 52%, rgba(139, 92, 246, 0.04), transparent 30rem),
+    var(--background);
+}
+
+button,
+a,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::selection {
+  color: #ecfeff;
+  background: rgba(8, 145, 178, 0.6);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 #07101f;
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #07101f;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid #07101f;
+  border-radius: 999px;
+  background: #334155;
+}
+
+@layer components {
+  .page-container {
+    @apply mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-8;
+  }
+
+  .panel {
+    @apply rounded-2xl border border-white/[0.075] bg-[#0a1322]/75 shadow-[0_22px_70px_rgba(0,0,0,0.18)] backdrop-blur-md;
+  }
+
+  .panel-hover {
+    @apply transition duration-200 hover:-translate-y-0.5 hover:border-cyan-300/15 hover:bg-[#0c1728]/85 hover:shadow-[0_24px_80px_rgba(0,0,0,0.26)];
+  }
+
+  .focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b17];
+  }
+
+  .button-primary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-cyan-200/20 bg-cyan-300 px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-[0_10px_32px_rgba(34,211,238,0.18)] transition duration-200 outline-none hover:bg-cyan-200 focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b17] active:translate-y-px;
+  }
+
+  .button-secondary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/[0.09] bg-white/[0.035] px-4 py-2.5 text-sm font-semibold text-slate-200 transition duration-200 outline-none hover:border-cyan-300/20 hover:bg-cyan-300/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b17] active:translate-y-px;
+  }
+
+  .icon-button {
+    @apply grid size-10 shrink-0 place-items-center rounded-xl border border-white/[0.08] bg-white/[0.035] text-slate-300 transition outline-none hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b17];
+  }
+
+  .nav-link {
+    @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-400 transition outline-none hover:bg-white/[0.04] hover:text-white focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b17];
+  }
+
+  .nav-link-active {
+    @apply bg-cyan-300/[0.09] text-cyan-100 shadow-[inset_0_0_0_1px_rgba(103,232,249,0.12)];
+  }
+
+  .input-field {
+    @apply min-h-10 rounded-xl border border-white/[0.08] bg-slate-950/50 px-3 py-2 text-sm text-slate-200 outline-none transition placeholder:text-slate-600 hover:border-white/[0.13] focus:border-cyan-300/30 focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b17];
+  }
+
+  .filter-button {
+    @apply min-h-8 shrink-0 rounded-lg border border-white/[0.065] bg-slate-950/35 px-3 py-1.5 text-xs font-medium text-slate-500 transition outline-none hover:border-white/[0.12] hover:text-slate-200 focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b17];
+  }
+
+  .filter-button-active {
+    @apply border-cyan-300/20 bg-cyan-300/10 text-cyan-100;
+  }
+
+  .skip-link {
+    @apply fixed top-2 left-2 z-[100] -translate-y-20 rounded-lg bg-cyan-200 px-4 py-2 text-sm font-semibold text-slate-950 transition outline-none focus:translate-y-0 focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b17];
+  }
+
+  .terminal-frame {
+    background:
+      linear-gradient(150deg, rgba(14, 27, 47, 0.88), rgba(7, 16, 31, 0.82)),
+      rgba(5, 11, 23, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.13);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.045),
+      0 30px 100px rgba(0, 0, 0, 0.34);
+  }
+
+  .terminal-stat {
+    @apply flex min-w-0 flex-col items-start gap-1 rounded-xl border border-white/[0.06] bg-slate-950/35 p-3 text-[0.65rem] text-slate-500;
+  }
+
+  .terminal-stat strong {
+    @apply max-w-full truncate text-[0.68rem] font-semibold tracking-wide text-slate-200;
+  }
+}
+
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: linear-gradient(to bottom, black, transparent 94%);
+}
+
+.chart-grid {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+.text-gradient {
+  color: transparent;
+  background: linear-gradient(115deg, #ecfeff 4%, #22d3ee 48%, #a78bfa 96%);
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+.scan-line {
+  animation: scanLine 5.5s ease-in-out infinite;
+}
+
+.progress-ring {
+  background: conic-gradient(
+    #22d3ee 0deg,
+    #a78bfa var(--progress),
+    rgba(51, 65, 85, 0.7) var(--progress),
+    rgba(51, 65, 85, 0.7) 360deg
+  );
+}
+
+select.input-field option {
+  color: #e2e8f0;
+  background: #0a1322;
+}
+
+.recharts-surface:focus {
+  outline: 2px solid #22d3ee;
+  outline-offset: 3px;
+}
+
+@keyframes statusPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.78);
+  }
+}
+
+@keyframes radarPing {
+  0% {
+    opacity: 0.5;
+    transform: scale(0.86);
+  }
+  72%,
+  100% {
+    opacity: 0;
+    transform: scale(1.45);
+  }
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes progressIn {
+  from {
+    width: 0;
+  }
+}
+
+@keyframes scanLine {
+  0%,
+  100% {
+    transform: translateY(-70px);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.75;
+  }
+  70% {
+    opacity: 0.45;
+  }
+  85% {
+    transform: translateY(210px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

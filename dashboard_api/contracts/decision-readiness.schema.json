@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-scalper.local/contracts/decision-readiness.schema.json",
+  "title": "AI_SCALPER Paper Decision Readiness",
+  "type": "object",
+  "required": [
+    "decision_ready",
+    "decision_status",
+    "data_freshness_pass",
+    "news_guard",
+    "spread_guard",
+    "session_guard",
+    "blockers"
+  ],
+  "properties": {
+    "decision_ready": {"type": "boolean"},
+    "decision_status": {"enum": ["READY", "WAIT", "BLOCKED", "UNAVAILABLE"]},
+    "symbol": {"type": ["string", "null"]},
+    "strategy": {"type": ["string", "null"]},
+    "score": {"type": ["number", "null"]},
+    "minimum_required": {"type": ["number", "null"]},
+    "data_freshness_pass": {"type": "boolean"},
+    "news_guard": {"type": "string"},
+    "spread_guard": {"type": "string"},
+    "session_guard": {"type": "string"},
+    "blockers": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

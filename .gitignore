@@ -2,6 +2,7 @@
 # Python environment/cache
 venv/
 .venv/
+.venv-dashboard/
 __pycache__/
 *.pyc
 .DS_Store

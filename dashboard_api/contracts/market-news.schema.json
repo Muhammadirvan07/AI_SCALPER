@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-scalper.local/contracts/market-news.schema.json",
+  "title": "AI_SCALPER Market News Feed",
+  "type": "object",
+  "required": ["schema_version", "updated_at", "events"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "scheduled_at", "title", "impact"],
+        "properties": {
+          "id": {"type": "string"},
+          "scheduled_at": {"type": "string", "format": "date-time"},
+          "title": {"type": "string"},
+          "currency": {"type": ["string", "null"]},
+          "region": {"type": ["string", "null"]},
+          "impact": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"]},
+          "actual": {"type": ["string", "number", "null"]},
+          "forecast": {"type": ["string", "number", "null"]},
+          "previous": {"type": ["string", "number", "null"]},
+          "affected_symbols": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "direction_bias": {
+            "enum": ["BULLISH", "BEARISH", "MIXED", "NEUTRAL", "UNKNOWN"]
+          },
+          "summary": {"type": ["string", "null"]}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

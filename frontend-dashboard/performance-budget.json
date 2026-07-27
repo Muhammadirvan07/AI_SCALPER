@@ -1,0 +1,24 @@
+{
+  "profile": "internal-local-dashboard",
+  "mobile_4g": {
+    "lcp_ms_max": 2500,
+    "inp_ms_max": 200,
+    "cls_max": 0.1
+  },
+  "api_latency_ms": {
+    "p50_max": 50,
+    "p95_max": 150,
+    "p99_max": 300
+  },
+  "bundle_gzip_kb": {
+    "entry_js_max": 100,
+    "route_chunk_max": 80,
+    "chart_vendor_max": 110,
+    "css_max": 30
+  },
+  "session_slo_percent": 99.5,
+  "notes": [
+    "Web Vitals harus diukur pada browser nyata.",
+    "Target tidak mengubah status safety atau readiness trading."
+  ]
+}

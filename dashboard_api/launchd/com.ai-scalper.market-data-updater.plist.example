@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.ai-scalper.market-data-updater</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/muhammadirvan/Documents/AI_SCALPER/.venv/bin/python</string>
+    <string>/Users/muhammadirvan/Documents/AI_SCALPER/market_data_updater.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/muhammadirvan/Documents/AI_SCALPER</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AI_SCALPER_ROOT</key>
+    <string>/Users/muhammadirvan/Documents/AI_SCALPER</string>
+    <key>AI_SCALPER_MARKET_FAST_INTERVAL_SECONDS</key>
+    <string>60</string>
+    <key>AI_SCALPER_MARKET_FULL_INTERVAL_SECONDS</key>
+    <string>900</string>
+    <key>AI_SCALPER_MARKET_FULL_ON_START</key>
+    <string>true</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/ai-scalper-market-updater.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/ai-scalper-market-updater.stderr.log</string>
+</dict>
+</plist>
