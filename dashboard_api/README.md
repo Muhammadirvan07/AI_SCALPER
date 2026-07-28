@@ -80,6 +80,14 @@ Alternatif tanpa reload:
 .venv-dashboard/bin/python dashboard_api/run_dashboard_api.py
 ```
 
+Pada Windows PowerShell, runner yang sama dapat dipanggil langsung dari root
+repository tanpa mengubah environment trading:
+
+```powershell
+$env:AI_SCALPER_ROOT = "C:\AI_SCALPER"
+.\.venv-dashboard\Scripts\python.exe -B .\dashboard_api\run_dashboard_api.py
+```
+
 API sengaja dan secara fail-closed hanya menerima bind host loopback
 (`127.0.0.1`, `::1`, atau `localhost`). Origin CORS juga harus berupa origin
 HTTP(S) loopback tanpa wildcard. WebSocket memerlukan header `Origin` yang
