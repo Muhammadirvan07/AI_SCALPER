@@ -2,10 +2,18 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-25 menjalankan **1.575 test** tanpa
-kegagalan dalam mode normal maupun optimized pada development Mac. Itu adalah
-software regression evidence, bukan Windows host acceptance, broker-forward
-evidence, atau izin trading.
+Validasi lokal terakhir pada 2026-07-28 menjalankan **1.639 test** tanpa
+kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
+PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
+juga lulus 21 unit test frontend, 24 test backend, 14 browser E2E, lint,
+TypeScript, production build, dan bundle verification. Itu adalah software
+regression evidence, bukan Windows host acceptance, broker-forward evidence,
+atau izin trading.
+
+Audit aktif dan baseline release-candidate dicatat di
+[SHIP_GATE_AUDIT_2026-07-28.md](SHIP_GATE_AUDIT_2026-07-28.md) serta
+[PROJECT_PROGRESS_2026-07-28.md](PROJECT_PROGRESS_2026-07-28.md). Audit
+historis tetap immutable sebagai catatan keputusan pada tanggalnya.
 
 Dependency lock/install manifest/SBOM lokal juga tervalidasi dan
 `pip-audit 2.10.1` melaporkan nol kerentanan yang diketahui pada environment
@@ -84,6 +92,15 @@ tetapi receipt Windows aktual
 belum ada. Statusnya
 `PASS_LOCALLY_EXTERNAL_WINDOWS_EVIDENCE_REQUIRED`; default generated factory
 tetap fail-closed tanpa reviewed external runtime.
+
+Dashboard operasional sekarang merupakan source yang dilacak dan telah
+dipublikasikan sebagai boundary read-only terpisah. FastAPI hanya menyediakan
+route GET, CORS dibatasi ke origin loopback, frontend menolak payload runtime
+yang tidak lengkap, dan token status negatif seperti `NOT_READY` atau
+`INACTIVE` tidak dapat dipetakan sebagai status positif. Dashboard tidak
+memiliki credential, permit, arm, task mutation, broker mutation, maupun order
+authority. Penggunaan di luar loopback tetap memerlukan deployment review,
+TLS, authentication, dan security-header policy terpisah.
 
 ## Status roadmap
 

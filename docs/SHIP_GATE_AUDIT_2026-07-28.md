@@ -1,0 +1,119 @@
+# AI_SCALPER Ship-Gate Audit — 2026-07-28
+
+## Verdict
+
+```text
+LOCAL_SOURCE_GATE = PASS
+DASHBOARD_READ_ONLY_BOUNDARY = PASS_LOCALLY
+DASHBOARD_FAIL_CLOSED_EVIDENCE = PASS_LOCALLY
+DEPENDENCY_INTEGRITY = PASS_LOCALLY
+ATOMIC_FIVE_ROLE_BUILD = PASS_REPRODUCIBLE_LOCALLY
+PHILLIP_COMMODITY_V6_3 = PRE_START
+FIRST_AUTOMATIC_SCHEDULED_PROOF = PENDING_2026_07_30_0645_JST
+WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
+MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
+DEMO_AUTO_SOAK = NOT_READY
+LIVE_TRADING = DO_NOT_SHIP
+```
+
+Local `PASS` mengizinkan reviewed source commit dan persiapan evidence. Ia
+tidak mengizinkan task activation baru, demo-auto, broker order, atau live
+deployment.
+
+## Scope dan provenance
+
+Audit mencakup Python/MetaTrader5 core, FastAPI dashboard API read-only, React
+19/Vite/TypeScript frontend, SQLite evidence stores, Windows dependency lock,
+serta deterministic atomic five-role packaging. Source implementation yang
+diaudit:
+
+- commit `d5495260d3a47a4ce7759f044ff7299a79c1970a`;
+- tree `cac76d219a613a946b15d962a304108ba1a4096d`;
+- branch `agent/live-grade-phase3`.
+
+Runtime atau broker tidak dimutasi selama audit lokal.
+
+## Ringkasan delapan kategori
+
+| Category | Status | Evidence |
+|---|---|---|
+| Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.639 PASS per mode; dashboard unit/backend/E2E PASS |
+| Application security | PASS_LOCAL | GET-only API, explicit loopback CORS, no unsafe eval or HTML injection, fail-closed payload guards |
+| Dependencies | PASS_LOCAL | npm audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
+| Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
+| Reliability and observability | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | structured logs, health endpoint, signed journals; off-host alert/WORM proof masih eksternal |
+| Deployment and operations | INCOMPLETE_EXTERNAL | exact Windows services, ACL, key custody, RSA launcher, backup/restore, and conformance evidence belum lengkap |
+| Trading safety | DO_NOT_SHIP | safety lock false, manual-demo belum dimulai, soak dan live approval belum ada |
+
+## Automated evidence
+
+| Check | Result |
+|---|---|
+| Full Python regression | `Ran 1639 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with `PYTHONOPTIMIZE=2` | `Ran 1639 tests ... OK (skipped=3)`, exit 0 |
+| Frontend unit suite | 21 PASS |
+| Dashboard backend suite | 24 PASS |
+| Browser E2E suite | 14 PASS |
+| Lint, TypeScript, production build, bundle verification | PASS |
+| npm audit | 0 vulnerabilities across 248 dependencies |
+| Windows dependency lock verifier under isolated runtime | PASS |
+| SQL interpolation review | no user-controlled query fragments |
+| Atomic five-role independent rebuild | all corresponding outputs byte-identical |
+
+Dependency evidence:
+
+- lock SHA-256:
+  `34087f736724e7d92591f7886f565b15436c59de0d4e80a59e42b04f2851d862`;
+- install manifest SHA-256:
+  `516a9c6648ba97c188411171d7936349ec09a117deaa22cd18d2f5beeeeffc61`;
+- SBOM SHA-256:
+  `116c70739c34396f5b18fdcdc03a52326b81b6e3cf520eb40f36c15e7e8674fe`;
+- MetaTrader5 5.0.5735 SHA-256:
+  `f6e8584e48f2c3f5de818f17ee65f0f5adfa1e4af29cd5f4bf3f72b91ff06e10`.
+
+Atomic suite identity:
+`fb50dab2079793dd780de6885f51471c17ca0aaeb3efd62aace09d4e7f414f71`.
+Its boundary remains `DISABLED_AT_SUITE_BOUNDARY` with production execution
+readiness false.
+
+## Findings resolved
+
+1. Status-token matching previously allowed positive substrings inside
+   negative states. Exact token classification now makes `NOT_READY` and
+   `INACTIVE` fail closed.
+2. Runtime summary, performance, and paper-order guards previously accepted
+   shapes that were too weak. Required fields and value domains are now
+   validated before rendering.
+3. Current status documentation still treated dashboard directories as
+   untracked and used an obsolete regression count. The active status and
+   progress evidence now reflect tracked commits and the 1.639-test baseline.
+
+## Findings that remain external or manual
+
+1. Phillip Commodity V6.3 has not yet produced its first automatic scheduled
+   proof. The exact boundary is `2026-07-30T06:45:00+09:00`.
+2. Authenticated audit pairs must be mirrored to independent immutable/WORM
+   storage, with alert acknowledgement and restore evidence.
+3. Exact Windows Decision, Execution, and Status Monitor identities, service
+   accounts, task XML, ACL, credential fingerprints, trusted time, IPC/CAS,
+   RSA launcher attestation, and provider materialization require independent
+   review.
+4. Public dashboard exposure is not approved. Any non-loopback deployment
+   requires TLS, authentication, CSP/security headers, network policy, and an
+   external deployment review.
+5. Nine signed pre-manual observations and exact configured-release admission
+   are absent.
+6. Ten controlled manual-demo lifecycle reviews are absent.
+7. Separate demo-auto activation approval is absent.
+8. The 30-day/50-fill/20-XAU demo-auto soak, statistical/OOS gates, failure
+   drills, legal approval, and live XAUUSD canary evidence are absent.
+
+## Decision
+
+Source commit `d5495260d3a47a4ce7759f044ff7299a79c1970a` is accepted as a
+local release-candidate baseline. The project remains
+**NOT_READY / DO NOT SHIP**. No artifact, dashboard state, local test,
+provider packet, or scheduled-task receipt may set
+`safe_to_demo_auto_order=true` or `live_allowed=true` before every applicable
+external and manual gate is closed.
