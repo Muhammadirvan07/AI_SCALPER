@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-28 menjalankan **1.762 test** tanpa
+Validasi lokal terakhir pada 2026-07-28 menjalankan **1.769 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
 PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
 juga lulus 21 unit test frontend, 45 test backend, 14 browser E2E, lint,
@@ -126,7 +126,7 @@ File sementara exclusive-write/replace serta marker transaksi
 pengganti tidak pernah dihapus.
 Helper extraction XM/FINEX juga memakai sibling staging dan no-replace
 directory move sebelum verifikasi ulang destination. Full regression normal
-dan optimized sama-sama lulus 1.762 test dengan tiga platform skip. Kontrak ini
+dan optimized sama-sama lulus 1.769 test dengan tiga platform skip. Kontrak ini
 hanya memperkuat artifact custody dan tidak mengubah `order_capability`,
 `live_allowed`, demo-auto, promotion, atau broker authority.
 
@@ -551,9 +551,14 @@ BTCUSD = shadow-only
 10. Independent promotion issuer kini menerima raw immutable observations,
     menghitung ulang trade count/duration/PF/drawdown/cost stress/seeded
     bootstrap, memverifikasi tepat lima fold dan parity corpus, serta hanya
-    menerima validation binding dari verifier adapter yang sealed. Signed
-    receipt tetap memerlukan independent production key custody dan corpus
-    broker/OOS nyata; data sintetis dalam test bukan promotion evidence.
+    menerima validation binding dari verifier adapter yang sealed. Exact
+    champion ZIP diverifikasi langsung terhadap enam pin menjadi sealed
+    observation; seluruh trade/fold/parity wajib membawa lane/config/model yang
+    sama dan complete raw corpus memiliki canonical SHA-256. Signed
+    `promotion-evidence-v2` menurunkan commit/model dari champion dan mengikat
+    archive/package/snapshot/tree/runtime/corpus/bootstrap identities. Receipt
+    tetap memerlukan independent production key custody dan corpus broker/OOS
+    nyata; data sintetis dalam test bukan promotion evidence.
 11. Broker-neutral one-shot evidence shadow runner kini memiliki durable per-stage receipt,
     hash-chained operational journal, singleton fence, disk floor, heartbeat
     projection, status-only watchdog, verified create-exclusive audit export,

@@ -53,6 +53,9 @@ change the external ship blockers above.
 - FR-9: The issuer MAY sign the existing promotion evidence receipt only after
   the sealed readiness calculator reports evidence complete; issuance MUST NOT
   change runtime execution locks or constitute manual ship approval.
+- FR-9a: The later champion-binding hardening MUST verify exact champion bytes
+  against six external pins, bind every raw observation to that champion, and
+  derive signed commit/model identities rather than accepting them separately.
 - FR-10: The Windows release builder MUST support a separate exact
   `READ_ONLY_SHADOW_SERVICE` profile with its own versioned allowlist and MUST
   preserve the existing deployment-tooling profile without behavior drift.
@@ -214,6 +217,10 @@ Then there are no regressions and no artifact changes a locked safety value.
 
 ## API Contracts
 
+These foundation contracts are local Python ports and immutable artifacts. A
+hypothetical `POST /api/promotion-evidence` endpoint is explicitly prohibited
+and MUST NOT be implemented by this specification.
+
 ```typescript
 interface ReconciliationCycleReceipt {
   sequence: number;
@@ -233,6 +240,8 @@ interface PromotionCorpus {
   symbol: string;
   strategy: string;
   configSha256: string;
+  modelArtifactSha256: string;
+  championArtifact: VerifiedChampionObservation;
   oosTrades: ClosedTradeObservation[];
   forwardTrades: ClosedTradeObservation[];
   rollingFolds: RollingFoldObservation[];

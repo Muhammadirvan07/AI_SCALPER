@@ -15,6 +15,7 @@ V6_3_SCHEDULED_TRIGGER_PROVENANCE = PASS_LOCALLY_PENDING_REAL_EVENT
 V6_3_WORM_CUSTODY_REQUEST_AND_RECEIPT_BOUNDARY = PASS_LOCALLY
 RULE_CORE_CHAMPION_LINEAGE = PASS_LOCALLY_EXACT_HEAD_BUILD_PENDING
 RULE_CORE_CHAMPION_REGISTRY_CUSTODY = PASS_LOCALLY_EXTERNAL_ACTION_PENDING
+PROMOTION_CHAMPION_CORPUS_BINDING = PASS_LOCALLY_SYNTHETIC_ONLY
 FIRST_AUTOMATIC_SCHEDULED_PROOF = PENDING_2026_07_30_0645_JST
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
@@ -48,21 +49,22 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.762 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.769 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, pre-bind loopback enforcement, canonical loopback CORS/WebSocket origin allowlist, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | fresh npm, Python development, dan dashboard requirements audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
 | Reliability and observability | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | structured logs, health endpoint, signed journals; off-host alert/WORM proof masih eksternal |
 | Deployment and operations | INCOMPLETE_EXTERNAL | exact Windows services, ACL, key custody, RSA launcher, backup/restore, and conformance evidence belum lengkap |
-| Model lineage | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | deterministic frozen source/config/snapshot artifact, six-pin verifier, deterministic registry request, dan policy-pinned RSA receipt verifier tersedia; exact-HEAD rebuild, custody eksternal aktual, dan quality evidence masih pending |
+| Model lineage | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | deterministic frozen source/config/snapshot artifact, six-pin verifier, registry custody boundary, serta exact champion-to-raw-corpus binding tersedia; custody eksternal aktual dan real quality evidence masih pending |
 | Trading safety | DO_NOT_SHIP | safety lock false, manual-demo belum dimulai, soak dan live approval belum ada |
 
 ## Automated evidence
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1762 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with optimization enabled | `Ran 1762 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1769 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1769 tests ... OK (skipped=3)`, exit 0 |
+| Champion-bound promotion issuer cluster | 152 PASS per normal/optimized mode |
 | Rule-core artifact + registry/custody + configured-tooling focused tests | 36 PASS per normal/optimized mode |
 | Create-exclusive publisher focused tests | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature tests | 52 PASS per normal/optimized mode |
@@ -188,7 +190,7 @@ readiness false.
     tests prove an injected target is not overwritten and a replacement
     staging root is preserved. Temporary-file cleanup and paired-transaction
     pending-marker clear now also require their exact creation identities;
-    replacement files survive. Both full 1,762-test modes remain green.
+    replacement files survive. Both full 1,769-test modes remain green.
 14. The diagnostic runner computed a rule-core hash but no portable artifact
     froze the bytes behind that identity together with config, snapshot,
     cutoff, and Git provenance. A deterministic deny-only ZIP contract now
@@ -208,6 +210,16 @@ readiness false.
     records signed-attestation acceptance but explicitly records no direct
     storage-API inspection and leaves quality, OOS, promotion, demo-auto,
     order, and live state disabled.
+16. The independent promotion issuer previously accepted a caller-selected
+    model hash at signing time, while rolling-fold and parity records carried
+    no lane/model binding. A sealed observation can now be created only by
+    directly verifying exact champion ZIP bytes against six independent pins.
+    Every raw trade, fold, and parity record must match its champion; canonical
+    ordering and one complete corpus hash make substitution visible. The v2
+    signed receipt binds exact archive/package/snapshot/tree/runtime, raw
+    corpus, and bootstrap identities, and derives commit/model from champion.
+    Synthetic acceptance tests pass, but this does not provide real quality or
+    promotion authority.
 
 ## Findings that remain external or manual
 

@@ -26,7 +26,7 @@ from .permit import account_alias_sha256
 from .readiness import LaneReadiness
 
 
-PROMOTION_EVIDENCE_SCHEMA_VERSION = "promotion-evidence-v1"
+PROMOTION_EVIDENCE_SCHEMA_VERSION = "promotion-evidence-v2"
 MAX_RECEIPT_LIFETIME = timedelta(hours=24)
 _PROMOTION_EVIDENCE_VALIDATION_SEAL = object()
 
@@ -55,6 +55,13 @@ class PromotionEvidenceReceipt(CanonicalContract):
     commit_sha: str
     config_sha256: str
     model_artifact_sha256: str
+    champion_archive_sha256: str
+    champion_package_identity_sha256: str
+    champion_training_snapshot_sha256: str
+    champion_git_tree: str
+    champion_runtime_binding_sha256: str
+    quality_corpus_sha256: str
+    bootstrap_receipt_sha256: str
     lane_readiness_sha256: str
     lane_evidence_sha256: str
     evidence_store_receipt_sha256: str
@@ -96,6 +103,12 @@ class PromotionEvidenceReceipt(CanonicalContract):
         for field in (
             "config_sha256",
             "model_artifact_sha256",
+            "champion_archive_sha256",
+            "champion_package_identity_sha256",
+            "champion_training_snapshot_sha256",
+            "champion_runtime_binding_sha256",
+            "quality_corpus_sha256",
+            "bootstrap_receipt_sha256",
             "lane_readiness_sha256",
             "lane_evidence_sha256",
             "evidence_store_receipt_sha256",
@@ -103,6 +116,14 @@ class PromotionEvidenceReceipt(CanonicalContract):
             "build_manifest_sha256",
         ):
             object.__setattr__(self, field, require_hash(field, getattr(self, field)))
+        champion_tree = require_hash(
+            "champion_git_tree",
+            self.champion_git_tree,
+            minimum_length=40,
+        )
+        if len(champion_tree) != 40:
+            raise ValueError("champion_git_tree must be an exact 40-character hash")
+        object.__setattr__(self, "champion_git_tree", champion_tree)
         expected_lane = f"{symbol}:{strategy}:{self.config_sha256}"
         if self.lane_id != expected_lane:
             raise ValueError("lane_id does not match symbol/strategy/config")
@@ -170,6 +191,13 @@ class PromotionEvidenceValidation(CanonicalContract):
     commit_sha: str
     config_sha256: str
     model_artifact_sha256: str
+    champion_archive_sha256: str
+    champion_package_identity_sha256: str
+    champion_training_snapshot_sha256: str
+    champion_git_tree: str
+    champion_runtime_binding_sha256: str
+    quality_corpus_sha256: str
+    bootstrap_receipt_sha256: str
     expires_at: datetime
     _seal: InitVar[object | None] = None
 
@@ -187,6 +215,29 @@ class PromotionEvidenceValidation(CanonicalContract):
             "receipt_sha256",
             require_hash("receipt_sha256", self.receipt_sha256),
         )
+        for field in (
+            "config_sha256",
+            "model_artifact_sha256",
+            "champion_archive_sha256",
+            "champion_package_identity_sha256",
+            "champion_training_snapshot_sha256",
+            "champion_runtime_binding_sha256",
+            "quality_corpus_sha256",
+            "bootstrap_receipt_sha256",
+        ):
+            object.__setattr__(
+                self,
+                field,
+                require_hash(field, getattr(self, field)),
+            )
+        champion_tree = require_hash(
+            "champion_git_tree",
+            self.champion_git_tree,
+            minimum_length=40,
+        )
+        if len(champion_tree) != 40:
+            raise ValueError("champion_git_tree must be an exact 40-character hash")
+        object.__setattr__(self, "champion_git_tree", champion_tree)
         reasons = tuple(sorted(set(self.reason_codes)))
         if self.valid == bool(reasons):
             raise ValueError("valid/reason_codes are inconsistent")
@@ -202,6 +253,13 @@ def issue_promotion_evidence_receipt(
     journal_sha256: str,
     commit_sha: str,
     model_artifact_sha256: str,
+    champion_archive_sha256: str,
+    champion_package_identity_sha256: str,
+    champion_training_snapshot_sha256: str,
+    champion_git_tree: str,
+    champion_runtime_binding_sha256: str,
+    quality_corpus_sha256: str,
+    bootstrap_receipt_sha256: str,
     evidence_store_receipt_sha256: str,
     runtime_parity_receipt_sha256: str,
     build_manifest_sha256: str,
@@ -225,6 +283,13 @@ def issue_promotion_evidence_receipt(
         commit_sha=commit_sha,
         config_sha256=config_sha256,
         model_artifact_sha256=model_artifact_sha256,
+        champion_archive_sha256=champion_archive_sha256,
+        champion_package_identity_sha256=champion_package_identity_sha256,
+        champion_training_snapshot_sha256=champion_training_snapshot_sha256,
+        champion_git_tree=champion_git_tree,
+        champion_runtime_binding_sha256=champion_runtime_binding_sha256,
+        quality_corpus_sha256=quality_corpus_sha256,
+        bootstrap_receipt_sha256=bootstrap_receipt_sha256,
         lane_readiness_sha256=readiness.content_sha256,
         lane_evidence_sha256=readiness.evidence_sha256,
         evidence_store_receipt_sha256=evidence_store_receipt_sha256,
@@ -297,7 +362,10 @@ def validate_promotion_evidence_receipt(
             "PROMOTION_STRATEGY_MISMATCH",
         ),
         (receipt.lane_id == expected_lane_id, "PROMOTION_LANE_MISMATCH"),
-        (receipt.commit_sha == str(expected_commit_sha).strip().lower(), "PROMOTION_COMMIT_MISMATCH"),
+        (
+            receipt.commit_sha == str(expected_commit_sha).strip().lower(),
+            "PROMOTION_COMMIT_MISMATCH",
+        ),
         (
             receipt.config_sha256 == expected_config_normalized,
             "PROMOTION_CONFIG_MISMATCH",
@@ -322,6 +390,19 @@ def validate_promotion_evidence_receipt(
         commit_sha=receipt.commit_sha,
         config_sha256=receipt.config_sha256,
         model_artifact_sha256=receipt.model_artifact_sha256,
+        champion_archive_sha256=receipt.champion_archive_sha256,
+        champion_package_identity_sha256=(
+            receipt.champion_package_identity_sha256
+        ),
+        champion_training_snapshot_sha256=(
+            receipt.champion_training_snapshot_sha256
+        ),
+        champion_git_tree=receipt.champion_git_tree,
+        champion_runtime_binding_sha256=(
+            receipt.champion_runtime_binding_sha256
+        ),
+        quality_corpus_sha256=receipt.quality_corpus_sha256,
+        bootstrap_receipt_sha256=receipt.bootstrap_receipt_sha256,
         expires_at=receipt.expires_at,
         _seal=_PROMOTION_EVIDENCE_VALIDATION_SEAL,
     )

@@ -54,6 +54,13 @@ def receipt():
         journal_sha256=JOURNAL_SHA256,
         commit_sha="b" * 40,
         model_artifact_sha256="c" * 64,
+        champion_archive_sha256="0" * 64,
+        champion_package_identity_sha256="1" * 64,
+        champion_training_snapshot_sha256="2" * 64,
+        champion_git_tree="3" * 40,
+        champion_runtime_binding_sha256="4" * 64,
+        quality_corpus_sha256="5" * 64,
+        bootstrap_receipt_sha256="6" * 64,
         evidence_store_receipt_sha256="d" * 64,
         runtime_parity_receipt_sha256="e" * 64,
         build_manifest_sha256="f" * 64,
@@ -91,6 +98,9 @@ class PromotionEvidenceTests(unittest.TestCase):
         result = validate(receipt())
         self.assertTrue(result.valid, result.reason_codes)
         self.assertEqual("EURUSD:MOMENTUM_PULLBACK:" + "a" * 64, result.lane_id)
+        self.assertEqual("0" * 64, result.champion_archive_sha256)
+        self.assertEqual("5" * 64, result.quality_corpus_sha256)
+        self.assertEqual("6" * 64, result.bootstrap_receipt_sha256)
 
     def test_strategy_and_lane_cannot_be_reused(self):
         result = validate(receipt(), expected_strategy="BREAKOUT")
@@ -117,6 +127,11 @@ class PromotionEvidenceTests(unittest.TestCase):
             "PROMOTION_JOURNAL_MISMATCH",
             validate(signed, expected_journal_sha256="8" * 64).reason_codes,
         )
+        quality_tamper = replace(signed, quality_corpus_sha256="7" * 64)
+        self.assertIn(
+            "PROMOTION_EVIDENCE_SIGNATURE_INVALID",
+            validate(quality_tamper).reason_codes,
+        )
 
     def test_incomplete_lane_cannot_be_signed_for_promotion(self):
         with self.assertRaises(PermissionError):
@@ -128,6 +143,13 @@ class PromotionEvidenceTests(unittest.TestCase):
                 journal_sha256=JOURNAL_SHA256,
                 commit_sha="b" * 40,
                 model_artifact_sha256="c" * 64,
+                champion_archive_sha256="0" * 64,
+                champion_package_identity_sha256="1" * 64,
+                champion_training_snapshot_sha256="2" * 64,
+                champion_git_tree="3" * 40,
+                champion_runtime_binding_sha256="4" * 64,
+                quality_corpus_sha256="5" * 64,
+                bootstrap_receipt_sha256="6" * 64,
                 evidence_store_receipt_sha256="d" * 64,
                 runtime_parity_receipt_sha256="e" * 64,
                 build_manifest_sha256="f" * 64,
@@ -152,6 +174,13 @@ class PromotionEvidenceTests(unittest.TestCase):
                 commit_sha="b" * 40,
                 config_sha256="a" * 64,
                 model_artifact_sha256="c" * 64,
+                champion_archive_sha256="0" * 64,
+                champion_package_identity_sha256="1" * 64,
+                champion_training_snapshot_sha256="2" * 64,
+                champion_git_tree="3" * 40,
+                champion_runtime_binding_sha256="4" * 64,
+                quality_corpus_sha256="5" * 64,
+                bootstrap_receipt_sha256="6" * 64,
                 expires_at=NOW + timedelta(minutes=1),
             )
 

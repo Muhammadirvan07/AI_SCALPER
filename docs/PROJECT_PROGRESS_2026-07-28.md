@@ -110,13 +110,23 @@ commit dibuat.
   policy-pinned RSA custodian receipt menjadi assessment deny-only. Tooling
   tidak mengunggah, membaca credential/private key, menginspeksi storage API,
   mengakses MT5, atau memberikan quality/promotion/order/live authority.
+- Audit quality lineage menemukan independent issuer masih menerima
+  `model_artifact_sha256` terpisah saat signing, sedangkan fold dan parity tidak
+  membawa identitas lane/model. Boundary baru memverifikasi exact champion ZIP
+  terhadap enam pin menjadi sealed observation, mewajibkan trade/fold/parity
+  mengikat champion yang sama, dan menghasilkan canonical raw-corpus hash.
+  `promotion-evidence-v2` menandatangani exact archive/package/snapshot/tree,
+  runtime binding, corpus, dan bootstrap identities; jalur issuer independen
+  sekarang menurunkan commit/model dari champion dan tidak menerima keduanya
+  dari caller. Bukti real tetap pending dan seluruh trading lock tetap false.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.762 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.762 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.769 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.769 PASS, 3 skip, exit 0 |
+| Champion-bound promotion issuer focused cluster | 152 PASS per normal/optimized mode |
 | Rule-core artifact + registry/custody + configured-tooling focused cluster | 36 PASS per normal/optimized mode |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
@@ -217,6 +227,13 @@ pin; receipt verifier mengikat independently pinned RSA policy, immutable
 destination/version/retention, dan signature custodian. Assessment success
 tetap menyatakan direct storage API inspection tidak dilakukan dan seluruh
 trading lock false.
+
+Kontrak quality-lineage berikutnya berada di
+`specs/independent_promotion_champion_binding_v1.md` dengan ringkasan operator
+di `docs/INDEPENDENT_PROMOTION_CHAMPION_BINDING.md`. Implementasi ini hanya
+menutup binding source/corpus secara lokal. Ia tidak mengubah empat closed
+diagnostic trades menjadi evidence promotion, tidak melewati blinded window,
+dan tidak menggantikan independent production key atau manual ship gate.
 
 Ini menutup format dan verifier handoff lineage lokal, bukan aksi custody atau
 quality gate. Exact artifact untuk commit final harus dibangun dua kali setelah
