@@ -305,9 +305,16 @@ custody, real quality corpus, Windows conformance, manual demo, dan soak tetap
 harus diselesaikan sebelum activation review.
 
 Ini menutup format dan verifier handoff lineage lokal, bukan aksi custody atau
-quality gate. Exact artifact untuk commit final harus dibangun dua kali setelah
-commit, diverifikasi terhadap enam pin, lalu request diserahkan ke custodian
-eksternal yang benar-benar independen. Policy pin, upload/version immutable,
+quality gate. Exact artifact untuk commit `acd822273f30c58367b35ed0ab58472b0c87c71b`
+dan tree `5a96a09911c53a46055e6ef7f5ff71ef152d31ff` telah dibangun dua kali
+secara byte-identik dan diverifikasi terhadap enam pin. Archive SHA-256-nya
+`345658a9fc3f9aac1406ddc37b693e970d1afddfc5711ad6e6831220398f54b8`.
+Custody request juga dibangun dua kali secara byte-identik, diverifikasi
+terhadap tujuh pin, dan memiliki archive SHA-256
+`7518e34bc7d9fc867996f45e681af339bc4672deb5f6c5fc2f438c130d77d165`.
+Enam puluh enam focused test normal/optimized lulus. Request tersebut masih
+harus diserahkan ke custodian eksternal yang benar-benar independen. Policy
+pin, upload/version immutable,
 signed receipt, restore proof, offline champion/challenger evaluation, OOS dan
 broker-forward thresholds, risk feasibility, manual demo, demo-auto soak, serta
 live approval tetap pending.

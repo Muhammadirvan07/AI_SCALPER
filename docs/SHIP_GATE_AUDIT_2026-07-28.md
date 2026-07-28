@@ -13,7 +13,7 @@ PHILLIP_COMMODITY_V6_3 = PRE_START
 V6_3_POSTRUN_ACCEPTANCE_TOOLKIT = PASS_LOCALLY
 V6_3_SCHEDULED_TRIGGER_PROVENANCE = PASS_LOCALLY_PENDING_REAL_EVENT
 V6_3_WORM_CUSTODY_REQUEST_AND_RECEIPT_BOUNDARY = PASS_LOCALLY
-RULE_CORE_CHAMPION_LINEAGE = PASS_LOCALLY_EXACT_HEAD_BUILD_PENDING
+RULE_CORE_CHAMPION_LINEAGE = PASS_LOCALLY_EXACT_HEAD_ARTIFACT_VERIFIED
 RULE_CORE_CHAMPION_REGISTRY_CUSTODY = PASS_LOCALLY_EXTERNAL_ACTION_PENDING
 PROMOTION_CHAMPION_CORPUS_BINDING = PASS_LOCALLY_SYNTHETIC_ONLY
 RUNTIME_STAGE_CHAMPION_BINDING = PASS_LOCALLY_DENY_ONLY
@@ -309,8 +309,9 @@ readiness false.
 4. Public dashboard exposure is not approved. Any non-loopback deployment
    requires TLS, authentication, CSP/security headers, network policy, and an
    external deployment review.
-5. Exact-HEAD champion artifact rebuild and the local registry request/receipt
-   contract are available, but independent policy approval, actual immutable
+5. The exact-HEAD champion artifact and deterministic registry request have
+   each been built twice byte-identically and independently verified against
+   their required pins. Independent policy approval, actual immutable
    upload/version, signed external receipt, restore proof, offline
    champion/challenger validation, and statistical/OOS evidence remain
    external. Local artifact or request integrity is not a model-quality claim.
