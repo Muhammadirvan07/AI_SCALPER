@@ -22,6 +22,9 @@ menjadi baseline audit incremental ini adalah:
   evidence, provider, dan atomic-suite yang relevan.
 - `141eae76fd7bbfe3c0bcb7b02f9c588837ac86fc` — exact champion pins
   diwajibkan langsung pada konfigurasi runtime Windows.
+- `26765fb137aa355994ccf17570cce8ceee3b607d` — exact Execution
+  production source, provider/bootstrap, suite role, commit, dan tree diikat
+  menjadi source-bound candidate sembilan-pin yang portable dan deny-only.
 
 Remediation lintas publisher yang dicatat pada laporan ini turun langsung
 dari baseline `c10d474`. Exact commit dan tree final adalah identitas Git dari
@@ -157,17 +160,30 @@ commit dibuat.
   Kontrak dan runbook berada di
   `specs/windows_execution_source_bound_candidate_v1.md` dan
   `docs/WINDOWS_EXECUTION_SOURCE_BOUND_CANDIDATE.md`.
+- Gap berikutnya adalah provider-conformance v2 masih menerima standalone
+  Execution template tanpa membuktikan bahwa template tersebut berasal dari
+  source-bound candidate yang sama. Provider-conformance v3 kini mewajibkan
+  hasil verifier sembilan-pin tersegel, menurunkan exact 26-field Execution
+  lineage, mencocokkan canonical `DEMO` template/source/bootstrap/suite/
+  Execution-role/commit/tree, dan tetap merekonstruksi tepat 65 provider.
+  File API dan kedua CLI memerlukan group source pin lengkap; partial, forged,
+  cross-version, atau recomputed-hash substitution ditolak tanpa output.
+  Skema/byte v1 dan v2 tetap kompatibel, seluruh authority flag tetap false,
+  dan tooling v3 hanya berada dalam configured operator release. Kontrak dan
+  runbook berada di `specs/windows_three_service_provider_conformance_v3.md`
+  dan `docs/WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V3.md`.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.790 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.790 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.799 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.799 PASS, 3 skip, exit 0 |
 | Runtime-stage champion-binding focused cluster | 206 PASS per normal/optimized mode |
 | Windows runtime champion-configuration cluster | 49 PASS per normal/optimized mode |
 | Windows production-config source focused cluster | 7 PASS per normal/optimized mode |
 | Windows Execution source-bound candidate focused cluster | 17 PASS per normal/optimized mode termasuk configured-tooling boundary |
+| Windows provider-conformance v3 focused cluster | 9 PASS per normal/optimized mode; v1/v2 compatibility cluster juga PASS |
 | Champion-bound promotion issuer focused cluster | 152 PASS per normal/optimized mode |
 | Rule-core artifact + registry/custody + configured-tooling focused cluster | 36 PASS per normal/optimized mode |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
@@ -346,8 +362,9 @@ Urutan berikutnya tetap:
    provider pack/configured candidate dari custody Windows yang direview;
    untuk Execution, buat dan independently verify source-bound candidate
    sembilan-pin sebelum provider conformance;
-5. kumpulkan operations review, provider conformance, independent validation
-   receipt, dan sembilan signed pre-manual observations;
+5. kumpulkan operations review, source-bound provider-conformance v3,
+   independent validation receipt, dan sembilan signed pre-manual
+   observations;
 6. jalankan sepuluh controlled manual-demo lifecycle dengan review manusia;
 7. lakukan demo-auto activation review terpisah;
 8. baru mulai soak minimal 30 hari, 50 broker-reconciled closed fills, dan 20

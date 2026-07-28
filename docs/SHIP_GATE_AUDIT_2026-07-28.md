@@ -65,12 +65,13 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1790 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with optimization enabled | `Ran 1790 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1799 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1799 tests ... OK (skipped=3)`, exit 0 |
 | Runtime-stage champion-binding cluster | 206 PASS per normal/optimized mode |
 | Windows runtime champion-configuration cluster | 49 PASS per normal/optimized mode |
 | Windows production-config source focused cluster | 7 PASS per normal/optimized mode |
 | Windows Execution source-bound candidate focused cluster | 17 PASS per normal/optimized mode termasuk configured-tooling boundary |
+| Windows provider-conformance v3 focused cluster | 9 PASS per normal/optimized mode; v1/v2 canonical compatibility PASS |
 | Generic repository ship-gate scanner | `DO_NOT_SHIP` as expected from existing vendored/tooling matches and unresolved manual/external gates; 0 findings in changed stage/runtime files |
 | Champion-bound promotion issuer cluster | 152 PASS per normal/optimized mode |
 | Rule-core artifact + registry/custody + configured-tooling focused tests | 36 PASS per normal/optimized mode |
@@ -267,8 +268,17 @@ readiness false.
     create-exclusive publication. Canonical safety/effect validation also
     compares exact JSON scalar types, so Python's `false == 0` alias cannot
     weaken a deny-only manifest. The CLIs and module exist only in configured
-    operator tooling; success remains deny-only and provider-conformance v3 is
-    still pending.
+    operator tooling; success remains deny-only.
+21. Provider-conformance v2 still admitted a standalone Execution template
+    without reconstructing its exact source-bound lineage. V3 now requires the
+    sealed nine-pin verifier result, embeds an exact 26-field lineage
+    projection, and cross-checks the canonical `DEMO` template, configured
+    identity, production source, bootstrap, champion, suite, Execution base,
+    commit, and tree before rebuilding the existing 65-provider evidence
+    closure. Partial CLI groups, forged results, cross-version fields, and
+    recomputed outer-hash substitution fail closed. V1/v2 canonical fixtures
+    remain byte-identical; v3 remains configured-tooling-only and grants no
+    provider, activation, execution, task, order, promotion, or live authority.
 
 ## Findings that remain external or manual
 
@@ -285,8 +295,9 @@ readiness false.
    review. The exact production-config source must also be built on that
    Windows host and its outer hash/bootstrap binding pinned through independent
    custody. The exact Execution source-bound candidate must then be built and
-   independently verified against all nine pins; local synthetic verification
-   is not that evidence.
+   independently verified against all nine pins. The matching v3 input/review
+   artifacts must then be assembled from fresh 65-provider evidence and
+   externally validated; local synthetic verification is not that evidence.
 4. Public dashboard exposure is not approved. Any non-loopback deployment
    requires TLS, authentication, CSP/security headers, network policy, and an
    external deployment review.

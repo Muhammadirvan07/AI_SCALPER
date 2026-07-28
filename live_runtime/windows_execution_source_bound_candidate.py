@@ -199,6 +199,12 @@ class WindowsExecutionSourceBoundCandidateVerification:
     source_identity_sha256: str
     bootstrap_binding_sha256: str
     stage_binding_sha256: str
+    champion_archive_sha256: str
+    champion_package_identity_sha256: str
+    champion_model_artifact_sha256: str
+    champion_training_snapshot_sha256: str
+    champion_config_sha256: str
+    champion_runtime_binding_sha256: str
     production_config_sha256: str
     candidate_id: str
     candidate_content_sha256: str
@@ -206,12 +212,18 @@ class WindowsExecutionSourceBoundCandidateVerification:
     provider_configuration_sha256: str
     configured_release_identity_sha256: str
     configured_archive_sha256: str
+    execution_factory_template_sha256: str
     task_definition_sha256: str
     suite_identity_sha256: str
     execution_base_archive_sha256: str
     execution_base_release_identity_sha256: str
     git_commit: str
     git_tree: str
+    _verification_seal: object = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
     _seal: InitVar[object | None] = None
 
     def __post_init__(self, _seal: object | None) -> None:
@@ -222,12 +234,19 @@ class WindowsExecutionSourceBoundCandidateVerification:
             self.source_identity_sha256,
             self.bootstrap_binding_sha256,
             self.stage_binding_sha256,
+            self.champion_archive_sha256,
+            self.champion_package_identity_sha256,
+            self.champion_model_artifact_sha256,
+            self.champion_training_snapshot_sha256,
+            self.champion_config_sha256,
+            self.champion_runtime_binding_sha256,
             self.production_config_sha256,
             self.candidate_content_sha256,
             self.provider_pack_identity_sha256,
             self.provider_configuration_sha256,
             self.configured_release_identity_sha256,
             self.configured_archive_sha256,
+            self.execution_factory_template_sha256,
             self.task_definition_sha256,
             self.suite_identity_sha256,
             self.execution_base_archive_sha256,
@@ -252,6 +271,7 @@ class WindowsExecutionSourceBoundCandidateVerification:
             or self.git_tree == "0" * 40
         ):
             raise TypeError("source-bound verification requires verifier seal")
+        object.__setattr__(self, "_verification_seal", _RESULT_SEAL)
 
     @property
     def safety(self) -> dict[str, object]:
@@ -284,6 +304,17 @@ class WindowsExecutionSourceBoundCandidateVerification:
     @property
     def order_capability(self) -> str:
         return ORDER_CAPABILITY
+
+
+def is_windows_execution_source_bound_candidate_verification(
+    value: object,
+) -> bool:
+    """Return true only for a result sealed by this verifier module."""
+
+    return (
+        type(value) is WindowsExecutionSourceBoundCandidateVerification
+        and getattr(value, "_verification_seal", None) is _RESULT_SEAL
+    )
 
 
 def _reject(reason_code: str) -> None:
@@ -996,6 +1027,10 @@ def _result(
 ) -> WindowsExecutionSourceBoundCandidateVerification:
     source = manifest["source"]
     candidate = manifest["candidate"]
+    members = {
+        row["path"]: row
+        for row in manifest["members"]
+    }
     return WindowsExecutionSourceBoundCandidateVerification(
         archive_path=archive_path,
         archive_sha256=_sha256(archive_bytes),
@@ -1005,6 +1040,20 @@ def _result(
         source_identity_sha256=source["source_identity_sha256"],
         bootstrap_binding_sha256=source["bootstrap_binding_sha256"],
         stage_binding_sha256=source["stage_binding_sha256"],
+        champion_archive_sha256=source["champion_archive_sha256"],
+        champion_package_identity_sha256=source[
+            "champion_package_identity_sha256"
+        ],
+        champion_model_artifact_sha256=source[
+            "champion_model_artifact_sha256"
+        ],
+        champion_training_snapshot_sha256=source[
+            "champion_training_snapshot_sha256"
+        ],
+        champion_config_sha256=source["champion_config_sha256"],
+        champion_runtime_binding_sha256=source[
+            "champion_runtime_binding_sha256"
+        ],
         production_config_sha256=candidate["production_config_sha256"],
         candidate_id=candidate["candidate_id"],
         candidate_content_sha256=candidate["content_sha256"],
@@ -1016,6 +1065,9 @@ def _result(
             "configured_release_identity_sha256"
         ],
         configured_archive_sha256=candidate["configured_archive_sha256"],
+        execution_factory_template_sha256=members[
+            "candidate/execution-factory-template.json"
+        ]["sha256"],
         task_definition_sha256=candidate["task_definition_sha256"],
         suite_identity_sha256=candidate["base_suite_identity_sha256"],
         execution_base_archive_sha256=candidate[
@@ -1410,6 +1462,7 @@ __all__ = [
     "SOURCE_MEMBER",
     "WindowsExecutionSourceBoundCandidateError",
     "WindowsExecutionSourceBoundCandidateVerification",
+    "is_windows_execution_source_bound_candidate_verification",
     "prepare_windows_execution_source_bound_candidate",
     "verify_windows_execution_source_bound_candidate",
 ]

@@ -38,12 +38,15 @@ For every new Windows candidate, use exactly this order:
 1. build one **atomic five-role base suite** from one clean commit;
 2. build three **suite-bound configured releases** from that exact suite;
 3. create the immutable **operations plan/review bundle**;
-4. assemble and verify the **provider-conformance v2** packet;
+4. assemble and verify the **provider-conformance v2** compatibility packet
+   or the required **provider-conformance v3** packet for a source-bound
+   Execution candidate;
 5. obtain independent validation and **signed pre-manual observations**; and
 6. run **pre-manual configured-release admission** before controlled
    manual-demo execution.
 
-The provider-conformance v2 packet content hash may be referenced as
+The provider-conformance v2 packet content hash, or the v3 packet content hash
+for a source-bound candidate, may be referenced as
 `source_evidence_sha256`. The independent verifier must issue a separate
 immutable object whose hash is `validation_receipt_sha256`; the two hashes
 must never be equal. Neither object is order authority.
@@ -169,8 +172,13 @@ launcher, task, or off-host delivery is accepted. Legacy v1 and historical v2
 operations bundles are not acceptable for a new host review.
 
 Next, use the exact three validated factory templates, compact external
-provider evidence, and operations hashes to create provider-conformance v2.
-Do not pass the legacy configured-admission argument:
+provider evidence, and operations hashes. A source-bound Execution candidate
+must use provider-conformance v3 and repeat all nine independent source-bound
+pins. Follow
+[`WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V3.md`](WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V3.md).
+
+The following v2 command remains only for a compatibility candidate without
+source-bound closure. Do not pass the legacy configured-admission argument:
 
 ```powershell
 python -I -S -B .\prepare_windows_three_service_provider_conformance_input.py `

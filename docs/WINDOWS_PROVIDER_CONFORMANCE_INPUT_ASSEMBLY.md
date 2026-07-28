@@ -1,6 +1,6 @@
 # Windows Provider-Conformance Input Assembly
 
-Status: **OFFLINE ASSEMBLY READY / PROVIDER ACCEPTANCE ABSENT**
+Status: **V3 OFFLINE ASSEMBLY READY / PROVIDER ACCEPTANCE ABSENT**
 
 Provider-conformance review membutuhkan tepat 65 provider binding. Nilai
 contract, implementation, configuration, binding, custody, kind, dan
@@ -13,6 +13,13 @@ Assembler menerima:
 - exact `DEMO_AUTO` execution factory-template JSON;
 - exact external status-monitor factory-template JSON; dan
 - compact external evidence manifest.
+
+Untuk candidate baru, API/CLI v3 juga wajib menerima exact Execution
+source-bound ZIP, atomic-suite root, Execution base release, dan sembilan pin
+eksternal. Ia memverifikasi source-bound artifact terlebih dahulu dan
+menurunkan `execution_source_binding` hanya dari hasil verifier tersegel.
+Panduan lengkap tersedia di
+[`WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V3.md`](WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V3.md).
 
 Ia menurunkan seluruh binding field dari template, mencocokkan evidence hanya
 melalui exact service/provider role, lalu menguji hasil lengkap menggunakan
@@ -81,7 +88,14 @@ Jangan tambahkan contract/binding/configuration/custody/kind/credential fields.
 Assembler mengambilnya hanya dari factory template. Missing, extra, duplicate,
 case-colliding, failed, partial, stale, atau future evidence ditolak.
 
-## Perintah Windows — kontrak v2 untuk candidate baru
+## Perintah Windows — kontrak v3 untuk candidate baru
+
+Gunakan alur v3 beserta seluruh source-bound pin yang didokumentasikan di
+[`WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V3.md`](WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V3.md).
+Execution factory template v3 wajib exact `DEMO` member dari source-bound
+candidate. Argumen parsial atau campuran v1/v3 ditolak tanpa output.
+
+## Perintah Windows — kontrak v2 compatibility
 
 Jalankan dari configured-release operator tooling yang telah diekstrak:
 
@@ -123,11 +137,10 @@ compatibility kontrak v1 historis. Jika diberikan, output wajib melaporkan
 `LEGACY_DIAGNOSTIC_ONLY`; artefak itu tidak boleh menjadi source evidence untuk
 candidate pre-manual atau promotion baru.
 
-Urutan candidate baru adalah configured release yang terikat atomic suite,
-operations plan/review, provider-conformance v2, independent validation
-receipt, signed pre-manual observations, lalu pre-manual admission. Hash
-packet v2 dapat menjadi `source_evidence_sha256`; hash objek validasi terpisah
-menjadi `validation_receipt_sha256`.
+V2 dipertahankan byte-compatible untuk candidate tanpa source-bound closure.
+Candidate baru yang sudah memakai source-bound Execution wajib menggunakan
+v3. Hash packet dapat menjadi `source_evidence_sha256`; hash objek validasi
+terpisah menjadi `validation_receipt_sha256`.
 
 ## Integrity rules
 
@@ -137,9 +150,11 @@ menjadi `validation_receipt_sha256`.
   output path ditolak.
 - Output canonical UTF-8 ditulis create-exclusive dan tidak pernah overwrite.
 - Tiga configured release identity wajib non-zero dan berbeda.
-- Execution template wajib exact `DEMO_AUTO`.
+- Execution template wajib exact `DEMO_AUTO` untuk v1/v2 dan exact `DEMO`
+  source-bound member untuk v3.
 - Evidence maksimum berumur 24 jam pada trusted UTC.
 
 Kontrak normatif candidate baru:
-[`specs/windows_three_service_provider_conformance_v2.md`](../specs/windows_three_service_provider_conformance_v2.md).
-Kontrak assembler v1 tetap tersedia hanya untuk legacy diagnostics.
+[`specs/windows_three_service_provider_conformance_v3.md`](../specs/windows_three_service_provider_conformance_v3.md).
+Kontrak v2 tetap byte-compatible untuk compatibility workflow; v1 hanya untuk
+legacy diagnostics.

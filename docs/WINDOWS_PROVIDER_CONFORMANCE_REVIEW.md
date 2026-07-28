@@ -1,6 +1,6 @@
 # Windows Three-Service Provider Conformance Review
 
-Status: **PACKET TOOLING READY / PROVIDER ACCEPTANCE ABSENT**
+Status: **V3 PACKET TOOLING READY / PROVIDER ACCEPTANCE ABSENT**
 
 Configured-release packaging proves which provider source and configuration
 hashes are present. It does not prove that those providers satisfy their
@@ -12,7 +12,7 @@ mapping between:
 - every provider role or port in those templates; and
 - fresh external conformance-suite and evidence-artifact hashes.
 
-The current `DEMO_AUTO` inventory contains exactly 65 bindings:
+The three-service inventory contains exactly 65 bindings:
 
 | Service | Provider bindings |
 |---|---:|
@@ -46,11 +46,25 @@ order_capability=DISABLED
 max_lot=0.01
 ```
 
-## Input v2 untuk candidate baru
+## Input v3 untuk source-bound candidate baru
 
-Create one secret-free
-`windows-three-service-provider-conformance-input-v2` document outside the
-repository. It must bind:
+New source-bound candidates use
+`windows-three-service-provider-conformance-input-v3`. Besides the existing
+operations and 65-provider evidence closure, v3 requires one sealed nine-pin
+Execution source-bound verification. The packet embeds a derived lineage
+projection and cross-checks the exact `DEMO` Execution template, configured
+identity, production source, bootstrap, champion, suite, Execution base,
+commit, and tree identities. A caller-authored mapping cannot replace the
+sealed verifier result.
+
+The complete Windows commands and pin inventory are documented in
+[`WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V3.md`](WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V3.md).
+
+## Input v2 compatibility
+
+For a compatibility candidate without source-bound closure, create one
+secret-free `windows-three-service-provider-conformance-input-v2` document
+outside the repository. It must bind:
 
 - the exact operations plan and operations review bundle hashes;
 - exactly one `DECISION`, `EXECUTION`, and `STATUS_MONITOR` service;
@@ -109,7 +123,8 @@ as `source_evidence_sha256`. Independent validation must produce a different
 immutable object and bind its hash as `validation_receipt_sha256`. The packet
 cannot validate itself and neither hash grants activation.
 
-Version 1 remains readable and byte-compatible for historical diagnostics.
+Versions 1 and 2 remain readable and byte-compatible for historical and
+compatibility workflows.
 Because it depends on a future admission placeholder, it cannot satisfy a new
 pre-manual or promotion workflow.
 
@@ -118,8 +133,9 @@ pre-manual or promotion workflow.
 The tool rejects unknown or duplicate fields, non-finite values, noncanonical
 UTC, stale/future evidence, missing/extra/duplicate provider records, any hash
 or custody mismatch, `DEMO` execution templates, reused configured identities,
-symlink/reparse input, unstable reads, oversized documents, and existing
-outputs.
+symlink/reparse input, unstable reads, oversized documents, existing outputs,
+missing/forged source-bound verification, wrong pins, and cross-version source
+arguments.
 
 It statically depends only on the repository’s contract validators. It does
 not import a configured provider, read Credential Manager, inspect an evidence
@@ -127,5 +143,5 @@ artifact, access the network, initialize MT5, install a task, launch a service,
 or call a broker.
 
 Normative candidate behavior is defined in
-[`specs/windows_three_service_provider_conformance_v2.md`](../specs/windows_three_service_provider_conformance_v2.md).
-The v1 spec remains the compatibility contract for historical packets.
+[`specs/windows_three_service_provider_conformance_v3.md`](../specs/windows_three_service_provider_conformance_v3.md).
+The v1/v2 specs remain the compatibility contracts for historical packets.

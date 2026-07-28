@@ -26,7 +26,12 @@ def _bootstrap_release_root() -> Path:
             package / "windows_provider_conformance_input.py",
             package / "windows_provider_conformance_review.py",
             package / "contracts.py",
+            package / "windows_base_release_suite.py",
             package / "windows_decision_service_factory_template.py",
+            package / "windows_execution_configured_candidate.py",
+            package / "windows_execution_production_config_source.py",
+            package / "windows_execution_provider_pack_generator.py",
+            package / "windows_execution_source_bound_candidate.py",
             package
             / "windows_external_status_monitor_factory_template.py",
             package / "windows_service_factory_template.py",
@@ -74,11 +79,19 @@ from live_runtime.windows_provider_conformance_input import (
     WindowsProviderConformanceInputError,
     assemble_windows_three_service_provider_conformance_input_file,
     assemble_windows_three_service_provider_conformance_input_file_v2,
+    assemble_windows_three_service_provider_conformance_input_file_v3,
 )
 
 
+class _StableArgumentParser(argparse.ArgumentParser):
+    def error(self, _message: str) -> None:
+        raise WindowsProviderConformanceInputError(
+            "ARGUMENTS_INVALID"
+        )
+
+
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _StableArgumentParser(
         description=(
             "Derive the exact 65 provider binding fields from three reviewed "
             "factory templates and join compact external evidence into the "
@@ -127,6 +140,18 @@ def _parser() -> argparse.ArgumentParser:
             "argument to create the non-circular v2 contract."
         ),
     )
+    parser.add_argument("--execution-source-bound-candidate")
+    parser.add_argument("--base-suite-root")
+    parser.add_argument("--execution-base-release")
+    parser.add_argument("--expected-bound-archive-sha256")
+    parser.add_argument("--expected-source-archive-sha256")
+    parser.add_argument("--expected-champion-archive-sha256")
+    parser.add_argument("--expected-model-artifact-sha256")
+    parser.add_argument("--expected-training-snapshot-sha256")
+    parser.add_argument("--expected-config-sha256")
+    parser.add_argument("--expected-git-commit")
+    parser.add_argument("--expected-git-tree")
+    parser.add_argument("--expected-suite-identity-sha256")
     parser.add_argument(
         "--output",
         required=True,
@@ -136,8 +161,39 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
     try:
+        args = _parser().parse_args(argv)
+        source_argument_names = (
+            "execution_source_bound_candidate",
+            "base_suite_root",
+            "execution_base_release",
+            "expected_bound_archive_sha256",
+            "expected_source_archive_sha256",
+            "expected_champion_archive_sha256",
+            "expected_model_artifact_sha256",
+            "expected_training_snapshot_sha256",
+            "expected_config_sha256",
+            "expected_git_commit",
+            "expected_git_tree",
+            "expected_suite_identity_sha256",
+        )
+        source_arguments = {
+            name: getattr(args, name) for name in source_argument_names
+        }
+        supplied_source_count = sum(
+            value is not None for value in source_arguments.values()
+        )
+        if supplied_source_count not in {0, len(source_arguments)}:
+            raise WindowsProviderConformanceInputError(
+                "EXECUTION_SOURCE_ARGUMENTS_INCOMPLETE"
+            )
+        if (
+            supplied_source_count
+            and args.configured_release_admission_sha256 is not None
+        ):
+            raise WindowsProviderConformanceInputError(
+                "EXECUTION_SOURCE_ARGUMENTS_MIXED"
+            )
         common = {
             "decision_factory_template_path": (
                 args.decision_factory_template
@@ -157,7 +213,49 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "clock_provider": lambda: datetime.now(timezone.utc),
         }
-        if args.configured_release_admission_sha256 is None:
+        if supplied_source_count:
+            result = (
+                assemble_windows_three_service_provider_conformance_input_file_v3(
+                    **common,
+                    execution_source_bound_candidate_path=(
+                        source_arguments[
+                            "execution_source_bound_candidate"
+                        ]
+                    ),
+                    base_suite_root=source_arguments["base_suite_root"],
+                    execution_base_release=source_arguments[
+                        "execution_base_release"
+                    ],
+                    expected_bound_archive_sha256=source_arguments[
+                        "expected_bound_archive_sha256"
+                    ],
+                    expected_source_archive_sha256=source_arguments[
+                        "expected_source_archive_sha256"
+                    ],
+                    expected_champion_archive_sha256=source_arguments[
+                        "expected_champion_archive_sha256"
+                    ],
+                    expected_model_artifact_sha256=source_arguments[
+                        "expected_model_artifact_sha256"
+                    ],
+                    expected_training_snapshot_sha256=source_arguments[
+                        "expected_training_snapshot_sha256"
+                    ],
+                    expected_config_sha256=source_arguments[
+                        "expected_config_sha256"
+                    ],
+                    expected_git_commit=source_arguments[
+                        "expected_git_commit"
+                    ],
+                    expected_git_tree=source_arguments[
+                        "expected_git_tree"
+                    ],
+                    expected_suite_identity_sha256=source_arguments[
+                        "expected_suite_identity_sha256"
+                    ],
+                )
+            )
+        elif args.configured_release_admission_sha256 is None:
             result = (
                 assemble_windows_three_service_provider_conformance_input_file_v2(
                     **common,
