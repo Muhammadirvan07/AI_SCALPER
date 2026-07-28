@@ -49,7 +49,11 @@ def digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def champion_fixture() -> tuple[bytes, dict[str, object]]:
+def champion_fixture(
+    *,
+    commit: str = COMMIT,
+    tree: str = TREE,
+) -> tuple[bytes, dict[str, object]]:
     sources = {
         path: f"# frozen {path}\n".encode("utf-8")
         for path in RULE_CORE_MODEL_SOURCE_PATHS
@@ -84,13 +88,18 @@ def champion_fixture() -> tuple[bytes, dict[str, object]]:
         config_bytes=candidate,
         snapshot_bytes=snapshot,
         branch="agent/live-grade-phase3",
-        commit=COMMIT,
-        tree=TREE,
+        commit=commit,
+        tree=tree,
         registered_at=REGISTERED,
     )
 
 
-def stage_fixture(champion: dict[str, object]) -> StageBinding:
+def stage_fixture(
+    champion: dict[str, object],
+    *,
+    commit: str = COMMIT,
+    tree: str = TREE,
+) -> StageBinding:
     config_sha = str(champion["config_sha256"])
     return StageBinding(
         broker_id="phillip-commodity",
@@ -101,7 +110,7 @@ def stage_fixture(champion: dict[str, object]) -> StageBinding:
         strategy="BREAKOUT",
         lane_id=f"XAUUSD:BREAKOUT:{config_sha}",
         journal_sha256=digest("journal"),
-        commit_sha=COMMIT,
+        commit_sha=commit,
         config_sha256=config_sha,
         dependency_lock_sha256=digest("dependency-lock"),
         broker_spec_sha256=digest("broker-spec"),
@@ -117,7 +126,7 @@ def stage_fixture(champion: dict[str, object]) -> StageBinding:
         champion_training_snapshot_sha256=str(
             champion["training_snapshot_sha256"]
         ),
-        champion_git_tree=TREE,
+        champion_git_tree=tree,
         champion_runtime_binding_sha256=str(
             champion["runtime_binding_sha256"]
         ),

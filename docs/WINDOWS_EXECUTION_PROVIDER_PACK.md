@@ -36,6 +36,13 @@ sebagai `production_config_sha256` pack dan safe-binding dari report yang sama
 sebagai `bootstrap_binding_sha256` configured candidate. Runbook:
 `docs/WINDOWS_EXECUTION_PRODUCTION_CONFIG_SOURCE.md`.
 
+Setelah configured candidate selesai, kedua nilai tersebut wajib ditutup dalam
+satu portable source-bound artifact. Builder/verifier sembilan-pin mengemas
+exact source ZIP bersama seluruh 15 file candidate dan mengulang source,
+provider, bootstrap, suite, Execution-role, commit, serta tree closure. Lihat
+`docs/WINDOWS_EXECUTION_SOURCE_BOUND_CANDIDATE.md`. Pack atau candidate v1
+yang lulus sendiri tetap unbound dan bukan conformance evidence.
+
 Generated factory tidak mempunyai registry global, environment-selected
 module, dynamic import, atau fallback provider. Tanpa runtime Windows yang
 direview, startup wajib berhenti dengan:
@@ -159,13 +166,14 @@ Pack valid belum dapat dijalankan sebagai service. Urutannya:
 
 1. assemble immutable configured candidate;
 2. validate candidate dari exact bytes;
-3. provision externally reviewed runtime hooks dan pre-existing provider
+3. build dan independently verify exact source-bound candidate sembilan-pin;
+4. provision externally reviewed runtime hooks dan pre-existing provider
    state pada Windows;
-4. jalankan exact `--materialize-only` probe dan arsipkan deny-only receipt;
-5. buktikan restart, CAS, uncertain-submit, heartbeat, dan reconciliation
+5. jalankan exact `--materialize-only` probe dan arsipkan deny-only receipt;
+6. buktikan restart, CAS, uncertain-submit, heartbeat, dan reconciliation
    behavior dalam independent conformance;
-6. kumpulkan sembilan signed pre-manual observations;
-7. lakukan human activation review;
-8. baru jalankan sepuluh controlled manual-demo lifecycle.
+7. kumpulkan sembilan signed pre-manual observations;
+8. lakukan human activation review;
+9. baru jalankan sepuluh controlled manual-demo lifecycle.
 
 Tidak ada langkah dalam dokumen ini yang membuka demo-auto atau live.

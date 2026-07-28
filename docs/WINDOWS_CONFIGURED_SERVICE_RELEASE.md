@@ -51,6 +51,11 @@ Repository menyediakan:
   tujuh-pin yang mengikat exact production config, stage, dan champion ke satu
   deterministic deny-only ZIP; loader runtime-nya tersegel dan direct source
   construction ditolak;
+- `prepare_windows_execution_source_bound_candidate.py` dan
+  `verify_windows_execution_source_bound_candidate.py`: builder/verifier
+  sembilan-pin yang mengemas exact source ZIP dan seluruh 15 file Execution
+  candidate, lalu membuktikan provider/bootstrap/suite/commit/tree closure
+  tanpa provider import atau runtime effect;
 - `live_runtime/configured_service_release.py`: builder/verifier fail-closed;
 - `live_runtime/windows_base_release_suite.py`: verifier read-only untuk
   manifest, lima ZIP, dan lima sidecar atomic suite;
@@ -73,6 +78,8 @@ authority. Runbook berada di
 [`RULE_CORE_CHAMPION_REGISTRY_CUSTODY.md`](RULE_CORE_CHAMPION_REGISTRY_CUSTODY.md).
 Runbook production-config source berada di
 [`WINDOWS_EXECUTION_PRODUCTION_CONFIG_SOURCE.md`](WINDOWS_EXECUTION_PRODUCTION_CONFIG_SOURCE.md).
+Runbook source-bound candidate berada di
+[`WINDOWS_EXECUTION_SOURCE_BOUND_CANDIDATE.md`](WINDOWS_EXECUTION_SOURCE_BOUND_CANDIDATE.md).
 
 ## Overlay non-secret
 
@@ -262,6 +269,9 @@ immutable candidate flow pada
 [`WINDOWS_EXECUTION_PROVIDER_PACK.md`](WINDOWS_EXECUTION_PROVIDER_PACK.md)
 serta
 [`WINDOWS_EXECUTION_CONFIGURED_CANDIDATE.md`](WINDOWS_EXECUTION_CONFIGURED_CANDIDATE.md).
+Exact candidate tersebut kemudian wajib diikat ke source ZIP melalui
+[`WINDOWS_EXECUTION_SOURCE_BOUND_CANDIDATE.md`](WINDOWS_EXECUTION_SOURCE_BOUND_CANDIDATE.md)
+sebelum menjadi input conformance. Standalone v1 success tetap unbound.
 Generated factory tetap berhenti dengan
 `EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED` sampai runtime/provider Windows
 yang direview tersedia; configured candidate tidak mengubah policy atau order

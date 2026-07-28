@@ -52,7 +52,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.784 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.790 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, pre-bind loopback enforcement, canonical loopback CORS/WebSocket origin allowlist, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | fresh npm, Python development, dan dashboard requirements audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
@@ -65,11 +65,12 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1784 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with optimization enabled | `Ran 1784 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1790 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1790 tests ... OK (skipped=3)`, exit 0 |
 | Runtime-stage champion-binding cluster | 206 PASS per normal/optimized mode |
 | Windows runtime champion-configuration cluster | 49 PASS per normal/optimized mode |
 | Windows production-config source focused cluster | 7 PASS per normal/optimized mode |
+| Windows Execution source-bound candidate focused cluster | 17 PASS per normal/optimized mode termasuk configured-tooling boundary |
 | Generic repository ship-gate scanner | `DO_NOT_SHIP` as expected from existing vendored/tooling matches and unresolved manual/external gates; 0 findings in changed stage/runtime files |
 | Champion-bound promotion issuer cluster | 152 PASS per normal/optimized mode |
 | Rule-core artifact + registry/custody + configured-tooling focused tests | 36 PASS per normal/optimized mode |
@@ -197,7 +198,7 @@ readiness false.
     tests prove an injected target is not overwritten and a replacement
     staging root is preserved. Temporary-file cleanup and paired-transaction
     pending-marker clear now also require their exact creation identities;
-    replacement files survive. Both full 1,784-test modes remain green.
+    replacement files survive. Both full 1,790-test modes remain green.
 14. The diagnostic runner computed a rule-core hash but no portable artifact
     froze the bytes behind that identity together with config, snapshot,
     cutoff, and Git provenance. A deterministic deny-only ZIP contract now
@@ -256,6 +257,18 @@ readiness false.
     seven-pin loader seal, so ordinary direct construction is rejected. The
     tooling performs no provider, credential, SQLite, MT5, network, task,
     service, permit, or broker effect and grants no activation authority.
+20. The seven-pin source archive still remained separate from the exact
+    provider pack and 15-file configured candidate, so their shared origin was
+    not portable before factory materialization. A deterministic source-bound
+    candidate now carries the exact source plus every candidate member,
+    requires nine external pins, reconstructs the candidate in one private
+    temporary root, and re-runs authoritative source/candidate/suite/role/Git
+    validation. Provider source and bootstrap mismatches reject before
+    create-exclusive publication. Canonical safety/effect validation also
+    compares exact JSON scalar types, so Python's `false == 0` alias cannot
+    weaken a deny-only manifest. The CLIs and module exist only in configured
+    operator tooling; success remains deny-only and provider-conformance v3 is
+    still pending.
 
 ## Findings that remain external or manual
 
@@ -271,7 +284,9 @@ readiness false.
    RSA launcher attestation, and provider materialization require independent
    review. The exact production-config source must also be built on that
    Windows host and its outer hash/bootstrap binding pinned through independent
-   custody; local synthetic verification is not that evidence.
+   custody. The exact Execution source-bound candidate must then be built and
+   independently verified against all nine pins; local synthetic verification
+   is not that evidence.
 4. Public dashboard exposure is not approved. Any non-loopback deployment
    requires TLS, authentication, CSP/security headers, network policy, and an
    external deployment review.

@@ -79,3 +79,11 @@ max_lot = 0.01
 
 Candidate bukan provider acceptance, task installation, activation permit,
 demo-auto unlock, atau live approval.
+
+Candidate v1 yang lulus sendiri juga belum membuktikan bahwa provider source
+hash dan bootstrap binding berasal dari satu source verification report.
+Sebelum dipakai sebagai input conformance, bungkus exact 15-file candidate dan
+exact tujuh-pin source ZIP melalui alur sembilan-pin di
+[`WINDOWS_EXECUTION_SOURCE_BOUND_CANDIDATE.md`](WINDOWS_EXECUTION_SOURCE_BOUND_CANDIDATE.md).
+Source-bound success tetap deny-only dan provider-conformance v3 masih
+memerlukan review terpisah.

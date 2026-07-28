@@ -146,16 +146,28 @@ commit dibuat.
   hasil tetap deny-only. Kontrak dan runbook berada di
   `specs/windows_execution_production_config_source_v1.md` dan
   `docs/WINDOWS_EXECUTION_PRODUCTION_CONFIG_SOURCE.md`.
+- Audit downstream menemukan source archive, provider pack, dan configured
+  candidate masih tidak mempunyai satu portable proof yang merekonstruksi
+  hubungan ketiganya sebelum materialization. Source-bound candidate v1 kini
+  mengemas exact source ZIP dan seluruh 15 file candidate ke ZIP deterministik,
+  meminta sembilan pin independen, lalu mengulang provider source,
+  bootstrap, suite/Execution role, commit, tree, dan authoritative candidate
+  validation di temporary private root. Builder/verifier hanya masuk
+  configured operator tooling; standalone provider/candidate v1 tetap unbound.
+  Kontrak dan runbook berada di
+  `specs/windows_execution_source_bound_candidate_v1.md` dan
+  `docs/WINDOWS_EXECUTION_SOURCE_BOUND_CANDIDATE.md`.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.784 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.784 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.790 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.790 PASS, 3 skip, exit 0 |
 | Runtime-stage champion-binding focused cluster | 206 PASS per normal/optimized mode |
 | Windows runtime champion-configuration cluster | 49 PASS per normal/optimized mode |
 | Windows production-config source focused cluster | 7 PASS per normal/optimized mode |
+| Windows Execution source-bound candidate focused cluster | 17 PASS per normal/optimized mode termasuk configured-tooling boundary |
 | Champion-bound promotion issuer focused cluster | 152 PASS per normal/optimized mode |
 | Rule-core artifact + registry/custody + configured-tooling focused cluster | 36 PASS per normal/optimized mode |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
@@ -332,6 +344,8 @@ Urutan berikutnya tetap:
    tujuh-pin; gunakan outer hash dan bootstrap binding dari report yang sama,
    lalu generate serta validasi Decision, Execution, dan Status Monitor
    provider pack/configured candidate dari custody Windows yang direview;
+   untuk Execution, buat dan independently verify source-bound candidate
+   sembilan-pin sebelum provider conformance;
 5. kumpulkan operations review, provider conformance, independent validation
    receipt, dan sembilan signed pre-manual observations;
 6. jalankan sepuluh controlled manual-demo lifecycle dengan review manusia;
