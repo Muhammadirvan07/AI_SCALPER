@@ -41,6 +41,11 @@ commit dibuat.
   secara lengkap sebelum data dipakai UI.
 - Route dashboard tetap GET-only dan loopback-first. Tidak ada credential,
   permit, arm, mutasi Task Scheduler, broker mutation, atau order submission.
+- Response boundary dashboard kini menerapkan CSP tanpa wildcard, anti-frame,
+  `nosniff`, no-referrer, permissions policy, dan `no-store` pada API,
+  preflight, dokumentasi, serta respons negatif. CSP HTML memakai allowlist
+  CDN sempit agar dokumentasi FastAPI tetap berfungsi; 50 backend tests, 28
+  optimized network tests, 21 frontend unit tests, dan 14 browser E2E lulus.
 - Dokumentasi status utama diperbarui agar tidak lagi menyatakan dashboard
   untracked dan tidak lagi memakai angka regresi 1.575 yang sudah usang.
 - Boundary penerimaan pasca-run V6.3 kini tersedia sebagai satu deterministic

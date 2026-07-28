@@ -5,7 +5,7 @@ Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 Validasi lokal terakhir pada 2026-07-28 menjalankan **1.790 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
 PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
-juga lulus 21 unit test frontend, 45 test backend, 14 browser E2E, lint,
+juga lulus 21 unit test frontend, 50 test backend, 14 browser E2E, lint,
 TypeScript, production build, dan bundle verification. Itu adalah software
 regression evidence, bukan Windows host acceptance, broker-forward evidence,
 atau izin trading.
@@ -23,7 +23,7 @@ dari exact Windows release.
 Fresh audit 2026-07-28 juga menutup drift dependency dashboard: manifest kini
 mem-pin FastAPI 0.140.7, Starlette 1.3.1, pytest 9.0.3,
 python-dotenv 1.2.2, dan httpx2 2.9.1. Exact requirements audit serta npm audit
-melaporkan nol vulnerability yang diketahui; `pip check`, 45 backend tests,
+melaporkan nol vulnerability yang diketahui; `pip check`, 50 backend tests,
 dan 14 browser E2E lulus. Ini tetap bukti source/development, bukan approval
 deployment publik atau trading.
 
@@ -121,7 +121,11 @@ dipublikasikan sebagai boundary read-only terpisah. FastAPI hanya menyediakan
 route GET. Startup menolak bind host non-loopback sebelum `uvicorn.run`; CORS
 dan WebSocket memakai canonical origin allowlist HTTP(S) loopback tanpa
 wildcard, dan handshake WebSocket tanpa origin tepercaya ditutup sebelum
-`accept()`. Frontend menolak payload runtime yang tidak lengkap, dan token
+`accept()`. Seluruh respons HTTP, termasuk CORS preflight dan negative route,
+sekarang membawa CSP tanpa wildcard, `nosniff`, anti-frame, no-referrer,
+permissions policy, dan `Cache-Control: no-store`; respons dokumentasi HTML
+memakai allowlist CDN sempit agar `/docs` dan `/redoc` tetap berfungsi.
+Frontend menolak payload runtime yang tidak lengkap, dan token
 status negatif seperti `NOT_READY` atau `INACTIVE` tidak dapat dipetakan
 sebagai status positif. Dashboard tidak memiliki credential, permit, arm,
 task mutation, broker mutation, maupun order authority. Penggunaan di luar

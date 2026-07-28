@@ -53,7 +53,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
 | Correctness | PASS_LOCAL | Python normal dan optimized 1.790 PASS per mode; dashboard unit/backend/E2E PASS |
-| Application security | PASS_LOCAL | GET-only API, pre-bind loopback enforcement, canonical loopback CORS/WebSocket origin allowlist, no unsafe eval or HTML injection, fail-closed payload guards |
+| Application security | PASS_LOCAL | GET-only API, pre-bind loopback enforcement, canonical loopback CORS/WebSocket origin allowlist, response CSP without wildcard, anti-frame/nosniff/no-referrer/permissions/no-store headers, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | fresh npm, Python development, dan dashboard requirements audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
 | Reliability and observability | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | structured logs, health endpoint, signed journals; off-host alert/WORM proof masih eksternal |
@@ -82,7 +82,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Phillip V5/V6 scheduler + post-run/custody tests | 67 PASS, 2 skip per normal/optimized mode |
 | XM/FINEX preparation create-exclusive tests | 15 PASS per normal/optimized mode |
 | Frontend unit suite | 21 PASS |
-| Dashboard backend suite | 45 PASS |
+| Dashboard backend suite | 50 PASS; 28 network/header tests also PASS under optimized mode |
 | Browser E2E suite | 14 PASS |
 | Lint, TypeScript, production build, bundle verification | PASS |
 | npm audit | 0 vulnerabilities across 248 dependencies |
@@ -279,6 +279,14 @@ readiness false.
     recomputed outer-hash substitution fail closed. V1/v2 canonical fixtures
     remain byte-identical; v3 remains configured-tooling-only and grants no
     provider, activation, execution, task, order, promotion, or live authority.
+22. The local-only dashboard network boundary previously stopped at bind,
+    CORS, and WebSocket-origin checks, so successful, preflight, and negative
+    HTTP responses lacked browser hardening headers. A pure ASGI middleware
+    now wraps CORS and every router with no-store, nosniff, anti-frame,
+    no-referrer, permissions policy, and CSP without wildcard. JSON/text uses
+    `default-src 'none'`; HTML documentation uses a narrow jsDelivr/FastAPI
+    allowlist so `/docs` and `/redoc` remain functional. Backend, optimized
+    network, unit, build/bundle, and desktop/mobile E2E regressions pass.
 
 ## Findings that remain external or manual
 

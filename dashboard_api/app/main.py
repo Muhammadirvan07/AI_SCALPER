@@ -21,6 +21,7 @@ from .file_registry import FileRegistry
 from .file_watcher import AsyncFileWatcher
 from .logging_config import configure_logging
 from .routers import documentation, health, market, orders, signals, snapshot, system
+from .security_headers import DashboardSecurityHeadersMiddleware
 from .snapshot_builder import SnapshotBuilder
 from .websocket_events import make_event
 
@@ -208,6 +209,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         allow_methods=["GET"],
         allow_headers=["Accept", "Content-Type"],
     )
+    app.add_middleware(DashboardSecurityHeadersMiddleware)
     app.include_router(health.router)
     app.include_router(snapshot.router)
     app.include_router(signals.router)
