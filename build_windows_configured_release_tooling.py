@@ -30,6 +30,8 @@ from build_windows_release import (
     _git,
     _json_contains_secret,
     _normalize_relative_path,
+    _release_output_paths,
+    _remove_created_output,
     _sha256,
     _validate_git_release_source,
     _write_exclusive,
@@ -431,25 +433,11 @@ def build_configured_release_tooling(
         raise ReleaseBuildError(
             "configured-release tooling allowlist path is invalid"
         )
-    output = output_path.resolve()
-    sidecar = (
-        output_path.with_suffix(output_path.suffix + ".manifest.json")
-        if manifest_output_path is None
-        else manifest_output_path
-    ).resolve()
-    if output == sidecar:
-        raise ReleaseBuildError(
-            "configured-release tooling output paths collide"
-        )
-    for destination in (output, sidecar):
-        try:
-            destination.relative_to(root)
-        except ValueError:
-            pass
-        else:
-            raise ReleaseBuildError(
-                "configured-release tooling outputs must be outside repository"
-            )
+    output, sidecar = _release_output_paths(
+        root,
+        output_path,
+        manifest_output_path,
+    )
 
     commit, tree, tracked = _validate_git_release_source(root)
     allowlist = load_configured_release_tooling_allowlist(allowlist_path)
@@ -517,11 +505,11 @@ def build_configured_release_tooling(
     manifest = {**manifest_base, "release_identity_sha256": identity}
     manifest_bytes = _canonical_json(manifest) + b"\n"
     archive_bytes = _create_archive(sources, manifest_bytes)
-    _write_exclusive(output, archive_bytes)
+    output_identity = _write_exclusive(output, archive_bytes)
     try:
-        _write_exclusive(sidecar, manifest_bytes)
+        sidecar_identity = _write_exclusive(sidecar, manifest_bytes)
     except Exception:
-        output.unlink(missing_ok=True)
+        _remove_created_output(output, output_identity)
         raise
     try:
         if (
@@ -540,8 +528,8 @@ def build_configured_release_tooling(
                 "configured-release tooling source changed during build"
             )
     except Exception:
-        output.unlink(missing_ok=True)
-        sidecar.unlink(missing_ok=True)
+        _remove_created_output(output, output_identity)
+        _remove_created_output(sidecar, sidecar_identity)
         raise
     return {
         "archive": str(output),

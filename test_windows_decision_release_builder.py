@@ -453,6 +453,39 @@ class WindowsDecisionReleaseBuilderTests(unittest.TestCase):
         self.assertEqual("FAIL", report["port_validation"])
         self.assertFalse(report["production_execution_ready"])
 
+    def test_sidecar_failure_preserves_replaced_archive_path(self):
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            root, allowlist = self._repo(base)
+            output = base / "decision.zip"
+            replacement = base / "replacement.zip"
+            original_write = decision_release_builder._write_exclusive
+
+            def raced_write(path: Path, data: bytes):
+                if path == output:
+                    return original_write(path, data)
+                output.unlink()
+                output.symlink_to(replacement.name)
+                raise ReleaseBuildError("simulated sidecar collision")
+
+            try:
+                with patch.object(
+                    decision_release_builder,
+                    "_write_exclusive",
+                    side_effect=raced_write,
+                ):
+                    with self.assertRaisesRegex(
+                        ReleaseBuildError,
+                        "simulated sidecar",
+                    ):
+                        build_decision_release(root, allowlist, output)
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+
+            self.assertTrue(output.is_symlink())
+            self.assertEqual(Path(replacement.name), output.readlink())
+            self.assertFalse(replacement.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

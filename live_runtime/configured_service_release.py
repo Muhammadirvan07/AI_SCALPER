@@ -1099,20 +1099,88 @@ def _create_archive(sources: Mapping[str, bytes], manifest: bytes) -> bytes:
     return output.getvalue()
 
 
-def _write_exclusive(path: Path, data: bytes) -> None:
+FileIdentity = tuple[int, int, int, int, int, int]
+CreatedOutputIdentity = tuple[int, int]
+
+
+def _stat_file_identity(metadata: os.stat_result) -> FileIdentity:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(metadata.st_size),
+        int(metadata.st_mtime_ns),
+        int(getattr(metadata, "st_file_attributes", 0)),
+    )
+
+
+def _created_output_identity(
+    metadata: os.stat_result,
+) -> CreatedOutputIdentity:
+    return (int(metadata.st_dev), int(metadata.st_ino))
+
+
+def _remove_created_output(
+    path: Path,
+    identity: CreatedOutputIdentity | None,
+) -> None:
+    if identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or int(getattr(observed, "st_file_attributes", 0)) & 0x400
+        or _created_output_identity(observed) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _write_exclusive(path: Path, data: bytes) -> FileIdentity:
+    descriptor: int | None = None
+    created_identity: CreatedOutputIdentity | None = None
+    completed_identity: FileIdentity | None = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        flags |= getattr(os, "O_BINARY", 0)
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags, 0o600)
     except OSError as exc:
         raise ConfiguredReleaseError("OUTPUT_ALREADY_EXISTS_OR_UNAVAILABLE") from exc
     try:
         with os.fdopen(descriptor, "wb") as handle:
+            descriptor = None
+            created = os.fstat(handle.fileno())
+            if not stat.S_ISREG(created.st_mode):
+                raise ConfiguredReleaseError(
+                    "OUTPUT_ALREADY_EXISTS_OR_UNAVAILABLE"
+                )
+            created_identity = _created_output_identity(created)
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
+            completed_identity = _stat_file_identity(
+                os.fstat(handle.fileno())
+            )
     except Exception:
-        path.unlink(missing_ok=True)
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        _remove_created_output(path, created_identity)
         raise
+    if completed_identity is None:
+        raise ConfiguredReleaseError("OUTPUT_ALREADY_EXISTS_OR_UNAVAILABLE")
+    return completed_identity
 
 
 def _regular_directory(path: Path, *, code: str) -> Path:
@@ -1236,27 +1304,20 @@ def _candidate_overlay_files(root: Path) -> tuple[Path, dict[str, bytes]]:
     return resolved_root, observed
 
 
-def _file_identity(path: Path) -> tuple[int, int, int, int, int, int]:
+def _file_identity(path: Path) -> FileIdentity:
     try:
         item = path.lstat()
     except OSError as exc:
         raise ConfiguredReleaseError(
             "OUTPUT_ALREADY_EXISTS_OR_UNAVAILABLE"
         ) from exc
-    return (
-        int(item.st_dev),
-        int(item.st_ino),
-        int(item.st_mode),
-        int(item.st_size),
-        int(item.st_mtime_ns),
-        int(getattr(item, "st_file_attributes", 0)),
-    )
+    return _stat_file_identity(item)
 
 
 def _remove_created_file(
     path: Path,
     *,
-    identity: tuple[int, int, int, int, int, int],
+    identity: FileIdentity,
 ) -> None:
     try:
         if _file_identity(path) == identity:
@@ -1391,17 +1452,18 @@ def prepare_configured_overlay_candidate(
     )
     descriptor_bytes = _canonical_file(descriptor)
 
-    _write_exclusive(manifest_target, manifest_bytes)
-    manifest_identity = _file_identity(manifest_target)
+    manifest_identity = _write_exclusive(manifest_target, manifest_bytes)
     try:
-        _write_exclusive(descriptor_target, descriptor_bytes)
+        descriptor_identity = _write_exclusive(
+            descriptor_target,
+            descriptor_bytes,
+        )
     except Exception:
         _remove_created_file(
             manifest_target,
             identity=manifest_identity,
         )
         raise
-    descriptor_identity = _file_identity(descriptor_target)
     try:
         if (
             _read_stable_file(
@@ -1616,11 +1678,11 @@ def build_configured_service_release(
     )
     if output == sidecar:
         raise ConfiguredReleaseError("OUTPUT_PATH_COLLISION")
-    _write_exclusive(output, archive_bytes)
+    output_identity = _write_exclusive(output, archive_bytes)
     try:
         _write_exclusive(sidecar, manifest_bytes)
     except Exception:
-        output.unlink(missing_ok=True)
+        _remove_created_file(output, identity=output_identity)
         raise
     return {
         "archive": str(output),

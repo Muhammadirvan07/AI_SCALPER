@@ -30,8 +30,9 @@ Audit mencakup Python/MetaTrader5 core, FastAPI dashboard API read-only, React
 serta deterministic atomic five-role packaging. Source implementation yang
 diaudit:
 
-- remediation commit `e367d5e35b9cb84ff87be1d43390b98bad15c2a1`;
-- remediation tree `b6294aacf229ae5c5628d21720fa592c187217fd`;
+- clean parent baseline `c10d4740ded8d798567a2e27404bfffb6e3fce42`;
+- exact remediation commit/tree: the Git identity of the commit containing
+  this audit, to be pinned from the checkout or release manifest;
 - branch `agent/live-grade-phase3`.
 
 Commit documentation final dan exact toolkit source identity diambil dari
@@ -44,7 +45,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.687 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.712 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, explicit loopback CORS, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | npm audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
@@ -56,8 +57,9 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1687 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with optimization enabled | `Ran 1687 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1712 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1712 tests ... OK (skipped=3)`, exit 0 |
+| Create-exclusive publisher focused tests | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature tests | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer tests | 62 PASS per normal/optimized mode |
 | V6 packaging + post-run/custody focused tests | 31 PASS per normal/optimized mode |
@@ -125,6 +127,14 @@ readiness false.
    uses no-follow `lstat`; cleanup is gated by the exact device/inode identity
    created by the current invocation. Builder, request, and assessment
    regressions prove the pre-existing symlink remains unchanged.
+8. The first repair was not yet uniform across shared Windows release
+   writers, configured overlays, evidence/feed publishers, provider-pack
+   generators, atomic-suite locks/staging, and candidate-tree cleanup. These
+   paths now carry exact creation identities through every outer transaction.
+   File-sync, directory-sync, second-write, lock, staging-root, and output-root
+   replacement tests prove unknown or changed ownership is preserved. The
+   implementation contract is
+   `specs/create_exclusive_output_custody_v1.md`.
 
 ## Findings that remain external or manual
 
@@ -151,9 +161,9 @@ readiness false.
 
 ## Decision
 
-Remediation commit `e367d5e35b9cb84ff87be1d43390b98bad15c2a1` is accepted as
-the current local code baseline; final documentation/toolkit provenance is
-derived from the subsequent clean Git head. The project remains
+The remediation commit containing this report is accepted as the current
+local code baseline once its exact Git commit/tree are recorded and pushed.
+The project remains
 **NOT_READY / DO NOT SHIP**. No artifact, dashboard state, local test,
 provider packet, or scheduled-task receipt may set
 `safe_to_demo_auto_order=true` or `live_allowed=true` before every applicable

@@ -1926,17 +1926,60 @@ def validate_windows_decision_provider_pack(
     )
 
 
-def _write_exclusive(path: Path, payload: bytes) -> None:
+def _remove_created_file(
+    path: Path,
+    identity: tuple[int, int] | None,
+) -> None:
+    if identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or _is_reparse(observed)
+        or (int(observed.st_dev), int(observed.st_ino)) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _directory_identity(
+    metadata: os.stat_result,
+) -> tuple[int, int, int, int]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(getattr(metadata, "st_file_attributes", 0)),
+    )
+
+
+def _write_exclusive(path: Path, payload: bytes) -> tuple[int, ...]:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     descriptor: int | None = None
+    created_identity: tuple[int, int] | None = None
+    completed_identity: tuple[int, ...] | None = None
     try:
         descriptor = os.open(path, flags, 0o600)
         with os.fdopen(descriptor, "wb", closefd=True) as handle:
             descriptor = None
+            created = os.fstat(handle.fileno())
+            created_identity = (
+                int(created.st_dev),
+                int(created.st_ino),
+            )
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+            completed_identity = _identity(os.fstat(handle.fileno()))
     except DecisionProviderPackError:
         raise
     except OSError as exc:
@@ -1945,12 +1988,16 @@ def _write_exclusive(path: Path, payload: bytes) -> None:
                 os.close(descriptor)
             except OSError:
                 pass
+        _remove_created_file(path, created_identity)
         raise DecisionProviderPackError("PACK_OUTPUT_WRITE_FAILED") from exc
+    if completed_identity is None:
+        raise DecisionProviderPackError("PACK_OUTPUT_WRITE_FAILED")
+    return completed_identity
 
 
 def _remove_if_same(
     path: Path,
-    identity: tuple[int, int, int, int, int, int],
+    identity: tuple[int, ...],
 ) -> None:
     try:
         if _identity(path.lstat()) == identity:
@@ -1961,10 +2008,20 @@ def _remove_if_same(
 
 def _cleanup_created(
     root: Path,
-    files: list[
-        tuple[Path, tuple[int, int, int, int, int, int]]
-    ],
+    root_identity: tuple[int, int, int, int],
+    files: list[tuple[Path, tuple[int, ...]]],
 ) -> None:
+    try:
+        observed_root = root.lstat()
+    except OSError:
+        return
+    if (
+        _directory_identity(observed_root) != root_identity
+        or not stat.S_ISDIR(observed_root.st_mode)
+        or stat.S_ISLNK(observed_root.st_mode)
+        or _is_reparse(observed_root)
+    ):
+        return
     for path, identity in reversed(files):
         _remove_if_same(path, identity)
     for directory in (
@@ -2032,24 +2089,24 @@ def prepare_windows_decision_provider_pack(
         ) from exc
     except OSError as exc:
         raise DecisionProviderPackError("PACK_OUTPUT_CREATE_FAILED") from exc
+    root_identity = _directory_identity(root.lstat())
 
-    created: list[
-        tuple[Path, tuple[int, int, int, int, int, int]]
-    ] = []
+    created: list[tuple[Path, tuple[int, ...]]] = []
     try:
         os.mkdir(root / "config", 0o700)
         os.mkdir(root / "configured_providers", 0o700)
         for relative in GENERATED_PATHS:
             target = root / relative
-            _write_exclusive(target, files[relative])
-            created.append((target, _identity(target.lstat())))
+            created.append(
+                (target, _write_exclusive(target, files[relative]))
+            )
         result = validate_windows_decision_provider_pack(
             base_suite_root=base_suite_root,
             decision_base_release=decision_base_release,
             pack_root=root,
         )
     except BaseException:
-        _cleanup_created(root, created)
+        _cleanup_created(root, root_identity, created)
         raise
     return result
 

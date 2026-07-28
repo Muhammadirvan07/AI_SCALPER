@@ -647,23 +647,98 @@ def _create_archive(source_bytes: Mapping[str, bytes], manifest_bytes: bytes) ->
     return output.getvalue()
 
 
-def _write_exclusive(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+CreatedOutputIdentity = tuple[int, int]
+
+
+def _created_output_identity(metadata: os.stat_result) -> CreatedOutputIdentity:
+    return (int(metadata.st_dev), int(metadata.st_ino))
+
+
+def _remove_created_output(
+    path: Path,
+    identity: CreatedOutputIdentity | None,
+) -> None:
+    if identity is None:
+        return
     try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or int(getattr(observed, "st_file_attributes", 0)) & 0x400
+        or _created_output_identity(observed) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _write_exclusive(path: Path, data: bytes) -> CreatedOutputIdentity:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor: int | None = None
+    identity: CreatedOutputIdentity | None = None
+    try:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        flags |= getattr(os, "O_BINARY", 0)
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags, 0o600)
     except OSError as exc:
         raise ReleaseBuildError(f"release output already exists or is unavailable: {path}") from exc
     try:
         with os.fdopen(descriptor, "wb") as handle:
+            descriptor = None
+            created = os.fstat(handle.fileno())
+            if not stat.S_ISREG(created.st_mode):
+                raise ReleaseBuildError(
+                    f"release output is not a regular file: {path}"
+                )
+            identity = _created_output_identity(created)
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
     except Exception:
-        try:
-            path.unlink()
-        except OSError:
-            pass
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        _remove_created_output(path, identity)
         raise
+    if identity is None:
+        raise ReleaseBuildError(f"release output identity unavailable: {path}")
+    return identity
+
+
+def _release_output_paths(
+    root: Path,
+    output_path: Path,
+    manifest_output_path: Path | None,
+) -> tuple[Path, Path]:
+    output = output_path.expanduser().absolute()
+    sidecar = (
+        output_path.with_suffix(output_path.suffix + ".manifest.json")
+        if manifest_output_path is None
+        else manifest_output_path
+    ).expanduser().absolute()
+    if output == sidecar:
+        raise ReleaseBuildError("release output paths collide")
+    policy_paths = tuple(destination.resolve() for destination in (output, sidecar))
+    if policy_paths[0] == policy_paths[1]:
+        raise ReleaseBuildError("release output paths collide")
+    for destination in policy_paths:
+        try:
+            destination.relative_to(root)
+        except ValueError:
+            pass
+        else:
+            raise ReleaseBuildError(
+                "release outputs must be outside the source repository"
+            )
+    return output, sidecar
 
 
 def build_release(
@@ -687,21 +762,11 @@ def build_release(
         raise ReleaseBuildError(
             "release allowlist must be a supported versioned config Windows allowlist"
         )
-    resolved_output = output_path.resolve()
-    sidecar = (
-        output_path.with_suffix(output_path.suffix + ".manifest.json")
-        if manifest_output_path is None
-        else manifest_output_path
-    ).resolve()
-    for destination in (resolved_output, sidecar):
-        try:
-            destination.relative_to(root)
-        except ValueError:
-            pass
-        else:
-            raise ReleaseBuildError(
-                "release outputs must be outside the source repository"
-            )
+    resolved_output, sidecar = _release_output_paths(
+        root,
+        output_path,
+        manifest_output_path,
+    )
     commit, tree, tracked = _validate_git_release_source(root)
     allowlist = load_allowlist(allowlist_path)
     if allowlist_relative not in allowlist["files"]:
@@ -758,14 +823,11 @@ def build_release(
     }
     manifest_bytes = _canonical_json(manifest) + b"\n"
     archive_bytes = _create_archive(source_bytes, manifest_bytes)
-    _write_exclusive(resolved_output, archive_bytes)
+    output_identity = _write_exclusive(resolved_output, archive_bytes)
     try:
-        _write_exclusive(sidecar, manifest_bytes)
+        sidecar_identity = _write_exclusive(sidecar, manifest_bytes)
     except Exception:
-        try:
-            resolved_output.unlink()
-        except OSError:
-            pass
+        _remove_created_output(resolved_output, output_identity)
         raise
 
     try:
@@ -782,11 +844,8 @@ def build_release(
         if final_commit != commit or final_tree != tree or final_status:
             raise ReleaseBuildError("release source changed during construction")
     except Exception:
-        for destination in (resolved_output, sidecar):
-            try:
-                destination.unlink()
-            except OSError:
-                pass
+        _remove_created_output(resolved_output, output_identity)
+        _remove_created_output(sidecar, sidecar_identity)
         raise
     return {
         "archive": str(resolved_output),

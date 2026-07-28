@@ -1095,6 +1095,28 @@ def _stable_read_input(path: Path) -> bytes:
     return value
 
 
+def _remove_created_output(
+    path: Path,
+    identity: tuple[int, int] | None,
+) -> None:
+    if identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or int(getattr(observed, "st_file_attributes", 0)) & 0x400
+        or (int(observed.st_dev), int(observed.st_ino)) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def _write_exclusive(path: Path, value: bytes) -> None:
     target = path.expanduser().absolute()
     if len(value) > MAXIMUM_PROVIDER_REVIEW_JSON_BYTES:
@@ -1102,11 +1124,20 @@ def _write_exclusive(path: Path, value: bytes) -> None:
     if _path_has_indirection(target, missing_leaf_ok=True):
         raise WindowsProviderConformanceError("OUTPUT_PATH_INVALID")
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
     descriptor: int | None = None
+    created_identity: tuple[int, int] | None = None
     try:
         descriptor = os.open(target, flags, 0o600)
         with os.fdopen(descriptor, "wb", closefd=True) as stream:
             descriptor = None
+            created = os.fstat(stream.fileno())
+            created_identity = (
+                int(created.st_dev),
+                int(created.st_ino),
+            )
             stream.write(value)
             stream.flush()
             os.fsync(stream.fileno())
@@ -1115,10 +1146,7 @@ def _write_exclusive(path: Path, value: bytes) -> None:
             "OUTPUT_ALREADY_EXISTS"
         ) from exc
     except OSError as exc:
-        try:
-            target.unlink(missing_ok=True)
-        except OSError:
-            pass
+        _remove_created_output(target, created_identity)
         raise WindowsProviderConformanceError(
             "OUTPUT_WRITE_FAILED"
         ) from exc

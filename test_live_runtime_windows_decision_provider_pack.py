@@ -7,7 +7,9 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
+import live_runtime.windows_decision_provider_pack as decision_provider_module
 from live_runtime.brokerless_decision_producer import (
     DecisionProducerBinding,
     DecisionProducerLaneConfig,
@@ -510,6 +512,45 @@ class StrictCheckpointParserTests(unittest.TestCase):
         )
         with self.assertRaises((TypeError, ValueError)):
             parse_decision_ipc_checkpoint(duplicate)
+
+
+    def test_cas_write_failure_preserves_replacement_request_path(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            path = root / "request.json"
+            replacement = root / "replacement.json"
+            probe = root / "symlink-probe"
+            try:
+                probe.symlink_to("missing")
+                probe.unlink()
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+
+            def swap_then_fail(_descriptor: int) -> None:
+                path.unlink()
+                path.symlink_to(replacement.name)
+                raise OSError("simulated fsync failure after path swap")
+
+            with patch.object(
+                decision_provider_module.os,
+                "fsync",
+                side_effect=swap_then_fail,
+            ):
+                with self.assertRaises(
+                    WindowsDecisionProviderError
+                ) as caught:
+                    decision_provider_module._write_request_idempotently(
+                        path,
+                        root=root,
+                        payload=b"{}\n",
+                    )
+            self.assertEqual(
+                "EXTERNAL_CAS_REQUEST_WRITE_FAILED",
+                caught.exception.reason_code,
+            )
+            self.assertTrue(path.is_symlink())
+            self.assertEqual(Path(replacement.name), path.readlink())
+            self.assertFalse(replacement.exists())
 
 
 if __name__ == "__main__":

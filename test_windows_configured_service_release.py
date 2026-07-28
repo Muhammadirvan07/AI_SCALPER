@@ -12,6 +12,7 @@ import warnings
 import zipfile
 
 from build_windows_release import MANIFEST_MEMBER, _canonical_json, _create_archive
+import live_runtime.configured_service_release as configured_release_module
 from live_runtime.configured_service_release import (
     CONFIGURED_OVERLAY_SCHEMA,
     ConfiguredReleaseError,
@@ -728,6 +729,77 @@ class WindowsConfiguredServiceReleaseTests(unittest.TestCase):
             verify.assert_called_once()
             self.assertFalse(output.exists())
             self.assertFalse(sidecar.exists())
+
+    def test_exclusive_writer_preserves_replacement_after_write_failure(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            output = root / "configured.zip"
+            replacement = root / "replacement.zip"
+            probe = root / "symlink-probe"
+            try:
+                probe.symlink_to("missing")
+                probe.unlink()
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+
+            def swap_then_fail(_descriptor: int) -> None:
+                output.unlink()
+                output.symlink_to(replacement.name)
+                raise OSError("simulated fsync failure after path swap")
+
+            with patch.object(
+                configured_release_module.os,
+                "fsync",
+                side_effect=swap_then_fail,
+            ):
+                with self.assertRaisesRegex(OSError, "simulated fsync"):
+                    configured_release_module._write_exclusive(
+                        output,
+                        b"configured release",
+                    )
+
+            self.assertTrue(output.is_symlink())
+            self.assertEqual(Path(replacement.name), output.readlink())
+            self.assertFalse(replacement.exists())
+
+    def test_sidecar_failure_preserves_replaced_archive_path(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            base, manifest = self._base_archive(root)
+            overlay, descriptor, _ = self._overlay(root, manifest)
+            output = root / "configured.zip"
+            replacement = root / "replacement.zip"
+            original_write = configured_release_module._write_exclusive
+
+            def raced_write(path: Path, data: bytes):
+                if path == output:
+                    return original_write(path, data)
+                output.unlink()
+                output.symlink_to(replacement.name)
+                raise ConfiguredReleaseError("simulated sidecar collision")
+
+            try:
+                with patch.object(
+                    configured_release_module,
+                    "_write_exclusive",
+                    side_effect=raced_write,
+                ):
+                    with self.assertRaisesRegex(
+                        ConfiguredReleaseError,
+                        "SIMULATED SIDECAR",
+                    ):
+                        build_configured_service_release(
+                            base,
+                            overlay,
+                            descriptor,
+                            output,
+                        )
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+
+            self.assertTrue(output.is_symlink())
+            self.assertEqual(Path(replacement.name), output.readlink())
+            self.assertFalse(replacement.exists())
 
 
 if __name__ == "__main__":

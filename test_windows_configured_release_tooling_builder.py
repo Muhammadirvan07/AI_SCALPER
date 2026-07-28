@@ -6,8 +6,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
+import build_windows_configured_release_tooling as configured_tooling_builder
 from build_windows_configured_release_tooling import (
     APPROVED_SOURCE_PATHS,
     MANIFEST_MEMBER,
@@ -416,12 +418,52 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             base = Path(raw)
             root, allowlist = self._repo(base)
-            with self.assertRaisesRegex(ReleaseBuildError, "outside repository"):
+            with self.assertRaisesRegex(
+                ReleaseBuildError,
+                "outside.*repository",
+            ):
                 build_configured_release_tooling(
                     root,
                     allowlist,
                     root / "release.zip",
                 )
+
+    def test_sidecar_failure_preserves_replaced_archive_path(self):
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            root, allowlist = self._repo(base)
+            output = base / "configured-tooling.zip"
+            replacement = base / "replacement.zip"
+            original_write = configured_tooling_builder._write_exclusive
+
+            def raced_write(path: Path, data: bytes):
+                if path == output:
+                    return original_write(path, data)
+                output.unlink()
+                output.symlink_to(replacement.name)
+                raise ReleaseBuildError("simulated sidecar collision")
+
+            try:
+                with patch.object(
+                    configured_tooling_builder,
+                    "_write_exclusive",
+                    side_effect=raced_write,
+                ):
+                    with self.assertRaisesRegex(
+                        ReleaseBuildError,
+                        "simulated sidecar",
+                    ):
+                        build_configured_release_tooling(
+                            root,
+                            allowlist,
+                            output,
+                        )
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+
+            self.assertTrue(output.is_symlink())
+            self.assertEqual(Path(replacement.name), output.readlink())
+            self.assertFalse(replacement.exists())
 
 
 if __name__ == "__main__":

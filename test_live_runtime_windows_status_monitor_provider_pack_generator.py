@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+import live_runtime.windows_status_monitor_provider_pack_generator as status_pack_module
 from build_windows_release import _canonical_json, _create_archive
 from live_runtime.windows_external_status_monitor_entrypoint import (
     parse_windows_external_status_monitor_config,
@@ -430,6 +431,30 @@ class WindowsStatusMonitorProviderPackGeneratorTests(unittest.TestCase):
                 output_root=output,
             )
         self.assertFalse(output.exists())
+
+
+    def test_cleanup_preserves_replaced_pack_root(self):
+        pack_root = self.root / "owned-pack"
+        displaced = self.root / "displaced-pack"
+        replacement = self.root / "replacement-pack"
+        pack_root.mkdir()
+        identity = status_pack_module._directory_identity(
+            pack_root.lstat()
+        )
+        pack_root.rename(displaced)
+        try:
+            pack_root.symlink_to(
+                replacement.name,
+                target_is_directory=True,
+            )
+        except (NotImplementedError, OSError):
+            self.skipTest("symlinks are unavailable on this platform")
+
+        status_pack_module._cleanup(pack_root, identity, [])
+
+        self.assertTrue(pack_root.is_symlink())
+        self.assertEqual(Path(replacement.name), pack_root.readlink())
+        self.assertTrue(displaced.is_dir())
 
 
 if __name__ == "__main__":

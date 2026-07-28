@@ -627,6 +627,39 @@ class TestSignedDecisionFeedHandoff(unittest.TestCase):
                 )
         self.assertEqual("FEED_SEQUENCE_CONFLICT", caught.exception.reason_code)
 
+    def test_write_failure_preserves_replacement_packet_path(self) -> None:
+        import live_runtime.decision_feed as decision_feed
+
+        path = self.root / "packet.json"
+        replacement = self.root / "replacement.json"
+        probe = self.root / "symlink-probe"
+        try:
+            probe.symlink_to("missing")
+            probe.unlink()
+        except (NotImplementedError, OSError):
+            self.skipTest("symlinks are unavailable on this platform")
+
+        def swap_then_fail(_descriptor: int) -> None:
+            path.unlink()
+            path.symlink_to(replacement.name)
+            raise OSError("simulated fsync failure after path swap")
+
+        with mock.patch.object(
+            decision_feed.os,
+            "fsync",
+            side_effect=swap_then_fail,
+        ):
+            with self.assertRaises(DecisionFeedError) as caught:
+                decision_feed._write_exclusive(
+                    path,
+                    b"packet",
+                    root=self.root,
+                )
+        self.assertEqual("FEED_WRITE_FAILED", caught.exception.reason_code)
+        self.assertTrue(path.is_symlink())
+        self.assertEqual(Path(replacement.name), path.readlink())
+        self.assertFalse(replacement.exists())
+
     def test_ec8_missing_historical_sequence_is_rejected(self) -> None:
         self.store.publish(
             self.feed_lane, observation(), issued_at_utc=self.clock

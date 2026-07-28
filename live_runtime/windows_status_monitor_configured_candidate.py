@@ -447,7 +447,29 @@ def _write(path: Path, payload: bytes) -> None:
         os.close(descriptor)
 
 
-def _cleanup(root: Path) -> None:
+def _cleanup(
+    root: Path,
+    identity: tuple[int, int, int, int] | None,
+) -> None:
+    if identity is None:
+        return
+    try:
+        root_metadata = root.lstat()
+    except OSError:
+        return
+    if (
+        (
+            int(root_metadata.st_dev),
+            int(root_metadata.st_ino),
+            int(root_metadata.st_mode),
+            int(getattr(root_metadata, "st_file_attributes", 0)),
+        )
+        != identity
+        or not stat.S_ISDIR(root_metadata.st_mode)
+        or stat.S_ISLNK(root_metadata.st_mode)
+        or _is_reparse(root_metadata)
+    ):
+        return
     for relative in sorted(
         _ALL_FILES,
         key=lambda value: len(PurePosixPath(value).parts),
@@ -906,10 +928,16 @@ def assemble_windows_status_monitor_configured_candidate(
             "TASK_DEFINITION_SECRET_MATERIAL_FORBIDDEN"
         )
     root = _safe_new_root(output)
-    created = False
+    root_identity: tuple[int, int, int, int] | None = None
     try:
         _mkdir(root)
-        created = True
+        root_metadata = root.lstat()
+        root_identity = (
+            int(root_metadata.st_dev),
+            int(root_metadata.st_ino),
+            int(root_metadata.st_mode),
+            int(getattr(root_metadata, "st_file_attributes", 0)),
+        )
         for relative in sorted(
             _EXPECTED_DIRECTORIES,
             key=lambda value: (
@@ -1093,8 +1121,7 @@ def assemble_windows_status_monitor_configured_candidate(
             )
         return result
     except Exception:
-        if created:
-            _cleanup(root)
+        _cleanup(root, root_identity)
         raise
 
 

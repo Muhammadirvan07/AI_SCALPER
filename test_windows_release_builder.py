@@ -354,6 +354,86 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
             with self.assertRaisesRegex(ReleaseBuildError, "regular file"):
                 build_release(root, allowlist, base / "symlink.zip")
 
+    def test_dangling_output_symlink_is_preserved_and_not_followed(self):
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            root, allowlist = self._repo(base)
+            output = base / "release.zip"
+            redirected = base / "redirected.zip"
+            try:
+                output.symlink_to(redirected.name)
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+
+            with self.assertRaisesRegex(ReleaseBuildError, "already exists"):
+                build_release(root, allowlist, output)
+
+            self.assertTrue(output.is_symlink())
+            self.assertEqual(Path(redirected.name), output.readlink())
+            self.assertFalse(redirected.exists())
+
+    def test_exclusive_writer_preserves_replacement_after_write_failure(self):
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            output = base / "release.zip"
+            replacement = base / "replacement.zip"
+            probe = base / "symlink-probe"
+            try:
+                probe.symlink_to("missing")
+                probe.unlink()
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+
+            def swap_then_fail(_descriptor: int) -> None:
+                output.unlink()
+                output.symlink_to(replacement.name)
+                raise OSError("simulated fsync failure after path swap")
+
+            with patch.object(
+                release_builder.os,
+                "fsync",
+                side_effect=swap_then_fail,
+            ):
+                with self.assertRaisesRegex(OSError, "simulated fsync"):
+                    release_builder._write_exclusive(output, b"release")
+
+            self.assertTrue(output.is_symlink())
+            self.assertEqual(Path(replacement.name), output.readlink())
+            self.assertFalse(replacement.exists())
+
+    def test_sidecar_failure_preserves_replaced_archive_path(self):
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            root, allowlist = self._repo(base)
+            output = base / "release.zip"
+            replacement = base / "replacement.zip"
+            original_write = release_builder._write_exclusive
+
+            def raced_write(path: Path, data: bytes):
+                if path == output:
+                    return original_write(path, data)
+                output.unlink()
+                output.symlink_to(replacement.name)
+                raise ReleaseBuildError("simulated sidecar collision")
+
+            try:
+                with patch.object(
+                    release_builder,
+                    "_write_exclusive",
+                    side_effect=raced_write,
+                ):
+                    with self.assertRaisesRegex(
+                        ReleaseBuildError,
+                        "simulated sidecar",
+                    ):
+                        build_release(root, allowlist, output)
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+
+            self.assertTrue(output.is_symlink())
+            self.assertEqual(Path(replacement.name), output.readlink())
+            self.assertFalse(replacement.exists())
+
     def test_project_allowlist_is_operator_tooling_and_has_no_runtime_artifacts(self):
         payload = load_allowlist(DEFAULT_ALLOWLIST)
         self.assertEqual(

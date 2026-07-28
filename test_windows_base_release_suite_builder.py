@@ -548,6 +548,78 @@ class WindowsBaseReleaseSuiteBuilderTests(unittest.TestCase):
             (self.release_parent / f".{output.name}.publish.lock").exists()
         )
 
+    def test_atomic_publish_preserves_replaced_lock_path(self) -> None:
+        staging = self.release_parent / "staging-for-lock-race"
+        staging.mkdir()
+        output = self.release_parent / "lock-race-output"
+        lock = self.release_parent / f".{output.name}.publish.lock"
+        replacement = self.release_parent / "replacement-lock"
+
+        def replace_lock_then_fail(
+            _source: Path,
+            _destination: Path,
+        ) -> None:
+            lock.unlink()
+            lock.symlink_to(replacement.name)
+            raise OSError("simulated publish failure after lock swap")
+
+        try:
+            with patch.object(
+                suite,
+                "_rename_no_replace",
+                side_effect=replace_lock_then_fail,
+            ):
+                with self.assertRaisesRegex(
+                    suite.BaseReleaseSuiteError,
+                    "BASE_RELEASE_SUITE_PUBLICATION_FAILED",
+                ):
+                    suite._atomic_publish(staging, output)
+        except (NotImplementedError, OSError):
+            self.skipTest("symlinks are unavailable on this platform")
+
+        self.assertTrue(lock.is_symlink())
+        self.assertEqual(Path(replacement.name), lock.readlink())
+        self.assertFalse(replacement.exists())
+
+    def test_build_cleanup_preserves_replaced_staging_root(self) -> None:
+        output = self.release_parent / "staging-race-output"
+        replacement = self.release_parent / "replacement-staging"
+        displaced: Path | None = None
+
+        def replace_staging_then_fail(
+            staging: Path,
+            _destination: Path,
+        ) -> None:
+            nonlocal displaced
+            displaced = staging.with_name(staging.name + "-displaced")
+            staging.rename(displaced)
+            staging.symlink_to(replacement.name, target_is_directory=True)
+            raise suite.BaseReleaseSuiteError(
+                "BASE_RELEASE_SUITE_PUBLICATION_FAILED"
+            )
+
+        try:
+            with patch.object(
+                suite,
+                "_atomic_publish",
+                side_effect=replace_staging_then_fail,
+            ):
+                with self.assertRaisesRegex(
+                    suite.BaseReleaseSuiteError,
+                    "BASE_RELEASE_SUITE_PUBLICATION_FAILED",
+                ):
+                    self._build(output.name)
+        except (NotImplementedError, OSError):
+            self.skipTest("symlinks are unavailable on this platform")
+
+        staging_links = list(
+            self.release_parent.glob(f".{output.name}.staging-*")
+        )
+        self.assertEqual(2, len(staging_links))
+        self.assertEqual(1, sum(path.is_symlink() for path in staging_links))
+        self.assertIsNotNone(displaced)
+        self.assertTrue(displaced.is_dir())
+
     def test_cli_redacts_internal_failure(self) -> None:
         output = io.StringIO()
         with (

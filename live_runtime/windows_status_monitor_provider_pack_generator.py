@@ -1783,10 +1783,47 @@ def _safe_new_root(path: str | Path) -> Path:
     return root
 
 
-def _write_exclusive(path: Path, payload: bytes) -> None:
+def _remove_created_file(
+    path: Path,
+    identity: tuple[int, int] | None,
+) -> None:
+    if identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or _is_reparse(observed)
+        or (int(observed.st_dev), int(observed.st_ino)) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _directory_identity(
+    metadata: os.stat_result,
+) -> tuple[int, int, int, int]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(getattr(metadata, "st_file_attributes", 0)),
+    )
+
+
+def _write_exclusive(path: Path, payload: bytes) -> tuple[int, ...]:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor: int | None = None
+    created_identity: tuple[int, int] | None = None
+    completed_identity: tuple[int, ...] | None = None
     try:
         descriptor = os.open(path, flags, 0o600)
     except OSError as exc:
@@ -1794,6 +1831,11 @@ def _write_exclusive(path: Path, payload: bytes) -> None:
             "PROVIDER_PACK_OUTPUT_WRITE_FAILED"
         ) from exc
     try:
+        created = os.fstat(descriptor)
+        created_identity = (
+            int(created.st_dev),
+            int(created.st_ino),
+        )
         offset = 0
         while offset < len(payload):
             written = os.write(descriptor, payload[offset:])
@@ -1801,19 +1843,54 @@ def _write_exclusive(path: Path, payload: bytes) -> None:
                 raise OSError("short write")
             offset += written
         os.fsync(descriptor)
+        completed_identity = _identity(os.fstat(descriptor))
     except OSError as exc:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            descriptor = None
+        _remove_created_file(path, created_identity)
         raise StatusMonitorProviderPackError(
             "PROVIDER_PACK_OUTPUT_WRITE_FAILED"
         ) from exc
     finally:
-        os.close(descriptor)
+        if descriptor is not None:
+            os.close(descriptor)
+    if completed_identity is None:
+        raise StatusMonitorProviderPackError(
+            "PROVIDER_PACK_OUTPUT_WRITE_FAILED"
+        )
+    return completed_identity
 
 
-def _cleanup(root: Path, files: Mapping[str, bytes]) -> None:
-    for relative in reversed(GENERATED_PATHS):
-        path = root / relative
+def _cleanup(
+    root: Path,
+    root_identity: tuple[int, int, int, int] | None,
+    files: list[tuple[Path, tuple[int, ...]]],
+) -> None:
+    if root_identity is None:
+        return
+    try:
+        observed_root = root.lstat()
+    except OSError:
+        return
+    if (
+        _directory_identity(observed_root) != root_identity
+        or not stat.S_ISDIR(observed_root.st_mode)
+        or stat.S_ISLNK(observed_root.st_mode)
+        or _is_reparse(observed_root)
+    ):
+        return
+    for path, identity in reversed(files):
         try:
-            if path.is_file() and path.read_bytes() == files[relative]:
+            observed = path.lstat()
+            if (
+                _identity(observed) == identity
+                and stat.S_ISREG(observed.st_mode)
+                and not _is_reparse(observed)
+            ):
                 path.unlink()
         except OSError:
             pass
@@ -1865,22 +1942,25 @@ def prepare_windows_status_monitor_provider_pack(
                 "PROVIDER_PACK_SECRET_PATTERN_FORBIDDEN"
             )
     root = _safe_new_root(output_root)
-    created = False
+    root_identity: tuple[int, int, int, int] | None = None
+    created_files: list[tuple[Path, tuple[int, ...]]] = []
     try:
         root.mkdir(mode=0o700)
-        created = True
+        root_identity = _directory_identity(root.lstat())
         (root / "config").mkdir(mode=0o700)
         (root / "configured_providers").mkdir(mode=0o700)
         for relative in GENERATED_PATHS:
-            _write_exclusive(root / relative, files[relative])
+            target = root / relative
+            created_files.append(
+                (target, _write_exclusive(target, files[relative]))
+            )
         result = validate_windows_status_monitor_provider_pack(
             base_suite_root=base_suite_root,
             status_monitor_base_release=status_monitor_base_release,
             pack_root=root,
         )
     except Exception:
-        if created:
-            _cleanup(root, files)
+        _cleanup(root, root_identity, created_files)
         raise
     return result
 

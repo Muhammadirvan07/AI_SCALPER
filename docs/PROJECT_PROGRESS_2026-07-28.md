@@ -16,13 +16,16 @@ menjadi baseline audit incremental ini adalah:
 - `0c5e2ad83b89b48d1b25a31f636c69487357586b` — signed V6 WORM custody
   request/receipt boundary;
 - `e367d5e35b9cb84ff87be1d43390b98bad15c2a1` — create-exclusive output
-  preservation terhadap dangling symlink dan cleanup race.
+  preservation awal terhadap dangling symlink dan cleanup race;
+- `c10d4740ded8d798567a2e27404bfffb6e3fce42` — baseline bersih sebelum
+  hardening create-exclusive diperluas ke seluruh publisher release,
+  evidence, provider, dan atomic-suite yang relevan.
 
-Tree implementasi remediation yang diaudit adalah
-`b6294aacf229ae5c5628d21720fa592c187217fd`. Commit documentation final dan
-exact toolkit source identity diterbitkan setelah audit ini; build manifest
-tetap menjadi sumber pin final. Commit sampai `0c5e2ad` sudah berada di origin,
-sedangkan `e367d5e` adalah remediation yang lulus gate sebelum push final.
+Remediation lintas publisher yang dicatat pada laporan ini turun langsung
+dari baseline `c10d474`. Exact commit dan tree final adalah identitas Git dari
+commit yang memuat laporan ini; keduanya harus selalu dipin dari checkout atau
+build manifest, bukan ditulis secara self-referential ke source sebelum
+commit dibuat.
 
 ## Perbaikan yang selesai
 
@@ -56,13 +59,21 @@ sedangkan `e367d5e` adalah remediation yang lulus gate sebelum push final.
   File, folder, symlink valid, dan dangling symlink yang sudah ada ditolak
   tanpa mutasi; cleanup hanya boleh menghapus regular file exact yang dibuat
   oleh invocation berjalan.
+- Kontrak yang sama kini diterapkan ke shared release writer, kelima Windows
+  release/sidecar path, configured overlay, secure/evidence/feed publisher,
+  provider conformance, provider-pack generator, vulnerability receipt,
+  atomic-suite publication lock/staging root, serta Execution/Status Monitor
+  configured-candidate cleanup. Identity yang tidak diketahui atau berubah
+  berarti preserve-and-fail, bukan unlink. Spesifikasi kanonisnya berada di
+  `specs/create_exclusive_output_custody_v1.md`.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.687 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.687 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.712 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.712 PASS, 3 skip, exit 0 |
+| Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |
 | V6 packaging + post-run/custody focused cluster | 31 PASS per normal/optimized mode |

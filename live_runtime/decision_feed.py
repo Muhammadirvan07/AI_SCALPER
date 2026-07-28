@@ -203,19 +203,49 @@ def _sync_directory(directory: Path) -> None:
         os.close(descriptor)
 
 
+def _remove_created_packet(
+    path: Path,
+    identity: tuple[int, int] | None,
+) -> None:
+    if identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or _is_reparse(observed)
+        or (int(observed.st_dev), int(observed.st_ino)) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def _write_exclusive(path: Path, payload: bytes, *, root: Path) -> None:
     if path.parent != root or len(payload) > MAXIMUM_PACKET_BYTES:
         raise DecisionFeedError("FEED_WRITE_FAILED")
     _require_real_directory(root)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     descriptor: int | None = None
-    created = False
+    created_identity: tuple[int, int] | None = None
     try:
         descriptor = os.open(path, flags, 0o600)
-        created = True
         with os.fdopen(descriptor, "wb", closefd=True) as handle:
             descriptor = None
+            created = os.fstat(handle.fileno())
+            if not stat.S_ISREG(created.st_mode):
+                raise DecisionFeedError("FEED_WRITE_FAILED")
+            created_identity = (
+                int(created.st_dev),
+                int(created.st_ino),
+            )
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -228,11 +258,7 @@ def _write_exclusive(path: Path, payload: bytes, *, root: Path) -> None:
                 os.close(descriptor)
             except OSError:
                 pass
-        if created:
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        _remove_created_packet(path, created_identity)
         if isinstance(exc, DecisionFeedError):
             raise
         raise DecisionFeedError("FEED_WRITE_FAILED") from exc

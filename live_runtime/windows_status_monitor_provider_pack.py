@@ -429,10 +429,35 @@ def _existing_file(path: Path, code: str) -> None:
         raise WindowsStatusMonitorProviderError(code)
 
 
+def _remove_created_request(
+    path: Path,
+    identity: tuple[int, int] | None,
+) -> None:
+    if identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or _is_reparse(observed)
+        or (int(observed.st_dev), int(observed.st_ino)) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def _write_exclusive(path: Path, data: bytes, code: str) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor: int | None = None
+    created_identity: tuple[int, int] | None = None
     try:
         descriptor = os.open(path, flags, 0o600)
     except FileExistsError:
@@ -442,6 +467,11 @@ def _write_exclusive(path: Path, data: bytes, code: str) -> None:
     except OSError as exc:
         raise WindowsStatusMonitorProviderError(code) from exc
     try:
+        created = os.fstat(descriptor)
+        created_identity = (
+            int(created.st_dev),
+            int(created.st_ino),
+        )
         offset = 0
         while offset < len(data):
             written = os.write(descriptor, data[offset:])
@@ -450,13 +480,11 @@ def _write_exclusive(path: Path, data: bytes, code: str) -> None:
             offset += written
         os.fsync(descriptor)
     except OSError as exc:
-        try:
-            path.unlink()
-        except OSError:
-            pass
+        _remove_created_request(path, created_identity)
         raise WindowsStatusMonitorProviderError(code) from exc
     finally:
-        os.close(descriptor)
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 def _wait_response(

@@ -470,6 +470,28 @@ def _sync_directory(directory: Path) -> None:
         ) from exc
 
 
+def _remove_created_request(
+    path: Path,
+    identity: tuple[int, int] | None,
+) -> None:
+    if identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or _is_reparse(observed)
+        or (int(observed.st_dev), int(observed.st_ino)) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def _write_request_idempotently(
     path: Path,
     *,
@@ -487,14 +509,20 @@ def _write_request_idempotently(
             )
         return
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     descriptor: int | None = None
-    created = False
+    created_identity: tuple[int, int] | None = None
     try:
         descriptor = os.open(path, flags, 0o600)
-        created = True
         with os.fdopen(descriptor, "wb", closefd=True) as handle:
             descriptor = None
+            created = os.fstat(handle.fileno())
+            created_identity = (
+                int(created.st_dev),
+                int(created.st_ino),
+            )
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -506,11 +534,7 @@ def _write_request_idempotently(
                 "EXTERNAL_CAS_REQUEST_CONFLICT"
             )
     except WindowsDecisionProviderError:
-        if created:
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        _remove_created_request(path, created_identity)
         raise
     except Exception as exc:
         if descriptor is not None:
@@ -518,11 +542,7 @@ def _write_request_idempotently(
                 os.close(descriptor)
             except OSError:
                 pass
-        if created:
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        _remove_created_request(path, created_identity)
         raise WindowsDecisionProviderError(
             "EXTERNAL_CAS_REQUEST_WRITE_FAILED"
         ) from exc

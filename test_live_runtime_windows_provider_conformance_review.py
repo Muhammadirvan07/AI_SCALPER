@@ -13,6 +13,7 @@ import time
 import unittest
 from unittest.mock import patch
 
+import live_runtime.windows_provider_conformance_review as provider_review_module
 from live_runtime.contracts import canonical_sha256
 from live_runtime.windows_decision_service_factory_template import (
     PROVIDER_ROLES,
@@ -813,6 +814,44 @@ class WindowsProviderConformanceReviewTests(unittest.TestCase):
         verify_seconds = time.perf_counter() - started
         self.assertLess(prepared_seconds, 2.0)
         self.assertLess(verify_seconds, 2.0)
+
+
+    def test_output_write_failure_preserves_replacement_path(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/private/tmp") as raw:
+            root = Path(raw)
+            output = root / "provider-review.json"
+            replacement = root / "replacement.json"
+            probe = root / "symlink-probe"
+            try:
+                probe.symlink_to("missing")
+                probe.unlink()
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+
+            def swap_then_fail(_descriptor: int) -> None:
+                output.unlink()
+                output.symlink_to(replacement.name)
+                raise OSError("simulated fsync failure after path swap")
+
+            with patch.object(
+                provider_review_module.os,
+                "fsync",
+                side_effect=swap_then_fail,
+            ):
+                with self.assertRaises(
+                    WindowsProviderConformanceError
+                ) as caught:
+                    provider_review_module._write_exclusive(
+                        output,
+                        b"{}\n",
+                    )
+            self.assertEqual(
+                "OUTPUT_WRITE_FAILED",
+                caught.exception.reason_code,
+            )
+            self.assertTrue(output.is_symlink())
+            self.assertEqual(Path(replacement.name), output.readlink())
+            self.assertFalse(replacement.exists())
 
 
 if __name__ == "__main__":

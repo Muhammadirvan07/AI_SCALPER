@@ -25,6 +25,8 @@ from build_windows_release import (
     _git,
     _json_contains_secret,
     _normalize_relative_path,
+    _release_output_paths,
+    _remove_created_output,
     _sha256,
     _validate_git_release_source,
     _verify_local_import_closure,
@@ -1331,19 +1333,11 @@ def build_execution_release(
         or ALLOWLIST_NAME_PATTERN.fullmatch(PurePosixPath(allowlist_relative).name) is None
     ):
         raise ReleaseBuildError("execution allowlist must be the versioned execution config")
-    resolved_output = output_path.resolve()
-    sidecar = (
-        output_path.with_suffix(output_path.suffix + ".manifest.json")
-        if manifest_output_path is None
-        else manifest_output_path
-    ).resolve()
-    for destination in (resolved_output, sidecar):
-        try:
-            destination.relative_to(root)
-        except ValueError:
-            pass
-        else:
-            raise ReleaseBuildError("release outputs must be outside source repository")
+    resolved_output, sidecar = _release_output_paths(
+        root,
+        output_path,
+        manifest_output_path,
+    )
 
     commit, tree, tracked = _validate_git_release_source(root)
     allowlist = load_execution_allowlist(allowlist_path)
@@ -1465,14 +1459,11 @@ def build_execution_release(
     manifest = {**manifest_base, "release_identity_sha256": identity}
     manifest_bytes = _canonical_json(manifest) + b"\n"
     archive_bytes = _create_archive(sources, manifest_bytes)
-    _write_exclusive(resolved_output, archive_bytes)
+    output_identity = _write_exclusive(resolved_output, archive_bytes)
     try:
-        _write_exclusive(sidecar, manifest_bytes)
+        sidecar_identity = _write_exclusive(sidecar, manifest_bytes)
     except Exception:
-        try:
-            resolved_output.unlink()
-        except OSError:
-            pass
+        _remove_created_output(resolved_output, output_identity)
         raise
     try:
         if (
@@ -1489,11 +1480,8 @@ def build_execution_release(
         ):
             raise ReleaseBuildError("release source changed during construction")
     except Exception:
-        for destination in (resolved_output, sidecar):
-            try:
-                destination.unlink()
-            except OSError:
-                pass
+        _remove_created_output(resolved_output, output_identity)
+        _remove_created_output(sidecar, sidecar_identity)
         raise
     return {
         "archive": str(resolved_output),

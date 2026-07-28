@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import stat
 from typing import Mapping
 
 
@@ -45,6 +46,28 @@ def _sync_directory(directory: Path) -> None:
         os.close(descriptor)
 
 
+def _remove_created_file(
+    path: Path,
+    identity: tuple[int, int] | None,
+) -> None:
+    if identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or int(getattr(observed, "st_file_attributes", 0)) & 0x400
+        or (int(observed.st_dev), int(observed.st_ino)) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def write_json_exclusive(
     path: str | Path,
     payload: Mapping[str, object],
@@ -67,12 +90,19 @@ def write_json_exclusive(
         raise SecureFileError("artifact parent must be a real directory")
 
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     descriptor: int | None = None
+    created_identity: tuple[int, int] | None = None
     try:
         descriptor = os.open(destination, flags, mode)
         with os.fdopen(descriptor, "wb") as handle:
             descriptor = None  # ownership moved to the file object
+            created = os.fstat(handle.fileno())
+            if not stat.S_ISREG(created.st_mode):
+                raise SecureFileError("artifact output must be a regular file")
+            created_identity = (int(created.st_dev), int(created.st_ino))
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
@@ -83,10 +113,7 @@ def write_json_exclusive(
                 os.close(descriptor)
             except OSError:
                 pass
-        try:
-            destination.unlink()
-        except OSError:
-            pass
+        _remove_created_file(destination, created_identity)
         raise
     return destination
 

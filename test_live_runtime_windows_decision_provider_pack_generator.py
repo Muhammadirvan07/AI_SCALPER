@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import live_runtime.windows_decision_provider_pack_generator as decision_pack_module
 from build_windows_release import _canonical_json, _create_archive
 from live_runtime.brokerless_decision_producer import (
     DecisionProducerBinding,
@@ -694,12 +695,12 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
         original = target._write_exclusive
         writes = 0
 
-        def fail_second(path: Path, payload: bytes) -> None:
+        def fail_second(path: Path, payload: bytes) -> tuple[int, ...]:
             nonlocal writes
             writes += 1
             if writes == 2:
                 raise DecisionProviderPackError("PACK_OUTPUT_WRITE_FAILED")
-            original(path, payload)
+            return original(path, payload)
 
         with (
             patch.object(target, "_write_exclusive", side_effect=fail_second),
@@ -802,6 +803,34 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
             self.suite_manifest["suite_identity_sha256"],
             built["base_release_suite_identity_sha256"],
         )
+
+
+    def test_cleanup_preserves_replaced_pack_root(self):
+        pack_root = self.root / "owned-pack"
+        displaced = self.root / "displaced-pack"
+        replacement = self.root / "replacement-pack"
+        pack_root.mkdir()
+        identity = decision_pack_module._directory_identity(
+            pack_root.lstat()
+        )
+        pack_root.rename(displaced)
+        try:
+            pack_root.symlink_to(
+                replacement.name,
+                target_is_directory=True,
+            )
+        except (NotImplementedError, OSError):
+            self.skipTest("symlinks are unavailable on this platform")
+
+        decision_pack_module._cleanup_created(
+            pack_root,
+            identity,
+            [],
+        )
+
+        self.assertTrue(pack_root.is_symlink())
+        self.assertEqual(Path(replacement.name), pack_root.readlink())
+        self.assertTrue(displaced.is_dir())
 
 
 if __name__ == "__main__":

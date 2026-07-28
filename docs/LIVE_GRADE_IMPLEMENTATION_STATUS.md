@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-28 menjalankan **1.687 test** tanpa
+Validasi lokal terakhir pada 2026-07-28 menjalankan **1.712 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
 PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
 juga lulus 21 unit test frontend, 24 test backend, 14 browser E2E, lint,
@@ -101,6 +101,17 @@ yang tidak lengkap, dan token status negatif seperti `NOT_READY` atau
 memiliki credential, permit, arm, task mutation, broker mutation, maupun order
 authority. Penggunaan di luar loopback tetap memerlukan deployment review,
 TLS, authentication, dan security-header policy terpisah.
+
+Create-exclusive output custody kini konsisten pada shared Windows release
+writer, role release/sidecar builder, configured overlay, evidence/feed dan
+provider publisher, provider-pack generator, atomic-suite lock/staging, serta
+configured-candidate cleanup yang relevan. Setiap cleanup membawa exact
+identitas file atau root yang dibuat invocation berjalan; identitas hilang,
+berubah, symlink/reparse, atau object pengganti selalu dipertahankan dan proses
+gagal tertutup. Full regression normal dan optimized sama-sama lulus 1.712
+test dengan tiga platform skip. Kontrak ini hanya memperkuat artifact custody
+dan tidak mengubah `order_capability`, `live_allowed`, demo-auto, promotion,
+atau broker authority.
 
 ## Status roadmap
 

@@ -815,11 +815,22 @@ def _rename_no_replace(source: Path, destination: Path) -> None:
 def _atomic_publish(staging: Path, destination: Path) -> None:
     lock = destination.parent / f".{destination.name}.publish.lock"
     descriptor: int | None = None
+    lock_identity: tuple[int, int] | None = None
     try:
         descriptor = os.open(
             lock,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
             0o600,
+        )
+        created_lock = os.fstat(descriptor)
+        lock_identity = (
+            int(created_lock.st_dev),
+            int(created_lock.st_ino),
         )
         if os.path.lexists(destination):
             raise FileExistsError(str(destination))
@@ -832,27 +843,50 @@ def _atomic_publish(staging: Path, destination: Path) -> None:
         if descriptor is not None:
             os.close(descriptor)
         try:
-            lock.unlink()
-        except FileNotFoundError:
-            pass
+            observed_lock = lock.lstat()
         except OSError:
-            pass
+            observed_lock = None
+        if (
+            observed_lock is not None
+            and stat.S_ISREG(observed_lock.st_mode)
+            and not _is_junction(lock)
+            and (
+                int(observed_lock.st_dev),
+                int(observed_lock.st_ino),
+            )
+            == lock_identity
+        ):
+            try:
+                lock.unlink()
+            except OSError:
+                pass
 
 
-def _cleanup_staging(staging: Path | None, parent: Path, prefix: str) -> None:
-    if staging is None:
+def _cleanup_staging(
+    staging: Path | None,
+    parent: Path,
+    prefix: str,
+    identity: tuple[int, int, int, int] | None,
+) -> None:
+    if staging is None or identity is None:
         return
     try:
+        metadata = staging.lstat()
         if (
             staging.parent != parent
             or not staging.name.startswith(prefix)
-            or not os.path.lexists(staging)
+            or (
+                int(metadata.st_dev),
+                int(metadata.st_ino),
+                int(metadata.st_mode),
+                int(getattr(metadata, "st_file_attributes", 0)),
+            )
+            != identity
+            or stat.S_ISLNK(metadata.st_mode)
+            or _is_junction(staging)
         ):
             return
-        if staging.is_symlink():
-            staging.unlink()
-        else:
-            shutil.rmtree(staging)
+        shutil.rmtree(staging)
     except OSError:
         pass
 
@@ -874,6 +908,7 @@ def build_base_release_suite(
 
     prefix = f".{output.name}.staging-"
     staging: Path | None = None
+    staging_identity: tuple[int, int, int, int] | None = None
     try:
         try:
             staging = Path(
@@ -887,6 +922,13 @@ def build_base_release_suite(
             raise BaseReleaseSuiteError(
                 "BASE_RELEASE_SUITE_DESTINATION_INVALID"
             )
+        staging_metadata = staging.lstat()
+        staging_identity = (
+            int(staging_metadata.st_dev),
+            int(staging_metadata.st_ino),
+            int(staging_metadata.st_mode),
+            int(getattr(staging_metadata, "st_file_attributes", 0)),
+        )
 
         role_records: list[dict[str, Any]] = []
         for policy in ROLE_POLICIES:
@@ -986,7 +1028,12 @@ def build_base_release_suite(
             "roles": role_records,
         }
     finally:
-        _cleanup_staging(staging, output.parent, prefix)
+        _cleanup_staging(
+            staging,
+            output.parent,
+            prefix,
+            staging_identity,
+        )
 
 
 def _parser() -> argparse.ArgumentParser:

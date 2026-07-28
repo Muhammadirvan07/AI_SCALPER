@@ -549,14 +549,14 @@ class WindowsConfiguredOverlayCandidatePreparationTests(unittest.TestCase):
             original = target._write_exclusive
             count = 0
 
-            def fail_second(path: Path, data: bytes) -> None:
+            def fail_second(path: Path, data: bytes):
                 nonlocal count
                 count += 1
                 if count == 2:
                     raise ConfiguredReleaseError(
                         "OUTPUT_ALREADY_EXISTS_OR_UNAVAILABLE"
                     )
-                original(path, data)
+                return original(path, data)
 
             with patch.object(target, "_write_exclusive", side_effect=fail_second):
                 with self.assertRaisesRegex(

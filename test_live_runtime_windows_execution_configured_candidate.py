@@ -8,6 +8,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+import live_runtime.windows_execution_configured_candidate as execution_candidate_module
 from live_runtime.configured_service_release import (
     verify_configured_service_release,
 )
@@ -384,6 +385,34 @@ class WindowsExecutionConfiguredCandidateTests(unittest.TestCase):
                         output_root=output,
                     )
                 self.assertFalse(output.exists())
+
+
+    def test_cleanup_preserves_replaced_candidate_root(self):
+        candidate = self.root / "owned-candidate"
+        displaced = self.root / "displaced-candidate"
+        replacement = self.root / "replacement-candidate"
+        candidate.mkdir()
+        metadata = candidate.lstat()
+        identity = (
+            int(metadata.st_dev),
+            int(metadata.st_ino),
+            int(metadata.st_mode),
+            int(getattr(metadata, "st_file_attributes", 0)),
+        )
+        candidate.rename(displaced)
+        try:
+            candidate.symlink_to(
+                replacement.name,
+                target_is_directory=True,
+            )
+        except (NotImplementedError, OSError):
+            self.skipTest("symlinks are unavailable on this platform")
+
+        execution_candidate_module._cleanup(candidate, identity)
+
+        self.assertTrue(candidate.is_symlink())
+        self.assertEqual(Path(replacement.name), candidate.readlink())
+        self.assertTrue(displaced.is_dir())
 
 
 if __name__ == "__main__":

@@ -10,7 +10,9 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
+import live_runtime.windows_status_monitor_provider_pack as monitor_provider_module
 from live_runtime.contracts import canonical_json, canonical_sha256
 from live_runtime.windows_external_status_monitor import (
     ExternalMonitorConfig,
@@ -524,6 +526,45 @@ class StatusMonitorProviderPackTests(unittest.TestCase):
                 len(tuple(requests.glob("*.request.json"))),
                 1,
             )
+
+
+    def test_request_write_failure_preserves_replacement_path(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            path = root / "request.json"
+            replacement = root / "replacement.json"
+            probe = root / "symlink-probe"
+            try:
+                probe.symlink_to("missing")
+                probe.unlink()
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+
+            def swap_then_fail(_descriptor: int) -> None:
+                path.unlink()
+                path.symlink_to(replacement.name)
+                raise OSError("simulated fsync failure after path swap")
+
+            with patch.object(
+                monitor_provider_module.os,
+                "fsync",
+                side_effect=swap_then_fail,
+            ):
+                with self.assertRaises(
+                    WindowsStatusMonitorProviderError
+                ) as caught:
+                    monitor_provider_module._write_exclusive(
+                        path,
+                        b"{}\n",
+                        "MONITOR_REQUEST_WRITE_FAILED",
+                    )
+            self.assertEqual(
+                "MONITOR_REQUEST_WRITE_FAILED",
+                caught.exception.reason_code,
+            )
+            self.assertTrue(path.is_symlink())
+            self.assertEqual(Path(replacement.name), path.readlink())
+            self.assertFalse(replacement.exists())
 
 
 if __name__ == "__main__":

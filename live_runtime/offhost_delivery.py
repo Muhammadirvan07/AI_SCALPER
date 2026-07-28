@@ -33,6 +33,28 @@ _OUTBOX_TABLE_SQL = """CREATE TABLE delivery_outbox (
                 )"""
 
 
+def _remove_created_file(
+    path: Path,
+    identity: tuple[int, int] | None,
+) -> None:
+    if identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or int(getattr(observed, "st_file_attributes", 0)) & 0x400
+        or (int(observed.st_dev), int(observed.st_ino)) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -308,8 +330,11 @@ class DirectoryDropTransport:
     @staticmethod
     def _write_exclusive(path: Path, data: bytes) -> None:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
+        flags |= getattr(os, "O_BINARY", 0)
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor: int | None = None
+        created_identity: tuple[int, int] | None = None
         try:
             descriptor = os.open(path, flags, 0o600)
         except FileExistsError:
@@ -324,14 +349,24 @@ class DirectoryDropTransport:
             raise OffHostDeliveryError("REMOTE_DROP_WRITE_FAILED") from exc
         try:
             with os.fdopen(descriptor, "wb") as handle:
+                descriptor = None
+                created = os.fstat(handle.fileno())
+                if not stat.S_ISREG(created.st_mode):
+                    raise OffHostDeliveryError("REMOTE_DROP_WRITE_FAILED")
+                created_identity = (
+                    int(created.st_dev),
+                    int(created.st_ino),
+                )
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())
         except Exception:
-            try:
-                path.unlink()
-            except OSError:
-                pass
+            if descriptor is not None:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+            _remove_created_file(path, created_identity)
             raise
 
     def deliver(self, envelope: DeliveryEnvelope) -> DeliveryAcknowledgement:

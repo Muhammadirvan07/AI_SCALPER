@@ -7,7 +7,9 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
+import live_runtime.offhost_delivery as offhost_delivery
 from live_runtime.offhost_delivery import (
     DeliveryAcknowledgement,
     DeliveryEnvelope,
@@ -269,6 +271,35 @@ class OffHostDeliveryTests(unittest.TestCase):
         self.assertFalse(outbox.verify_records(lambda key_id: REMOTE_KEY))
         with self.assertRaisesRegex(Exception, "DELIVERY_OUTBOX_INTEGRITY_FAILURE"):
             supervisor.deliver_pending(Transport(), attempted_at=NOW + timedelta(seconds=2))
+
+    def test_remote_drop_write_failure_preserves_replacement_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "envelope.json"
+            replacement = root / "replacement.json"
+            probe = root / "symlink-probe"
+            try:
+                probe.symlink_to("missing")
+                probe.unlink()
+            except (NotImplementedError, OSError):
+                self.skipTest("symlinks are unavailable on this platform")
+
+            def swap_then_fail(_descriptor: int) -> None:
+                path.unlink()
+                path.symlink_to(replacement.name)
+                raise OSError("simulated fsync failure after path swap")
+
+            with patch.object(
+                offhost_delivery.os,
+                "fsync",
+                side_effect=swap_then_fail,
+            ):
+                with self.assertRaisesRegex(OSError, "simulated fsync"):
+                    DirectoryDropTransport._write_exclusive(path, b"payload")
+
+            self.assertTrue(path.is_symlink())
+            self.assertEqual(Path(replacement.name), path.readlink())
+            self.assertFalse(replacement.exists())
 
 
 if __name__ == "__main__":
