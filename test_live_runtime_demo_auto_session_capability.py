@@ -245,6 +245,27 @@ class DemoAutoSessionCapabilityTest(unittest.TestCase):
             self.binding.stage_binding.model_artifact_sha256,
             renewed.model_artifact_sha256,
         )
+        reopened = self._reopen()
+        self.assertEqual(
+            self.binding.stage_binding.champion_archive_sha256,
+            reopened.binding.stage_binding.champion_archive_sha256,
+        )
+        self.assertEqual(
+            self.binding.stage_binding.champion_package_identity_sha256,
+            reopened.binding.stage_binding.champion_package_identity_sha256,
+        )
+        self.assertEqual(
+            self.binding.stage_binding.champion_training_snapshot_sha256,
+            reopened.binding.stage_binding.champion_training_snapshot_sha256,
+        )
+        self.assertEqual(
+            self.binding.stage_binding.champion_git_tree,
+            reopened.binding.stage_binding.champion_git_tree,
+        )
+        self.assertEqual(
+            self.binding.stage_binding.champion_runtime_binding_sha256,
+            reopened.binding.stage_binding.champion_runtime_binding_sha256,
+        )
         self.assertFalse(renewed.execution_authorized)
         self.assertFalse(renewed.activation_authorized)
         self.assertFalse(renewed.safe_to_demo_auto_order)

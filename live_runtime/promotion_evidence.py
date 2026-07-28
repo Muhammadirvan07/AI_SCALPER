@@ -317,6 +317,11 @@ def validate_promotion_evidence_receipt(
     expected_commit_sha: str,
     expected_config_sha256: str,
     expected_model_artifact_sha256: str,
+    expected_champion_archive_sha256: str | None,
+    expected_champion_package_identity_sha256: str | None,
+    expected_champion_training_snapshot_sha256: str | None,
+    expected_champion_git_tree: str | None,
+    expected_champion_runtime_binding_sha256: str | None,
 ) -> PromotionEvidenceValidation:
     # This is a signed trust-boundary value. Accepting subclasses would let a
     # caller override ``verify_signature`` without possessing the signing key.
@@ -342,6 +347,31 @@ def validate_promotion_evidence_receipt(
     expected_lane_id = (
         f"{expected_symbol_normalized}:{expected_strategy_normalized}:"
         f"{expected_config_normalized}"
+    )
+
+    def expected_hash(value: str | None, *, length: int = 64) -> str | None:
+        try:
+            normalized = require_hash(
+                "expected champion identity",
+                value,
+                minimum_length=length,
+            )
+        except (TypeError, ValueError):
+            return None
+        if len(normalized) != length or normalized == "0" * length:
+            return None
+        return normalized
+
+    expected_archive = expected_hash(expected_champion_archive_sha256)
+    expected_package = expected_hash(
+        expected_champion_package_identity_sha256
+    )
+    expected_snapshot = expected_hash(
+        expected_champion_training_snapshot_sha256
+    )
+    expected_tree = expected_hash(expected_champion_git_tree, length=40)
+    expected_runtime_binding = expected_hash(
+        expected_champion_runtime_binding_sha256
     )
     bindings = (
         (receipt.mode == str(expected_mode).strip().upper(), "PROMOTION_MODE_MISMATCH"),
@@ -374,6 +404,32 @@ def validate_promotion_evidence_receipt(
             receipt.model_artifact_sha256
             == str(expected_model_artifact_sha256).strip().lower(),
             "PROMOTION_MODEL_MISMATCH",
+        ),
+        (
+            expected_archive is not None
+            and receipt.champion_archive_sha256 == expected_archive,
+            "PROMOTION_CHAMPION_ARCHIVE_MISMATCH",
+        ),
+        (
+            expected_package is not None
+            and receipt.champion_package_identity_sha256 == expected_package,
+            "PROMOTION_CHAMPION_PACKAGE_MISMATCH",
+        ),
+        (
+            expected_snapshot is not None
+            and receipt.champion_training_snapshot_sha256 == expected_snapshot,
+            "PROMOTION_CHAMPION_SNAPSHOT_MISMATCH",
+        ),
+        (
+            expected_tree is not None
+            and receipt.champion_git_tree == expected_tree,
+            "PROMOTION_CHAMPION_TREE_MISMATCH",
+        ),
+        (
+            expected_runtime_binding is not None
+            and receipt.champion_runtime_binding_sha256
+            == expected_runtime_binding,
+            "PROMOTION_CHAMPION_RUNTIME_BINDING_MISMATCH",
         ),
     )
     reasons.extend(code for matched, code in bindings if not matched)

@@ -110,7 +110,7 @@ def promotion_evidence(
         commit_sha="a" * 40,
         config_sha256="b" * 64,
         model_artifact_sha256="f" * 64,
-        champion_archive_sha256="0" * 64,
+        champion_archive_sha256="5" * 64,
         champion_package_identity_sha256="1" * 64,
         champion_training_snapshot_sha256="2" * 64,
         champion_git_tree="3" * 40,

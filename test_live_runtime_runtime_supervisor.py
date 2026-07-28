@@ -208,6 +208,11 @@ class StagePortFixture:
             broker_profile_sha256=digest("broker-profile"),
             runtime_profile_sha256=digest("runtime-profile"),
             model_artifact_sha256=digest("model"),
+            champion_archive_sha256=digest("champion-archive"),
+            champion_package_identity_sha256=digest("champion-package"),
+            champion_training_snapshot_sha256=digest("champion-snapshot"),
+            champion_git_tree="3" * 40,
+            champion_runtime_binding_sha256=digest("champion-runtime"),
             acceptance_authority_policy_sha256=(
                 self.acceptance_authority_policy.policy_sha256
             ),

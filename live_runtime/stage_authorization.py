@@ -34,7 +34,7 @@ from .manual_demo_tracker import (
 from .promotion_evidence import PromotionEvidenceReceipt
 
 
-STAGE_AUTHORIZATION_SCHEMA_VERSION = "stage-readiness-authorization-v2"
+STAGE_AUTHORIZATION_SCHEMA_VERSION = "stage-readiness-authorization-v3"
 MANUAL_DEMO_AGGREGATE_SCHEMA_VERSION = "manual-demo-aggregate-receipt-v1"
 APPROVAL_SCHEMA_VERSION = "stage-readiness-human-approval-v1"
 MANUAL_READINESS_SCHEMA_VERSION = "manual-demo-global-readiness-receipt-v2"
@@ -273,6 +273,11 @@ class StageBinding(CanonicalContract):
     broker_profile_sha256: str
     runtime_profile_sha256: str
     model_artifact_sha256: str
+    champion_archive_sha256: str
+    champion_package_identity_sha256: str
+    champion_training_snapshot_sha256: str
+    champion_git_tree: str
+    champion_runtime_binding_sha256: str
     acceptance_authority_policy_sha256: str
     manual_demo_custodian_trust_sha256: str
 
@@ -303,10 +308,22 @@ class StageBinding(CanonicalContract):
             "broker_profile_sha256",
             "runtime_profile_sha256",
             "model_artifact_sha256",
+            "champion_archive_sha256",
+            "champion_package_identity_sha256",
+            "champion_training_snapshot_sha256",
+            "champion_runtime_binding_sha256",
             "acceptance_authority_policy_sha256",
             "manual_demo_custodian_trust_sha256",
         ):
             object.__setattr__(self, name, _nonzero_hash(name, getattr(self, name)))
+        champion_tree = _nonzero_hash(
+            "champion_git_tree",
+            self.champion_git_tree,
+            minimum_length=40,
+        )
+        if len(champion_tree) != 40 or champion_tree == "0" * 40:
+            raise ValueError("champion_git_tree must be an exact 40-character hash")
+        object.__setattr__(self, "champion_git_tree", champion_tree)
         expected_lane = f"{symbol}:{strategy}:{self.config_sha256}"
         if self.lane_id != expected_lane:
             raise ValueError("lane_id does not match symbol/strategy/config_sha256")
@@ -1617,18 +1634,62 @@ def _promotion_reason_codes(
         reasons.append("PROMOTION_EVIDENCE_SIGNATURE_INVALID")
     binding = request.binding
     comparisons = (
-        (receipt.content_sha256 == request.promotion_evidence_receipt_sha256, "PROMOTION_EVIDENCE_REFERENCE_MISMATCH"),
+        (
+            receipt.content_sha256
+            == request.promotion_evidence_receipt_sha256,
+            "PROMOTION_EVIDENCE_REFERENCE_MISMATCH",
+        ),
         (receipt.mode == "DEMO_AUTO", "PROMOTION_MODE_MISMATCH"),
-        (receipt.account_alias_sha256 == binding.account_alias_sha256, "PROMOTION_ACCOUNT_MISMATCH"),
+        (
+            receipt.account_alias_sha256 == binding.account_alias_sha256,
+            "PROMOTION_ACCOUNT_MISMATCH",
+        ),
         (receipt.server == binding.server, "PROMOTION_SERVER_MISMATCH"),
-        (receipt.journal_sha256 == binding.journal_sha256, "PROMOTION_JOURNAL_MISMATCH"),
+        (
+            receipt.journal_sha256 == binding.journal_sha256,
+            "PROMOTION_JOURNAL_MISMATCH",
+        ),
         (receipt.symbol == binding.symbol, "PROMOTION_SYMBOL_MISMATCH"),
         (receipt.strategy == binding.strategy, "PROMOTION_STRATEGY_MISMATCH"),
         (receipt.lane_id == binding.lane_id, "PROMOTION_LANE_MISMATCH"),
         (receipt.commit_sha == binding.commit_sha, "PROMOTION_COMMIT_MISMATCH"),
-        (receipt.config_sha256 == binding.config_sha256, "PROMOTION_CONFIG_MISMATCH"),
-        (receipt.model_artifact_sha256 == binding.model_artifact_sha256, "PROMOTION_MODEL_MISMATCH"),
-        (receipt.evidence_store_receipt_sha256 == request.evidence_store_receipt_sha256, "EVIDENCE_STORE_REFERENCE_MISMATCH"),
+        (
+            receipt.config_sha256 == binding.config_sha256,
+            "PROMOTION_CONFIG_MISMATCH",
+        ),
+        (
+            receipt.model_artifact_sha256 == binding.model_artifact_sha256,
+            "PROMOTION_MODEL_MISMATCH",
+        ),
+        (
+            receipt.champion_archive_sha256
+            == binding.champion_archive_sha256,
+            "PROMOTION_CHAMPION_ARCHIVE_MISMATCH",
+        ),
+        (
+            receipt.champion_package_identity_sha256
+            == binding.champion_package_identity_sha256,
+            "PROMOTION_CHAMPION_PACKAGE_MISMATCH",
+        ),
+        (
+            receipt.champion_training_snapshot_sha256
+            == binding.champion_training_snapshot_sha256,
+            "PROMOTION_CHAMPION_SNAPSHOT_MISMATCH",
+        ),
+        (
+            receipt.champion_git_tree == binding.champion_git_tree,
+            "PROMOTION_CHAMPION_TREE_MISMATCH",
+        ),
+        (
+            receipt.champion_runtime_binding_sha256
+            == binding.champion_runtime_binding_sha256,
+            "PROMOTION_CHAMPION_RUNTIME_BINDING_MISMATCH",
+        ),
+        (
+            receipt.evidence_store_receipt_sha256
+            == request.evidence_store_receipt_sha256,
+            "EVIDENCE_STORE_REFERENCE_MISMATCH",
+        ),
     )
     reasons.extend(code for matches, code in comparisons if not matches)
     parity = next(

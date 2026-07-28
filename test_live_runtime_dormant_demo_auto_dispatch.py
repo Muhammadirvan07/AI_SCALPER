@@ -36,10 +36,14 @@ from live_runtime.demo_auto_session_capability import (
 from live_runtime.executor import ExecutionCoordinator
 from live_runtime.journal import ExecutionJournal, InvalidTransitionError
 from live_runtime.permit import PromotionPermit
+from live_runtime.promotion_evidence import validate_promotion_evidence_receipt
 from live_runtime.reconciliation import reconcile_broker_state
 from live_runtime.runtime_supervisor import (
+    RuntimeSupervisorCriticalError,
     RuntimeSupervisorBinding,
     RuntimeSupervisorCheckpoint,
+    RuntimeSupervisorDecision,
+    _verify_demo_auto_dispatch_controls,
 )
 from live_runtime.stage_authorization import StageBinding, account_alias_sha256
 from test_live_runtime_demo_auto_ipc_consumer import ExternalCustody as IPCCustody
@@ -328,6 +332,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
             issued_at_utc=self.clock.now - timedelta(milliseconds=1),
             key_id="supervisor-checkpoint-v1",
         ).sign(SUPERVISOR_CHECKPOINT_KEY)
+        self.supervisor_checkpoint = supervisor_checkpoint
         ledger_id, session_id = derive_demo_auto_session_identity(
             stage_binding_sha256=self.stage.binding.binding_sha256,
             stage_authorization_id=self.authorization.authorization_id,
@@ -748,6 +753,101 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.assertIn("DEMO_AUTO_SESSION_STORE_REQUIRED", outcome.reason_codes)
         self.assertEqual(0, adapter.preflight_calls)
         self.assertEqual(0, adapter.submit_calls)
+
+    def test_executor_rejects_cross_champion_receipt_before_preflight(self) -> None:
+        self.stage.promotion = self.stage._promotion_receipt(
+            champion_archive_sha256="7" * 64,
+            issued_at=NOW - timedelta(milliseconds=100),
+            expires_at=NOW + timedelta(minutes=1),
+            nonce="dormant-cross-champion-promotion-v1",
+        )
+        self.permit = replace(
+            self.permit,
+            promotion_evidence_sha256=self.stage.promotion.content_sha256,
+            nonce="dormant-cross-champion-permit-v1",
+            signature="",
+        ).sign(PERMIT_KEY)
+        self.ipc_input = self._consume_ipc(
+            permit=self.permit,
+            database_name="decision-ipc-cross-champion.sqlite3",
+        )
+        adapter = self._adapter()
+        outcome = self._execute(adapter)
+        self.assertEqual("RISK_REJECTED", outcome.state)
+        self.assertIn(
+            "PROMOTION_CHAMPION_ARCHIVE_MISMATCH",
+            outcome.reason_codes,
+        )
+        self.assertEqual(0, adapter.preflight_calls)
+        self.assertEqual(0, adapter.submit_calls)
+
+    def test_supervisor_rejects_cross_champion_sealed_validation(self) -> None:
+        stage = self.stage.binding
+        validation = validate_promotion_evidence_receipt(
+            self.stage.promotion,
+            lambda _key_id: self.stage.promotion_secret,
+            now=self.clock.now,
+            expected_mode="DEMO_AUTO",
+            expected_account_alias=self.stage.account_alias,
+            expected_server=stage.server,
+            expected_journal_sha256=stage.journal_sha256,
+            expected_symbol=stage.symbol,
+            expected_strategy=stage.strategy,
+            expected_commit_sha=stage.commit_sha,
+            expected_config_sha256=stage.config_sha256,
+            expected_model_artifact_sha256=stage.model_artifact_sha256,
+            expected_champion_archive_sha256=stage.champion_archive_sha256,
+            expected_champion_package_identity_sha256=(
+                stage.champion_package_identity_sha256
+            ),
+            expected_champion_training_snapshot_sha256=(
+                stage.champion_training_snapshot_sha256
+            ),
+            expected_champion_git_tree=stage.champion_git_tree,
+            expected_champion_runtime_binding_sha256=(
+                stage.champion_runtime_binding_sha256
+            ),
+        )
+        self.assertTrue(validation.valid, validation.reason_codes)
+        object.__setattr__(
+            validation,
+            "champion_archive_sha256",
+            "7" * 64,
+        )
+        intent = self._intent()
+        dispatch = self.session_store.issue_dispatch_verification(
+            self.session_lease,
+            intent_id=intent.intent_id,
+            valid_until_utc=min(
+                self.ipc_input.valid_until_utc,
+                self.session_lease.expires_at_utc,
+            ),
+        )
+        decision = RuntimeSupervisorDecision(
+            decision_id=self.decision.snapshot_id,
+            action="DEMO_AUTO_EXECUTE",
+            decided_at_utc=self.clock.now,
+            decision_payload_sha256=self.decision.content_sha256,
+            intent_id=intent.intent_id,
+        )
+        with self.assertRaisesRegex(
+            RuntimeSupervisorCriticalError,
+            "DEMO_AUTO_PROMOTION_EVIDENCE_VALIDATION_FAILED",
+        ):
+            _verify_demo_auto_dispatch_controls(
+                binding=self.supervisor_binding,
+                decision=decision,
+                ipc_input=self.ipc_input,
+                session_store=self.session_store,
+                session_lease=self.session_lease,
+                session_checkpoint=self.session_store.current_checkpoint(),
+                session_dispatch_verification=dispatch,
+                permit_validation=self.ipc_input.permit_validation,
+                promotion_validation=validation,
+                environment_arm=self.ipc_input.environment_arm,
+                supervisor_checkpoint=self.supervisor_checkpoint,
+                checked_at=self.clock.now,
+            )
 
     def test_replaced_lease_is_rejected_before_preflight(self) -> None:
         stale = self.session_lease

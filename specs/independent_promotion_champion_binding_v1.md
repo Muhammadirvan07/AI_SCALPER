@@ -293,3 +293,8 @@ or execution policy is changed.
 - OS-6: Expanding runtime stage bindings to carry the full archive; the trusted
   signed receipt remains the audit carrier while execution continues to compare
   its existing commit, configuration, and model identities.
+
+Later completion note: OS-6 remained correctly outside this increment. It is
+implemented separately by `runtime_stage_champion_binding_v1.md`, which expands
+the stage schema and runtime comparisons without changing this specification's
+historical scope or granting activation authority.

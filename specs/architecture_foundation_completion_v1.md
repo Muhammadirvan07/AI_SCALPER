@@ -56,6 +56,9 @@ change the external ship blockers above.
 - FR-9a: The later champion-binding hardening MUST verify exact champion bytes
   against six external pins, bind every raw observation to that champion, and
   derive signed commit/model identities rather than accepting them separately.
+- FR-9b: The later runtime-stage hardening MUST bind the champion archive,
+  package, training snapshot, Git tree, and runtime identity independently in
+  the exact stage contract and compare them at every dispatch boundary.
 - FR-10: The Windows release builder MUST support a separate exact
   `READ_ONLY_SHADOW_SERVICE` profile with its own versioned allowlist and MUST
   preserve the existing deployment-tooling profile without behavior drift.
@@ -144,6 +147,13 @@ Given synthetic raw evidence satisfies every statistical threshold
 When the issuer produces sealed readiness
 Then manual ship gate remains required and all execution/promotion safety locks
 remain false with maximum lot 0.01.
+
+### AC-8a: Champion lineage reaches the runtime stage (FR-9a, FR-9b, FR-16)
+
+Given a signed promotion receipt and an independently selected stage binding
+When any champion archive, package, snapshot, tree, or runtime identity differs
+Then stage authorization, supervisor verification, and executor revalidation
+fail before an adapter call while every trading lock remains disabled.
 
 ### AC-9: Separate read-only service profile (FR-10, FR-11)
 Given a clean Git checkout and the reviewed service allowlist

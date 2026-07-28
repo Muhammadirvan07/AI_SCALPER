@@ -856,6 +856,15 @@ def _verify_demo_auto_dispatch_controls(
         or promotion_validation.commit_sha != binding.commit_sha
         or promotion_validation.config_sha256 != binding.config_sha256
         or promotion_validation.model_artifact_sha256 != stage.model_artifact_sha256
+        or promotion_validation.champion_archive_sha256
+        != stage.champion_archive_sha256
+        or promotion_validation.champion_package_identity_sha256
+        != stage.champion_package_identity_sha256
+        or promotion_validation.champion_training_snapshot_sha256
+        != stage.champion_training_snapshot_sha256
+        or promotion_validation.champion_git_tree != stage.champion_git_tree
+        or promotion_validation.champion_runtime_binding_sha256
+        != stage.champion_runtime_binding_sha256
         or promotion_validation.receipt_sha256
         != permit_validation.promotion_evidence_sha256
         or promotion_validation.checked_at > now

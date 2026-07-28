@@ -96,6 +96,46 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _promotion_champion_expectations(
+    ipc_input: DemoAutoIPCRiskIntentInput | None,
+) -> dict[str, str | None]:
+    """Return only independently stage-bound champion identities.
+
+    The receipt under validation is intentionally not an input to this helper.
+    Missing DEMO_AUTO IPC therefore yields explicit invalid expectations rather
+    than allowing the signed receipt to select its own expected champion.
+    """
+
+    stage = (
+        ipc_input.stage_binding
+        if type(ipc_input) is DemoAutoIPCRiskIntentInput
+        else None
+    )
+    return {
+        "expected_champion_archive_sha256": (
+            stage.champion_archive_sha256 if stage is not None else None
+        ),
+        "expected_champion_package_identity_sha256": (
+            stage.champion_package_identity_sha256
+            if stage is not None
+            else None
+        ),
+        "expected_champion_training_snapshot_sha256": (
+            stage.champion_training_snapshot_sha256
+            if stage is not None
+            else None
+        ),
+        "expected_champion_git_tree": (
+            stage.champion_git_tree if stage is not None else None
+        ),
+        "expected_champion_runtime_binding_sha256": (
+            stage.champion_runtime_binding_sha256
+            if stage is not None
+            else None
+        ),
+    }
+
+
 def _demo_auto_control_reasons(
     *,
     intent: TradeIntent,
@@ -568,6 +608,7 @@ class ExecutionCoordinator:
                 expected_model_artifact_sha256=(
                     intent.decision.model_artifact_sha256
                 ),
+                **_promotion_champion_expectations(demo_auto_ipc_input),
             )
         promotion_evidence_sha256 = (
             promotion_validation.receipt_sha256
@@ -1042,6 +1083,7 @@ class ExecutionCoordinator:
                 expected_model_artifact_sha256=(
                     intent.decision.model_artifact_sha256
                 ),
+                **_promotion_champion_expectations(demo_auto_ipc_input),
             )
         refreshed_reasons: list[str] = []
         refreshed_mode_allowed, refreshed_mode_reasons = (
@@ -1200,6 +1242,7 @@ class ExecutionCoordinator:
                     expected_model_artifact_sha256=(
                         intent.decision.model_artifact_sha256
                     ),
+                    **_promotion_champion_expectations(demo_auto_ipc_input),
                 )
             if (
                 final_promotion_validation is None
@@ -1603,6 +1646,9 @@ class ExecutionCoordinator:
                                 ),
                                 expected_model_artifact_sha256=(
                                     intent.decision.model_artifact_sha256
+                                ),
+                                **_promotion_champion_expectations(
+                                    demo_auto_ipc_input
                                 ),
                             )
                             if type(promotion_evidence)

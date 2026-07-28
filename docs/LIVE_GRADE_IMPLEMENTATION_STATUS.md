@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-28 menjalankan **1.769 test** tanpa
+Validasi lokal terakhir pada 2026-07-28 menjalankan **1.775 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
 PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
 juga lulus 21 unit test frontend, 45 test backend, 14 browser E2E, lint,
@@ -126,7 +126,7 @@ File sementara exclusive-write/replace serta marker transaksi
 pengganti tidak pernah dihapus.
 Helper extraction XM/FINEX juga memakai sibling staging dan no-replace
 directory move sebelum verifikasi ulang destination. Full regression normal
-dan optimized sama-sama lulus 1.769 test dengan tiga platform skip. Kontrak ini
+dan optimized sama-sama lulus 1.775 test dengan tiga platform skip. Kontrak ini
 hanya memperkuat artifact custody dan tidak mengubah `order_capability`,
 `live_allowed`, demo-auto, promotion, atau broker authority.
 
@@ -559,7 +559,15 @@ BTCUSD = shadow-only
     archive/package/snapshot/tree/runtime/corpus/bootstrap identities. Receipt
     tetap memerlukan independent production key custody dan corpus broker/OOS
     nyata; data sintetis dalam test bukan promotion evidence.
-11. Broker-neutral one-shot evidence shadow runner kini memiliki durable per-stage receipt,
+11. Champion lineage kini mencapai stage dan runtime boundary. `StageBinding`
+    v3 mewajibkan exact archive, package, training snapshot, Git tree, dan
+    runtime-binding identities selain commit/config/model. Signed promotion
+    evidence dibandingkan dengan pin stage independen saat authorization,
+    standalone validation, supervisor verification, reservation refresh, dan
+    immediate pre-send. Cross-champion atau pin hilang ditolak sebelum adapter
+    preflight/submission. Kontrak dan bukti lokal ada di
+    `docs/RUNTIME_STAGE_CHAMPION_BINDING.md`; ini bukan activation approval.
+12. Broker-neutral one-shot evidence shadow runner kini memiliki durable per-stage receipt,
     hash-chained operational journal, singleton fence, disk floor, heartbeat
     projection, status-only watchdog, verified create-exclusive audit export,
     serta mandatory exact absolute `terminal64.exe` binding untuk seluruh
@@ -642,7 +650,7 @@ BTCUSD = shadow-only
     directory-drop adapter juga tersedia. Durable soak/demotion reset tracker,
     actual remote WORM/alert provider, supervisor composition, dan restore drill
     belum dipasang atau diuji pada Windows VPS.
-12. Supply-chain workflow, SBOM, OSV receipt verifier, deterministic release
+13. Supply-chain workflow, SBOM, OSV receipt verifier, deterministic release
     builder, exact minimal read-only service allowlist, serta signed two-build
     reproducibility receipt sudah tersedia lokal, tetapi actual OSV collection,
     independent signing-key custody, clean committed release identity, dan
@@ -651,7 +659,7 @@ BTCUSD = shadow-only
     dikeluarkan dari Git serta tetap bukan release input; immutable JSON
     configuration hanya boleh berada di `config/`. Karena itu ZIP hanya boleh
     dibuat dari clean checkout commit yang sudah direview.
-13. Bounded Windows service sudah menutup release-root, import-origin,
+14. Bounded Windows service sudah menutup release-root, import-origin,
     heartbeat-chain, lost-deadline, dan exact-once abort gap secara lokal.
     Static reviewed factory template sekarang juga mengikat exact provider
     contract, implementation/config hash, purpose-matched Windows Credential
@@ -690,7 +698,7 @@ BTCUSD = shadow-only
     serta bounded runner juga sudah tersedia sebagai service ketiga tanpa
     broker/order authority. Provider nyata, key/CAS/latch custody, dan
     off-host delivery acceptance tetap eksternal.
-14. Demo-auto decision IPC consumer sudah ada tetapi sengaja locked. Outputnya
+15. Demo-auto decision IPC consumer sudah ada tetapi sengaja locked. Outputnya
     dapat diproses oleh risk/intent boundary dan dispatch seam yang memerlukan
     seluruh sealed authority. Session reservation terikat journal, crash
     sebelum send hanya boleh ditutup dengan unused-lease proof, sedangkan

@@ -86,11 +86,18 @@ binding is an operational control, not a credential.
 | `broker_profile_sha256` | exact broker profile hash |
 | `runtime_profile_sha256` | exact runtime profile hash |
 | `model_artifact_sha256` | exact frozen model hash |
+| `champion_archive_sha256` | exact independently selected champion ZIP SHA-256 |
+| `champion_package_identity_sha256` | exact verified champion package identity |
+| `champion_training_snapshot_sha256` | exact frozen training snapshot SHA-256 |
+| `champion_git_tree` | exact non-zero 40-character champion source tree |
+| `champion_runtime_binding_sha256` | exact verified runtime/model binding |
 | `acceptance_authority_policy_sha256` | exact immutable per-domain authority-key allowlist hash |
 | `manual_demo_custodian_trust_sha256` | exact external manual-demo high-water custodian-key policy hash |
 
-All 64-character hashes reject the all-zero sentinel. Any drift creates a new
-binding and invalidates every old request, approval, and authorization.
+All 64-character hashes and the champion tree reject the all-zero sentinel.
+Any drift creates a new binding and invalidates every old request, approval,
+and authorization. The expanded canonical shape uses
+`stage-readiness-authorization-v3`; old v2 artifacts fail closed.
 
 ## MANUAL_DEMO prerequisites
 
@@ -166,8 +173,8 @@ The actual `PromotionEvidenceReceipt`, not just a caller-supplied boolean, is
 required. The verifier authenticates its independent key and requires:
 
 - mode `DEMO_AUTO`;
-- exact account, server, journal, symbol, strategy, lane, commit, config, and
-  model binding;
+- exact account, server, journal, symbol, strategy, lane, commit, config, model,
+  champion archive, package, training snapshot, Git tree, and runtime binding;
 - exact content hash referenced by the stage request;
 - exact evidence-store receipt reference; and
 - exact parity receipt reference.

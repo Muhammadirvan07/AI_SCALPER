@@ -54,7 +54,7 @@ def receipt():
         journal_sha256=JOURNAL_SHA256,
         commit_sha="b" * 40,
         model_artifact_sha256="c" * 64,
-        champion_archive_sha256="0" * 64,
+        champion_archive_sha256="5" * 64,
         champion_package_identity_sha256="1" * 64,
         champion_training_snapshot_sha256="2" * 64,
         champion_git_tree="3" * 40,
@@ -84,6 +84,11 @@ def validate(value, **changes):
         "expected_commit_sha": "b" * 40,
         "expected_config_sha256": "a" * 64,
         "expected_model_artifact_sha256": "c" * 64,
+        "expected_champion_archive_sha256": "5" * 64,
+        "expected_champion_package_identity_sha256": "1" * 64,
+        "expected_champion_training_snapshot_sha256": "2" * 64,
+        "expected_champion_git_tree": "3" * 40,
+        "expected_champion_runtime_binding_sha256": "4" * 64,
     }
     values.update(changes)
     return validate_promotion_evidence_receipt(
@@ -98,7 +103,7 @@ class PromotionEvidenceTests(unittest.TestCase):
         result = validate(receipt())
         self.assertTrue(result.valid, result.reason_codes)
         self.assertEqual("EURUSD:MOMENTUM_PULLBACK:" + "a" * 64, result.lane_id)
-        self.assertEqual("0" * 64, result.champion_archive_sha256)
+        self.assertEqual("5" * 64, result.champion_archive_sha256)
         self.assertEqual("5" * 64, result.quality_corpus_sha256)
         self.assertEqual("6" * 64, result.bootstrap_receipt_sha256)
 
@@ -107,6 +112,43 @@ class PromotionEvidenceTests(unittest.TestCase):
         self.assertFalse(result.valid)
         self.assertIn("PROMOTION_STRATEGY_MISMATCH", result.reason_codes)
         self.assertIn("PROMOTION_LANE_MISMATCH", result.reason_codes)
+
+    def test_every_champion_identity_requires_an_external_exact_match(self):
+        expected_mismatches = {
+            "expected_champion_archive_sha256": (
+                "PROMOTION_CHAMPION_ARCHIVE_MISMATCH"
+            ),
+            "expected_champion_package_identity_sha256": (
+                "PROMOTION_CHAMPION_PACKAGE_MISMATCH"
+            ),
+            "expected_champion_training_snapshot_sha256": (
+                "PROMOTION_CHAMPION_SNAPSHOT_MISMATCH"
+            ),
+            "expected_champion_git_tree": "PROMOTION_CHAMPION_TREE_MISMATCH",
+            "expected_champion_runtime_binding_sha256": (
+                "PROMOTION_CHAMPION_RUNTIME_BINDING_MISMATCH"
+            ),
+        }
+        for argument, reason in expected_mismatches.items():
+            with self.subTest(argument=argument, state="different"):
+                value = "7" * (40 if argument.endswith("git_tree") else 64)
+                result = validate(receipt(), **{argument: value})
+                self.assertFalse(result.valid)
+                self.assertIn(reason, result.reason_codes)
+            with self.subTest(argument=argument, state="missing"):
+                result = validate(receipt(), **{argument: None})
+                self.assertFalse(result.valid)
+                self.assertIn(reason, result.reason_codes)
+            with self.subTest(argument=argument, state="zero"):
+                length = 40 if argument.endswith("git_tree") else 64
+                result = validate(receipt(), **{argument: "0" * length})
+                self.assertFalse(result.valid)
+                self.assertIn(reason, result.reason_codes)
+            with self.subTest(argument=argument, state="nonhex"):
+                length = 40 if argument.endswith("git_tree") else 64
+                result = validate(receipt(), **{argument: "z" * length})
+                self.assertFalse(result.valid)
+                self.assertIn(reason, result.reason_codes)
 
     def test_tamper_expiry_and_wrong_journal_fail_closed(self):
         signed = receipt()
@@ -143,7 +185,7 @@ class PromotionEvidenceTests(unittest.TestCase):
                 journal_sha256=JOURNAL_SHA256,
                 commit_sha="b" * 40,
                 model_artifact_sha256="c" * 64,
-                champion_archive_sha256="0" * 64,
+                champion_archive_sha256="5" * 64,
                 champion_package_identity_sha256="1" * 64,
                 champion_training_snapshot_sha256="2" * 64,
                 champion_git_tree="3" * 40,
@@ -174,7 +216,7 @@ class PromotionEvidenceTests(unittest.TestCase):
                 commit_sha="b" * 40,
                 config_sha256="a" * 64,
                 model_artifact_sha256="c" * 64,
-                champion_archive_sha256="0" * 64,
+                champion_archive_sha256="5" * 64,
                 champion_package_identity_sha256="1" * 64,
                 champion_training_snapshot_sha256="2" * 64,
                 champion_git_tree="3" * 40,

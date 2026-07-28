@@ -119,13 +119,21 @@ commit dibuat.
   runtime binding, corpus, dan bootstrap identities; jalur issuer independen
   sekarang menurunkan commit/model dari champion dan tidak menerima keduanya
   dari caller. Bukti real tetap pending dan seluruh trading lock tetap false.
+- Audit tahap berikutnya menemukan `StageBinding`, supervisor, dan executor
+  masih membandingkan promotion receipt hanya melalui commit/config/model.
+  Stage schema v3 kini mengikat archive/package/snapshot/tree/runtime identity
+  secara independen. Semua batas stage authorization, session, IPC, supervisor,
+  reservation, dan pre-send menolak cross-champion atau pin yang hilang sebelum
+  adapter dipanggil. Implementasi tetap deny-only dan dijelaskan di
+  `docs/RUNTIME_STAGE_CHAMPION_BINDING.md`.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.769 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.769 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.775 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.775 PASS, 3 skip, exit 0 |
+| Runtime-stage champion-binding focused cluster | 206 PASS per normal/optimized mode |
 | Champion-bound promotion issuer focused cluster | 152 PASS per normal/optimized mode |
 | Rule-core artifact + registry/custody + configured-tooling focused cluster | 36 PASS per normal/optimized mode |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
@@ -234,6 +242,12 @@ di `docs/INDEPENDENT_PROMOTION_CHAMPION_BINDING.md`. Implementasi ini hanya
 menutup binding source/corpus secara lokal. Ia tidak mengubah empat closed
 diagnostic trades menjadi evidence promotion, tidak melewati blinded window,
 dan tidak menggantikan independent production key atau manual ship gate.
+
+Kontrak `specs/runtime_stage_champion_binding_v1.md` membawa lineage tersebut
+ke `StageBinding` v3 dan semua runtime revalidation point. Implementasi lokal
+telah terbukti fail-closed, tetapi exact-head release rebuild, external champion
+custody, real quality corpus, Windows conformance, manual demo, dan soak tetap
+harus diselesaikan sebelum activation review.
 
 Ini menutup format dan verifier handoff lineage lokal, bukan aksi custody atau
 quality gate. Exact artifact untuk commit final harus dibangun dua kali setelah

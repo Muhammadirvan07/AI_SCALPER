@@ -105,6 +105,11 @@ class StageAuthorizationTestCase(unittest.TestCase):
             broker_profile_sha256=digest("broker-profile"),
             runtime_profile_sha256=digest("runtime-profile"),
             model_artifact_sha256=digest("model"),
+            champion_archive_sha256=digest("champion-archive"),
+            champion_package_identity_sha256=digest("champion-package"),
+            champion_training_snapshot_sha256=digest("champion-snapshot"),
+            champion_git_tree="3" * 40,
+            champion_runtime_binding_sha256=digest("champion-runtime"),
             acceptance_authority_policy_sha256=(
                 self.acceptance_policy.policy_sha256
             ),
@@ -471,6 +476,95 @@ class StageAuthorizationTestCase(unittest.TestCase):
         self.assertFalse(validation.safe_to_demo_auto_order)
         self.assertFalse(validation.live_allowed)
         self.assertEqual(validation.order_capability, "DISABLED")
+
+    def test_demo_auto_rejects_each_cross_champion_receipt_without_consumption(
+        self,
+    ) -> None:
+        mismatches = {
+            "champion_archive_sha256": "PROMOTION_CHAMPION_ARCHIVE_MISMATCH",
+            "champion_package_identity_sha256": (
+                "PROMOTION_CHAMPION_PACKAGE_MISMATCH"
+            ),
+            "champion_training_snapshot_sha256": (
+                "PROMOTION_CHAMPION_SNAPSHOT_MISMATCH"
+            ),
+            "champion_git_tree": "PROMOTION_CHAMPION_TREE_MISMATCH",
+            "champion_runtime_binding_sha256": (
+                "PROMOTION_CHAMPION_RUNTIME_BINDING_MISMATCH"
+            ),
+        }
+        for field_name, reason in mismatches.items():
+            with self.subTest(field_name=field_name):
+                replacement = "7" * (40 if field_name == "champion_git_tree" else 64)
+                self.promotion = self._promotion_receipt(
+                    **{field_name: replacement},
+                    nonce=f"cross-champion-{field_name}",
+                )
+                request = self._request(
+                    nonce=f"cross-champion-stage-{field_name}"
+                )
+                authorization = StageReadinessAuthorization(
+                    request=request,
+                    approvals=self._approvals(request),
+                    stage_signer_key_id="stage-authority-v1",
+                ).sign(self.stage_secret)
+                with tempfile.TemporaryDirectory() as directory:
+                    validation = self._validate(
+                        authorization,
+                        self._registry(Path(directory)),
+                    )
+                self.assertFalse(validation.valid)
+                self.assertFalse(validation.consumed_once)
+                self.assertIn(reason, validation.reason_codes)
+
+    def test_champion_identity_is_part_of_exact_stage_hash(self) -> None:
+        for field_name in (
+            "champion_archive_sha256",
+            "champion_package_identity_sha256",
+            "champion_training_snapshot_sha256",
+            "champion_git_tree",
+            "champion_runtime_binding_sha256",
+        ):
+            with self.subTest(field_name=field_name):
+                replacement = "7" * (40 if field_name == "champion_git_tree" else 64)
+                changed = replace(self.binding, **{field_name: replacement})
+                self.assertNotEqual(
+                    self.binding.binding_sha256,
+                    changed.binding_sha256,
+                )
+
+    def test_stage_champion_identity_rejects_zero_or_malformed_values(self) -> None:
+        for field_name in (
+            "champion_archive_sha256",
+            "champion_package_identity_sha256",
+            "champion_training_snapshot_sha256",
+            "champion_runtime_binding_sha256",
+        ):
+            with self.subTest(field_name=field_name, state="zero"):
+                with self.assertRaises(ValueError):
+                    replace(self.binding, **{field_name: "0" * 64})
+            with self.subTest(field_name=field_name, state="short"):
+                with self.assertRaises(ValueError):
+                    replace(self.binding, **{field_name: "7" * 63})
+            with self.subTest(field_name=field_name, state="nonhex"):
+                with self.assertRaises(ValueError):
+                    replace(self.binding, **{field_name: "z" * 64})
+        for invalid_tree in ("0" * 40, "7" * 39, "z" * 40):
+            with self.subTest(champion_git_tree=invalid_tree):
+                with self.assertRaises(ValueError):
+                    replace(self.binding, champion_git_tree=invalid_tree)
+        canonical = replace(
+            self.binding,
+            champion_archive_sha256="A" * 64,
+            champion_git_tree="B" * 40,
+        )
+        self.assertEqual("a" * 64, canonical.champion_archive_sha256)
+        self.assertEqual("b" * 40, canonical.champion_git_tree)
+        with self.assertRaisesRegex(ValueError, "stage request schema mismatch"):
+            replace(
+                self._request(),
+                schema_version="stage-readiness-authorization-v2",
+            )
 
     def test_replay_is_rejected_across_registry_restart(self) -> None:
         authorization = self._issue(self._request())
