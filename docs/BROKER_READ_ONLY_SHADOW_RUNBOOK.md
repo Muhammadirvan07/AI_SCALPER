@@ -160,6 +160,14 @@ uses exact XPath element selection, retains the reviewed start
 root. Keep any V6/V6.1/V6.2 transfer or operator path that exists unchanged
 for forensic review; absence of a never-created path is not an error.
 
+After the automatic V6.3 boundary, use the separate one-ZIP post-run toolkit
+described in
+[`PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE.md`](PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE.md).
+It reuses the exact installed health checker and packages the resulting
+checkpoint/audit/task evidence without calling `Start-ScheduledTask`. A local
+acceptance ZIP is still not off-host/WORM custody and grants no demo-auto or
+live authority.
+
 Worker failure, stale status, audit-export failure, Task Scheduler overlap, or
 loss of the exact terminal is `HOLD`. The worker does not carry an order API.
 

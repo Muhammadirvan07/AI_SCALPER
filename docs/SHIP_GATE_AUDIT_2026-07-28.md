@@ -10,6 +10,7 @@ DEPENDENCY_INTEGRITY = PASS_LOCALLY
 ATOMIC_FIVE_ROLE_BUILD = PASS_REPRODUCIBLE_LOCALLY
 ATOMIC_SUITE_SINGLE_ZIP_TRANSFER = PASS_LOCALLY
 PHILLIP_COMMODITY_V6_3 = PRE_START
+V6_3_POSTRUN_ACCEPTANCE_TOOLKIT = PASS_LOCALLY
 FIRST_AUTOMATIC_SCHEDULED_PROOF = PENDING_2026_07_30_0645_JST
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
@@ -39,7 +40,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.656 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.673 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, explicit loopback CORS, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | npm audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
@@ -51,10 +52,11 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1656 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with `PYTHONOPTIMIZE=2` | `Ran 1656 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1673 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1673 tests ... OK (skipped=3)`, exit 0 |
 | Atomic-suite + one-ZIP transfer feature tests | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer tests | 62 PASS per normal/optimized mode |
+| Phillip V5/V6 scheduler + post-run acceptance tests | 49 PASS, 2 skip per normal/optimized mode |
 | Frontend unit suite | 21 PASS |
 | Dashboard backend suite | 24 PASS |
 | Browser E2E suite | 14 PASS |
@@ -97,11 +99,19 @@ readiness false.
    SHA-256, suite identity, commit, tree, safety state, and a PowerShell 5.1
    helper. The bundled verifier requires all four external pins and rejects
    transport or nested-suite drift before any downstream use.
+5. Successful V6.3 health output previously had no atomic portable handoff to
+   independent custody. A deterministic one-ZIP toolkit now binds the exact
+   health checker and creates one create-exclusive acceptance ZIP. Collection
+   requires the automatic boundary, advanced signed evidence, exact health
+   transcript/checkpoint projection, healthy scheduler result, disabled prior
+   tasks, and immutable safety fields. Verification still states custody and
+   independent HMAC re-verification are not performed locally.
 
 ## Findings that remain external or manual
 
 1. Phillip Commodity V6.3 has not yet produced its first automatic scheduled
-   proof. The exact boundary is `2026-07-30T06:45:00+09:00`.
+   proof. The exact boundary is `2026-07-30T06:45:00+09:00`; the local post-run
+   toolkit prepares collection but is not that proof.
 2. Authenticated audit pairs must be mirrored to independent immutable/WORM
    storage, with alert acknowledgement and restore evidence.
 3. Exact Windows Decision, Execution, and Status Monitor identities, service

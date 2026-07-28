@@ -29,15 +29,25 @@ Tree implementasi yang diaudit adalah
   permit, arm, mutasi Task Scheduler, broker mutation, atau order submission.
 - Dokumentasi status utama diperbarui agar tidak lagi menyatakan dashboard
   untracked dan tidak lagi memakai angka regresi 1.575 yang sudah usang.
+- Boundary penerimaan pasca-run V6.3 kini tersedia sebagai satu deterministic
+  toolkit ZIP. Wrapper menjalankan exact health checker terpin tanpa memulai
+  task, lalu membuat satu acceptance ZIP create-exclusive yang mengikat
+  scheduler snapshot, health transcript, signed checkpoint terbaru, exact
+  audit pair, installation receipt, dan installed task XML.
+- Verifier toolkit/acceptance menolak outer-hash atau Git ancestry drift,
+  metadata/trailer/inventory ZIP yang tidak kanonis, checkpoint yang belum
+  maju, waktu sebelum boundary, task result yang tidak sehat, transcript yang
+  tidak sama dengan checkpoint, source/audit mutation, dan custody overclaim.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.656 PASS, 3 skip, exit 0 |
-| Full Python regression with `PYTHONOPTIMIZE=2` | 1.656 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.673 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.673 PASS, 3 skip, exit 0 |
 | Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |
+| Phillip V5/V6 scheduler + post-run acceptance cluster | 49 PASS, 2 skip per normal/optimized mode |
 | Frontend unit tests | 21 PASS |
 | Dashboard backend tests | 24 PASS |
 | Browser E2E | 14 PASS |
@@ -113,6 +123,25 @@ max_lot = 0.01
 Tidak ada perubahan yang membuka order. Execution capability tetap dormant
 dan berlapis gate.
 
+## Phillip Commodity V6.3 post-run handoff
+
+Source lokal sekarang memiliki:
+
+- `build_phillip_commodity_v6_postrun_acceptance_package.py` untuk membangun
+  satu toolkit ZIP deterministik dari exact clean Git commit/tree;
+- `Invoke-PhillipCommodityV6PostRunAcceptance.ps1` untuk menjalankan health
+  checker V6.3 yang hash-pinned, tanpa manual task start;
+- `phillip_commodity_v6_postrun_acceptance.py` untuk verifikasi toolkit,
+  collection, serta re-verification acceptance ZIP di bawah `-I -S -B`;
+- acceptance bundle exact tujuh-member dan runbook custody terpisah.
+
+Toolkit sengaja mencatat
+`independent_hmac_reverification_performed=false`,
+`offhost_custody_performed=false`, dan
+`worm_retention_verified=false`. Nilai itu tidak boleh berubah hanya karena
+bundle lokal berhasil. Scheduled proof pertama dan acknowledgement Object
+Lock/WORM tetap external evidence setelah boundary otomatis.
+
 ## Posisi roadmap
 
 Phillip Commodity V6.3 sudah dilaporkan terpasang dan sehat pada Windows dalam
@@ -122,9 +151,10 @@ otomatis tersebut; manual start tidak boleh dipakai sebagai pengganti bukti.
 
 Urutan berikutnya tetap:
 
-1. setelah boundary, jalankan health verifier dan simpan authenticated
-   heartbeat, audit pair, scheduler result, serta rollback state;
-2. mirror evidence ke storage immutable di luar VPS;
+1. setelah boundary, verifikasi toolkit terhadap archive/commit/tree pins,
+   jalankan wrapper satu kali, lalu re-verify exact acceptance ZIP;
+2. salin exact acceptance ZIP ke storage immutable di luar VPS dan simpan
+   acknowledgement receipt terpisah;
 3. bangun ulang atomic five-role suite dua kali pada exact Windows source,
    cocokkan semua hash, lalu buat satu transfer ZIP dan verifikasi empat pin
    independennya sebelum dipindahkan;

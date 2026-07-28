@@ -1,0 +1,1432 @@
+"""Build and verify one portable Phillip Commodity V6 post-run evidence bundle.
+
+This tool never starts or changes a scheduled task and never imports an MT5 or
+order module.  The Windows wrapper first runs the exact, hash-pinned V6.3
+health checker.  This module then binds its transcript, the newest signed
+checkpoint, the exact audit pair, the installation receipt, and the installed
+task XML into one create-exclusive ZIP for independent custody.
+
+The ZIP is transport evidence only.  It does not claim that off-host/WORM
+custody happened and it grants no execution or promotion authority.
+"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timedelta, timezone
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath, PureWindowsPath
+import stat
+import sys
+from typing import BinaryIO, Iterable
+import zipfile
+
+
+BRANCH = "agent/live-grade-phase3"
+V63_REMEDIATION_COMMIT = "14762eac7e991fee8818ee20816709066f457f06"
+V63_REMEDIATION_TREE = "727f5215b203796c584d7bf321edac2447e92a60"
+WORKER_COMMIT = "290cc23d9d87f93e914612afdfecfc481d2c232f"
+WORKER_TREE = "ef568ae39aa4c51d9afe738badbb86d2c45e9a58"
+CONTRACT_ID = "phillip-commodity-window-01-diagnostic-v5"
+PROOF_RECEIPT_SHA256 = (
+    "29e14f81bbd87d460f171484d59a40e9"
+    "bdd6ae00611c3453ade4aa6c846b3aec"
+)
+V63_TASK_CONTRACT_SHA256 = (
+    "e40b315c5cae30b6708d04e39314fc13"
+    "c4dbc9dffb18c2a37c4d2f6f959acbc6"
+)
+V63_EVIDENCE_VERIFIER_SHA256 = (
+    "980712896acb613665e18f46d8cdc62e"
+    "ac95bfc90ede222c318c374b0849606c"
+)
+V63_HEALTH_CHECKER_SHA256 = (
+    "29b1cc9958d9f471a6664eea449f272c"
+    "a539d750fa5778586303c7272990c1e5"
+)
+TASK_NAME = "AI_SCALPER-PhillipCommodityV6-ReadOnlyShadow"
+PRIOR_TASK_STATES = {
+    "AI_SCALPER-PhillipCommodityV4-ReadOnlyShadow": "Disabled",
+    "AI_SCALPER-PhillipCommodityV5-ReadOnlyShadow": "Disabled",
+}
+FIRST_SCHEDULED_START_UTC = datetime(2026, 7, 29, 21, 45, tzinfo=timezone.utc)
+SCHEDULE_END_UTC = datetime(2026, 9, 21, 15, 16, tzinfo=timezone.utc)
+FIRST_SCHEDULED_START_LOCAL = "2026-07-30T06:45:00+09:00"
+SCHEDULE_END_LOCAL = "2026-09-22T00:16:00+09:00"
+FIXED_ZIP_TIMESTAMP = (2026, 7, 30, 6, 45, 0)
+FIXED_ZIP_MODE = stat.S_IFREG | 0o644
+FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
+MAX_MEMBER_BYTES = 16 * 1024 * 1024
+MAX_EXPANDED_BYTES = 48 * 1024 * 1024
+CHECKPOINT_SCHEMA = "phillip-commodity-v6-scheduler-evidence-checkpoint-v1"
+TOOLKIT_SCHEMA = "phillip-commodity-v6-postrun-toolkit-v1"
+BUNDLE_SCHEMA = "phillip-commodity-v6-postrun-acceptance-bundle-v1"
+BUNDLE_MANIFEST = "PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE.json"
+TOOLKIT_MANIFEST = "PHILLIP_COMMODITY_V6_POSTRUN_TOOLKIT.json"
+TOOL_PATH = "phillip_commodity_v6_postrun_acceptance.py"
+WRAPPER_PATH = "Invoke-PhillipCommodityV6PostRunAcceptance.ps1"
+RUNBOOK_PATH = "PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE.md"
+TOOLKIT_PATHS = (RUNBOOK_PATH, WRAPPER_PATH, TOOL_PATH, TOOLKIT_MANIFEST)
+EVIDENCE_PATHS = (
+    "audit-export.json",
+    "audit-manifest.json",
+    "evidence-checkpoint.json",
+    "health-transcript.txt",
+    "installation-receipt.json",
+    "installed-task.xml",
+)
+BUNDLE_PATHS = (*EVIDENCE_PATHS, BUNDLE_MANIFEST)
+SHA256_ZERO = "0" * 64
+
+
+class PostRunAcceptanceError(RuntimeError):
+    """One post-run acceptance invariant failed closed."""
+
+
+def _reject(code: str) -> None:
+    raise PostRunAcceptanceError(code)
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _is_git_oid(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 40
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _has_reparse_attribute(metadata: os.stat_result) -> bool:
+    return bool(
+        int(getattr(metadata, "st_file_attributes", 0))
+        & FILE_ATTRIBUTE_REPARSE_POINT
+    )
+
+
+def _regular(path: Path, code: str) -> Path:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise PostRunAcceptanceError(code) from exc
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or _has_reparse_attribute(metadata)
+    ):
+        _reject(code)
+    return path.absolute()
+
+
+def _directory(path: Path, code: str) -> Path:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise PostRunAcceptanceError(code) from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or _has_reparse_attribute(metadata)
+    ):
+        _reject(code)
+    return path.absolute()
+
+
+def _read_regular(path: Path, code: str, maximum: int = MAX_MEMBER_BYTES) -> bytes:
+    safe = _regular(path, code)
+    before = safe.lstat()
+    if before.st_size <= 0 or before.st_size > maximum:
+        _reject(code)
+    try:
+        value = safe.read_bytes()
+    except OSError as exc:
+        raise PostRunAcceptanceError(code) from exc
+    after = safe.lstat()
+    fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns")
+    if (
+        any(getattr(before, name) != getattr(after, name) for name in fields)
+        or len(value) != after.st_size
+        or _has_reparse_attribute(after)
+    ):
+        _reject(code)
+    return value
+
+
+def _sha256(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _canonical_json(value: object) -> bytes:
+    try:
+        return json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise PostRunAcceptanceError("JSON_CANONICALIZATION_REJECTED") from exc
+
+
+def _pretty_json(value: object) -> bytes:
+    try:
+        return (
+            json.dumps(
+                value,
+                allow_nan=False,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise PostRunAcceptanceError("JSON_SERIALIZATION_REJECTED") from exc
+
+
+def _json_object(value: bytes, code: str) -> dict[str, object]:
+    try:
+        parsed = json.loads(value.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise PostRunAcceptanceError(code) from exc
+    if not isinstance(parsed, dict):
+        _reject(code)
+    return parsed
+
+
+def _parse_utc(value: object, code: str) -> datetime:
+    if not isinstance(value, str) or not value.endswith("Z"):
+        _reject(code)
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise PostRunAcceptanceError(code) from exc
+    if parsed.utcoffset() != timedelta(0):
+        _reject(code)
+    return parsed.astimezone(timezone.utc)
+
+
+def _utc_text(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _valid_member_path(value: str) -> bool:
+    path = PurePosixPath(value)
+    return (
+        bool(value)
+        and "\\" not in value
+        and not value.startswith("/")
+        and not value.endswith("/")
+        and not path.is_absolute()
+        and all(part not in {"", ".", ".."} for part in path.parts)
+        and path.as_posix() == value
+    )
+
+
+def _member_row(path: str, value: bytes) -> dict[str, object]:
+    return {"path": path, "size_bytes": len(value), "sha256": _sha256(value)}
+
+
+def _rows_by_path(value: object, expected: Iterable[str]) -> dict[str, dict[str, object]]:
+    expected_set = set(expected)
+    if not isinstance(value, list) or len(value) != len(expected_set):
+        _reject("MEMBER_INVENTORY_REJECTED")
+    rows: dict[str, dict[str, object]] = {}
+    folded: set[str] = set()
+    for row in value:
+        if not isinstance(row, dict) or set(row) != {"path", "size_bytes", "sha256"}:
+            _reject("MEMBER_INVENTORY_REJECTED")
+        path = row.get("path")
+        size = row.get("size_bytes")
+        digest = row.get("sha256")
+        if (
+            not isinstance(path, str)
+            or path not in expected_set
+            or path.casefold() in folded
+            or isinstance(size, bool)
+            or not isinstance(size, int)
+            or size <= 0
+            or size > MAX_MEMBER_BYTES
+            or not _is_sha256(digest)
+        ):
+            _reject("MEMBER_INVENTORY_REJECTED")
+        rows[path] = row
+        folded.add(path.casefold())
+    if set(rows) != expected_set:
+        _reject("MEMBER_INVENTORY_REJECTED")
+    return rows
+
+
+def _validate_toolkit_manifest(
+    manifest_bytes: bytes,
+    *,
+    source_commit: str | None = None,
+    source_tree: str | None = None,
+) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
+    manifest = _json_object(manifest_bytes, "TOOLKIT_MANIFEST_INVALID")
+    if set(manifest) != {
+        "schema_version",
+        "source",
+        "installed_scheduler",
+        "members",
+        "safety",
+    }:
+        _reject("TOOLKIT_MANIFEST_INVALID")
+    source = manifest.get("source")
+    installed = manifest.get("installed_scheduler")
+    safety = manifest.get("safety")
+    if (
+        not isinstance(source, dict)
+        or set(source) != {"branch", "commit", "tree"}
+        or source.get("branch") != BRANCH
+        or not _is_git_oid(source.get("commit"))
+        or not _is_git_oid(source.get("tree"))
+        or (source_commit is not None and source.get("commit") != source_commit)
+        or (source_tree is not None and source.get("tree") != source_tree)
+        or not isinstance(installed, dict)
+        or installed
+        != {
+            "remediation_source_commit": V63_REMEDIATION_COMMIT,
+            "remediation_source_tree": V63_REMEDIATION_TREE,
+            "health_checker_sha256": V63_HEALTH_CHECKER_SHA256,
+            "task_contract_sha256": V63_TASK_CONTRACT_SHA256,
+            "evidence_verifier_sha256": V63_EVIDENCE_VERIFIER_SHA256,
+            "task_name": TASK_NAME,
+            "contract_id": CONTRACT_ID,
+            "first_scheduled_start_utc": _utc_text(FIRST_SCHEDULED_START_UTC),
+            "schedule_end_utc": _utc_text(SCHEDULE_END_UTC),
+        }
+        or safety
+        != {
+            "order_capability": "DISABLED",
+            "live_allowed": False,
+            "safe_to_demo_auto_order": False,
+            "task_scheduler_mutation": "NOT_PERFORMED",
+            "broker_mutation": "NOT_PERFORMED",
+            "offhost_custody_performed": False,
+        }
+        or manifest.get("schema_version") != TOOLKIT_SCHEMA
+    ):
+        _reject("TOOLKIT_MANIFEST_INVALID")
+    rows = _rows_by_path(manifest.get("members"), (RUNBOOK_PATH, WRAPPER_PATH, TOOL_PATH))
+    return manifest, rows
+
+
+def validate_extracted_toolkit(
+    manifest_path: Path,
+    *,
+    tool_path: Path,
+) -> dict[str, object]:
+    manifest_bytes = _read_regular(manifest_path, "TOOLKIT_MANIFEST_UNAVAILABLE")
+    manifest, rows = _validate_toolkit_manifest(manifest_bytes)
+    root = _directory(manifest_path.parent, "TOOLKIT_ROOT_INVALID")
+    entries = list(root.iterdir())
+    for path in entries:
+        _regular(path, "TOOLKIT_EXTRACTED_INVENTORY_REJECTED")
+    observed = {path.name for path in entries}
+    if observed != set(TOOLKIT_PATHS):
+        _reject("TOOLKIT_EXTRACTED_INVENTORY_REJECTED")
+    for relative, row in rows.items():
+        data = _read_regular(root / relative, "TOOLKIT_MEMBER_UNAVAILABLE")
+        if len(data) != row["size_bytes"] or _sha256(data) != row["sha256"]:
+            _reject("TOOLKIT_MEMBER_DRIFT")
+    observed_tool = _regular(tool_path, "TOOLKIT_TOOL_UNAVAILABLE")
+    expected_tool = _regular(root / TOOL_PATH, "TOOLKIT_TOOL_UNAVAILABLE")
+    try:
+        same_tool = os.path.samefile(observed_tool, expected_tool)
+    except OSError as exc:
+        raise PostRunAcceptanceError("TOOLKIT_TOOL_PATH_MISMATCH") from exc
+    if not same_tool:
+        _reject("TOOLKIT_TOOL_PATH_MISMATCH")
+    source = manifest["source"]
+    if not isinstance(source, dict):
+        _reject("TOOLKIT_MANIFEST_INVALID")
+    return {
+        "manifest": manifest,
+        "manifest_sha256": _sha256(manifest_bytes),
+        "source_commit": source["commit"],
+        "source_tree": source["tree"],
+    }
+
+
+INSTALLATION_KEYS = {
+    "schema_version",
+    "task_name",
+    "installed_at_utc",
+    "windows_sid",
+    "remediation_source_commit",
+    "remediation_source_tree",
+    "worker_source_commit",
+    "worker_source_tree",
+    "worker_contract_id",
+    "proof_receipt_path",
+    "proof_receipt_sha256",
+    "task_contract_sha256",
+    "evidence_verifier_sha256",
+    "contract_payload_sha256",
+    "build_identity_sha256",
+    "authenticated_audit_pairs",
+    "authenticated_heartbeat_at_install_utc",
+    "authenticated_source_event_count",
+    "evidence_checkpoint_root",
+    "initial_evidence_checkpoint_path",
+    "initial_evidence_checkpoint_file_sha256",
+    "initial_evidence_checkpoint_hmac_sha256",
+    "task_definition_sha256",
+    "registered_disabled_xml_sha256",
+    "exported_task_xml_sha256",
+    "command",
+    "arguments",
+    "working_directory",
+    "frozen_runtime_repo",
+    "frozen_runtime_worktree_lock",
+    "start_boundary",
+    "end_boundary",
+    "worker_duration_seconds",
+    "minimum_installation_lead_seconds",
+    "verified_next_run_time",
+    "preserved_tasks",
+    "task_started_manually",
+    "order_capability",
+    "live_allowed",
+    "safe_to_demo_auto_order",
+    "broker_mutation",
+}
+
+
+CHECKPOINT_KEYS = {
+    "schema_version",
+    "candidate_id",
+    "contract_id",
+    "contract_payload_sha256",
+    "build_identity_sha256",
+    "proof_receipt_sha256",
+    "runtime_key",
+    "authenticity",
+    "signing_key_id",
+    "committed_manifest_count",
+    "committed_manifest_names_sha256",
+    "last_manifest_name",
+    "last_manifest_file_sha256",
+    "last_manifest_authenticated_sha256",
+    "last_audit_name",
+    "last_audit_sha256",
+    "last_invocation_id",
+    "source_operational_event_count",
+    "source_operational_head_sha256",
+    "source_operational_signed_head_hmac_sha256",
+    "latest_heartbeat_at_utc",
+    "predecessor_checkpoint_hmac_sha256",
+    "source_chain_from_genesis",
+    "order_capability",
+    "live_allowed",
+    "safe_to_demo_auto_order",
+    "checkpoint_hmac_sha256",
+}
+
+
+def _validate_installation_receipt(receipt: dict[str, object]) -> None:
+    required_strings = (
+        "windows_sid",
+        "proof_receipt_path",
+        "evidence_checkpoint_root",
+        "initial_evidence_checkpoint_path",
+        "command",
+        "arguments",
+        "working_directory",
+        "frozen_runtime_repo",
+        "frozen_runtime_worktree_lock",
+    )
+    if any(
+        not isinstance(receipt.get(field), str) or not receipt.get(field)
+        for field in required_strings
+    ):
+        _reject("INSTALLATION_RECEIPT_REJECTED")
+    windows_paths = (
+        "proof_receipt_path",
+        "evidence_checkpoint_root",
+        "initial_evidence_checkpoint_path",
+        "command",
+        "working_directory",
+        "frozen_runtime_repo",
+        "frozen_runtime_worktree_lock",
+    )
+    if any(
+        not PureWindowsPath(str(receipt[field])).is_absolute()
+        or ".." in PureWindowsPath(str(receipt[field])).parts
+        for field in windows_paths
+    ):
+        _reject("INSTALLATION_RECEIPT_REJECTED")
+    checkpoint_root = PureWindowsPath(str(receipt["evidence_checkpoint_root"]))
+    initial_checkpoint = PureWindowsPath(
+        str(receipt["initial_evidence_checkpoint_path"])
+    )
+    if (
+        set(receipt) != INSTALLATION_KEYS
+        or receipt.get("schema_version")
+        != "phillip-commodity-v6-scheduler-installation-receipt-v1"
+        or receipt.get("task_name") != TASK_NAME
+        or receipt.get("remediation_source_commit") != V63_REMEDIATION_COMMIT
+        or receipt.get("remediation_source_tree") != V63_REMEDIATION_TREE
+        or receipt.get("worker_source_commit") != WORKER_COMMIT
+        or receipt.get("worker_source_tree") != WORKER_TREE
+        or receipt.get("worker_contract_id") != CONTRACT_ID
+        or receipt.get("proof_receipt_sha256") != PROOF_RECEIPT_SHA256
+        or receipt.get("task_contract_sha256") != V63_TASK_CONTRACT_SHA256
+        or receipt.get("evidence_verifier_sha256")
+        != V63_EVIDENCE_VERIFIER_SHA256
+        or receipt.get("start_boundary") != FIRST_SCHEDULED_START_LOCAL
+        or receipt.get("end_boundary") != SCHEDULE_END_LOCAL
+        or receipt.get("worker_duration_seconds") != 84300
+        or receipt.get("minimum_installation_lead_seconds") != 900
+        or receipt.get("verified_next_run_time") != "2026-07-30T06:45:00"
+        or receipt.get("preserved_tasks") != list(PRIOR_TASK_STATES)
+        or receipt.get("task_started_manually") is not False
+        or receipt.get("order_capability") != "DISABLED"
+        or receipt.get("live_allowed") is not False
+        or receipt.get("safe_to_demo_auto_order") is not False
+        or receipt.get("broker_mutation") != "NOT_PERFORMED"
+        or not str(receipt["windows_sid"]).startswith("S-1-5-")
+        or not _is_sha256(receipt.get("contract_payload_sha256"))
+        or not _is_sha256(receipt.get("build_identity_sha256"))
+        or not _is_sha256(receipt.get("initial_evidence_checkpoint_file_sha256"))
+        or not _is_sha256(receipt.get("initial_evidence_checkpoint_hmac_sha256"))
+        or not _is_sha256(receipt.get("task_definition_sha256"))
+        or not _is_sha256(receipt.get("registered_disabled_xml_sha256"))
+        or not _is_sha256(receipt.get("exported_task_xml_sha256"))
+        or initial_checkpoint.parent != checkpoint_root
+        or not initial_checkpoint.name.startswith("checkpoint-")
+        or not initial_checkpoint.name.endswith(
+            f"-{receipt['initial_evidence_checkpoint_hmac_sha256']}.json"
+        )
+        or not str(receipt["command"]).casefold().endswith("\\python.exe")
+        or PureWindowsPath(str(receipt["working_directory"]))
+        != PureWindowsPath(str(receipt["frozen_runtime_repo"]))
+        or isinstance(receipt.get("authenticated_audit_pairs"), bool)
+        or not isinstance(receipt.get("authenticated_audit_pairs"), int)
+        or int(receipt["authenticated_audit_pairs"]) < 2
+        or isinstance(receipt.get("authenticated_source_event_count"), bool)
+        or not isinstance(receipt.get("authenticated_source_event_count"), int)
+        or int(receipt["authenticated_source_event_count"]) < 1
+    ):
+        _reject("INSTALLATION_RECEIPT_REJECTED")
+    _parse_utc(receipt.get("installed_at_utc"), "INSTALLATION_TIME_REJECTED")
+    _parse_utc(
+        receipt.get("authenticated_heartbeat_at_install_utc"),
+        "INSTALLATION_HEARTBEAT_REJECTED",
+    )
+
+
+def _checkpoint_file_name(checkpoint: dict[str, object]) -> str:
+    return (
+        "checkpoint-"
+        f"{int(checkpoint['source_operational_event_count']):020d}-"
+        f"{checkpoint['checkpoint_hmac_sha256']}.json"
+    )
+
+
+def _validate_checkpoint(checkpoint: dict[str, object], receipt: dict[str, object]) -> None:
+    predecessor = checkpoint.get("predecessor_checkpoint_hmac_sha256")
+    invocation_id = checkpoint.get("last_invocation_id")
+    if (
+        set(checkpoint) != CHECKPOINT_KEYS
+        or checkpoint.get("schema_version") != CHECKPOINT_SCHEMA
+        or checkpoint.get("candidate_id") != "phillip-commodity"
+        or checkpoint.get("contract_id") != CONTRACT_ID
+        or checkpoint.get("contract_payload_sha256")
+        != receipt.get("contract_payload_sha256")
+        or checkpoint.get("build_identity_sha256")
+        != receipt.get("build_identity_sha256")
+        or checkpoint.get("proof_receipt_sha256") != PROOF_RECEIPT_SHA256
+        or checkpoint.get("runtime_key")
+        != "phillip-commodity-broker-shadow-v1"
+        or checkpoint.get("authenticity") != "HMAC_SHA256"
+        or not isinstance(checkpoint.get("signing_key_id"), str)
+        or not checkpoint.get("signing_key_id")
+        or checkpoint.get("source_chain_from_genesis") is not True
+        or checkpoint.get("order_capability") != "DISABLED"
+        or checkpoint.get("live_allowed") is not False
+        or checkpoint.get("safe_to_demo_auto_order") is not False
+        or isinstance(checkpoint.get("committed_manifest_count"), bool)
+        or not isinstance(checkpoint.get("committed_manifest_count"), int)
+        or int(checkpoint["committed_manifest_count"]) < 2
+        or isinstance(checkpoint.get("source_operational_event_count"), bool)
+        or not isinstance(checkpoint.get("source_operational_event_count"), int)
+        or int(checkpoint["source_operational_event_count"]) < 1
+        or not all(
+            _is_sha256(checkpoint.get(field))
+            for field in (
+                "committed_manifest_names_sha256",
+                "last_manifest_file_sha256",
+                "last_manifest_authenticated_sha256",
+                "last_audit_sha256",
+                "source_operational_head_sha256",
+                "source_operational_signed_head_hmac_sha256",
+                "checkpoint_hmac_sha256",
+            )
+        )
+        or (predecessor is not None and not _is_sha256(predecessor))
+        or not isinstance(invocation_id, str)
+        or not invocation_id
+        or PurePosixPath(invocation_id).name != invocation_id
+        or ".." in invocation_id
+        or checkpoint.get("last_manifest_name")
+        != f"{invocation_id}.manifest.json"
+        or checkpoint.get("last_audit_name") != f"{invocation_id}.audit.json"
+    ):
+        _reject("CHECKPOINT_REJECTED")
+    _parse_utc(checkpoint.get("latest_heartbeat_at_utc"), "CHECKPOINT_TIME_REJECTED")
+
+
+def _manifest_authenticated_sha256(manifest: dict[str, object]) -> str:
+    claimed = manifest.get("manifest_sha256")
+    unsigned = dict(manifest)
+    unsigned.pop("manifest_sha256", None)
+    observed = _sha256(_canonical_json(unsigned))
+    if claimed != observed:
+        _reject("AUDIT_MANIFEST_AUTHENTICATED_HASH_REJECTED")
+    return observed
+
+
+def _validate_audit_pair(
+    *,
+    checkpoint: dict[str, object],
+    audit_bytes: bytes,
+    manifest_bytes: bytes,
+) -> None:
+    if (
+        _sha256(audit_bytes) != checkpoint["last_audit_sha256"]
+        or _sha256(manifest_bytes) != checkpoint["last_manifest_file_sha256"]
+    ):
+        _reject("AUDIT_PAIR_FILE_HASH_REJECTED")
+    audit = _json_object(audit_bytes, "AUDIT_EXPORT_JSON_REJECTED")
+    manifest = _json_object(manifest_bytes, "AUDIT_MANIFEST_JSON_REJECTED")
+    runtime_status = audit.get("runtime_status")
+    if (
+        _manifest_authenticated_sha256(manifest)
+        != checkpoint["last_manifest_authenticated_sha256"]
+        or manifest.get("invocation_id") != checkpoint["last_invocation_id"]
+        or manifest.get("audit_export_file") != checkpoint["last_audit_name"]
+        or manifest.get("authenticity") != "HMAC_SHA256"
+        or manifest.get("signing_key_id") != checkpoint["signing_key_id"]
+        or manifest.get("source_chain_verified_from_genesis") is not True
+        or manifest.get("order_capability") != "DISABLED"
+        or manifest.get("live_allowed") is not False
+        or manifest.get("safe_to_demo_auto_order") is not False
+        or not isinstance(runtime_status, dict)
+        or runtime_status.get("recorded_state") != "HEALTHY"
+        or runtime_status.get("authenticity") != "HMAC_SHA256"
+        or runtime_status.get("signing_key_id") != checkpoint["signing_key_id"]
+        or runtime_status.get("heartbeat_at_utc")
+        != checkpoint["latest_heartbeat_at_utc"]
+        or audit.get("source_operational_event_count")
+        != checkpoint["source_operational_event_count"]
+        or audit.get("source_operational_head_sha256")
+        != checkpoint["source_operational_head_sha256"]
+        or audit.get("source_operational_signed_head_hmac_sha256")
+        != checkpoint["source_operational_signed_head_hmac_sha256"]
+        or audit.get("order_capability") != "DISABLED"
+        or audit.get("live_allowed") is not False
+        or audit.get("safe_to_demo_auto_order") is not False
+    ):
+        _reject("AUDIT_PAIR_PROJECTION_REJECTED")
+
+
+def _validate_postrun_state(
+    *,
+    receipt: dict[str, object],
+    checkpoint: dict[str, object],
+    observed_at: datetime,
+    task_state: str,
+    last_run_at: datetime,
+    last_task_result: int,
+    next_run_local: str,
+    v4_state: str,
+    v5_state: str,
+    health_transcript: bytes,
+) -> None:
+    initial_heartbeat = _parse_utc(
+        receipt["authenticated_heartbeat_at_install_utc"],
+        "INSTALLATION_HEARTBEAT_REJECTED",
+    )
+    latest_heartbeat = _parse_utc(
+        checkpoint["latest_heartbeat_at_utc"],
+        "CHECKPOINT_TIME_REJECTED",
+    )
+    fields = _health_transcript_fields(health_transcript)
+    transcript_heartbeat = _parse_utc(
+        fields["AuthenticatedHeartbeatAtUtc"],
+        "HEALTH_TRANSCRIPT_REJECTED",
+    )
+    transcript_observed = _parse_utc(
+        fields["ObservedAtUtc"],
+        "HEALTH_TRANSCRIPT_REJECTED",
+    )
+    checkpoint_name = PureWindowsPath(fields["EvidenceCheckpoint"]).name
+    expected_checkpoint_path = PureWindowsPath(
+        str(receipt["evidence_checkpoint_root"])
+    ) / _checkpoint_file_name(checkpoint)
+    if (
+        observed_at < FIRST_SCHEDULED_START_UTC
+        or observed_at >= SCHEDULE_END_UTC
+        or last_run_at < FIRST_SCHEDULED_START_UTC
+        or last_run_at > observed_at
+        or latest_heartbeat < FIRST_SCHEDULED_START_UTC
+        or latest_heartbeat <= initial_heartbeat
+        or int(checkpoint["source_operational_event_count"])
+        <= int(receipt["authenticated_source_event_count"])
+        or int(checkpoint["committed_manifest_count"])
+        <= int(receipt["authenticated_audit_pairs"])
+        or checkpoint["checkpoint_hmac_sha256"]
+        == receipt["initial_evidence_checkpoint_hmac_sha256"]
+        or checkpoint["predecessor_checkpoint_hmac_sha256"] is None
+        or task_state not in {"Running", "Ready"}
+        or (task_state == "Ready" and last_task_result != 0)
+        or not isinstance(last_task_result, int)
+        or isinstance(last_task_result, bool)
+        or not next_run_local
+        or v4_state != "Disabled"
+        or v5_state != "Disabled"
+        or fields["Status"] != "PHILLIP_COMMODITY_V6_TASK_HEALTHY"
+        or fields["TaskName"] != TASK_NAME
+        or fields["TaskState"] != task_state
+        or fields["LastTaskResult"] != str(last_task_result)
+        or transcript_observed != observed_at
+        or transcript_heartbeat != latest_heartbeat
+        or fields["AuthenticatedSourceEventCount"]
+        != str(checkpoint["source_operational_event_count"])
+        or fields["AuditPairs"] != str(checkpoint["committed_manifest_count"])
+        or checkpoint_name != _checkpoint_file_name(checkpoint)
+        or PureWindowsPath(fields["EvidenceCheckpoint"])
+        != expected_checkpoint_path
+        or fields["RemediationSourceCommit"] != V63_REMEDIATION_COMMIT
+        or fields["FrozenWorkerCommit"] != WORKER_COMMIT
+        or fields["FrozenWorkerTree"] != WORKER_TREE
+        or fields["Contract"] != CONTRACT_ID
+        or fields["OrderCapability"] != "DISABLED"
+        or fields["LiveAllowed"].casefold() != "false"
+        or fields["TaskSchedulerMutation"] != "NOT_PERFORMED"
+        or fields["BrokerMutation"] != "NOT_PERFORMED"
+        or fields["HealthMutexAbandoned"].casefold() != "false"
+    ):
+        _reject("POSTRUN_ACCEPTANCE_STATE_REJECTED")
+
+
+HEALTH_TRANSCRIPT_FIELDS = {
+    "Status",
+    "ObservedAtUtc",
+    "TaskName",
+    "TaskState",
+    "LastTaskResult",
+    "AuthenticatedHeartbeatAtUtc",
+    "AuthenticatedSourceEventCount",
+    "AuditPairs",
+    "EvidenceCheckpoint",
+    "HealthMutexAbandoned",
+    "RemediationSourceCommit",
+    "FrozenWorkerCommit",
+    "FrozenWorkerTree",
+    "Contract",
+    "OrderCapability",
+    "LiveAllowed",
+    "TaskSchedulerMutation",
+    "BrokerMutation",
+}
+
+
+def _health_transcript_fields(value: bytes) -> dict[str, str]:
+    try:
+        transcript = value.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise PostRunAcceptanceError("HEALTH_TRANSCRIPT_REJECTED") from exc
+    fields: dict[str, str] = {}
+    for line in transcript.splitlines():
+        if ":" not in line:
+            continue
+        label, field_value = line.split(":", 1)
+        label = label.strip()
+        if label not in HEALTH_TRANSCRIPT_FIELDS:
+            continue
+        if label in fields or not field_value.strip():
+            _reject("HEALTH_TRANSCRIPT_REJECTED")
+        fields[label] = field_value.strip()
+    if set(fields) != HEALTH_TRANSCRIPT_FIELDS:
+        _reject("HEALTH_TRANSCRIPT_REJECTED")
+    return fields
+
+
+def _zip_info(path: str) -> zipfile.ZipInfo:
+    info = zipfile.ZipInfo(path, FIXED_ZIP_TIMESTAMP)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = FIXED_ZIP_MODE << 16
+    info.create_system = 3
+    return info
+
+
+def _write_archive(path: Path, members: dict[str, bytes]) -> None:
+    if path.exists():
+        _reject("OUTPUT_ALREADY_EXISTS")
+    parent = path.parent
+    if parent.exists():
+        _directory(parent, "OUTPUT_PARENT_REJECTED")
+    else:
+        try:
+            parent.mkdir(parents=True, exist_ok=False)
+        except OSError as exc:
+            raise PostRunAcceptanceError("OUTPUT_PARENT_REJECTED") from exc
+        _directory(parent, "OUTPUT_PARENT_REJECTED")
+    try:
+        with path.open("xb") as handle:
+            with zipfile.ZipFile(
+                handle,
+                mode="w",
+                compression=zipfile.ZIP_DEFLATED,
+                compresslevel=9,
+            ) as archive:
+                for name in (*sorted(EVIDENCE_PATHS), BUNDLE_MANIFEST):
+                    archive.writestr(_zip_info(name), members[name])
+            handle.flush()
+            os.fsync(handle.fileno())
+    except Exception:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def _evidence_set_sha256(rows: list[dict[str, object]]) -> str:
+    return _sha256(_canonical_json(rows))
+
+
+def collect_acceptance(
+    *,
+    toolkit_manifest: Path,
+    installation_receipt: Path,
+    checkpoint_root: Path,
+    audit_root: Path,
+    installed_task_xml: Path,
+    health_transcript: Path,
+    task_state: str,
+    last_run_at_utc: str,
+    last_task_result: int,
+    next_run_time_local: str,
+    v4_task_state: str,
+    v5_task_state: str,
+    observed_at_utc: str,
+    output: Path,
+    tool_path: Path | None = None,
+) -> dict[str, object]:
+    tool = Path(__file__).absolute() if tool_path is None else tool_path.absolute()
+    toolkit = validate_extracted_toolkit(toolkit_manifest, tool_path=tool)
+    receipt_bytes = _read_regular(
+        installation_receipt,
+        "INSTALLATION_RECEIPT_UNAVAILABLE",
+    )
+    receipt = _json_object(receipt_bytes, "INSTALLATION_RECEIPT_REJECTED")
+    _validate_installation_receipt(receipt)
+    checkpoints = []
+    root = _directory(checkpoint_root, "CHECKPOINT_ROOT_REJECTED")
+    for path in root.glob("checkpoint-*.json"):
+        value = _json_object(
+            _read_regular(path, "CHECKPOINT_UNAVAILABLE"),
+            "CHECKPOINT_REJECTED",
+        )
+        _validate_checkpoint(value, receipt)
+        if path.name != _checkpoint_file_name(value):
+            _reject("CHECKPOINT_FILENAME_REJECTED")
+        checkpoints.append((int(value["source_operational_event_count"]), path, value))
+    if not checkpoints:
+        _reject("CHECKPOINT_UNAVAILABLE")
+    checkpoints.sort(key=lambda item: item[0])
+    previous_hmac: str | None = None
+    previous_count = 0
+    initial_hmac = str(receipt["initial_evidence_checkpoint_hmac_sha256"])
+    initial_name = PureWindowsPath(
+        str(receipt["initial_evidence_checkpoint_path"])
+    ).name
+    initial_seen = False
+    for count, _path, value in checkpoints:
+        if count <= previous_count or value["predecessor_checkpoint_hmac_sha256"] != previous_hmac:
+            _reject("CHECKPOINT_CHAIN_REJECTED")
+        if value["checkpoint_hmac_sha256"] == initial_hmac:
+            initial_seen = True
+            if (
+                _path.name != initial_name
+                or _sha256(
+                    _read_regular(_path, "INITIAL_CHECKPOINT_UNAVAILABLE")
+                )
+                != receipt["initial_evidence_checkpoint_file_sha256"]
+            ):
+                _reject("INITIAL_CHECKPOINT_HASH_REJECTED")
+        previous_count = count
+        previous_hmac = str(value["checkpoint_hmac_sha256"])
+    if not initial_seen:
+        _reject("INITIAL_CHECKPOINT_UNAVAILABLE")
+    _count, checkpoint_path, checkpoint = checkpoints[-1]
+    audit_dir = _directory(audit_root, "AUDIT_ROOT_REJECTED")
+    audit_path = audit_dir / str(checkpoint["last_audit_name"])
+    audit_manifest_path = audit_dir / str(checkpoint["last_manifest_name"])
+    audit_bytes = _read_regular(audit_path, "AUDIT_EXPORT_UNAVAILABLE")
+    audit_manifest_bytes = _read_regular(
+        audit_manifest_path,
+        "AUDIT_MANIFEST_UNAVAILABLE",
+    )
+    _validate_audit_pair(
+        checkpoint=checkpoint,
+        audit_bytes=audit_bytes,
+        manifest_bytes=audit_manifest_bytes,
+    )
+    task_xml_bytes = _read_regular(installed_task_xml, "INSTALLED_TASK_XML_UNAVAILABLE")
+    if _sha256(task_xml_bytes) != receipt["exported_task_xml_sha256"]:
+        _reject("INSTALLED_TASK_XML_HASH_REJECTED")
+    transcript_bytes = _read_regular(
+        health_transcript,
+        "HEALTH_TRANSCRIPT_UNAVAILABLE",
+        maximum=2 * 1024 * 1024,
+    )
+    observed_at = _parse_utc(observed_at_utc, "OBSERVED_TIME_REJECTED")
+    last_run_at = _parse_utc(last_run_at_utc, "LAST_RUN_TIME_REJECTED")
+    _validate_postrun_state(
+        receipt=receipt,
+        checkpoint=checkpoint,
+        observed_at=observed_at,
+        task_state=task_state,
+        last_run_at=last_run_at,
+        last_task_result=last_task_result,
+        next_run_local=next_run_time_local,
+        v4_state=v4_task_state,
+        v5_state=v5_task_state,
+        health_transcript=transcript_bytes,
+    )
+    checkpoint_bytes = _read_regular(checkpoint_path, "CHECKPOINT_UNAVAILABLE")
+    evidence = {
+        "audit-export.json": audit_bytes,
+        "audit-manifest.json": audit_manifest_bytes,
+        "evidence-checkpoint.json": checkpoint_bytes,
+        "health-transcript.txt": transcript_bytes,
+        "installation-receipt.json": receipt_bytes,
+        "installed-task.xml": task_xml_bytes,
+    }
+    rows = [_member_row(path, evidence[path]) for path in sorted(evidence)]
+    source_manifest = toolkit["manifest"]
+    source = source_manifest["source"]
+    if not isinstance(source, dict):
+        _reject("TOOLKIT_MANIFEST_INVALID")
+    bundle: dict[str, object] = {
+        "schema_version": BUNDLE_SCHEMA,
+        "status": "PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE_BUNDLED",
+        "candidate_id": "phillip-commodity",
+        "task_name": TASK_NAME,
+        "toolkit": {
+            "source_commit": source["commit"],
+            "source_tree": source["tree"],
+            "manifest_sha256": toolkit["manifest_sha256"],
+        },
+        "installed_scheduler": {
+            "remediation_source_commit": V63_REMEDIATION_COMMIT,
+            "remediation_source_tree": V63_REMEDIATION_TREE,
+            "health_checker_sha256": V63_HEALTH_CHECKER_SHA256,
+            "worker_source_commit": WORKER_COMMIT,
+            "worker_source_tree": WORKER_TREE,
+            "contract_id": CONTRACT_ID,
+        },
+        "scheduler_observation": {
+            "observed_at_utc": _utc_text(observed_at),
+            "task_state": task_state,
+            "last_run_at_utc": _utc_text(last_run_at),
+            "last_task_result": last_task_result,
+            "next_run_time_local": next_run_time_local,
+            "v4_task_state": v4_task_state,
+            "v5_task_state": v5_task_state,
+            "automatic_boundary_accepted": True,
+            "manual_start_performed": False,
+        },
+        "authenticated_evidence": {
+            "signing_key_id": checkpoint["signing_key_id"],
+            "checkpoint_hmac_sha256": checkpoint["checkpoint_hmac_sha256"],
+            "checkpoint_predecessor_hmac_sha256": checkpoint[
+                "predecessor_checkpoint_hmac_sha256"
+            ],
+            "source_operational_event_count": checkpoint[
+                "source_operational_event_count"
+            ],
+            "committed_manifest_count": checkpoint["committed_manifest_count"],
+            "latest_heartbeat_at_utc": checkpoint["latest_heartbeat_at_utc"],
+            "last_invocation_id": checkpoint["last_invocation_id"],
+            "last_audit_sha256": checkpoint["last_audit_sha256"],
+            "last_manifest_file_sha256": checkpoint[
+                "last_manifest_file_sha256"
+            ],
+            "source_chain_from_genesis": True,
+            "source_host_health_verifier_passed": True,
+            "independent_hmac_reverification_performed": False,
+        },
+        "members": rows,
+        "evidence_set_sha256": _evidence_set_sha256(rows),
+        "external_custody": {
+            "required": True,
+            "performed": False,
+            "worm_retention_verified": False,
+            "acknowledgement_receipt_present": False,
+            "copy_instruction": "COPY_ZIP_TO_INDEPENDENT_OFFHOST_WORM",
+        },
+        "safety": {
+            "order_capability": "DISABLED",
+            "live_allowed": False,
+            "safe_to_demo_auto_order": False,
+            "promotion_eligible": False,
+            "task_scheduler_mutation": "NOT_PERFORMED",
+            "broker_mutation": "NOT_PERFORMED",
+        },
+    }
+    bundle["bundle_identity_sha256"] = _sha256(_canonical_json(bundle))
+    evidence[BUNDLE_MANIFEST] = _pretty_json(bundle)
+    output_path = output.absolute()
+    _write_archive(output_path, evidence)
+    archive_bytes = _read_regular(
+        output_path,
+        "OUTPUT_ARCHIVE_UNAVAILABLE",
+        maximum=MAX_ARCHIVE_BYTES,
+    )
+    archive_sha = _sha256(archive_bytes)
+    verified = verify_acceptance_archive(
+        output_path,
+        expected_archive_sha256=archive_sha,
+        expected_toolkit_source_commit=str(source["commit"]),
+        expected_toolkit_source_tree=str(source["tree"]),
+    )
+    return {
+        "status": verified["status"],
+        "archive": str(output_path),
+        "archive_sha256": archive_sha,
+        "bundle_identity_sha256": bundle["bundle_identity_sha256"],
+        "checkpoint_hmac_sha256": checkpoint["checkpoint_hmac_sha256"],
+        "latest_heartbeat_at_utc": checkpoint["latest_heartbeat_at_utc"],
+        "source_event_count": checkpoint["source_operational_event_count"],
+        "task_state": task_state,
+        "last_task_result": last_task_result,
+        "order_capability": "DISABLED",
+        "live_allowed": False,
+        "offhost_custody_performed": False,
+    }
+
+
+def _validate_eocd(handle: BinaryIO, expected_members: int) -> None:
+    try:
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        if size < 22 or size > MAX_ARCHIVE_BYTES:
+            _reject("ARCHIVE_INVALID")
+        handle.seek(-22, os.SEEK_END)
+        eocd = handle.read(22)
+        handle.seek(0)
+    except OSError as exc:
+        raise PostRunAcceptanceError("ARCHIVE_INVALID") from exc
+    if (
+        len(eocd) != 22
+        or eocd[:4] != b"PK\x05\x06"
+        or int.from_bytes(eocd[4:6], "little") != 0
+        or int.from_bytes(eocd[6:8], "little") != 0
+        or int.from_bytes(eocd[8:10], "little") != expected_members
+        or int.from_bytes(eocd[10:12], "little") != expected_members
+        or int.from_bytes(eocd[20:22], "little") != 0
+    ):
+        _reject("ARCHIVE_INVALID")
+    central_size = int.from_bytes(eocd[12:16], "little")
+    central_offset = int.from_bytes(eocd[16:20], "little")
+    if (
+        central_size in {0, 0xFFFFFFFF}
+        or central_offset == 0xFFFFFFFF
+        or central_offset + central_size != size - 22
+    ):
+        _reject("ARCHIVE_INVALID")
+
+
+def _archive_members(
+    archive: zipfile.ZipFile,
+    expected: tuple[str, ...],
+) -> dict[str, zipfile.ZipInfo]:
+    infos = archive.infolist()
+    expected_order = tuple((*sorted(expected[:-1]), expected[-1]))
+    if (
+        tuple(info.filename for info in infos) != expected_order
+        or archive.comment != b""
+    ):
+        _reject("ARCHIVE_INVENTORY_REJECTED")
+    observed: dict[str, zipfile.ZipInfo] = {}
+    folded: set[str] = set()
+    total = 0
+    offsets: set[int] = set()
+    for info in infos:
+        name = info.filename
+        mode = (info.external_attr >> 16) & 0xFFFF
+        if (
+            not _valid_member_path(name)
+            or name.casefold() in folded
+            or info.is_dir()
+            or info.compress_type != zipfile.ZIP_DEFLATED
+            or info.flag_bits != 0
+            or info.date_time != FIXED_ZIP_TIMESTAMP
+            or info.create_system != 3
+            or info.create_version != 20
+            or info.extract_version != 20
+            or mode != FIXED_ZIP_MODE
+            or info.external_attr != FIXED_ZIP_MODE << 16
+            or info.internal_attr != 0
+            or info.volume != 0
+            or info.extra != b""
+            or info.comment != b""
+            or info.file_size <= 0
+            or info.file_size > MAX_MEMBER_BYTES
+            or info.compress_size <= 0
+            or info.header_offset in offsets
+        ):
+            _reject("ARCHIVE_METADATA_REJECTED")
+        observed[name] = info
+        folded.add(name.casefold())
+        offsets.add(info.header_offset)
+        total += info.file_size
+    if set(observed) != set(expected) or total > MAX_EXPANDED_BYTES:
+        _reject("ARCHIVE_INVENTORY_REJECTED")
+    return observed
+
+
+def _read_archive_member(
+    archive: zipfile.ZipFile,
+    info: zipfile.ZipInfo,
+) -> bytes:
+    try:
+        with archive.open(info, "r") as member:
+            value = member.read(MAX_MEMBER_BYTES + 1)
+            trailing = member.read(1)
+    except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise PostRunAcceptanceError("ARCHIVE_MEMBER_REJECTED") from exc
+    if trailing or len(value) != info.file_size or len(value) > MAX_MEMBER_BYTES:
+        _reject("ARCHIVE_MEMBER_REJECTED")
+    return value
+
+
+def _open_verified_archive(
+    path: Path,
+    *,
+    expected_sha256: str,
+    expected_paths: tuple[str, ...],
+) -> tuple[dict[str, bytes], str]:
+    if not _is_sha256(expected_sha256):
+        _reject("EXPECTED_ARCHIVE_SHA256_REJECTED")
+    safe = _regular(path, "ARCHIVE_UNAVAILABLE")
+    try:
+        with safe.open("rb") as handle:
+            _validate_eocd(handle, len(expected_paths))
+            digest = hashlib.sha256()
+            while True:
+                chunk = handle.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+            observed_sha = digest.hexdigest()
+            handle.seek(0)
+            if observed_sha != expected_sha256:
+                _reject("ARCHIVE_SHA256_MISMATCH")
+            with zipfile.ZipFile(handle, "r") as archive:
+                infos = _archive_members(archive, expected_paths)
+                members = {
+                    name: _read_archive_member(archive, infos[name])
+                    for name in expected_paths
+                }
+    except PostRunAcceptanceError:
+        raise
+    except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise PostRunAcceptanceError("ARCHIVE_INVALID") from exc
+    return members, observed_sha
+
+
+def verify_toolkit_archive(
+    archive: Path,
+    *,
+    expected_archive_sha256: str,
+    expected_source_commit: str,
+    expected_source_tree: str,
+) -> dict[str, object]:
+    if not _is_git_oid(expected_source_commit) or not _is_git_oid(expected_source_tree):
+        _reject("EXPECTED_SOURCE_IDENTITY_REJECTED")
+    members, archive_sha = _open_verified_archive(
+        archive,
+        expected_sha256=expected_archive_sha256,
+        expected_paths=TOOLKIT_PATHS,
+    )
+    manifest, rows = _validate_toolkit_manifest(
+        members[TOOLKIT_MANIFEST],
+        source_commit=expected_source_commit,
+        source_tree=expected_source_tree,
+    )
+    for path, row in rows.items():
+        if len(members[path]) != row["size_bytes"] or _sha256(members[path]) != row["sha256"]:
+            _reject("TOOLKIT_MEMBER_DRIFT")
+    return {
+        "schema_version": TOOLKIT_SCHEMA,
+        "status": "PHILLIP_COMMODITY_V6_POSTRUN_TOOLKIT_VERIFIED",
+        "archive_sha256": archive_sha,
+        "source_commit": expected_source_commit,
+        "source_tree": expected_source_tree,
+        "member_count": len(members),
+        "order_capability": "DISABLED",
+        "live_allowed": False,
+        "task_scheduler_mutation": "NOT_PERFORMED",
+        "broker_mutation": "NOT_PERFORMED",
+    }
+
+
+def verify_acceptance_archive(
+    archive: Path,
+    *,
+    expected_archive_sha256: str,
+    expected_toolkit_source_commit: str,
+    expected_toolkit_source_tree: str,
+) -> dict[str, object]:
+    if (
+        not _is_git_oid(expected_toolkit_source_commit)
+        or not _is_git_oid(expected_toolkit_source_tree)
+    ):
+        _reject("EXPECTED_SOURCE_IDENTITY_REJECTED")
+    members, archive_sha = _open_verified_archive(
+        archive,
+        expected_sha256=expected_archive_sha256,
+        expected_paths=BUNDLE_PATHS,
+    )
+    bundle = _json_object(members[BUNDLE_MANIFEST], "BUNDLE_MANIFEST_REJECTED")
+    identity = bundle.get("bundle_identity_sha256")
+    unsigned = dict(bundle)
+    unsigned.pop("bundle_identity_sha256", None)
+    expected_keys = {
+        "schema_version",
+        "status",
+        "candidate_id",
+        "task_name",
+        "toolkit",
+        "installed_scheduler",
+        "scheduler_observation",
+        "authenticated_evidence",
+        "members",
+        "evidence_set_sha256",
+        "external_custody",
+        "safety",
+        "bundle_identity_sha256",
+    }
+    toolkit = bundle.get("toolkit")
+    installed = bundle.get("installed_scheduler")
+    scheduler = bundle.get("scheduler_observation")
+    authenticated = bundle.get("authenticated_evidence")
+    custody = bundle.get("external_custody")
+    safety = bundle.get("safety")
+    if (
+        set(bundle) != expected_keys
+        or bundle.get("schema_version") != BUNDLE_SCHEMA
+        or bundle.get("status")
+        != "PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE_BUNDLED"
+        or bundle.get("candidate_id") != "phillip-commodity"
+        or bundle.get("task_name") != TASK_NAME
+        or not _is_sha256(identity)
+        or identity != _sha256(_canonical_json(unsigned))
+        or not isinstance(toolkit, dict)
+        or toolkit.get("source_commit") != expected_toolkit_source_commit
+        or toolkit.get("source_tree") != expected_toolkit_source_tree
+        or not _is_sha256(toolkit.get("manifest_sha256"))
+        or installed
+        != {
+            "remediation_source_commit": V63_REMEDIATION_COMMIT,
+            "remediation_source_tree": V63_REMEDIATION_TREE,
+            "health_checker_sha256": V63_HEALTH_CHECKER_SHA256,
+            "worker_source_commit": WORKER_COMMIT,
+            "worker_source_tree": WORKER_TREE,
+            "contract_id": CONTRACT_ID,
+        }
+        or not isinstance(scheduler, dict)
+        or scheduler.get("automatic_boundary_accepted") is not True
+        or scheduler.get("manual_start_performed") is not False
+        or scheduler.get("v4_task_state") != "Disabled"
+        or scheduler.get("v5_task_state") != "Disabled"
+        or scheduler.get("task_state") not in {"Running", "Ready"}
+        or not isinstance(authenticated, dict)
+        or authenticated.get("source_chain_from_genesis") is not True
+        or authenticated.get("source_host_health_verifier_passed") is not True
+        or authenticated.get("independent_hmac_reverification_performed") is not False
+        or not _is_sha256(authenticated.get("checkpoint_hmac_sha256"))
+        or not _is_sha256(authenticated.get("checkpoint_predecessor_hmac_sha256"))
+        or custody
+        != {
+            "required": True,
+            "performed": False,
+            "worm_retention_verified": False,
+            "acknowledgement_receipt_present": False,
+            "copy_instruction": "COPY_ZIP_TO_INDEPENDENT_OFFHOST_WORM",
+        }
+        or safety
+        != {
+            "order_capability": "DISABLED",
+            "live_allowed": False,
+            "safe_to_demo_auto_order": False,
+            "promotion_eligible": False,
+            "task_scheduler_mutation": "NOT_PERFORMED",
+            "broker_mutation": "NOT_PERFORMED",
+        }
+    ):
+        _reject("BUNDLE_MANIFEST_REJECTED")
+    rows = _rows_by_path(bundle.get("members"), EVIDENCE_PATHS)
+    if bundle.get("evidence_set_sha256") != _evidence_set_sha256(
+        [rows[path] for path in sorted(rows)]
+    ):
+        _reject("EVIDENCE_SET_IDENTITY_REJECTED")
+    for path, row in rows.items():
+        if len(members[path]) != row["size_bytes"] or _sha256(members[path]) != row["sha256"]:
+            _reject("BUNDLE_MEMBER_DRIFT")
+    receipt = _json_object(
+        members["installation-receipt.json"],
+        "INSTALLATION_RECEIPT_REJECTED",
+    )
+    checkpoint = _json_object(
+        members["evidence-checkpoint.json"],
+        "CHECKPOINT_REJECTED",
+    )
+    _validate_installation_receipt(receipt)
+    _validate_checkpoint(checkpoint, receipt)
+    _validate_audit_pair(
+        checkpoint=checkpoint,
+        audit_bytes=members["audit-export.json"],
+        manifest_bytes=members["audit-manifest.json"],
+    )
+    if _sha256(members["installed-task.xml"]) != receipt["exported_task_xml_sha256"]:
+        _reject("INSTALLED_TASK_XML_HASH_REJECTED")
+    observed_at = _parse_utc(scheduler.get("observed_at_utc"), "OBSERVED_TIME_REJECTED")
+    last_run = _parse_utc(scheduler.get("last_run_at_utc"), "LAST_RUN_TIME_REJECTED")
+    _validate_postrun_state(
+        receipt=receipt,
+        checkpoint=checkpoint,
+        observed_at=observed_at,
+        task_state=str(scheduler.get("task_state")),
+        last_run_at=last_run,
+        last_task_result=scheduler.get("last_task_result"),
+        next_run_local=str(scheduler.get("next_run_time_local") or ""),
+        v4_state=str(scheduler.get("v4_task_state")),
+        v5_state=str(scheduler.get("v5_task_state")),
+        health_transcript=members["health-transcript.txt"],
+    )
+    if (
+        authenticated.get("checkpoint_hmac_sha256")
+        != checkpoint["checkpoint_hmac_sha256"]
+        or authenticated.get("checkpoint_predecessor_hmac_sha256")
+        != checkpoint["predecessor_checkpoint_hmac_sha256"]
+        or authenticated.get("source_operational_event_count")
+        != checkpoint["source_operational_event_count"]
+        or authenticated.get("committed_manifest_count")
+        != checkpoint["committed_manifest_count"]
+        or authenticated.get("latest_heartbeat_at_utc")
+        != checkpoint["latest_heartbeat_at_utc"]
+        or authenticated.get("last_invocation_id") != checkpoint["last_invocation_id"]
+        or authenticated.get("last_audit_sha256") != checkpoint["last_audit_sha256"]
+        or authenticated.get("last_manifest_file_sha256")
+        != checkpoint["last_manifest_file_sha256"]
+    ):
+        _reject("BUNDLE_EVIDENCE_PROJECTION_REJECTED")
+    return {
+        "schema_version": BUNDLE_SCHEMA,
+        "status": "PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE_VERIFIED",
+        "archive_sha256": archive_sha,
+        "bundle_identity_sha256": identity,
+        "toolkit_source_commit": expected_toolkit_source_commit,
+        "toolkit_source_tree": expected_toolkit_source_tree,
+        "checkpoint_hmac_sha256": checkpoint["checkpoint_hmac_sha256"],
+        "latest_heartbeat_at_utc": checkpoint["latest_heartbeat_at_utc"],
+        "source_event_count": checkpoint["source_operational_event_count"],
+        "offhost_custody_performed": False,
+        "order_capability": "DISABLED",
+        "live_allowed": False,
+        "promotion_eligible": False,
+    }
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    toolkit = subparsers.add_parser("verify-toolkit")
+    toolkit.add_argument("--archive", type=Path, required=True)
+    toolkit.add_argument("--expected-archive-sha256", required=True)
+    toolkit.add_argument("--expected-source-commit", required=True)
+    toolkit.add_argument("--expected-source-tree", required=True)
+    collect = subparsers.add_parser("collect")
+    collect.add_argument("--toolkit-manifest", type=Path, required=True)
+    collect.add_argument("--installation-receipt", type=Path, required=True)
+    collect.add_argument("--checkpoint-root", type=Path, required=True)
+    collect.add_argument("--audit-root", type=Path, required=True)
+    collect.add_argument("--installed-task-xml", type=Path, required=True)
+    collect.add_argument("--health-transcript", type=Path, required=True)
+    collect.add_argument("--task-state", required=True)
+    collect.add_argument("--last-run-at-utc", required=True)
+    collect.add_argument("--last-task-result", type=int, required=True)
+    collect.add_argument("--next-run-time-local", required=True)
+    collect.add_argument("--v4-task-state", required=True)
+    collect.add_argument("--v5-task-state", required=True)
+    collect.add_argument("--observed-at-utc", required=True)
+    collect.add_argument("--output", type=Path, required=True)
+    verify = subparsers.add_parser("verify")
+    verify.add_argument("--archive", type=Path, required=True)
+    verify.add_argument("--expected-archive-sha256", required=True)
+    verify.add_argument("--expected-toolkit-source-commit", required=True)
+    verify.add_argument("--expected-toolkit-source-tree", required=True)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(sys.argv[1:] if argv is None else argv)
+    try:
+        if args.command == "verify-toolkit":
+            result = verify_toolkit_archive(
+                args.archive,
+                expected_archive_sha256=args.expected_archive_sha256,
+                expected_source_commit=args.expected_source_commit,
+                expected_source_tree=args.expected_source_tree,
+            )
+        elif args.command == "collect":
+            result = collect_acceptance(
+                toolkit_manifest=args.toolkit_manifest,
+                installation_receipt=args.installation_receipt,
+                checkpoint_root=args.checkpoint_root,
+                audit_root=args.audit_root,
+                installed_task_xml=args.installed_task_xml,
+                health_transcript=args.health_transcript,
+                task_state=args.task_state,
+                last_run_at_utc=args.last_run_at_utc,
+                last_task_result=args.last_task_result,
+                next_run_time_local=args.next_run_time_local,
+                v4_task_state=args.v4_task_state,
+                v5_task_state=args.v5_task_state,
+                observed_at_utc=args.observed_at_utc,
+                output=args.output,
+            )
+        else:
+            result = verify_acceptance_archive(
+                args.archive,
+                expected_archive_sha256=args.expected_archive_sha256,
+                expected_toolkit_source_commit=args.expected_toolkit_source_commit,
+                expected_toolkit_source_tree=args.expected_toolkit_source_tree,
+            )
+    except (OSError, ValueError, PostRunAcceptanceError) as exc:
+        print(f"PHILLIP_COMMODITY_V6_POSTRUN_REJECTED: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
