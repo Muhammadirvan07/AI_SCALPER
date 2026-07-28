@@ -47,7 +47,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
 | Correctness | PASS_LOCAL | Python normal dan optimized 1.712 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, explicit loopback CORS, no unsafe eval or HTML injection, fail-closed payload guards |
-| Dependencies | PASS_LOCAL | npm audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
+| Dependencies | PASS_LOCAL | fresh npm, Python development, dan dashboard requirements audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
 | Reliability and observability | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | structured logs, health endpoint, signed journals; off-host alert/WORM proof masih eksternal |
 | Deployment and operations | INCOMPLETE_EXTERNAL | exact Windows services, ACL, key custody, RSA launcher, backup/restore, and conformance evidence belum lengkap |
@@ -65,7 +65,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | V6 packaging + post-run/custody focused tests | 31 PASS per normal/optimized mode |
 | Phillip V5/V6 scheduler + post-run/custody tests | 63 PASS, 2 skip per normal/optimized mode |
 | Frontend unit suite | 21 PASS |
-| Dashboard backend suite | 24 PASS |
+| Dashboard backend suite | 26 PASS |
 | Browser E2E suite | 14 PASS |
 | Lint, TypeScript, production build, bundle verification | PASS |
 | npm audit | 0 vulnerabilities across 248 dependencies |
@@ -135,6 +135,15 @@ readiness false.
    replacement tests prove unknown or changed ownership is preserved. The
    implementation contract is
    `specs/create_exclusive_output_custody_v1.md`.
+9. A fresh registry scan invalidated the earlier dependency assumption:
+   GitPython 3.1.51 in the development environment had five advisories, while
+   the dashboard manifest resolved ten findings across Starlette, pytest, and
+   python-dotenv. GitPython is now 3.1.55 locally; dashboard pins now use
+   FastAPI 0.140.7, Starlette 1.3.1, pytest 9.0.3,
+   python-dotenv 1.2.2, and Starlette's reviewed httpx2 2.9.1 test-client
+   dependency. Fresh audits report no known vulnerabilities, `pip check`
+   passes, 26 backend tests pass without warnings, and 14 browser E2E tests
+   remain green.
 
 ## Findings that remain external or manual
 

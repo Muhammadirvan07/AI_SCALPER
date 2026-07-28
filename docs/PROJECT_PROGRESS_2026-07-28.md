@@ -66,6 +66,14 @@ commit dibuat.
   configured-candidate cleanup. Identity yang tidak diketahui atau berubah
   berarti preserve-and-fail, bukan unlink. Spesifikasi kanonisnya berada di
   `specs/create_exclusive_output_custody_v1.md`.
+- Fresh registry audit menemukan environment development masih membawa
+  GitPython 3.1.51 dan manifest dashboard menarik FastAPI/Starlette, pytest,
+  serta python-dotenv yang sudah memiliki advisory 2026. Environment
+  development dinaikkan ke GitPython 3.1.55. Manifest dashboard sekarang
+  mem-pin FastAPI 0.140.7, Starlette 1.3.1, pytest 9.0.3,
+  python-dotenv 1.2.2, dan httpx2 2.9.1. Audit ulang environment development,
+  exact dashboard requirements, dan npm masing-masing melaporkan nol
+  vulnerability yang diketahui.
 
 ## Bukti otomatis
 
@@ -79,7 +87,7 @@ commit dibuat.
 | V6 packaging + post-run/custody focused cluster | 31 PASS per normal/optimized mode |
 | Phillip V5/V6 scheduler + post-run/custody cluster | 63 PASS, 2 skip per normal/optimized mode |
 | Frontend unit tests | 21 PASS |
-| Dashboard backend tests | 24 PASS |
+| Dashboard backend tests | 26 PASS |
 | Browser E2E | 14 PASS |
 | Frontend lint, TypeScript, production build, bundle verification | PASS |
 | npm dependency audit | 0 known vulnerabilities |

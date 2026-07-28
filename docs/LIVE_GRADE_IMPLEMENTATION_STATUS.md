@@ -5,7 +5,7 @@ Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 Validasi lokal terakhir pada 2026-07-28 menjalankan **1.712 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
 PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
-juga lulus 21 unit test frontend, 24 test backend, 14 browser E2E, lint,
+juga lulus 21 unit test frontend, 26 test backend, 14 browser E2E, lint,
 TypeScript, production build, dan bundle verification. Itu adalah software
 regression evidence, bukan Windows host acceptance, broker-forward evidence,
 atau izin trading.
@@ -19,6 +19,13 @@ Dependency lock/install manifest/SBOM lokal juga tervalidasi dan
 `pip-audit 2.10.1` melaporkan nol kerentanan yang diketahui pada environment
 development. Pemeriksaan tersebut tidak menggantikan fresh signed OSV receipt
 dari exact Windows release.
+
+Fresh audit 2026-07-28 juga menutup drift dependency dashboard: manifest kini
+mem-pin FastAPI 0.140.7, Starlette 1.3.1, pytest 9.0.3,
+python-dotenv 1.2.2, dan httpx2 2.9.1. Exact requirements audit serta npm audit
+melaporkan nol vulnerability yang diketahui; `pip check`, 26 backend tests,
+dan 14 browser E2E lulus. Ini tetap bukti source/development, bukan approval
+deployment publik atau trading.
 
 Dokumen ini membedakan implementasi software lokal dari bukti operasi. Test
 hijau tidak menggantikan broker-forward evidence, legal review, Windows VPS
