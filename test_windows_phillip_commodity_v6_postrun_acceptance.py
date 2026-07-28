@@ -68,6 +68,34 @@ def digest(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def scheduler_event_xml(
+    *,
+    event_id: int,
+    record_id: int,
+    timestamp: str,
+    instance_id: str,
+) -> str:
+    return (
+        '<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">'
+        "<System>"
+        '<Provider Name="Microsoft-Windows-TaskScheduler" '
+        'Guid="{DE7B24EA-73C8-4A09-985D-5BDADCFA9017}" />'
+        f"<EventID>{event_id}</EventID>"
+        f'<TimeCreated SystemTime="{timestamp}" />'
+        f"<EventRecordID>{record_id}</EventRecordID>"
+        f'<Correlation ActivityID="{instance_id}" />'
+        "<Channel>Microsoft-Windows-TaskScheduler/Operational</Channel>"
+        "<Computer>fixture.example.invalid</Computer>"
+        "</System>"
+        "<EventData>"
+        f'<Data Name="TaskName">\\{acceptance.TASK_NAME}</Data>'
+        f'<Data Name="InstanceId">{instance_id}</Data>'
+        "<Data Name=\"UserContext\">fixture</Data>"
+        "</EventData>"
+        "</Event>"
+    )
+
+
 def rsa_sign(message: bytes) -> str:
     modulus = int(TEST_RSA_N_HEX, 16)
     private_exponent = int(TEST_RSA_D_HEX, 16)
@@ -103,6 +131,7 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
             acceptance.WRAPPER_PATH,
             acceptance.CUSTODY_REQUEST_WRAPPER_PATH,
             acceptance.CUSTODY_RECEIPT_WRAPPER_PATH,
+            acceptance.TRIGGER_AUDIT_READINESS_WRAPPER_PATH,
         ):
             (self.toolkit / wrapper).write_text(
                 f"# reviewed fixture {wrapper}\n",
@@ -309,6 +338,48 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+        instance_id = "{12345678-1234-4234-8234-123456789abc}"
+        scheduler_rows = []
+        for event_id, record_id, timestamp in (
+            (107, 500, "2026-07-29T21:45:00.0000000Z"),
+            (100, 501, "2026-07-29T21:45:02.0000000Z"),
+        ):
+            raw_xml = scheduler_event_xml(
+                event_id=event_id,
+                record_id=record_id,
+                timestamp=timestamp,
+                instance_id=instance_id,
+            )
+            scheduler_rows.append(
+                {
+                    "event_id": event_id,
+                    "event_record_id": record_id,
+                    "time_created_utc": timestamp,
+                    "raw_xml": raw_xml,
+                    "raw_xml_sha256": digest(raw_xml.encode("utf-8")),
+                }
+            )
+        scheduler_evidence = {
+            "schema_version": acceptance.TASK_SCHEDULER_EVIDENCE_SCHEMA,
+            "captured_at_utc": "2026-07-29T21:50:01.0000000Z",
+            "channel": acceptance.TASK_SCHEDULER_EVENT_CHANNEL,
+            "provider": acceptance.TASK_SCHEDULER_EVENT_PROVIDER,
+            "task_name": f"\\{acceptance.TASK_NAME}",
+            "query": {
+                "event_ids": list(acceptance.TASK_SCHEDULER_EVENT_IDS),
+                "start_at_utc": "2026-07-29T21:40:00Z",
+                "end_at_utc": "2026-07-29T21:50:01.0000000Z",
+                "operational_log_enabled": True,
+            },
+            "events": scheduler_rows,
+            "collection": {
+                "api": "Get-WinEvent",
+                "event_messages_used_for_validation": False,
+                "task_scheduler_mutation": "NOT_PERFORMED",
+            },
+        }
+        self.scheduler_events = self.root / "task-scheduler-events.json"
+        self.scheduler_events.write_bytes(pretty(scheduler_evidence))
 
     def _checkpoint(
         self,
@@ -362,6 +433,7 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
             audit_root=self.audit_root,
             installed_task_xml=self.task_xml,
             health_transcript=self.transcript,
+            task_scheduler_events=self.scheduler_events,
             task_state="Running",
             last_run_at_utc="2026-07-29T21:45:02Z",
             last_task_result=267009,
@@ -381,6 +453,10 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
             result["status"],
         )
         self.assertFalse(result["offhost_custody_performed"])
+        self.assertEqual(
+            "{12345678-1234-4234-8234-123456789abc}",
+            result["scheduler_instance_id"],
+        )
         verified = acceptance.verify_acceptance_archive(
             archive,
             expected_archive_sha256=digest(archive.read_bytes()),
@@ -395,6 +471,146 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
                 (*sorted(acceptance.EVIDENCE_PATHS), acceptance.BUNDLE_MANIFEST),
                 tuple(package.namelist()),
             )
+            bundle = json.loads(package.read(acceptance.BUNDLE_MANIFEST))
+        provenance = bundle["scheduler_observation"]["trigger_provenance"]
+        self.assertTrue(provenance["scheduled_trigger_observed"])
+        self.assertFalse(provenance["manual_trigger_observed"])
+        self.assertEqual("LOCAL_HOST_EVENT_LOG", provenance["provenance_scope"])
+
+    def test_rejects_missing_scheduled_trigger_or_manual_trigger(self) -> None:
+        original = json.loads(self.scheduler_events.read_text(encoding="utf-8"))
+        missing = json.loads(json.dumps(original))
+        missing["events"] = [
+            row for row in missing["events"] if row["event_id"] != 107
+        ]
+        self.scheduler_events.write_bytes(pretty(missing))
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "TASK_SCHEDULER_(EVIDENCE|START_EVENT|TRIGGER_PROVENANCE)_REJECTED",
+        ):
+            self._collect("missing-trigger.zip")
+
+        evidence = original
+        instance_id = "{12345678-1234-4234-8234-123456789abc}"
+        raw_xml = scheduler_event_xml(
+            event_id=110,
+            record_id=502,
+            timestamp="2026-07-29T21:45:03.0000000Z",
+            instance_id=instance_id,
+        )
+        evidence["events"].append(
+            {
+                "event_id": 110,
+                "event_record_id": 502,
+                "time_created_utc": "2026-07-29T21:45:03.0000000Z",
+                "raw_xml": raw_xml,
+                "raw_xml_sha256": digest(raw_xml.encode("utf-8")),
+            }
+        )
+        self.scheduler_events.write_bytes(pretty(evidence))
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "TASK_SCHEDULER_TRIGGER_PROVENANCE_REJECTED",
+        ):
+            self._collect("manual-trigger.zip")
+
+    def test_rejects_scheduler_raw_xml_projection_drift(self) -> None:
+        evidence = json.loads(self.scheduler_events.read_text(encoding="utf-8"))
+        row = evidence["events"][0]
+        row["raw_xml"] = row["raw_xml"].replace(
+            acceptance.TASK_NAME,
+            "AI_SCALPER-AnotherTask",
+        )
+        row["raw_xml_sha256"] = digest(row["raw_xml"].encode("utf-8"))
+        self.scheduler_events.write_bytes(pretty(evidence))
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "TASK_SCHEDULER_EVENT_XML_REJECTED",
+        ):
+            self._collect("scheduler-xml-drift.zip")
+
+    def test_rejects_scheduler_evidence_duplicate_json_key(self) -> None:
+        original = self.scheduler_events.read_bytes()
+        self.scheduler_events.write_bytes(
+            b'{"schema_version":"duplicate",' + original[1:]
+        )
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "TASK_SCHEDULER_EVIDENCE_REJECTED",
+        ):
+            self._collect("scheduler-duplicate-key.zip")
+
+    def test_ready_task_requires_correlated_completion_event(self) -> None:
+        transcript = self.transcript.read_text(encoding="utf-8")
+        self.transcript.write_text(
+            transcript.replace("TaskState : Running", "TaskState : Ready").replace(
+                "LastTaskResult : 267009",
+                "LastTaskResult : 0",
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "TASK_SCHEDULER_TRIGGER_PROVENANCE_REJECTED",
+        ):
+            acceptance.collect_acceptance(
+                toolkit_manifest=self.toolkit_manifest,
+                installation_receipt=self.receipt,
+                checkpoint_root=self.checkpoints,
+                audit_root=self.audit_root,
+                installed_task_xml=self.task_xml,
+                health_transcript=self.transcript,
+                task_scheduler_events=self.scheduler_events,
+                task_state="Ready",
+                last_run_at_utc="2026-07-29T21:45:02Z",
+                last_task_result=0,
+                next_run_time_local="2026-07-31T06:45:00",
+                v4_task_state="Disabled",
+                v5_task_state="Disabled",
+                observed_at_utc="2026-07-29T21:50:00Z",
+                output=self.root / "ready-without-completion.zip",
+                tool_path=self.tool,
+            )
+        evidence = json.loads(self.scheduler_events.read_text(encoding="utf-8"))
+        instance_id = "{12345678-1234-4234-8234-123456789abc}"
+        raw_xml = scheduler_event_xml(
+            event_id=102,
+            record_id=502,
+            timestamp="2026-07-29T21:49:45.0000000Z",
+            instance_id=instance_id,
+        )
+        evidence["events"].append(
+            {
+                "event_id": 102,
+                "event_record_id": 502,
+                "time_created_utc": "2026-07-29T21:49:45.0000000Z",
+                "raw_xml": raw_xml,
+                "raw_xml_sha256": digest(raw_xml.encode("utf-8")),
+            }
+        )
+        self.scheduler_events.write_bytes(pretty(evidence))
+        result = acceptance.collect_acceptance(
+            toolkit_manifest=self.toolkit_manifest,
+            installation_receipt=self.receipt,
+            checkpoint_root=self.checkpoints,
+            audit_root=self.audit_root,
+            installed_task_xml=self.task_xml,
+            health_transcript=self.transcript,
+            task_scheduler_events=self.scheduler_events,
+            task_state="Ready",
+            last_run_at_utc="2026-07-29T21:45:02Z",
+            last_task_result=0,
+            next_run_time_local="2026-07-31T06:45:00",
+            v4_task_state="Disabled",
+            v5_task_state="Disabled",
+            observed_at_utc="2026-07-29T21:50:00Z",
+            output=self.root / "ready-with-completion.zip",
+            tool_path=self.tool,
+        )
+        self.assertEqual(
+            "PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE_VERIFIED",
+            result["status"],
+        )
 
     def test_rejects_preboundary_or_nonadvanced_checkpoint(self) -> None:
         receipt = json.loads(self.receipt.read_text(encoding="utf-8"))
@@ -427,6 +643,7 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
                 audit_root=self.audit_root,
                 installed_task_xml=self.task_xml,
                 health_transcript=self.transcript,
+                task_scheduler_events=self.scheduler_events,
                 task_state="Running",
                 last_run_at_utc="2026-07-29T21:44:59Z",
                 last_task_result=267009,
@@ -511,6 +728,7 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
                 audit_root=self.audit_root,
                 installed_task_xml=self.task_xml,
                 health_transcript=self.transcript,
+                task_scheduler_events=self.scheduler_events,
                 task_state="Ready",
                 last_run_at_utc="2026-07-29T21:45:02Z",
                 last_task_result=2,

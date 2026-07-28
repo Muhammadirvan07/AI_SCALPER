@@ -33,7 +33,7 @@ TASK_NAME = "AI_SCALPER-PhillipCommodityV6-ReadOnlyShadow"
 CONTRACT_ID = "phillip-commodity-window-01-diagnostic-v5"
 FIRST_SCHEDULED_START_UTC = "2026-07-29T21:45:00Z"
 SCHEDULE_END_UTC = "2026-09-21T15:16:00Z"
-TOOLKIT_SCHEMA = "phillip-commodity-v6-postrun-toolkit-v1"
+TOOLKIT_SCHEMA = "phillip-commodity-v6-postrun-toolkit-v2"
 TOOLKIT_MANIFEST = "PHILLIP_COMMODITY_V6_POSTRUN_TOOLKIT.json"
 FIXED_ZIP_TIMESTAMP = (2026, 7, 30, 6, 45, 0)
 FIXED_ZIP_MODE = stat.S_IFREG | 0o644
@@ -46,6 +46,9 @@ SOURCE_PATHS = {
     ),
     "Test-PhillipCommodityV6CustodyReceipt.ps1": (
         "windows_operator/Test-PhillipCommodityV6CustodyReceipt.ps1"
+    ),
+    "Test-PhillipCommodityV6TriggerAuditReadiness.ps1": (
+        "windows_operator/Test-PhillipCommodityV6TriggerAuditReadiness.ps1"
     ),
     "phillip_commodity_v6_postrun_acceptance.py": (
         "windows_operator/phillip_commodity_v6_postrun_acceptance.py"

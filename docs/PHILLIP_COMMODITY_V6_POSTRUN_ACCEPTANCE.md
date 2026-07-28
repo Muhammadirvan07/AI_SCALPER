@@ -5,9 +5,11 @@ Status: **READ-ONLY / POST-SCHEDULED-RUN ONLY / ORDER DISABLED**
 Toolkit ini menutup handoff setelah pemicu otomatis V6.3. Ia menjalankan exact
 health checker yang sudah terpasang, memverifikasi task dan signed checkpoint,
 lalu mengikat checkpoint terbaru, exact audit pair, installation receipt,
-installed task XML, dan health transcript ke satu ZIP create-exclusive. Toolkit
-yang sama juga membuat custody-request ZIP deterministik dan memverifikasi
-receipt RSA dari kustodian WORM independen.
+installed task XML, health transcript, dan raw XML Task Scheduler Operational
+event ke satu ZIP create-exclusive. Event 107 dan 100 harus berkorelasi pada
+`InstanceId` yang sama; event 110 pada instance atau launch window yang sama
+membatalkan acceptance. Toolkit yang sama juga membuat custody-request ZIP
+deterministik dan memverifikasi receipt RSA dari kustodian WORM independen.
 
 Toolkit ini tidak:
 
@@ -18,6 +20,7 @@ Toolkit ini tidak:
 - menyalin bukti ke storage off-host;
 - menyimpan private key kustodian;
 - menganggap receipt tanpa tanda tangan sebagai bukti;
+- menganggap event log lokal sebagai attestation independen;
 - mengklaim inspeksi langsung API storage;
 - membuka demo-auto, promotion, atau live trading.
 
@@ -32,6 +35,10 @@ Jangan jalankan sebelum boundary otomatis
 `2026-07-30T06:45:00+09:00`. Manual start bukan pengganti bukti scheduler.
 Jalankan toolkit ketika V6 sedang `Running` dengan heartbeat segar, atau setelah
 run terjadwal selesai sehat dan task kembali `Ready` dengan result `0`.
+
+Task Scheduler Operational log harus sudah aktif sebelum boundary. Toolkit
+tidak mengaktifkannya karena perubahan konfigurasi log harus tetap merupakan
+aksi operator yang eksplisit dan tercatat.
 
 ## Verifikasi dan ekstraksi toolkit
 
@@ -76,6 +83,38 @@ if ($LASTEXITCODE -ne 0) {
 }
 ```
 
+## Preflight trigger audit sebelum boundary
+
+Jalankan checker read-only ini segera setelah ekstraksi dan ulangi sebelum
+boundary. Ia tidak memulai atau mengubah task.
+
+```powershell
+& "$toolkitRoot\Test-PhillipCommodityV6TriggerAuditReadiness.ps1" `
+  -ToolkitArchive $archive `
+  -ExpectedToolkitArchiveSHA256 $expectedArchiveSHA256
+
+if (-not $?) {
+  throw "Trigger-audit readiness gagal; jangan menunggu boundary tanpa fix."
+}
+```
+
+Output yang sah harus memuat:
+
+```text
+Status                    = PHILLIP_COMMODITY_V6_TRIGGER_AUDIT_READY
+OperationalLogEnabled     = True
+ManualStartRequired       = False
+TriggerEvidenceCollection = PENDING_AUTOMATIC_RUN
+TaskSchedulerMutation     = NOT_PERFORMED
+OrderCapability           = DISABLED
+LiveAllowed               = False
+```
+
+Jika checker menyatakan log belum aktif, hentikan alur dan aktifkan Task
+Scheduler history melalui prosedur administrator Windows yang disetujui,
+kemudian jalankan checker ulang. Jangan men-start task untuk menghasilkan
+event pengganti.
+
 ## Buat acceptance ZIP
 
 Perintah ini menjalankan health checker, tetapi tidak memulai task.
@@ -102,6 +141,10 @@ Output sukses harus menyatakan:
 
 ```text
 Status                  = PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE_READY
+SchedulerInstanceId     = <CORRELATED_GUID>
+ScheduledTriggerRecordId = <EVENT_107_RECORD_ID>
+TaskStartRecordId       = <EVENT_100_RECORD_ID>
+TriggerProvenanceScope  = LOCAL_HOST_EVENT_LOG
 OffhostCustodyPerformed = False
 OrderCapability         = DISABLED
 LiveAllowed             = False
@@ -113,8 +156,8 @@ BrokerMutation          = NOT_PERFORMED
 ## Verifikasi ulang dan custody
 
 Simpan `ArchiveSHA256`, `BundleIdentitySHA256`, checkpoint HMAC, heartbeat,
-source event count, task state, dan scheduler result dari output. Verifikasi
-ulang ZIP sebelum transfer:
+source event count, task state, scheduler result, correlated instance ID, dan
+record ID event 107/100 dari output. Verifikasi ulang ZIP sebelum transfer:
 
 ```powershell
 $acceptanceSHA256 = (

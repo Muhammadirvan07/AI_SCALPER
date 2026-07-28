@@ -26,6 +26,8 @@ import re
 import stat
 import sys
 from typing import BinaryIO, Iterable
+import uuid
+import xml.etree.ElementTree as ET
 import zipfile
 
 
@@ -71,8 +73,11 @@ MAX_CUSTODY_MEMBER_BYTES = 32 * 1024 * 1024
 MAX_CUSTODY_EXPANDED_BYTES = 40 * 1024 * 1024
 MAX_CUSTODY_DOCUMENT_BYTES = 262_144
 CHECKPOINT_SCHEMA = "phillip-commodity-v6-scheduler-evidence-checkpoint-v1"
-TOOLKIT_SCHEMA = "phillip-commodity-v6-postrun-toolkit-v1"
-BUNDLE_SCHEMA = "phillip-commodity-v6-postrun-acceptance-bundle-v1"
+TOOLKIT_SCHEMA = "phillip-commodity-v6-postrun-toolkit-v2"
+BUNDLE_SCHEMA = "phillip-commodity-v6-postrun-acceptance-bundle-v2"
+TASK_SCHEDULER_EVIDENCE_SCHEMA = (
+    "phillip-commodity-v6-task-scheduler-trigger-evidence-v1"
+)
 CUSTODY_REQUEST_SCHEMA = "phillip-commodity-v6-worm-custody-request-v1"
 CUSTODY_POLICY_SCHEMA = "phillip-commodity-v6-worm-custody-rsa-policy-v1"
 CUSTODY_RECEIPT_SCHEMA = "phillip-commodity-v6-worm-custody-receipt-v1"
@@ -87,12 +92,16 @@ TOOL_PATH = "phillip_commodity_v6_postrun_acceptance.py"
 WRAPPER_PATH = "Invoke-PhillipCommodityV6PostRunAcceptance.ps1"
 CUSTODY_REQUEST_WRAPPER_PATH = "New-PhillipCommodityV6CustodyRequest.ps1"
 CUSTODY_RECEIPT_WRAPPER_PATH = "Test-PhillipCommodityV6CustodyReceipt.ps1"
+TRIGGER_AUDIT_READINESS_WRAPPER_PATH = (
+    "Test-PhillipCommodityV6TriggerAuditReadiness.ps1"
+)
 RUNBOOK_PATH = "PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE.md"
 TOOLKIT_SOURCE_PATHS = (
     RUNBOOK_PATH,
     WRAPPER_PATH,
     CUSTODY_REQUEST_WRAPPER_PATH,
     CUSTODY_RECEIPT_WRAPPER_PATH,
+    TRIGGER_AUDIT_READINESS_WRAPPER_PATH,
     TOOL_PATH,
 )
 TOOLKIT_PATHS = (*TOOLKIT_SOURCE_PATHS, TOOLKIT_MANIFEST)
@@ -103,6 +112,7 @@ EVIDENCE_PATHS = (
     "health-transcript.txt",
     "installation-receipt.json",
     "installed-task.xml",
+    "task-scheduler-events.json",
 )
 BUNDLE_PATHS = (*EVIDENCE_PATHS, BUNDLE_MANIFEST)
 CUSTODY_REQUEST_PATHS = (CUSTODY_ACCEPTANCE_MEMBER, CUSTODY_REQUEST_MANIFEST)
@@ -124,6 +134,29 @@ _SHA256_DIGEST_INFO_PREFIX = bytes.fromhex(
 )
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
 _LOWER_HEX_RE = re.compile(r"^[0-9a-f]+$")
+_EVENT_NAMESPACE = "http://schemas.microsoft.com/win/2004/08/events/event"
+_EVENT_NAMESPACE_MAP = {"event": _EVENT_NAMESPACE}
+TASK_SCHEDULER_EVENT_CHANNEL = (
+    "Microsoft-Windows-TaskScheduler/Operational"
+)
+TASK_SCHEDULER_EVENT_PROVIDER = "Microsoft-Windows-TaskScheduler"
+TASK_STARTED_EVENT_ID = 100
+TASK_COMPLETED_EVENT_ID = 102
+SCHEDULED_TRIGGER_EVENT_ID = 107
+MANUAL_TRIGGER_EVENT_ID = 110
+TASK_SCHEDULER_EVENT_IDS = (
+    TASK_STARTED_EVENT_ID,
+    TASK_COMPLETED_EVENT_ID,
+    SCHEDULED_TRIGGER_EVENT_ID,
+    MANUAL_TRIGGER_EVENT_ID,
+)
+TASK_SCHEDULER_QUERY_START_UTC = FIRST_SCHEDULED_START_UTC - timedelta(
+    minutes=5
+)
+TASK_SCHEDULER_CAPTURE_MAXIMUM_DELAY = timedelta(minutes=30)
+TASK_SCHEDULER_CORRELATION_TOLERANCE = timedelta(minutes=2)
+MAX_TASK_SCHEDULER_EVENTS = 4096
+MAX_TASK_SCHEDULER_EVENT_XML_BYTES = 512 * 1024
 
 
 class PostRunAcceptanceError(RuntimeError):
@@ -241,6 +274,31 @@ def _pretty_json(value: object) -> bytes:
 def _json_object(value: bytes, code: str) -> dict[str, object]:
     try:
         parsed = json.loads(value.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise PostRunAcceptanceError(code) from exc
+    if not isinstance(parsed, dict):
+        _reject(code)
+    return parsed
+
+
+def _json_object_unique(value: bytes, code: str) -> dict[str, object]:
+    def reject_duplicates(
+        pairs: list[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, item in pairs:
+            if key in result:
+                _reject(code)
+            result[key] = item
+        return result
+
+    try:
+        parsed = json.loads(
+            value.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+        )
+    except PostRunAcceptanceError:
+        raise
     except (UnicodeDecodeError, ValueError) as exc:
         raise PostRunAcceptanceError(code) from exc
     if not isinstance(parsed, dict):
@@ -900,6 +958,265 @@ def _health_transcript_fields(value: bytes) -> dict[str, str]:
     return fields
 
 
+def _normalized_instance_id(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        _reject("TASK_SCHEDULER_EVENT_XML_REJECTED")
+    try:
+        parsed = uuid.UUID(value.strip("{}"))
+    except (AttributeError, ValueError) as exc:
+        raise PostRunAcceptanceError(
+            "TASK_SCHEDULER_EVENT_XML_REJECTED"
+        ) from exc
+    if parsed.int == 0:
+        _reject("TASK_SCHEDULER_EVENT_XML_REJECTED")
+    return "{" + str(parsed) + "}"
+
+
+def _exact_event_xml_child(parent: ET.Element, name: str) -> ET.Element:
+    nodes = parent.findall(f"event:{name}", _EVENT_NAMESPACE_MAP)
+    if len(nodes) != 1:
+        _reject("TASK_SCHEDULER_EVENT_XML_REJECTED")
+    return nodes[0]
+
+
+def _parse_task_scheduler_event(
+    row: object,
+) -> dict[str, object]:
+    if not isinstance(row, dict) or set(row) != {
+        "event_id",
+        "event_record_id",
+        "time_created_utc",
+        "raw_xml",
+        "raw_xml_sha256",
+    }:
+        _reject("TASK_SCHEDULER_EVENT_ROW_REJECTED")
+    event_id = row.get("event_id")
+    record_id = row.get("event_record_id")
+    raw_xml = row.get("raw_xml")
+    if (
+        isinstance(event_id, bool)
+        or not isinstance(event_id, int)
+        or event_id not in TASK_SCHEDULER_EVENT_IDS
+        or isinstance(record_id, bool)
+        or not isinstance(record_id, int)
+        or record_id <= 0
+        or not isinstance(raw_xml, str)
+        or not raw_xml
+        or len(raw_xml.encode("utf-8")) > MAX_TASK_SCHEDULER_EVENT_XML_BYTES
+        or "<!DOCTYPE" in raw_xml.upper()
+        or "<!ENTITY" in raw_xml.upper()
+        or _sha256(raw_xml.encode("utf-8")) != row.get("raw_xml_sha256")
+    ):
+        _reject("TASK_SCHEDULER_EVENT_ROW_REJECTED")
+    row_time = _parse_utc(
+        row.get("time_created_utc"),
+        "TASK_SCHEDULER_EVENT_TIME_REJECTED",
+    )
+    try:
+        root = ET.fromstring(raw_xml)
+    except ET.ParseError as exc:
+        raise PostRunAcceptanceError(
+            "TASK_SCHEDULER_EVENT_XML_REJECTED"
+        ) from exc
+    if root.tag != f"{{{_EVENT_NAMESPACE}}}Event":
+        _reject("TASK_SCHEDULER_EVENT_XML_REJECTED")
+    systems = root.findall("event:System", _EVENT_NAMESPACE_MAP)
+    event_data_nodes = root.findall("event:EventData", _EVENT_NAMESPACE_MAP)
+    if len(systems) != 1 or len(event_data_nodes) != 1:
+        _reject("TASK_SCHEDULER_EVENT_XML_REJECTED")
+    system = systems[0]
+    event_data = event_data_nodes[0]
+    provider = _exact_event_xml_child(system, "Provider")
+    event_id_node = _exact_event_xml_child(system, "EventID")
+    record_id_node = _exact_event_xml_child(system, "EventRecordID")
+    time_node = _exact_event_xml_child(system, "TimeCreated")
+    channel_node = _exact_event_xml_child(system, "Channel")
+    computer_node = _exact_event_xml_child(system, "Computer")
+    try:
+        xml_event_id = int(event_id_node.text or "")
+        xml_record_id = int(record_id_node.text or "")
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise PostRunAcceptanceError(
+            "TASK_SCHEDULER_EVENT_XML_REJECTED"
+        ) from exc
+    if (
+        provider.attrib.get("Name") != TASK_SCHEDULER_EVENT_PROVIDER
+        or xml_event_id != event_id
+        or xml_record_id != record_id
+        or channel_node.text != TASK_SCHEDULER_EVENT_CHANNEL
+        or not (computer_node.text or "").strip()
+    ):
+        _reject("TASK_SCHEDULER_EVENT_XML_REJECTED")
+    xml_time = _parse_utc(
+        time_node.attrib.get("SystemTime"),
+        "TASK_SCHEDULER_EVENT_TIME_REJECTED",
+    )
+    if xml_time != row_time:
+        _reject("TASK_SCHEDULER_EVENT_TIME_REJECTED")
+    values: dict[str, str] = {}
+    for node in event_data.findall("event:Data", _EVENT_NAMESPACE_MAP):
+        name = node.attrib.get("Name")
+        if (
+            not isinstance(name, str)
+            or not name
+            or name in values
+            or len(node) != 0
+        ):
+            _reject("TASK_SCHEDULER_EVENT_XML_REJECTED")
+        values[name] = node.text or ""
+    task_name = values.get("TaskName")
+    instance_values = [
+        values[name]
+        for name in ("InstanceId", "TaskInstanceId")
+        if values.get(name)
+    ]
+    if task_name != f"\\{TASK_NAME}" or len(instance_values) != 1:
+        _reject("TASK_SCHEDULER_EVENT_XML_REJECTED")
+    return {
+        "event_id": event_id,
+        "event_record_id": record_id,
+        "time_created": row_time,
+        "instance_id": _normalized_instance_id(instance_values[0]),
+    }
+
+
+def _validate_task_scheduler_evidence(
+    value: bytes,
+    *,
+    observed_at: datetime,
+    last_run_at: datetime,
+    task_state: str,
+) -> dict[str, object]:
+    evidence = _json_object_unique(value, "TASK_SCHEDULER_EVIDENCE_REJECTED")
+    if set(evidence) != {
+        "schema_version",
+        "captured_at_utc",
+        "channel",
+        "provider",
+        "task_name",
+        "query",
+        "events",
+        "collection",
+    }:
+        _reject("TASK_SCHEDULER_EVIDENCE_REJECTED")
+    query = evidence.get("query")
+    collection = evidence.get("collection")
+    events = evidence.get("events")
+    captured_at = _parse_utc(
+        evidence.get("captured_at_utc"),
+        "TASK_SCHEDULER_CAPTURE_TIME_REJECTED",
+    )
+    if (
+        evidence.get("schema_version") != TASK_SCHEDULER_EVIDENCE_SCHEMA
+        or evidence.get("channel") != TASK_SCHEDULER_EVENT_CHANNEL
+        or evidence.get("provider") != TASK_SCHEDULER_EVENT_PROVIDER
+        or evidence.get("task_name") != f"\\{TASK_NAME}"
+        or not isinstance(query, dict)
+        or query
+        != {
+            "event_ids": list(TASK_SCHEDULER_EVENT_IDS),
+            "start_at_utc": _utc_text(TASK_SCHEDULER_QUERY_START_UTC),
+            "end_at_utc": evidence.get("captured_at_utc"),
+            "operational_log_enabled": True,
+        }
+        or collection
+        != {
+            "api": "Get-WinEvent",
+            "event_messages_used_for_validation": False,
+            "task_scheduler_mutation": "NOT_PERFORMED",
+        }
+        or captured_at < observed_at
+        or captured_at - observed_at > TASK_SCHEDULER_CAPTURE_MAXIMUM_DELAY
+        or not isinstance(events, list)
+        or len(events) < 2
+        or len(events) > MAX_TASK_SCHEDULER_EVENTS
+    ):
+        _reject("TASK_SCHEDULER_EVIDENCE_REJECTED")
+    parsed = [_parse_task_scheduler_event(row) for row in events]
+    record_ids = [int(row["event_record_id"]) for row in parsed]
+    if record_ids != sorted(record_ids) or len(record_ids) != len(set(record_ids)):
+        _reject("TASK_SCHEDULER_EVENT_ORDER_REJECTED")
+    for row in parsed:
+        event_time = row["time_created"]
+        if (
+            not isinstance(event_time, datetime)
+            or event_time < TASK_SCHEDULER_QUERY_START_UTC
+            or event_time > captured_at
+        ):
+            _reject("TASK_SCHEDULER_EVENT_TIME_REJECTED")
+    starts = [
+        row
+        for row in parsed
+        if row["event_id"] == TASK_STARTED_EVENT_ID
+        and abs(row["time_created"] - last_run_at)
+        <= TASK_SCHEDULER_CORRELATION_TOLERANCE
+    ]
+    if len(starts) != 1:
+        _reject("TASK_SCHEDULER_START_EVENT_REJECTED")
+    start = starts[0]
+    instance_id = start["instance_id"]
+    triggers = [
+        row
+        for row in parsed
+        if row["event_id"] == SCHEDULED_TRIGGER_EVENT_ID
+        and row["instance_id"] == instance_id
+        and row["time_created"] <= start["time_created"]
+        and start["time_created"] - row["time_created"]
+        <= TASK_SCHEDULER_CORRELATION_TOLERANCE
+    ]
+    manual = [
+        row
+        for row in parsed
+        if row["event_id"] == MANUAL_TRIGGER_EVENT_ID
+        and (
+            row["instance_id"] == instance_id
+            or abs(row["time_created"] - last_run_at)
+            <= TASK_SCHEDULER_CORRELATION_TOLERANCE
+        )
+    ]
+    completions = [
+        row
+        for row in parsed
+        if row["event_id"] == TASK_COMPLETED_EVENT_ID
+        and row["instance_id"] == instance_id
+    ]
+    if (
+        len(triggers) != 1
+        or manual
+        or (
+            task_state == "Ready"
+            and (
+                len(completions) != 1
+                or completions[0]["time_created"] < start["time_created"]
+                or completions[0]["time_created"] > observed_at
+            )
+        )
+        or (
+            task_state == "Running"
+            and any(row["time_created"] <= observed_at for row in completions)
+        )
+    ):
+        _reject("TASK_SCHEDULER_TRIGGER_PROVENANCE_REJECTED")
+    trigger = triggers[0]
+    return {
+        "source": TASK_SCHEDULER_EVENT_CHANNEL,
+        "provider": TASK_SCHEDULER_EVENT_PROVIDER,
+        "instance_id": instance_id,
+        "scheduled_trigger_event_id": SCHEDULED_TRIGGER_EVENT_ID,
+        "scheduled_trigger_record_id": trigger["event_record_id"],
+        "scheduled_trigger_at_utc": _utc_text(trigger["time_created"]),
+        "task_start_event_id": TASK_STARTED_EVENT_ID,
+        "task_start_record_id": start["event_record_id"],
+        "task_start_at_utc": _utc_text(start["time_created"]),
+        "manual_trigger_event_id": MANUAL_TRIGGER_EVENT_ID,
+        "scheduled_trigger_observed": True,
+        "manual_trigger_observed": False,
+        "raw_event_xml_bound": True,
+        "provenance_scope": "LOCAL_HOST_EVENT_LOG",
+        "independent_attestation_performed": False,
+    }
+
+
 def _zip_info(path: str) -> zipfile.ZipInfo:
     info = zipfile.ZipInfo(path, FIXED_ZIP_TIMESTAMP)
     info.compress_type = zipfile.ZIP_DEFLATED
@@ -990,6 +1307,7 @@ def collect_acceptance(
     audit_root: Path,
     installed_task_xml: Path,
     health_transcript: Path,
+    task_scheduler_events: Path,
     task_state: str,
     last_run_at_utc: str,
     last_task_result: int,
@@ -1082,6 +1400,17 @@ def collect_acceptance(
         v5_state=v5_task_state,
         health_transcript=transcript_bytes,
     )
+    scheduler_event_bytes = _read_regular(
+        task_scheduler_events,
+        "TASK_SCHEDULER_EVIDENCE_UNAVAILABLE",
+        maximum=MAX_MEMBER_BYTES,
+    )
+    trigger_provenance = _validate_task_scheduler_evidence(
+        scheduler_event_bytes,
+        observed_at=observed_at,
+        last_run_at=last_run_at,
+        task_state=task_state,
+    )
     checkpoint_bytes = _read_regular(checkpoint_path, "CHECKPOINT_UNAVAILABLE")
     evidence = {
         "audit-export.json": audit_bytes,
@@ -1090,6 +1419,7 @@ def collect_acceptance(
         "health-transcript.txt": transcript_bytes,
         "installation-receipt.json": receipt_bytes,
         "installed-task.xml": task_xml_bytes,
+        "task-scheduler-events.json": scheduler_event_bytes,
     }
     rows = [_member_row(path, evidence[path]) for path in sorted(evidence)]
     source_manifest = toolkit["manifest"]
@@ -1123,7 +1453,9 @@ def collect_acceptance(
             "v4_task_state": v4_task_state,
             "v5_task_state": v5_task_state,
             "automatic_boundary_accepted": True,
+            "scheduler_trigger_provenance_accepted": True,
             "manual_start_performed": False,
+            "trigger_provenance": trigger_provenance,
         },
         "authenticated_evidence": {
             "signing_key_id": checkpoint["signing_key_id"],
@@ -1193,6 +1525,11 @@ def collect_acceptance(
         "source_event_count": checkpoint["source_operational_event_count"],
         "task_state": task_state,
         "last_task_result": last_task_result,
+        "scheduler_instance_id": trigger_provenance["instance_id"],
+        "scheduled_trigger_record_id": trigger_provenance[
+            "scheduled_trigger_record_id"
+        ],
+        "task_start_record_id": trigger_provenance["task_start_record_id"],
         "order_capability": "DISABLED",
         "live_allowed": False,
         "offhost_custody_performed": False,
@@ -1500,6 +1837,7 @@ def _verify_acceptance_members(
         }
         or not isinstance(scheduler, dict)
         or scheduler.get("automatic_boundary_accepted") is not True
+        or scheduler.get("scheduler_trigger_provenance_accepted") is not True
         or scheduler.get("manual_start_performed") is not False
         or scheduler.get("v4_task_state") != "Disabled"
         or scheduler.get("v5_task_state") != "Disabled"
@@ -1568,8 +1906,15 @@ def _verify_acceptance_members(
         v5_state=str(scheduler.get("v5_task_state")),
         health_transcript=members["health-transcript.txt"],
     )
+    trigger_provenance = _validate_task_scheduler_evidence(
+        members["task-scheduler-events.json"],
+        observed_at=observed_at,
+        last_run_at=last_run,
+        task_state=str(scheduler.get("task_state")),
+    )
     if (
-        authenticated.get("checkpoint_hmac_sha256")
+        scheduler.get("trigger_provenance") != trigger_provenance
+        or authenticated.get("checkpoint_hmac_sha256")
         != checkpoint["checkpoint_hmac_sha256"]
         or authenticated.get("checkpoint_predecessor_hmac_sha256")
         != checkpoint["predecessor_checkpoint_hmac_sha256"]
@@ -1595,6 +1940,11 @@ def _verify_acceptance_members(
         "checkpoint_hmac_sha256": checkpoint["checkpoint_hmac_sha256"],
         "latest_heartbeat_at_utc": checkpoint["latest_heartbeat_at_utc"],
         "source_event_count": checkpoint["source_operational_event_count"],
+        "scheduler_instance_id": trigger_provenance["instance_id"],
+        "scheduled_trigger_record_id": trigger_provenance[
+            "scheduled_trigger_record_id"
+        ],
+        "task_start_record_id": trigger_provenance["task_start_record_id"],
         "offhost_custody_performed": False,
         "order_capability": "DISABLED",
         "live_allowed": False,
@@ -2285,6 +2635,7 @@ def _parser() -> argparse.ArgumentParser:
     collect.add_argument("--audit-root", type=Path, required=True)
     collect.add_argument("--installed-task-xml", type=Path, required=True)
     collect.add_argument("--health-transcript", type=Path, required=True)
+    collect.add_argument("--task-scheduler-events", type=Path, required=True)
     collect.add_argument("--task-state", required=True)
     collect.add_argument("--last-run-at-utc", required=True)
     collect.add_argument("--last-task-result", type=int, required=True)
@@ -2361,6 +2712,7 @@ def main(argv: list[str] | None = None) -> int:
                 audit_root=args.audit_root,
                 installed_task_xml=args.installed_task_xml,
                 health_transcript=args.health_transcript,
+                task_scheduler_events=args.task_scheduler_events,
                 task_state=args.task_state,
                 last_run_at_utc=args.last_run_at_utc,
                 last_task_result=args.last_task_result,

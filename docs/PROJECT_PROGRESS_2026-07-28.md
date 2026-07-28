@@ -101,13 +101,13 @@ commit dibuat.
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.723 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.723 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.727 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.727 PASS, 3 skip, exit 0 |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |
-| V6 packaging + post-run/custody focused cluster | 31 PASS per normal/optimized mode |
-| Phillip V5/V6 scheduler + post-run/custody cluster | 63 PASS, 2 skip per normal/optimized mode |
+| V6 packaging + post-run/custody focused cluster | 35 PASS per normal/optimized mode |
+| Phillip V5/V6 scheduler + post-run/custody cluster | 67 PASS, 2 skip per normal/optimized mode |
 | XM/FINEX preparation create-exclusive cluster | 15 PASS per normal/optimized mode |
 | Frontend unit tests | 21 PASS |
 | Dashboard backend tests | 45 PASS |
@@ -191,7 +191,11 @@ Source lokal sekarang memiliki:
 - `build_phillip_commodity_v6_postrun_acceptance_package.py` untuk membangun
   satu toolkit ZIP deterministik dari exact clean Git commit/tree;
 - `Invoke-PhillipCommodityV6PostRunAcceptance.ps1` untuk menjalankan health
-  checker V6.3 yang hash-pinned, tanpa manual task start;
+  checker V6.3 yang hash-pinned, mengumpulkan raw XML Task Scheduler events,
+  dan menolak run tanpa korelasi event 107/100 atau dengan event 110/manual;
+- `Test-PhillipCommodityV6TriggerAuditReadiness.ps1` untuk memastikan log
+  Operational sudah aktif dan exact task/next-run tetap benar sebelum
+  boundary, tanpa mengubah log atau task;
 - `phillip_commodity_v6_postrun_acceptance.py` untuk verifikasi toolkit,
   collection, re-verification acceptance ZIP, deterministic custody request,
   serta RSA receipt verification di bawah `-I -S -B`;
@@ -199,9 +203,12 @@ Source lokal sekarang memiliki:
   mengikat exact acceptance bytes, tujuan, dan retention minimum;
 - `Test-PhillipCommodityV6CustodyReceipt.ps1` untuk policy-pinned receipt dan
   assessment tanpa private key atau direct cloud API access;
-- acceptance bundle exact tujuh-member dan runbook custody terpisah.
+- acceptance bundle exact delapan-member, termasuk
+  `task-scheduler-events.json`, dan runbook custody terpisah.
 
-Toolkit sengaja mencatat
+Toolkit sengaja mencatat trigger provenance sebagai
+`LOCAL_HOST_EVENT_LOG`, mengikat correlated `InstanceId` serta record ID
+107/100, dan tetap mencatat
 `independent_hmac_reverification_performed=false`,
 `offhost_custody_performed=false`, dan
 `worm_retention_verified=false`. Nilai itu tidak boleh berubah hanya karena

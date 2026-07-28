@@ -164,7 +164,10 @@ After the automatic V6.3 boundary, use the separate one-ZIP post-run toolkit
 described in
 [`PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE.md`](PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE.md).
 It reuses the exact installed health checker and packages the resulting
-checkpoint/audit/task evidence without calling `Start-ScheduledTask`. A local
+checkpoint/audit/task evidence plus correlated Task Scheduler Operational raw
+XML without calling `Start-ScheduledTask`. Run its trigger-audit readiness
+checker before the boundary; missing scheduled-trigger event 107, matching
+manual event 110, or an uncorrelated task-start event 100 fails closed. A local
 acceptance ZIP is still not off-host/WORM custody and grants no demo-auto or
 live authority.
 

@@ -11,6 +11,7 @@ ATOMIC_FIVE_ROLE_BUILD = PASS_REPRODUCIBLE_LOCALLY
 ATOMIC_SUITE_SINGLE_ZIP_TRANSFER = PASS_LOCALLY
 PHILLIP_COMMODITY_V6_3 = PRE_START
 V6_3_POSTRUN_ACCEPTANCE_TOOLKIT = PASS_LOCALLY
+V6_3_SCHEDULED_TRIGGER_PROVENANCE = PASS_LOCALLY_PENDING_REAL_EVENT
 V6_3_WORM_CUSTODY_REQUEST_AND_RECEIPT_BOUNDARY = PASS_LOCALLY
 FIRST_AUTOMATIC_SCHEDULED_PROOF = PENDING_2026_07_30_0645_JST
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
@@ -45,7 +46,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.723 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.727 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, pre-bind loopback enforcement, canonical loopback CORS/WebSocket origin allowlist, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | fresh npm, Python development, dan dashboard requirements audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
@@ -57,13 +58,13 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1723 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with optimization enabled | `Ran 1723 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1727 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1727 tests ... OK (skipped=3)`, exit 0 |
 | Create-exclusive publisher focused tests | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature tests | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer tests | 62 PASS per normal/optimized mode |
-| V6 packaging + post-run/custody focused tests | 31 PASS per normal/optimized mode |
-| Phillip V5/V6 scheduler + post-run/custody tests | 63 PASS, 2 skip per normal/optimized mode |
+| V6 packaging + post-run/custody focused tests | 35 PASS per normal/optimized mode |
+| Phillip V5/V6 scheduler + post-run/custody tests | 67 PASS, 2 skip per normal/optimized mode |
 | XM/FINEX preparation create-exclusive tests | 15 PASS per normal/optimized mode |
 | Frontend unit suite | 21 PASS |
 | Dashboard backend suite | 45 PASS |
@@ -128,6 +129,15 @@ readiness false.
    uses no-follow `lstat`; cleanup is gated by the exact device/inode identity
    created by the current invocation. Builder, request, and assessment
    regressions prove the pre-existing symlink remains unchanged.
+8. Post-run acceptance previously treated a post-boundary `LastRunTime` as
+   sufficient evidence of automatic scheduling. That could not distinguish a
+   scheduled launch from a later manual launch. Toolkit v2 now requires raw
+   XML from the exact Task Scheduler Operational channel, correlates event 107
+   and 100 through one `InstanceId`, rejects event 110 for the same instance or
+   launch window, and requires event 102 when the task is already `Ready`.
+   A separate read-only preflight fails before the boundary if the Operational
+   log is not already enabled. The resulting provenance remains explicitly
+   local-host evidence and does not replace independent WORM custody.
 8. The first repair was not yet uniform across shared Windows release
    writers, configured overlays, evidence/feed publishers, provider-pack
    generators, atomic-suite locks/staging, and candidate-tree cleanup. These
@@ -174,7 +184,7 @@ readiness false.
     tests prove an injected target is not overwritten and a replacement
     staging root is preserved. Temporary-file cleanup and paired-transaction
     pending-marker clear now also require their exact creation identities;
-    replacement files survive. Both full 1,723-test modes remain green.
+    replacement files survive. Both full 1,727-test modes remain green.
 
 ## Findings that remain external or manual
 

@@ -602,9 +602,12 @@ BTCUSD = shadow-only
     Satu deterministic post-run toolkit kini memverifikasi outer ZIP dan exact
     source commit/tree, menjalankan hash-pinned health checker tanpa memulai
     task, lalu mengikat health snapshot, signed checkpoint terbaru, exact audit
-    pair, installation receipt, dan installed task XML ke acceptance ZIP
-    create-exclusive. Verifier menolak pre-boundary/non-advanced evidence,
-    transcript drift, scheduler failure, archive drift, dan custody overclaim.
+    pair, installation receipt, installed task XML, dan raw XML Task Scheduler
+    Operational events ke acceptance ZIP create-exclusive. Toolkit v2 juga
+    menyediakan pre-boundary readiness checker. Verifier memerlukan correlated
+    event 107/100 pada `InstanceId` yang sama, menolak event 110/manual pada
+    launch yang sama, dan menolak pre-boundary/non-advanced evidence,
+    transcript drift, scheduler failure, archive drift, atau custody overclaim.
     Create-exclusive publication memakai no-follow `lstat`; output regular,
     directory, valid symlink, atau dangling symlink yang sudah ada ditolak
     tanpa mutasi, dan cleanup dibatasi ke exact file identity yang dibuat oleh
@@ -730,7 +733,8 @@ eksternal belum terpenuhi.
    bukti historis immutable. Remediasi scheduler V6.3 sudah terpasang dan
    health `PRE_START` Windows sudah sehat; tahap berikutnya wajib menunggu
    pemicu otomatis pertama pada `2026-07-30T06:45:00+09:00`, lalu menjalankan
-   acceptance post-run tanpa manual start. `phillip-fx` tetap menunggu review
+   menjalankan trigger-audit readiness sebelum boundary, lalu acceptance
+   post-run tanpa manual start. `phillip-fx` tetap menunggu review
    dan activation lane-nya sendiri. XM Window 02 tetap tidak boleh dijalankan.
    Setiap kandidat
    tetap membutuhkan minimal 20 sesi terpisah.

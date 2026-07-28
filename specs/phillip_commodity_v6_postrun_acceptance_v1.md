@@ -4,6 +4,10 @@
 **Scope:** first automatic V6.3 scheduler evidence handoff
 **Authority:** none; read-only evidence packaging only
 
+> Historical baseline only. New builds use
+> `phillip_commodity_v6_postrun_acceptance_v2.md`, which additionally binds
+> correlated Task Scheduler Operational event provenance.
+
 ## Purpose
 
 Create one fail-closed, portable evidence boundary after the exact V6.3 task

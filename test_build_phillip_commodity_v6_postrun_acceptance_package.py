@@ -242,11 +242,22 @@ class PhillipCommodityV6PostRunToolkitBuilderTests(unittest.TestCase):
             "enable-scheduledtask",
             "disable-scheduledtask",
             "unregister-scheduledtask",
+            "wevtutil",
+            "limit-eventlog",
+            "new-eventlog",
+            "write-eventlog",
             "order_send",
             "import metatrader5",
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, combined)
+        self.assertIn("phillip_commodity_v6_trigger_audit_ready", combined)
+        self.assertIn("get-winevent", combined)
+        self.assertIn(
+            "microsoft-windows-taskscheduler/operational",
+            combined,
+        )
+        self.assertIn("isenabled", combined)
 
 
 if __name__ == "__main__":
