@@ -80,6 +80,8 @@ APPROVED_SOURCE_PATHS = frozenset(
         "live_runtime/__init__.py",
         "live_runtime/configured_service_release.py",
         "live_runtime/contracts.py",
+        "live_runtime/model_governance.py",
+        "live_runtime/rule_core_model_artifact.py",
         "live_runtime/windows_decision_service_factory_template.py",
         "live_runtime/windows_external_status_monitor_factory_template.py",
         "live_runtime/windows_base_release_suite.py",
@@ -108,6 +110,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "validate_windows_status_monitor_configured_candidate.py",
         "verify_windows_base_release_suite.py",
         "verify_windows_base_release_suite_transfer.py",
+        "verify_rule_core_champion_artifact.py",
     }
 )
 READINESS_BLOCKERS = (
@@ -123,6 +126,7 @@ ALLOWED_STDLIB_IMPORTS = frozenset(
         "__future__",
         "argparse",
         "ast",
+        "csv",
         "dataclasses",
         "datetime",
         "hashlib",
@@ -144,6 +148,8 @@ ALLOWED_LOCAL_IMPORTS = frozenset(
     {
         "live_runtime.configured_service_release",
         "live_runtime.contracts",
+        "live_runtime.model_governance",
+        "live_runtime.rule_core_model_artifact",
         "live_runtime.windows_decision_service_factory_template",
         "live_runtime.windows_external_status_monitor_factory_template",
         "live_runtime.windows_base_release_suite",

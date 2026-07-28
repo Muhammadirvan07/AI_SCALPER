@@ -96,13 +96,20 @@ commit dibuat.
   target race atau staging pengganti untuk forensic review. Temporary file
   cleanup dan clear marker `paired_pending` sekarang juga memerlukan exact
   creation identity sehingga file pengganti dipertahankan.
+- Audit ship-gate menemukan runtime model hash belum memiliki portable frozen
+  artifact. Shared rule-core digest kini menjadi satu source of truth untuk
+  runner, builder, dan verifier. Artifact deterministik mengikat delapan source
+  files, tracked Phillip Commodity config, exact XAUUSD M15 snapshot, cutoff,
+  commit/tree, serta canonical `ModelArtifactManifest`. Verifier Windows
+  membutuhkan archive/model/snapshot/config/commit/tree pin dan tidak dapat
+  mengklaim quality, promotion, order, atau live readiness.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.727 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.727 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.745 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.745 PASS, 3 skip, exit 0 |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |
@@ -183,6 +190,21 @@ max_lot = 0.01
 
 Tidak ada perubahan yang membuka order. Execution capability tetap dormant
 dan berlapis gate.
+
+## Rule-core champion lineage
+
+Source contract berada di `specs/rule_core_champion_artifact_v1.md`; operator
+runbook berada di `docs/RULE_CORE_CHAMPION_ARTIFACT.md`. Builder hanya menerima
+clean tracked checkout, exact source bytes dari `HEAD`, stable regular snapshot,
+explicit post-cutoff UTC registration time, reviewed output name, dan output
+baru di luar repository. Independent verifier tersedia di configured-release
+operator tooling dan bootstrap di bawah `python -I -S -B`.
+
+Ini menutup gap lineage lokal, bukan quality gate. Exact artifact untuk commit
+final harus dibangun dua kali setelah commit, diverifikasi terhadap enam pin,
+dan baru kemudian diserahkan ke registry/custody eksternal. Offline
+champion/challenger evaluation, OOS dan broker-forward thresholds, risk
+feasibility, manual demo, demo-auto soak, serta live approval tetap pending.
 
 ## Phillip Commodity V6.3 post-run handoff
 

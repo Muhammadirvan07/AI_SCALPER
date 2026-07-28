@@ -29,6 +29,7 @@
     "live_runtime/decision_ipc.py",
     "live_runtime/mt5_decision_feed_publisher.py",
     "live_runtime/mt5_readonly.py",
+    "live_runtime/model_governance.py",
     "live_runtime/phillip_dual_shadow.py",
     "live_runtime/realtime_diagnostic.py",
     "market_data_quality.py",

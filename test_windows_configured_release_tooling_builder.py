@@ -127,6 +127,8 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "prepare_windows_three_service_provider_conformance_input.py",
             "prepare_windows_three_service_provider_conformance_review.py",
             "live_runtime/contracts.py",
+            "live_runtime/model_governance.py",
+            "live_runtime/rule_core_model_artifact.py",
             "live_runtime/windows_base_release_suite.py",
             "live_runtime/windows_base_release_suite_transfer.py",
             "live_runtime/windows_decision_configured_candidate.py",
@@ -148,6 +150,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "validate_windows_status_monitor_provider_pack.py",
             "verify_windows_base_release_suite.py",
             "verify_windows_base_release_suite_transfer.py",
+            "verify_rule_core_champion_artifact.py",
         }
         self.assertTrue(required.issubset(APPROVED_SOURCE_PATHS))
         sources = {
@@ -223,6 +226,10 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
                 (
                     "verify_windows_base_release_suite_transfer.py",
                     "--expected-archive-sha256",
+                ),
+                (
+                    "verify_rule_core_champion_artifact.py",
+                    "--expected-model-artifact-sha256",
                 ),
             ):
                 with self.subTest(script=script):

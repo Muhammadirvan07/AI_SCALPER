@@ -13,6 +13,7 @@ PHILLIP_COMMODITY_V6_3 = PRE_START
 V6_3_POSTRUN_ACCEPTANCE_TOOLKIT = PASS_LOCALLY
 V6_3_SCHEDULED_TRIGGER_PROVENANCE = PASS_LOCALLY_PENDING_REAL_EVENT
 V6_3_WORM_CUSTODY_REQUEST_AND_RECEIPT_BOUNDARY = PASS_LOCALLY
+RULE_CORE_CHAMPION_LINEAGE = PASS_LOCALLY_EXACT_HEAD_BUILD_PENDING
 FIRST_AUTOMATIC_SCHEDULED_PROOF = PENDING_2026_07_30_0645_JST
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
@@ -46,20 +47,21 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.727 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.745 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, pre-bind loopback enforcement, canonical loopback CORS/WebSocket origin allowlist, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | fresh npm, Python development, dan dashboard requirements audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
 | Reliability and observability | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | structured logs, health endpoint, signed journals; off-host alert/WORM proof masih eksternal |
 | Deployment and operations | INCOMPLETE_EXTERNAL | exact Windows services, ACL, key custody, RSA launcher, backup/restore, and conformance evidence belum lengkap |
+| Model lineage | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | deterministic frozen source/config/snapshot artifact dan six-pin verifier tersedia; exact-HEAD build, external registry, dan quality evidence masih pending |
 | Trading safety | DO_NOT_SHIP | safety lock false, manual-demo belum dimulai, soak dan live approval belum ada |
 
 ## Automated evidence
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1727 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with optimization enabled | `Ran 1727 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1745 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1745 tests ... OK (skipped=3)`, exit 0 |
 | Create-exclusive publisher focused tests | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature tests | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer tests | 62 PASS per normal/optimized mode |
@@ -138,7 +140,7 @@ readiness false.
    A separate read-only preflight fails before the boundary if the Operational
    log is not already enabled. The resulting provenance remains explicitly
    local-host evidence and does not replace independent WORM custody.
-8. The first repair was not yet uniform across shared Windows release
+9. The first repair was not yet uniform across shared Windows release
    writers, configured overlays, evidence/feed publishers, provider-pack
    generators, atomic-suite locks/staging, and candidate-tree cleanup. These
    paths now carry exact creation identities through every outer transaction.
@@ -146,7 +148,7 @@ readiness false.
    replacement tests prove unknown or changed ownership is preserved. The
    implementation contract is
    `specs/create_exclusive_output_custody_v1.md`.
-9. A fresh registry scan invalidated the earlier dependency assumption:
+10. A fresh registry scan invalidated the earlier dependency assumption:
    GitPython 3.1.51 in the development environment had five advisories, while
    the dashboard manifest resolved ten findings across Starlette, pytest, and
    python-dotenv. GitPython is now 3.1.55 locally; dashboard pins now use
@@ -155,7 +157,7 @@ readiness false.
    dependency. Fresh audits report no known vulnerabilities, `pip check`
    passes, 45 backend tests pass without warnings, and 14 browser E2E tests
    remain green.
-10. The older XM/FINEX preparation publisher still resolved the requested
+11. The older XM/FINEX preparation publisher still resolved the requested
     output leaf and used recursive cleanup without creation identity. A
     dangling symlink could redirect publication, while a replacement root
     could be deleted on a later failure. Output root and every leaf now use
@@ -166,7 +168,7 @@ readiness false.
     enforcement, dangling links, parent indirection, partial-output cleanup,
     leaf replacement, root replacement, deterministic output, and permanent
     XM/FINEX trading locks.
-11. REST CORS was loopback-scoped, but the WebSocket route accepted every
+12. REST CORS was loopback-scoped, but the WebSocket route accepted every
     browser `Origin`; CORS middleware does not cover WebSocket handshakes.
     Runtime configuration now rejects non-loopback bind hosts before
     `uvicorn.run`, rejects wildcard/non-loopback/malformed CORS origins, and
@@ -174,7 +176,7 @@ readiness false.
     before `accept()` when `Origin` is missing or not allowlisted. Forty-five
     backend tests cover allowed CORS/WebSocket traffic, hostile origins,
     duplicate canonical origins, and pre-bind rejection.
-12. The core frozen-snapshot and forward-contract directory publisher used
+13. The core frozen-snapshot and forward-contract directory publisher used
     `os.rename` after an existence check. On POSIX, a raced empty target
     directory could be replaced, and unconditional recursive staging cleanup
     was not tied to the directory created by the invocation. Publication now
@@ -184,7 +186,15 @@ readiness false.
     tests prove an injected target is not overwritten and a replacement
     staging root is preserved. Temporary-file cleanup and paired-transaction
     pending-marker clear now also require their exact creation identities;
-    replacement files survive. Both full 1,727-test modes remain green.
+    replacement files survive. Both full 1,745-test modes remain green.
+14. The diagnostic runner computed a rule-core hash but no portable artifact
+    froze the bytes behind that identity together with config, snapshot,
+    cutoff, and Git provenance. A deterministic deny-only ZIP contract now
+    shares the exact source inventory and digest implementation with the
+    runner. Its independent Windows verifier requires six external pins,
+    rejects canonical ZIP/JSON/config/snapshot/source drift, and cannot assert
+    quality, promotion, order capability, or live readiness. The builder and
+    snapshot remain outside the Windows operator-tooling bundle.
 
 ## Findings that remain external or manual
 
@@ -202,11 +212,14 @@ readiness false.
 4. Public dashboard exposure is not approved. Any non-loopback deployment
    requires TLS, authentication, CSP/security headers, network policy, and an
    external deployment review.
-5. Nine signed pre-manual observations and exact configured-release admission
+5. Exact-HEAD champion artifact publication, independent registry/custody,
+   offline champion/challenger validation, and statistical/OOS evidence remain
+   external. Local artifact integrity is not a model-quality claim.
+6. Nine signed pre-manual observations and exact configured-release admission
    are absent.
-6. Ten controlled manual-demo lifecycle reviews are absent.
-7. Separate demo-auto activation approval is absent.
-8. The 30-day/50-fill/20-XAU demo-auto soak, statistical/OOS gates, failure
+7. Ten controlled manual-demo lifecycle reviews are absent.
+8. Separate demo-auto activation approval is absent.
+9. The 30-day/50-fill/20-XAU demo-auto soak, statistical/OOS gates, failure
    drills, legal approval, and live XAUUSD canary evidence are absent.
 
 ## Decision

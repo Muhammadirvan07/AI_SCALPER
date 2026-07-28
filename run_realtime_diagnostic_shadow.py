@@ -35,21 +35,16 @@ from live_runtime.mt5_readonly import (
     ReadOnlyMT5Facade,
     attest_mt5_read_only,
 )
+from live_runtime.model_governance import (
+    RULE_CORE_MODEL_SOURCE_PATHS,
+    rule_core_model_artifact_sha256,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = REPO_ROOT / "config" / "broker_candidates.phase3.json"
 DEFAULT_DIAGNOSTIC_ROOT = REPO_ROOT / "runtime_state" / "diagnostic"
-MODEL_SOURCE_PATHS = (
-    "agents/market_status.py",
-    "agents/supervisor_agent.py",
-    "live_runtime/decision_core.py",
-    "market_data_quality.py",
-    "market_regime_filter.py",
-    "strategy/strategy_profiles.py",
-    "strategy/strategy_selector.py",
-    "strategy/trend_analyzer.py",
-)
+MODEL_SOURCE_PATHS = RULE_CORE_MODEL_SOURCE_PATHS
 
 
 @dataclass(frozen=True)
@@ -197,7 +192,7 @@ def _git_commit() -> str:
 
 
 def _model_artifact_sha256() -> str:
-    digest = hashlib.sha256()
+    members: dict[str, bytes] = {}
     for relative in MODEL_SOURCE_PATHS:
         path = REPO_ROOT / relative
         try:
@@ -206,11 +201,8 @@ def _model_artifact_sha256() -> str:
             raise RealtimeDiagnosticError(
                 f"decision source is unavailable: {relative}"
             ) from exc
-        digest.update(relative.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(data)
-        digest.update(b"\0")
-    return digest.hexdigest()
+        members[relative] = data
+    return rule_core_model_artifact_sha256(members)
 
 
 def _identity(

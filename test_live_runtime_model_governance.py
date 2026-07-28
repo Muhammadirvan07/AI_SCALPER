@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from dataclasses import asdict, fields, replace
 from datetime import datetime, timedelta, timezone
+import hashlib
 import unittest
 
 from live_runtime.contracts import DecisionSnapshot, _mint_decision_snapshot
 from live_runtime.model_governance import (
     ModelArtifactManifest,
     ModelBindingDecision,
+    RULE_CORE_MODEL_SOURCE_PATHS,
+    rule_core_model_artifact_sha256,
     verify_decision_model,
 )
 
@@ -54,6 +57,42 @@ def decision():
 
 
 class ModelGovernanceTests(unittest.TestCase):
+    def test_rule_core_digest_preserves_the_existing_runtime_algorithm(self):
+        members = {
+            path: f"source:{path}\n".encode("utf-8")
+            for path in RULE_CORE_MODEL_SOURCE_PATHS
+        }
+        expected = hashlib.sha256()
+        for path in RULE_CORE_MODEL_SOURCE_PATHS:
+            expected.update(path.encode("utf-8"))
+            expected.update(b"\0")
+            expected.update(members[path])
+            expected.update(b"\0")
+        self.assertEqual(
+            expected.hexdigest(),
+            rule_core_model_artifact_sha256(members),
+        )
+
+    def test_rule_core_digest_rejects_inventory_or_byte_type_drift(self):
+        members = {
+            path: f"source:{path}\n".encode("utf-8")
+            for path in RULE_CORE_MODEL_SOURCE_PATHS
+        }
+        with self.assertRaisesRegex(TypeError, "exact dict"):
+            rule_core_model_artifact_sha256(dict(members).items())  # type: ignore[arg-type]
+        missing = dict(members)
+        missing.pop(RULE_CORE_MODEL_SOURCE_PATHS[0])
+        with self.assertRaisesRegex(ValueError, "inventory"):
+            rule_core_model_artifact_sha256(missing)
+        extra = dict(members)
+        extra["unexpected.py"] = b"x"
+        with self.assertRaisesRegex(ValueError, "inventory"):
+            rule_core_model_artifact_sha256(extra)
+        empty = dict(members)
+        empty[RULE_CORE_MODEL_SOURCE_PATHS[0]] = b""
+        with self.assertRaisesRegex(TypeError, "non-empty bytes"):
+            rule_core_model_artifact_sha256(empty)
+
     def test_exact_champion_binding_never_authorizes_execution(self):
         result = verify_decision_model(decision(), artifact(), checked_at=NOW)
         self.assertTrue(result.bound)

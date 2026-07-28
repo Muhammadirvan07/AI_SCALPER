@@ -262,6 +262,12 @@ hanya memperkuat artifact custody dan tidak mengubah `order_capability`,
   Hanya `CHAMPION` yang dapat lolos binding; challenger tetap shadow-only,
   tanpa credential, online learning, atau self-promotion. Promotion permit juga
   terikat pada exact model-artifact hash.
+- Builder dan verifier artifact rule-core Phillip Commodity kini memakai satu
+  inventori/digest source bersama dengan runner diagnostic. ZIP deterministik
+  mengikat exact delapan source, tracked candidate config, snapshot XAUUSD M15,
+  cutoff, commit, tree, serta canonical runtime binding. Verifier memerlukan
+  enam external pin dan tetap menyatakan quality/promotion/live false. Builder
+  dan training data tidak masuk configured-release operator tooling.
 - Kill switch tetap latched setelah restart. Reset membutuhkan tepat dua
   approver berbeda, dua key ID serta secret berbeda, dua signature HMAC, exact
   journal identity, exact latch timestamp, reviewed-reason hash, expiry, dan
@@ -519,9 +525,10 @@ BTCUSD = shadow-only
    independent clock monitoring, dan off-host time attestation belum dipasang.
 6. Signed-news verifier sudah ada, tetapi production provider, independent key
    custody, feed SLA, replay archive, dan failure evidence belum tersedia.
-7. Model-binding code tidak membuktikan kualitas model. Frozen champion
-   artifact, training snapshot, offline validation receipt, dan production
-   registry masih harus dibuat dan diaudit.
+7. Model-binding code dan portable frozen-artifact tooling tidak membuktikan
+   kualitas model. Exact-HEAD champion ZIP harus dibangun dari snapshot yang
+   direview, lalu offline validation receipt serta independent production
+   registry/custody masih harus dibuat dan diaudit.
 8. Logical paired commit dan fail-closed crash state sudah diterapkan lokal,
    tetapi ini bukan satu atomic filesystem transaction lintas seluruh file.
    Repeated paired-export, forced-crash recovery, NTFS durability, dan lock
@@ -752,9 +759,10 @@ eksternal belum terpenuhi.
 5. Pilih production news provider; provision signing-key custody, coverage/SLA
    monitoring, replay archive, stale-feed drill, dan documented failover yang
    tetap fail-closed.
-6. Freeze champion model serta training snapshot; register artifact/hash,
-   buktikan offline champion/challenger evaluation, dan pastikan challenger
-   tidak memiliki credential maupun execution path.
+6. Bangun dan verifikasi exact-HEAD frozen champion ZIP dengan enam pin
+   independen; register artifact/hash di custody eksternal, buktikan offline
+   champion/challenger evaluation, dan pastikan challenger tidak memiliki
+   credential maupun execution path.
 7. Provision dua identitas approver reset yang benar-benar independen beserta
    secret custody; lakukan drill latch/restart/stale/mismatch/replay dan simpan
    audit receipt.

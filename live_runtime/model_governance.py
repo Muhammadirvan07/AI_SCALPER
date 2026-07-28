@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from dataclasses import InitVar, dataclass
 from datetime import datetime, timedelta
-
-_MODEL_BINDING_SEAL = object()
-MODEL_BINDING_TTL_SECONDS = 1.0
+import hashlib
+from typing import Mapping
 
 from .contracts import (
     CanonicalContract,
@@ -15,6 +14,42 @@ from .contracts import (
     require_text,
     require_utc,
 )
+
+
+_MODEL_BINDING_SEAL = object()
+MODEL_BINDING_TTL_SECONDS = 1.0
+
+RULE_CORE_MODEL_SOURCE_PATHS = (
+    "agents/market_status.py",
+    "agents/supervisor_agent.py",
+    "live_runtime/decision_core.py",
+    "market_data_quality.py",
+    "market_regime_filter.py",
+    "strategy/strategy_profiles.py",
+    "strategy/strategy_selector.py",
+    "strategy/trend_analyzer.py",
+)
+
+
+def rule_core_model_artifact_sha256(
+    source_members: Mapping[str, bytes],
+) -> str:
+    """Return the canonical runtime digest for the exact rule-core sources."""
+
+    if type(source_members) is not dict:
+        raise TypeError("source_members must be an exact dict")
+    if set(source_members) != set(RULE_CORE_MODEL_SOURCE_PATHS):
+        raise ValueError("rule-core source inventory is not exact")
+    digest = hashlib.sha256()
+    for relative in RULE_CORE_MODEL_SOURCE_PATHS:
+        data = source_members[relative]
+        if type(data) is not bytes or not data:
+            raise TypeError("rule-core source members must be non-empty bytes")
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(data)
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 @dataclass(frozen=True)
@@ -143,5 +178,7 @@ def verify_decision_model(
 __all__ = [
     "ModelArtifactManifest",
     "ModelBindingDecision",
+    "RULE_CORE_MODEL_SOURCE_PATHS",
+    "rule_core_model_artifact_sha256",
     "verify_decision_model",
 ]
