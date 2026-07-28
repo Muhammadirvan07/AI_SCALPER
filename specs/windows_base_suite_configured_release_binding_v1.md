@@ -5,6 +5,7 @@
 **Status:** Approved  
 **Reviewers:** AI_SCALPER owner through the approved Live-Grade v1 roadmap  
 **Related specs:** `windows_atomic_base_release_suite_v1.md`,
+`windows_base_release_suite_transfer_v1.md`,
 `windows_configured_service_release_v1.md`,
 `windows_pre_manual_configured_release_admission_v1.md`
 

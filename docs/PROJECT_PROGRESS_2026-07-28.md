@@ -34,9 +34,9 @@ Tree implementasi yang diaudit adalah
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.644 PASS, 3 skip, exit 0 |
-| Full Python regression with `PYTHONOPTIMIZE=2` | 1.644 PASS, 3 skip, exit 0 |
-| Atomic-suite verifier feature cluster | 40 PASS per normal/optimized mode |
+| Full Python regression | 1.656 PASS, 3 skip, exit 0 |
+| Full Python regression with `PYTHONOPTIMIZE=2` | 1.656 PASS, 3 skip, exit 0 |
+| Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |
 | Frontend unit tests | 21 PASS |
 | Dashboard backend tests | 24 PASS |
@@ -70,27 +70,36 @@ Suite tetap menyatakan `DISABLED_AT_SUITE_BOUNDARY` dan
 reproducibility source; ia tidak menggantikan exact Windows build atau
 external provider acceptance.
 
-## Atomic-suite transfer verification
+## Atomic-suite dan satu-ZIP transfer verification
 
-`verify_windows_base_release_suite.py` sekarang menyediakan public read-only
-boundary yang sebelumnya hanya tersedia sebagai library. Success memerlukan
-exact suite identity, full Git commit, dan full Git tree yang dipin dari
-channel independen. CLI merekonstruksi kelima ZIP, kelima sidecar, embedded
-manifest, source inventory, ZIP determinism, safety, dan source identity.
+`verify_windows_base_release_suite.py` menyediakan public read-only boundary
+untuk direktori sebelas-file. Success memerlukan exact suite identity, full
+Git commit, dan full Git tree yang dipin dari channel independen. CLI
+merekonstruksi kelima ZIP, kelima sidecar, embedded manifest, source inventory,
+ZIP determinism, safety, dan source identity.
 
-CLI diuji terhadap dua suite byte-identical dari commit `6ec5dd3`:
+Lapisan baru `build_windows_base_release_suite_transfer.py` membungkus exact
+direktori tersebut menjadi satu deterministic ZIP. ZIP memuat canonical
+transfer manifest, exact suite di `base-release-suite-v1/`, dan helper
+PowerShell 5.1. Tidak ada manifest atau helper kedua yang harus disalin secara
+terpisah. `verify_windows_base_release_suite_transfer.py` memerlukan empat pin
+independen: outer archive SHA-256, suite identity, full commit, dan full tree.
+Verifier itu kini menjadi bagian configured-release operator tooling dan
+bootstrap di bawah `python -I -S -B`.
 
-- suite identity:
-  `d3b14cea9469e973e1f0b26b5e61a5ccbc7ea08581fa7aefb6b972e5abbc1a8e`;
-- suite manifest SHA-256:
-  `030a195d63b78090606e4f71a5752e1622e9990e87bdb8c7a5b24db286a6022d`.
+Builder melakukan self-verification sebelum no-replace publication. Verifier
+menolak pin salah, file ekstra/hilang, duplicate/case-fold/path traversal,
+ZIP metadata nondeterministik, non-canonical manifest, payload drift,
+symlink/reparse, dan nested-suite drift. Helper Windows mengulang outer hash,
+exact extracted inventory, size/hash, reparse, dan safety checks sebelum
+menjalankan bundled verifier. Temporary extraction hanya digunakan untuk
+verifikasi dan tidak memasang task/service atau mengakses MT5/broker.
 
-Mismatch pin, tamper, invalid format, symlink/reparse, atau partial file set
-gagal dengan stable reason code tanpa partial success report. CLI juga masuk
-ke configured-release operator tooling dan bootstrap di bawah `python -I -S`.
-Karena perubahan ini menambah source dan mengubah tooling allowlist, exact
-Windows suite untuk tahap berikutnya wajib dibangun ulang dari commit final;
-identity `d3b14...` hanya baseline verifikasi sebelum perubahan verifier.
+Karena perubahan ini menambah source dan mengubah configured tooling
+allowlist, exact Windows suite dan transfer ZIP untuk tahap berikutnya wajib
+dibangun ulang dua kali dari commit final. Seluruh suite identity dan hash
+lama tetap historical evidence dan tidak boleh dipakai sebagai pin build
+baru.
 
 ## Safety state
 
@@ -116,8 +125,9 @@ Urutan berikutnya tetap:
 1. setelah boundary, jalankan health verifier dan simpan authenticated
    heartbeat, audit pair, scheduler result, serta rollback state;
 2. mirror evidence ke storage immutable di luar VPS;
-3. bangun ulang atomic five-role suite dua kali pada exact Windows source dan
-   cocokkan semua hash;
+3. bangun ulang atomic five-role suite dua kali pada exact Windows source,
+   cocokkan semua hash, lalu buat satu transfer ZIP dan verifikasi empat pin
+   independennya sebelum dipindahkan;
 4. siapkan, generate, dan validasi Decision, Execution, serta Status Monitor
    provider pack dan configured candidate dari custody Windows yang direview;
 5. kumpulkan operations review, provider conformance, independent validation

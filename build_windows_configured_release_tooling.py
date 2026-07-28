@@ -81,6 +81,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "live_runtime/windows_decision_service_factory_template.py",
         "live_runtime/windows_external_status_monitor_factory_template.py",
         "live_runtime/windows_base_release_suite.py",
+        "live_runtime/windows_base_release_suite_transfer.py",
         "live_runtime/windows_decision_configured_candidate.py",
         "live_runtime/windows_decision_provider_pack_generator.py",
         "live_runtime/windows_execution_configured_candidate.py",
@@ -104,6 +105,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "validate_windows_execution_configured_candidate.py",
         "validate_windows_status_monitor_configured_candidate.py",
         "verify_windows_base_release_suite.py",
+        "verify_windows_base_release_suite_transfer.py",
     }
 )
 READINESS_BLOCKERS = (
@@ -130,6 +132,7 @@ ALLOWED_STDLIB_IMPORTS = frozenset(
         "re",
         "stat",
         "sys",
+        "tempfile",
         "typing",
         "unicodedata",
         "zipfile",
@@ -142,6 +145,7 @@ ALLOWED_LOCAL_IMPORTS = frozenset(
         "live_runtime.windows_decision_service_factory_template",
         "live_runtime.windows_external_status_monitor_factory_template",
         "live_runtime.windows_base_release_suite",
+        "live_runtime.windows_base_release_suite_transfer",
         "live_runtime.windows_decision_configured_candidate",
         "live_runtime.windows_decision_provider_pack_generator",
         "live_runtime.windows_execution_configured_candidate",

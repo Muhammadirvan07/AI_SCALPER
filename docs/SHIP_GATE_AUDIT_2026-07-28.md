@@ -8,6 +8,7 @@ DASHBOARD_READ_ONLY_BOUNDARY = PASS_LOCALLY
 DASHBOARD_FAIL_CLOSED_EVIDENCE = PASS_LOCALLY
 DEPENDENCY_INTEGRITY = PASS_LOCALLY
 ATOMIC_FIVE_ROLE_BUILD = PASS_REPRODUCIBLE_LOCALLY
+ATOMIC_SUITE_SINGLE_ZIP_TRANSFER = PASS_LOCALLY
 PHILLIP_COMMODITY_V6_3 = PRE_START
 FIRST_AUTOMATIC_SCHEDULED_PROOF = PENDING_2026_07_30_0645_JST
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
@@ -38,7 +39,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.644 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.656 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, explicit loopback CORS, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | npm audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
@@ -50,9 +51,9 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1644 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with `PYTHONOPTIMIZE=2` | `Ran 1644 tests ... OK (skipped=3)`, exit 0 |
-| Atomic-suite verifier feature tests | 40 PASS per normal/optimized mode |
+| Full Python regression | `Ran 1656 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with `PYTHONOPTIMIZE=2` | `Ran 1656 tests ... OK (skipped=3)`, exit 0 |
+| Atomic-suite + one-ZIP transfer feature tests | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer tests | 62 PASS per normal/optimized mode |
 | Frontend unit suite | 21 PASS |
 | Dashboard backend suite | 24 PASS |
@@ -91,10 +92,11 @@ readiness false.
    untracked and used an obsolete regression count. The active status and
    progress evidence now reflect tracked commits and the current regression
    baseline.
-4. Suite transfer verification previously depended on a manual archive-hash
-   loop even though the normative spec defined a public stable rejection
-   family. A bundled read-only CLI now verifies all 11 files and requires
-   independently pinned suite identity, commit, and tree.
+4. Suite transfer previously required eleven independent files. A
+   deterministic one-ZIP wrapper now binds exact inventory, outer archive
+   SHA-256, suite identity, commit, tree, safety state, and a PowerShell 5.1
+   helper. The bundled verifier requires all four external pins and rejects
+   transport or nested-suite drift before any downstream use.
 
 ## Findings that remain external or manual
 

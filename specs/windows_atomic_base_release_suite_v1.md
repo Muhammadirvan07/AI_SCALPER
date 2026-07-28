@@ -6,7 +6,8 @@
 **Reviewers:** AI_SCALPER owner through the approved Live-Grade v1 roadmap  
 **Related specs:** `windows_three_service_demo_soak_operations_v3.md`,
 `mt5_readonly_decision_feed_publisher_v1.md`,
-`architecture_foundation_completion_v1.md`
+`architecture_foundation_completion_v1.md`,
+`windows_base_release_suite_transfer_v1.md`
 
 ## Context
 

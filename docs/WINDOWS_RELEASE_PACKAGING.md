@@ -202,12 +202,31 @@ campuran, manifest non-canonical, byte/hash mismatch, serta safety lock yang
 berubah. Ia tidak memiliki opsi provider, credential, task, MT5, activation,
 permit, atau order.
 
-Setelah build atau transfer, jalankan
-`verify_windows_base_release_suite.py` dengan exact suite identity, full Git
-commit, dan full Git tree yang dipin secara independen. Verifier ini tersedia
-di source checkout dan di configured-release operator tooling. Ia memverifikasi
-seluruh 11 file serta merekonstruksi setiap archive; loop hash manual tidak
-lagi cukup untuk candidate baru.
+Setelah build lokal, jalankan `verify_windows_base_release_suite.py` dengan
+exact suite identity, full Git commit, dan full Git tree yang dipin secara
+independen. Verifier ini tersedia di source checkout dan di
+configured-release operator tooling. Ia memverifikasi seluruh 11 file serta
+merekonstruksi setiap archive; loop hash manual tidak cukup untuk candidate
+baru.
+
+Untuk perpindahan antar-host, bungkus sebelas file itu menjadi satu artefak:
+
+```powershell
+python -B .\build_windows_base_release_suite_transfer.py `
+  --suite-root "$releaseParent\base-release-suite-v1" `
+  --output "$releaseParent\windows-base-release-suite-transfer-v1.zip" `
+  --expected-suite-identity-sha256 $expectedSuiteIdentity `
+  --expected-git-commit $expectedCommit `
+  --expected-git-tree $expectedTree
+```
+
+Catat outer `Archive SHA-256` secara independen. Host penerima wajib
+memverifikasi outer archive SHA-256, suite identity, full commit, dan full tree
+dengan helper PowerShell yang sudah berada di dalam ZIP atau dengan
+`verify_windows_base_release_suite_transfer.py`. Menyalin ZIP tanpa empat pin
+independen bukan release acceptance. Builder/verifier ini tidak mengimpor
+provider, membaca credential, memasang task, membuka MT5, atau menyentuh
+broker.
 
 Builder role-specific:
 

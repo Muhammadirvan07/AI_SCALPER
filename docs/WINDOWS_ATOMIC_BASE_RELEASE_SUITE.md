@@ -121,6 +121,89 @@ Configured-release builder dan pre-manual admission sekarang wajib menerima
 exact `$suiteRoot` ini. Tiga ZIP yang dibangun terpisah tidak dapat menggantikan
 membership suite walaupun commit/tree-nya sama.
 
+## Bungkus menjadi satu ZIP transfer
+
+Direktori suite memiliki sebelas berkas. Untuk memindahkannya ke host Windows
+lain, jangan menyalin sebelas berkas secara terpisah. Bangun satu ZIP transfer
+setelah suite diverifikasi, memakai tiga pin suite dari receipt independen:
+
+```powershell
+$expectedSuiteIdentity = "<PINNED_SUITE_IDENTITY_SHA256>"
+$expectedCommit = "<PINNED_FULL_GIT_COMMIT>"
+$expectedTree = "<PINNED_FULL_GIT_TREE>"
+$transferZip = "$releaseParent\windows-base-release-suite-transfer-v1.zip"
+
+python -B .\build_windows_base_release_suite_transfer.py `
+  --suite-root $suiteRoot `
+  --output $transferZip `
+  --expected-suite-identity-sha256 $expectedSuiteIdentity `
+  --expected-git-commit $expectedCommit `
+  --expected-git-tree $expectedTree
+
+if ($LASTEXITCODE -ne 0) {
+  throw "Base-suite transfer build failed."
+}
+```
+
+Output builder hanya satu ZIP. Catat `Archive SHA-256` melalui channel audit
+yang terpisah dari ZIP. Jangan menggunakan SHA, suite identity, commit, atau
+tree yang dibaca dari ZIP itu sendiri sebagai pin independen.
+
+ZIP berisi exact suite di `base-release-suite-v1/`, canonical transfer
+manifest, dan `Verify-WindowsBaseReleaseSuiteTransfer.ps1`. Builder melakukan
+self-verification penuh sebelum publikasi no-replace. ZIP ini tetap build
+evidence; ia tidak membawa credential, provider overlay, task installation,
+atau izin order.
+
+## Ekstrak dan verifikasi di Windows
+
+Salin hanya ZIP tersebut. Dapatkan empat expected value dari channel audit
+independen, lalu gunakan root ekstraksi baru:
+
+```powershell
+$transferZip = "C:\AI_SCALPER_TRANSFER\windows-base-release-suite-transfer-v1.zip"
+$expectedArchive = "<PINNED_TRANSFER_ARCHIVE_SHA256>"
+$expectedSuiteIdentity = "<PINNED_SUITE_IDENTITY_SHA256>"
+$expectedCommit = "<PINNED_FULL_GIT_COMMIT>"
+$expectedTree = "<PINNED_FULL_GIT_TREE>"
+$bundleRoot = "C:\AI_SCALPER_RELEASES\<commit>\base-suite-transfer-v1"
+$python = "C:\AI_SCALPER\.venv\Scripts\python.exe"
+
+$observed = (
+  Get-FileHash -LiteralPath $transferZip -Algorithm SHA256
+).Hash.ToLowerInvariant()
+if ($observed -ne $expectedArchive) {
+  throw "Transfer archive SHA-256 mismatch."
+}
+if (Test-Path -LiteralPath $bundleRoot) {
+  throw "Bundle root sudah ada; jangan overwrite release evidence."
+}
+
+Expand-Archive -LiteralPath $transferZip -DestinationPath $bundleRoot
+
+& "$bundleRoot\Verify-WindowsBaseReleaseSuiteTransfer.ps1" `
+  -ArchivePath $transferZip `
+  -BundleRoot $bundleRoot `
+  -PythonPath $python `
+  -ExpectedArchiveSHA256 $expectedArchive `
+  -ExpectedSuiteIdentitySHA256 $expectedSuiteIdentity `
+  -ExpectedGitCommit $expectedCommit `
+  -ExpectedGitTree $expectedTree
+
+if (-not $?) {
+  throw "Base-suite transfer verification failed."
+}
+
+$suiteRoot = "$bundleRoot\base-release-suite-v1"
+```
+
+Helper kompatibel PowerShell 5.1 dan memverifikasi outer hash, exact extracted
+inventory, size/hash setiap berkas, reparse state, safety lock, serta nested
+suite melalui verifier dalam configured tooling dengan `python -I -S -B`.
+Helper hanya membuat temporary extraction root bernama GUID untuk verifier dan
+menghapus root miliknya sendiri. Ia tidak menginstal atau memulai task/service,
+tidak membuka credential/MT5, dan tidak menyentuh broker.
+
 Artefak tiga-role atau empat-role lama tetap dapat disimpan sebagai historical
 evidence untuk commit asalnya, tetapi tidak boleh dipakai sebagai candidate
 baru setelah read-only finalized-M15 publisher menjadi bagian closure.
