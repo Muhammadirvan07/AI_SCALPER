@@ -8,7 +8,7 @@ later runtime composition and never grants execution authority by itself.
 
 from __future__ import annotations
 
-from dataclasses import InitVar, dataclass
+from dataclasses import InitVar, dataclass, field, fields as dataclass_fields
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
@@ -19,6 +19,7 @@ from typing import Mapping
 from .contracts import (
     CanonicalContract,
     canonical_json,
+    canonicalize,
     require_hash,
     require_int,
     require_text,
@@ -309,6 +310,7 @@ class VerifiedExternalLauncherAttestation(CanonicalContract):
     execution_authority_granted: bool = EXECUTION_AUTHORITY_GRANTED
     order_capability: str = ORDER_CAPABILITY
     schema_version: str = VERIFIED_SCHEMA
+    _verification_seal: object = field(init=False, repr=False, compare=False)
     _seal: InitVar[object | None] = None
 
     def __post_init__(self, _seal: object | None) -> None:
@@ -340,6 +342,14 @@ class VerifiedExternalLauncherAttestation(CanonicalContract):
             raise ValueError("verified launcher attestation cannot grant execution")
         if self.schema_version != VERIFIED_SCHEMA:
             raise ValueError("verified launcher schema is unsupported")
+        object.__setattr__(self, "_verification_seal", _VERIFIED_SEAL)
+
+    def to_canonical_dict(self) -> dict[str, object]:
+        return {
+            item.name: canonicalize(getattr(self, item.name))
+            for item in dataclass_fields(self)
+            if item.name != "_verification_seal"
+        }
 
     def assert_current(
         self,
@@ -373,6 +383,15 @@ class VerifiedExternalLauncherAttestation(CanonicalContract):
         if checked >= self.expires_at_utc:
             raise ExternalLauncherTrustError("LAUNCHER_ATTESTATION_EXPIRED")
         return True
+
+
+def is_verified_external_launcher_attestation(value: object) -> bool:
+    """Return true only for an attestation sealed by this verifier module."""
+
+    return (
+        type(value) is VerifiedExternalLauncherAttestation
+        and getattr(value, "_verification_seal", None) is _VERIFIED_SEAL
+    )
 
 
 _POLICY_FIELDS = frozenset(ExternalLauncherTrustPolicy.__dataclass_fields__)
@@ -554,6 +573,7 @@ __all__ = [
     "decode_external_launcher_attestation",
     "decode_external_launcher_trust_policy",
     "rsa_public_key_fingerprint_sha256",
+    "is_verified_external_launcher_attestation",
     "verify_external_launcher_attestation",
     "verify_rsa_pkcs1v15_sha256",
 ]

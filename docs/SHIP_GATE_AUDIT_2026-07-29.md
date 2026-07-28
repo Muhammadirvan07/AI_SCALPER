@@ -6,6 +6,7 @@
 LOCAL_SOURCE_GATE = PASS
 LIVE_CANARY_ACTIVATION_EVIDENCE = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
+LIVE_CANARY_PORTABLE_CUSTODY = PASS_LOCALLY_DENY_ONLY
 DEPENDENCY_OR_FRONTEND_HOST_INSTALL = NOT_CHANGED
 WINDOWS_EXTERNAL_ACCEPTANCE = INCOMPLETE
 DEMO_AUTO_SOAK = NOT_READY
@@ -26,6 +27,11 @@ Reviewed source:
 - `live_runtime/live_canary_prebootstrap_admission.py`;
 - `test_live_runtime_live_canary_prebootstrap_admission.py`;
 - `specs/live_canary_prebootstrap_admission_v1.md`;
+- `live_runtime/live_canary_portable_launch_custody.py`;
+- `test_live_runtime_live_canary_portable_launch_custody.py`;
+- `specs/live_canary_portable_launch_custody_v1.md`;
+- verifier-seal hardening in `live_canary_prebootstrap_admission.py` and
+  `asymmetric_release_trust.py`;
 - current status/progress documentation.
 
 The working frontend/dashboard changes were not modified or staged as part of
@@ -40,7 +46,7 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Code quality | PASS_LOCAL | Spec-first implementation, 100/100 spec validation, normal/optimized regression, no changed-file whitespace errors |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
-| Deployment | INCOMPLETE_EXTERNAL | A sealed deny-only prebootstrap composition exists locally, but actual Windows provider conformance, portable admission custody, one-use launch capability, task/service composition, ACLs, TLS/auth where applicable, rollback, backup/restore, and WORM custody are not accepted |
+| Deployment | INCOMPLETE_EXTERNAL | Sealed deny-only prebootstrap and portable WORM/CAS verification boundaries exist locally, but actual Windows provider conformance, real WORM/CAS providers and receipts, task/service composition, effect-capable bootstrap, ACLs, TLS/auth where applicable, rollback, and backup/restore are not accepted |
 | Frontend | OUTSIDE_CHANGE_SCOPE / WINDOWS_NODE_MISSING | No frontend source was changed by this milestone; Windows still needs a verified Node.js LTS installation to run Vite |
 | Observability | PASS_BOUNDARY / EXTERNAL_PENDING | Canonical reason codes and replay checkpoints exist; external uptime/alert/custody proof is not present |
 
@@ -53,11 +59,14 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Focused live-canary tests under `-O` | 16 PASS, one intentional nested optimized self-test skip |
 | Prebootstrap spec validator (`--strict`) | 100/100; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused prebootstrap tests | 10 PASS normal; 10 PASS optimized with one intentional nested-suite skip |
+| Portable custody spec validator (`--strict`) | 100/100; 0 errors/warnings and one informational TypeScript-N/A note |
+| Focused portable custody tests | 10 PASS normal; 10 PASS optimized with one intentional nested-suite skip |
+| Portable custody integration cluster | 50 PASS normal; 50 PASS optimized with three intentional nested-suite skips |
 | Activation/source-bound/provider cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage regression | 81 PASS in both normal and optimized modes |
-| Full Python regression | 1,825 PASS, 3 platform skips |
-| Full Python optimized regression | 1,825 PASS, 5 skips |
-| Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` remains false; no MT5, order, credential, network, or process primitive in the new module |
+| Full Python regression | 1,835 PASS, 3 platform skips |
+| Full Python optimized regression | 1,835 PASS, 6 skips |
+| Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` remains false; no MT5, order, credential, network, or process primitive in the portable module |
 
 The generic repository scanner reported `DO_NOT_SHIP` with ten critical
 items. Four automated categories were dominated by scanner false positives in
@@ -96,6 +105,12 @@ changed-source findings.
    exact hash to full non-secret runtime inputs, a verifier-sealed DEMO
    source-bound lineage, all champion pins, disjoint runtime trust domains,
    and the still-false central LIVE policy decision.
+8. The next launch boundary previously had no portable way to prove exact WORM
+   admission custody or atomically consume a launcher nonce without embedding
+   storage credentials. The new public-key-only verifier accepts strict
+   canonical RSA receipts through narrow readback/CAS callbacks, requires an
+   independently retained predecessor pin, rejects signed-head rollback and
+   cross-lane substitution, and returns only a sealed deny-only prerequisite.
 
 ## Blocking facts
 
@@ -103,9 +118,11 @@ changed-source findings.
 - No exact LIVE promotion receipt or nine external gate receipts exist.
 - No actual three-person approval set, deployment authorization, or off-host
   replay checkpoint custody has been accepted.
-- The effect-capable production bootstrap and supervisor do not yet consume a
-  portable, independently custodied, one-use launch capability derived from
-  this deny-only admission.
+- No actual independent WORM admission upload/readback or atomic external
+  CAS/nonce ledger receipt has been accepted; local test doubles are not
+  external custody evidence.
+- The effect-capable production bootstrap and supervisor do not yet consume
+  this portable, independently custodied, one-use launch prerequisite.
 - The central live lock remains false and must not change in this milestone.
 
 Therefore the final verdict is **DO NOT SHIP LIVE TRADING**.

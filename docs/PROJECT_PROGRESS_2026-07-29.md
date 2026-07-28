@@ -10,6 +10,7 @@ enable live trading, broker mutation, or any central execution lock.
 LOCAL_SOURCE_GATE = PASS
 LIVE_CANARY_EVIDENCE_BOUNDARY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
+LIVE_CANARY_PORTABLE_CUSTODY = PASS_LOCALLY_DENY_ONLY
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
 DEMO_AUTO_SOAK = NOT_READY
@@ -54,6 +55,22 @@ LIVE_TRADING = DO_NOT_SHIP
   `PREBOOTSTRAP_EVIDENCE_COMPLETE_CENTRAL_UNLOCK_REQUIRED`; it is not a launch
   capability and retains `bootstrap_authorized=false` together with every
   existing safety lock.
+- `LiveCanaryPortableCustodyPolicy` pins an independent RSA-3072-or-stronger
+  public custody authority, hashed WORM destination, exact launcher policy,
+  Windows host/service/task identities, retention policy, and a launch TTL of
+  at most 60 seconds. No private-key or storage-client surface is present.
+- Admission custody verification accepts only a strict canonical signed
+  receipt and byte-identical external WORM readback of the sealed admission.
+  The output carries an unforgeable in-process verifier seal and grants no
+  launch or execution authority.
+- One-use launch reservation verifies the sealed launcher attestation, key
+  separation, exact release/lane identities, a caller-pinned predecessor,
+  signed checkpoint and separate CAS acknowledgement, byte-identical head
+  readback, and durable nonce state. A rollback to an older signed head or a
+  cross-lane head now fails before CAS.
+- The resulting `LiveCanaryOneUseLaunchCapability` proves only that a nonce
+  was reserved once. It retains `central_unlock_required=true` and every
+  process/bootstrap/execution/live flag false.
 
 ## Verification
 
@@ -62,10 +79,13 @@ LIVE_TRADING = DO_NOT_SHIP
 | Spec validation | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused live-canary suite | 16 PASS normal; 16 PASS optimized with one intentional nested-suite skip |
 | Focused prebootstrap suite | 10 PASS normal; 10 PASS optimized with one intentional nested-suite skip |
+| Portable custody spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
+| Focused portable custody suite | 10 PASS normal; 10 PASS optimized with one intentional nested-suite skip |
+| Portable custody integration cluster | 50 PASS normal; 50 PASS optimized with three intentional nested-suite skips |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,825 PASS, 3 platform skips |
-| Full Python regression with `-O` | 1,825 PASS, 5 skips including optimized-only nested self-tests |
+| Full Python regression | 1,835 PASS, 3 platform skips |
+| Full Python regression with `-O` | 1,835 PASS, 6 skips including optimized-only nested self-tests |
 | Checked-in central live lock | remains exactly false |
 | Broker/order/credential/process effects | not performed |
 
@@ -92,10 +112,12 @@ uptime monitoring remain external work.
 6. Build the actual XM/Windows LIVE candidate and feed its independently
    verified source-bound ancestry plus consumed validation through the new
    prebootstrap admission; local tests use synthetic values only.
-7. Separately specify, implement, and review a portable Windows custody and
-   one-use launch-capability boundary, then the effect-capable production
-   bootstrap/supervisor composition. The central lock remains unchanged until
-   that later ceremony and all external evidence are accepted.
+7. Provision the real independent WORM readback and atomic CAS/nonce custody,
+   retain the predecessor pin through an independent channel, and collect the
+   canonical RSA receipts this local boundary expects. Then separately
+   specify and review the effect-capable production bootstrap/supervisor
+   composition. The central lock remains unchanged until that later ceremony
+   and all external evidence are accepted.
 
 No percentage or passing unit-test count should be interpreted as broker
 authority. Until the external evidence and later runtime integration exist,

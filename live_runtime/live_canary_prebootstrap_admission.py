@@ -7,7 +7,7 @@ database, scheduler, broker, permit, or order effect.
 
 from __future__ import annotations
 
-from dataclasses import InitVar, dataclass, field
+from dataclasses import InitVar, dataclass, field, fields as dataclass_fields
 from datetime import datetime
 from pathlib import PurePosixPath, PureWindowsPath
 import math
@@ -16,7 +16,7 @@ from typing import Callable
 
 import execution_policy
 
-from .contracts import CanonicalContract, canonical_sha256
+from .contracts import CanonicalContract, canonical_sha256, canonicalize
 from .live_canary_activation import (
     LIVE_CANARY_MAX_CONCURRENT_POSITIONS,
     LIVE_CANARY_MAX_LOT,
@@ -559,6 +559,7 @@ class LiveCanaryPrebootstrapAdmission(CanonicalContract):
     activation_authorized: bool = field(default=False, init=False)
     order_capability: str = field(default=ORDER_CAPABILITY, init=False)
     schema_version: str = field(default=ADMISSION_SCHEMA_VERSION, init=False)
+    _admission_seal: object = field(init=False, repr=False, compare=False)
     _seal: InitVar[object | None] = None
 
     def __post_init__(self, _seal: object | None) -> None:
@@ -601,6 +602,23 @@ class LiveCanaryPrebootstrapAdmission(CanonicalContract):
             )
         ):
             _reject("PREBOOTSTRAP_REPORT_SAFETY_DRIFT")
+        object.__setattr__(self, "_admission_seal", _REPORT_SEAL)
+
+    def to_canonical_dict(self) -> dict[str, object]:
+        return {
+            item.name: canonicalize(getattr(self, item.name))
+            for item in dataclass_fields(self)
+            if item.name != "_admission_seal"
+        }
+
+
+def is_live_canary_prebootstrap_admission(value: object) -> bool:
+    """Return true only for an admission sealed by this verifier module."""
+
+    return (
+        type(value) is LiveCanaryPrebootstrapAdmission
+        and getattr(value, "_admission_seal", None) is _REPORT_SEAL
+    )
 
 
 def _source_projection(
@@ -851,4 +869,5 @@ __all__ = [
     "LiveCanaryPrebootstrapAdmissionError",
     "LiveCanaryRuntimeCandidate",
     "assess_live_canary_prebootstrap_admission",
+    "is_live_canary_prebootstrap_admission",
 ]
