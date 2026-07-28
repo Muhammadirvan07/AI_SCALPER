@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-28 menjalankan **1.718 test** tanpa
+Validasi lokal terakhir pada 2026-07-28 menjalankan **1.721 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
 PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
 juga lulus 21 unit test frontend, 45 test backend, 14 browser E2E, lint,
@@ -115,15 +115,17 @@ security-header policy terpisah.
 Create-exclusive output custody kini konsisten pada shared Windows release
 writer, role release/sidecar builder, configured overlay, evidence/feed dan
 provider publisher, provider-pack generator, atomic-suite lock/staging,
-configured-candidate cleanup, serta builder preparation XM/FINEX. Setiap
-cleanup membawa exact identitas file atau root yang dibuat invocation
-berjalan; identitas hilang, berubah, symlink/reparse, atau object pengganti
-selalu dipertahankan dan proses gagal tertutup. Helper extraction XM/FINEX juga
-memakai sibling staging dan no-replace directory move sebelum verifikasi ulang
-destination. Full regression normal dan optimized sama-sama lulus 1.718 test
-dengan tiga platform skip. Kontrak ini hanya memperkuat artifact custody dan
-tidak mengubah `order_capability`, `live_allowed`, demo-auto, promotion, atau
-broker authority.
+configured-candidate cleanup, builder preparation XM/FINEX, serta publisher
+frozen snapshot dan forward contract. Publikasi direktori evidence terakhir
+itu kini memakai native atomic no-replace pada Windows/macOS/Linux, mem-pin
+identitas parent dan staging, dan hanya membersihkan exact staging root yang
+dibuat invocation berjalan. Identitas hilang, berubah, symlink/reparse, target
+race, atau object pengganti selalu dipertahankan dan proses gagal tertutup.
+Helper extraction XM/FINEX juga memakai sibling staging dan no-replace
+directory move sebelum verifikasi ulang destination. Full regression normal
+dan optimized sama-sama lulus 1.721 test dengan tiga platform skip. Kontrak ini
+hanya memperkuat artifact custody dan tidak mengubah `order_capability`,
+`live_allowed`, demo-auto, promotion, atau broker authority.
 
 ## Status roadmap
 

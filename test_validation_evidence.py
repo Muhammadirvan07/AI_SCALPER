@@ -2049,6 +2049,123 @@ class ValidationEvidenceTests(unittest.TestCase):
             calls,
         )
 
+    def test_atomic_directory_publish_refuses_raced_empty_target(self):
+        import validation_evidence.secure_core as secure_core
+
+        parent = self.root / "atomic-directory-race"
+        parent.mkdir()
+        target = parent / "evidence"
+        native_publish = secure_core._rename_directory_no_replace
+
+        def inject_target_then_publish(source, destination):
+            destination.mkdir()
+            (destination / "foreign.txt").write_text(
+                "preserve",
+                encoding="utf-8",
+            )
+            native_publish(source, destination)
+
+        with patch.object(
+            secure_core,
+            "_rename_directory_no_replace",
+            side_effect=inject_target_then_publish,
+        ):
+            with self.assertRaisesRegex(
+                EvidenceValidationError,
+                "ARTIFACT_EXISTS",
+            ):
+                secure_core._atomic_directory_commit(
+                    parent,
+                    target,
+                    {"owned.txt": b"owned"},
+                )
+
+        self.assertEqual(
+            "preserve",
+            (target / "foreign.txt").read_text(encoding="utf-8"),
+        )
+        self.assertFalse((target / "owned.txt").exists())
+        self.assertEqual([], list(parent.glob(".evidence.pending-*")))
+
+    def test_windows_atomic_directory_publish_uses_no_replace_write_through(self):
+        import validation_evidence.secure_core as secure_core
+
+        parent = self.root / "windows-atomic-directory"
+        parent.mkdir()
+        target = parent / "evidence"
+        calls = []
+
+        def publish(source, destination, *, replace):
+            calls.append((Path(source), Path(destination), replace))
+            Path(source).rename(destination)
+
+        with (
+            patch.object(
+                secure_core,
+                "_windows_commit_enabled",
+                return_value=True,
+            ),
+            patch.object(
+                secure_core,
+                "_windows_move_write_through",
+                side_effect=publish,
+            ),
+        ):
+            secure_core._atomic_directory_commit(
+                parent,
+                target,
+                {"owned.txt": b"owned"},
+            )
+
+        self.assertEqual(b"owned", (target / "owned.txt").read_bytes())
+        self.assertEqual(target, calls[-1][1])
+        self.assertFalse(calls[-1][2])
+
+    def test_atomic_directory_cleanup_preserves_replaced_staging_root(self):
+        import validation_evidence.secure_core as secure_core
+
+        parent = self.root / "atomic-directory-cleanup"
+        parent.mkdir()
+        target = parent / "evidence"
+        displaced = None
+        replacement = None
+
+        def replace_staging_then_fail(source, _destination):
+            nonlocal displaced, replacement
+            displaced = source.with_name(source.name + "-displaced")
+            source.rename(displaced)
+            source.mkdir()
+            replacement = source
+            (source / "foreign.txt").write_text(
+                "preserve",
+                encoding="utf-8",
+            )
+            raise EvidenceValidationError("ARTIFACT_COMMIT_FAILED")
+
+        with patch.object(
+            secure_core,
+            "_rename_directory_no_replace",
+            side_effect=replace_staging_then_fail,
+        ):
+            with self.assertRaisesRegex(
+                EvidenceValidationError,
+                "ARTIFACT_COMMIT_FAILED",
+            ):
+                secure_core._atomic_directory_commit(
+                    parent,
+                    target,
+                    {"owned.txt": b"owned"},
+                )
+
+        self.assertIsNotNone(displaced)
+        self.assertIsNotNone(replacement)
+        self.assertTrue((displaced / "owned.txt").is_file())
+        self.assertEqual(
+            "preserve",
+            (replacement / "foreign.txt").read_text(encoding="utf-8"),
+        )
+        self.assertFalse(target.exists())
+
     def test_recursive_secret_and_symlinked_artifact_path_are_rejected(self):
         snapshot = self._create_snapshot()
         sources = self._broker_sources()

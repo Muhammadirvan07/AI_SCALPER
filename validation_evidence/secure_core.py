@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import contextlib
+import errno
 import functools
 import hashlib
 import hmac
@@ -19,7 +20,9 @@ import math
 import os
 import re
 import shutil
+import stat
 import subprocess
+import sys
 import tempfile
 import time
 from decimal import Decimal, InvalidOperation
@@ -616,27 +619,173 @@ def _atomic_replace(path: Path, payload: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _atomic_directory_commit(parent: Path, target: Path, files: Mapping[str, bytes]) -> None:
-    if target.exists() or target.is_symlink():
-        raise EvidenceValidationError("ARTIFACT_EXISTS", str(target))
-    staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.pending-", dir=parent))
+def _directory_identity(metadata: os.stat_result) -> tuple[int, int, int, int]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(getattr(metadata, "st_file_attributes", 0)),
+    )
+
+
+def _is_directory_reparse_point(path: Path, metadata: os.stat_result) -> bool:
+    if int(getattr(metadata, "st_file_attributes", 0)) & 0x400:
+        return True
+    is_junction = getattr(path, "is_junction", None)
     try:
+        return bool(is_junction is not None and is_junction())
+    except OSError:
+        return True
+
+
+def _rename_directory_no_replace(source: Path, target: Path) -> None:
+    """Publish one directory atomically without replacing any target entry."""
+
+    if _windows_commit_enabled():
+        _windows_move_write_through(source, target, replace=False)
+        return
+
+    import ctypes
+
+    try:
+        library = ctypes.CDLL(None, use_errno=True)
+    except OSError as exc:
+        raise EvidenceValidationError("ARTIFACT_COMMIT_UNSUPPORTED") from exc
+    source_bytes = os.fsencode(source)
+    target_bytes = os.fsencode(target)
+    result: int
+    if sys.platform == "darwin":
+        rename_exclusive = getattr(library, "renamex_np", None)
+        if rename_exclusive is None:
+            raise EvidenceValidationError("ARTIFACT_COMMIT_UNSUPPORTED")
+        rename_exclusive.argtypes = [
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        rename_exclusive.restype = ctypes.c_int
+        result = rename_exclusive(source_bytes, target_bytes, 0x00000004)
+    elif sys.platform.startswith("linux"):
+        rename_exclusive = getattr(library, "renameat2", None)
+        if rename_exclusive is None:
+            raise EvidenceValidationError("ARTIFACT_COMMIT_UNSUPPORTED")
+        rename_exclusive.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        rename_exclusive.restype = ctypes.c_int
+        result = rename_exclusive(
+            -100,
+            source_bytes,
+            -100,
+            target_bytes,
+            1,
+        )
+    else:
+        raise EvidenceValidationError("ARTIFACT_COMMIT_UNSUPPORTED")
+    if result == 0:
+        return
+    error_number = ctypes.get_errno()
+    if error_number in {errno.EEXIST, errno.ENOTEMPTY}:
+        raise EvidenceValidationError("ARTIFACT_EXISTS", str(target))
+    if error_number in {
+        errno.ENOSYS,
+        errno.EOPNOTSUPP,
+        getattr(errno, "ENOTSUP", errno.EOPNOTSUPP),
+    }:
+        raise EvidenceValidationError("ARTIFACT_COMMIT_UNSUPPORTED")
+    raise EvidenceValidationError(
+        "ARTIFACT_COMMIT_FAILED",
+        f"{target}:errno={error_number}",
+    )
+
+
+def _cleanup_created_directory(
+    staging: Path | None,
+    parent: Path,
+    prefix: str,
+    identity: tuple[int, int, int, int] | None,
+) -> None:
+    """Remove only the exact staging directory created by this invocation."""
+
+    if staging is None or identity is None:
+        return
+    try:
+        metadata = staging.lstat()
+        if (
+            staging.parent != parent
+            or not staging.name.startswith(prefix)
+            or _directory_identity(metadata) != identity
+            or not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or _is_directory_reparse_point(staging, metadata)
+        ):
+            return
+        shutil.rmtree(staging)
+    except OSError:
+        # Preserve an unremovable or raced staging directory for review.  A
+        # cleanup failure must never broaden deletion or mask the root error.
+        return
+
+
+def _atomic_directory_commit(
+    parent: Path,
+    target: Path,
+    files: Mapping[str, bytes],
+) -> None:
+    if target.parent != parent or target.name in {"", ".", ".."}:
+        raise EvidenceValidationError("ARTIFACT_PATH_INVALID", str(target))
+    try:
+        parent_metadata = parent.lstat()
+    except OSError as exc:
+        raise EvidenceValidationError(
+            "ARTIFACT_DIRECTORY_INVALID",
+            str(parent),
+        ) from exc
+    if (
+        not stat.S_ISDIR(parent_metadata.st_mode)
+        or stat.S_ISLNK(parent_metadata.st_mode)
+        or _is_directory_reparse_point(parent, parent_metadata)
+    ):
+        raise EvidenceValidationError("ARTIFACT_DIRECTORY_INVALID", str(parent))
+    parent_identity = _directory_identity(parent_metadata)
+    if os.path.lexists(target):
+        raise EvidenceValidationError("ARTIFACT_EXISTS", str(target))
+    prefix = f".{target.name}.pending-"
+    staging: Path | None = None
+    staging_identity: tuple[int, int, int, int] | None = None
+    try:
+        staging = Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
+        staging_metadata = staging.lstat()
+        staging_identity = _directory_identity(staging_metadata)
         for relative_name, payload in files.items():
             destination = _safe_artifact_file(staging, relative_name)
             destination.parent.mkdir(parents=True, exist_ok=True)
             _atomic_exclusive_write(destination, payload)
         _fsync_directory(staging)
-        if _windows_commit_enabled():
-            _windows_move_write_through(staging, target, replace=False)
-        else:
-            try:
-                os.rename(staging, target)
-            except FileExistsError as exc:
-                raise EvidenceValidationError("ARTIFACT_EXISTS", str(target)) from exc
-            _fsync_directory(parent)
+        try:
+            current_parent = parent.lstat()
+            current_staging = staging.lstat()
+        except OSError as exc:
+            raise EvidenceValidationError(
+                "ARTIFACT_COMMIT_FAILED",
+                str(target),
+            ) from exc
+        if (
+            _directory_identity(current_parent) != parent_identity
+            or _directory_identity(current_staging) != staging_identity
+            or not stat.S_ISDIR(current_staging.st_mode)
+            or stat.S_ISLNK(current_staging.st_mode)
+            or _is_directory_reparse_point(staging, current_staging)
+        ):
+            raise EvidenceValidationError("ARTIFACT_COMMIT_IDENTITY_DRIFT")
+        _rename_directory_no_replace(staging, target)
+        _fsync_directory(parent)
     finally:
-        if staging.exists():
-            shutil.rmtree(staging)
+        _cleanup_created_directory(staging, parent, prefix, staging_identity)
 
 
 @contextlib.contextmanager

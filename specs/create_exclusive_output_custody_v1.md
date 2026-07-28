@@ -36,6 +36,15 @@ It does not grant execution, broker, demo-auto, promotion, or live authority.
 9. Destination validation preserves the requested leaf path. Resolving a
    dangling output symlink into its target before exclusive creation is
    forbidden.
+10. An immutable evidence directory is published with an atomic native
+    no-replace move. A preceding `exists()` check followed by ordinary
+    directory `rename` is insufficient because POSIX may replace a raced empty
+    target directory.
+11. The evidence publisher pins the parent and staging-directory identities
+    before publication. Staging cleanup is authorized only while the current
+    no-follow directory identity remains exactly equal to the root created by
+    that invocation; symlink, junction/reparse, identity drift, or an unknown
+    platform without atomic no-replace support fails closed.
 
 ## Failure cases
 
@@ -46,6 +55,7 @@ The implementation must preserve a competing or pre-existing path when:
 - the created path is swapped during file `fsync` or directory `fsync`;
 - a release sidecar replaces a previously created archive or manifest;
 - a staging root or publication lock is replaced before exception cleanup;
+- an empty destination directory appears between pre-check and publication;
 - an internal configured-candidate or provider-pack root is replaced before
   cleanup begins.
 
@@ -58,7 +68,10 @@ no longer be proven.
 Regression tests inject output swaps at write, file-sync, directory-sync,
 second-member publication, publication-lock, and staging-root boundaries.
 They assert that replacement bytes, links, and roots survive unchanged while
-the publisher reports failure.
+the publisher reports failure. Frozen-snapshot and forward-contract tests also
+inject an empty target at the exact directory-publication boundary, verify the
+native Windows write-through/no-replace path, and replace the staging root
+before cleanup.
 
 The contract is verified in normal and optimized Python modes so production
 behavior does not depend on `assert` statements.

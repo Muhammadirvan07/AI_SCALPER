@@ -88,13 +88,19 @@ commit dibuat.
   menolak WebSocket tanpa `Origin` atau dengan origin di luar allowlist sebelum
   `accept()`. Public dashboard tetap tidak didukung tanpa review deployment
   terpisah.
+- Audit publisher evidence inti menemukan `os.rename` dapat mengganti target
+  direktori kosong pada POSIX dan cleanup staging lama tidak terikat identitas
+  pembuatan. Frozen snapshot dan forward-contract registration sekarang
+  memublikasikan direktori dengan native atomic no-replace pada
+  Windows/macOS/Linux, mem-pin parent/staging identity, dan mempertahankan
+  target race atau staging pengganti untuk forensic review.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.718 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.718 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.721 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.721 PASS, 3 skip, exit 0 |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |
