@@ -48,6 +48,12 @@ promotion-receipt content hash already referenced by the stage request and
 permit. They are deliberately not duplicated as caller-controlled execution
 inputs.
 
+The Windows composition boundary now also exposes the same five champion pins
+as direct required fields of `ProductionRuntimeConfig`. Bootstrap schema v2
+compares those independent configuration pins with the exact stage before any
+provider or runtime effect while retaining the aggregate stage-hash check.
+See `docs/WINDOWS_RUNTIME_STAGE_CHAMPION_CONFIGURATION.md`.
+
 ## Validation evidence
 
 - focused runtime/stage cluster: 206 tests pass in normal mode;

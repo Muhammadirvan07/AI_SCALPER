@@ -127,6 +127,19 @@ class ProductionBootstrapTests(unittest.TestCase):
             "commit_sha": "a" * 40,
             "config_sha256": self.config_sha,
             "stage_binding_sha256": self.stage_binding.binding_sha256,
+            "champion_archive_sha256": (
+                self.stage_binding.champion_archive_sha256
+            ),
+            "champion_package_identity_sha256": (
+                self.stage_binding.champion_package_identity_sha256
+            ),
+            "champion_training_snapshot_sha256": (
+                self.stage_binding.champion_training_snapshot_sha256
+            ),
+            "champion_git_tree": self.stage_binding.champion_git_tree,
+            "champion_runtime_binding_sha256": (
+                self.stage_binding.champion_runtime_binding_sha256
+            ),
             "manual_demo_custodian_trust_sha256": (
                 self.stage_binding.manual_demo_custodian_trust_sha256
             ),
@@ -353,6 +366,81 @@ class ProductionBootstrapTests(unittest.TestCase):
                 self.config(), ProductionRuntimePorts(**values)
             )
         self.assertEqual([], calls)
+
+    def test_explicit_champion_config_mismatch_is_rejected_without_effects(self):
+        calls, named = self.provider_calls()
+        mismatches = {
+            "champion_archive_sha256": digest("other-champion-archive"),
+            "champion_package_identity_sha256": digest(
+                "other-champion-package"
+            ),
+            "champion_training_snapshot_sha256": digest(
+                "other-champion-snapshot"
+            ),
+            "champion_git_tree": "4" * 40,
+            "champion_runtime_binding_sha256": digest(
+                "other-champion-runtime"
+            ),
+        }
+        with patch(
+            "live_runtime.mt5_adapter.MT5Adapter.initialize"
+        ) as initialize, patch(
+            "live_runtime.mt5_adapter.MT5Adapter.submit"
+        ) as submit:
+            for field_name, value in mismatches.items():
+                with self.subTest(field=field_name), self.assertRaisesRegex(
+                    ProductionBootstrapError,
+                    "STAGE_BINDING_MISMATCH",
+                ):
+                    validate_production_bootstrap_contract(
+                        self.config(**{field_name: value}),
+                        self.ports(named),
+                    )
+        self.assertEqual([], calls)
+        initialize.assert_not_called()
+        submit.assert_not_called()
+        self.assertFalse((self.root / "execution.sqlite3").exists())
+        self.assertFalse((self.root / "supervisor.sqlite3").exists())
+
+    def test_champion_config_pins_are_exact_nonzero_and_canonical(self):
+        config = self.config(
+            champion_archive_sha256="A" * 64,
+            champion_package_identity_sha256="B" * 64,
+            champion_training_snapshot_sha256="C" * 64,
+            champion_git_tree="D" * 40,
+            champion_runtime_binding_sha256="E" * 64,
+        )
+        self.assertEqual("a" * 64, config.champion_archive_sha256)
+        self.assertEqual(
+            "b" * 64,
+            config.champion_package_identity_sha256,
+        )
+        self.assertEqual(
+            "c" * 64,
+            config.champion_training_snapshot_sha256,
+        )
+        self.assertEqual("d" * 40, config.champion_git_tree)
+        self.assertEqual(
+            "e" * 64,
+            config.champion_runtime_binding_sha256,
+        )
+        self.assertEqual(
+            "windows-production-bootstrap-v2",
+            config.schema_version,
+        )
+
+        invalid = {
+            "champion_archive_sha256": "0" * 64,
+            "champion_package_identity_sha256": "a" * 63,
+            "champion_training_snapshot_sha256": "g" * 64,
+            "champion_git_tree": "0" * 40,
+            "champion_runtime_binding_sha256": "f" * 65,
+        }
+        for field_name, value in invalid.items():
+            with self.subTest(field=field_name), self.assertRaises(ValueError):
+                self.config(**{field_name: value})
+        with self.assertRaises(ValueError):
+            self.config(schema_version="windows-production-bootstrap-v1")
 
     def test_swapped_risk_ledger_genesis_identity_is_rejected_statically(self):
         calls, named = self.provider_calls()
@@ -630,6 +718,17 @@ class ProductionBootstrapTests(unittest.TestCase):
             "intent_ttl_seconds": 0.5,
             "installed_environment_sha256": digest(
                 "other-installed-environment"
+            ),
+            "champion_archive_sha256": digest("other-champion-archive"),
+            "champion_package_identity_sha256": digest(
+                "other-champion-package"
+            ),
+            "champion_training_snapshot_sha256": digest(
+                "other-champion-snapshot"
+            ),
+            "champion_git_tree": "4" * 40,
+            "champion_runtime_binding_sha256": digest(
+                "other-champion-runtime"
             ),
         }
         for field_name, value in mutations.items():

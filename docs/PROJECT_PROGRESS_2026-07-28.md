@@ -126,14 +126,22 @@ commit dibuat.
   reservation, dan pre-send menolak cross-champion atau pin yang hilang sebelum
   adapter dipanggil. Implementasi tetap deny-only dan dijelaskan di
   `docs/RUNTIME_STAGE_CHAMPION_BINDING.md`.
+- Audit konfigurasi Windows berikutnya menemukan bootstrap masih hanya
+  mengekspos aggregate stage hash. `ProductionRuntimeConfig` schema v2 kini
+  mewajibkan archive/package/snapshot/tree/runtime champion pins sebagai field
+  review langsung, memasukkannya ke safe binding, dan membandingkan semuanya
+  dengan exact `StageBinding` sebelum provider, credential, SQLite, MT5,
+  network, atau adapter effect. Kontraknya berada di
+  `specs/windows_runtime_stage_champion_configuration_binding_v1.md`.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.775 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.775 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.777 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.777 PASS, 3 skip, exit 0 |
 | Runtime-stage champion-binding focused cluster | 206 PASS per normal/optimized mode |
+| Windows runtime champion-configuration cluster | 49 PASS per normal/optimized mode |
 | Champion-bound promotion issuer focused cluster | 152 PASS per normal/optimized mode |
 | Rule-core artifact + registry/custody + configured-tooling focused cluster | 36 PASS per normal/optimized mode |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |

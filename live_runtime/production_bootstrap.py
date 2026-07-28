@@ -82,7 +82,7 @@ from .runtime_supervisor import (
 from .stage_authorization import StageBinding
 
 
-BOOTSTRAP_SCHEMA_VERSION = "windows-production-bootstrap-v1"
+BOOTSTRAP_SCHEMA_VERSION = "windows-production-bootstrap-v2"
 EXTERNAL_RECEIPT_SCHEMA_VERSION = "windows-bootstrap-external-receipt-v1"
 WORM_AUDIT_ROOT_SCHEMA_VERSION = "windows-bootstrap-worm-audit-root-v1"
 EXTERNAL_RECEIPT_MAX_TTL = timedelta(minutes=1)
@@ -136,6 +136,15 @@ def _pairs(name: str, values: Sequence[tuple[str, str]]) -> tuple[tuple[str, str
     return normalized
 
 
+def _exact_nonzero_hash(name: str, value: object, *, length: int) -> str:
+    """Return one canonical exact-length identity while rejecting null pins."""
+
+    normalized = require_hash(name, value, minimum_length=length)
+    if len(normalized) != length or normalized == "0" * length:
+        raise ValueError(f"{name} must be a non-zero {length}-character hash")
+    return normalized
+
+
 @dataclass(frozen=True)
 class ProductionRuntimeConfig:
     """Immutable, non-secret production composition configuration."""
@@ -155,6 +164,11 @@ class ProductionRuntimeConfig:
     commit_sha: str
     config_sha256: str
     stage_binding_sha256: str
+    champion_archive_sha256: str
+    champion_package_identity_sha256: str
+    champion_training_snapshot_sha256: str
+    champion_git_tree: str
+    champion_runtime_binding_sha256: str
     manual_demo_custodian_trust_sha256: str
     news_guard_provider_id: str
     news_guard_key_id: str
@@ -270,6 +284,30 @@ class ProductionRuntimeConfig:
             "mt5_wheel_sha256",
         ):
             object.__setattr__(self, name, require_hash(name, getattr(self, name)))
+        for name in (
+            "champion_archive_sha256",
+            "champion_package_identity_sha256",
+            "champion_training_snapshot_sha256",
+            "champion_runtime_binding_sha256",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _exact_nonzero_hash(
+                    name,
+                    getattr(self, name),
+                    length=64,
+                ),
+            )
+        object.__setattr__(
+            self,
+            "champion_git_tree",
+            _exact_nonzero_hash(
+                "champion_git_tree",
+                self.champion_git_tree,
+                length=40,
+            ),
+        )
         object.__setattr__(
             self,
             "commit_sha",
@@ -465,6 +503,17 @@ class ProductionRuntimeConfig:
             "commit_sha": self.commit_sha,
             "config_sha256": self.config_sha256,
             "stage_binding_sha256": self.stage_binding_sha256,
+            "champion_archive_sha256": self.champion_archive_sha256,
+            "champion_package_identity_sha256": (
+                self.champion_package_identity_sha256
+            ),
+            "champion_training_snapshot_sha256": (
+                self.champion_training_snapshot_sha256
+            ),
+            "champion_git_tree": self.champion_git_tree,
+            "champion_runtime_binding_sha256": (
+                self.champion_runtime_binding_sha256
+            ),
             "manual_demo_custodian_trust_sha256": (
                 self.manual_demo_custodian_trust_sha256
             ),
@@ -1016,6 +1065,15 @@ def _validate_bindings(
         or stage.journal_sha256 != config.journal_sha256
         or stage.commit_sha != config.commit_sha
         or stage.config_sha256 != config.config_sha256
+        or stage.champion_archive_sha256
+        != config.champion_archive_sha256
+        or stage.champion_package_identity_sha256
+        != config.champion_package_identity_sha256
+        or stage.champion_training_snapshot_sha256
+        != config.champion_training_snapshot_sha256
+        or stage.champion_git_tree != config.champion_git_tree
+        or stage.champion_runtime_binding_sha256
+        != config.champion_runtime_binding_sha256
         or stage.dependency_lock_sha256 != config.dependency_lock_sha256
         or stage.session_calendar_sha256 != config.session_calendar_sha256
         or stage.broker_spec_sha256 != config.broker_spec_sha256

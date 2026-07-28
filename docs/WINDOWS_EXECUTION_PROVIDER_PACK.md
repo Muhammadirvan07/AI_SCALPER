@@ -20,6 +20,13 @@ value, dan heartbeat custody sebelum membuat
 production bootstrap yang sudah ada tetap menjadi satu-satunya boundary yang
 kelak boleh mengimpor dan mengattest MetaTrader5.
 
+Production-config source sekarang wajib menghasilkan
+`windows-production-bootstrap-v2`. Selain aggregate stage SHA-256, konfigurasi
+itu membawa exact champion archive/package/training-snapshot/Git-tree/runtime
+pins dan bootstrap membandingkannya dengan `StageBinding` v3 sebelum provider
+atau runtime effect. Rinciannya ada di
+`docs/WINDOWS_RUNTIME_STAGE_CHAMPION_CONFIGURATION.md`.
+
 Generated factory tidak mempunyai registry global, environment-selected
 module, dynamic import, atau fallback provider. Tanpa runtime Windows yang
 direview, startup wajib berhenti dengan:

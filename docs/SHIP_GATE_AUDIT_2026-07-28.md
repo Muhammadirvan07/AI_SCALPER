@@ -17,6 +17,7 @@ RULE_CORE_CHAMPION_LINEAGE = PASS_LOCALLY_EXACT_HEAD_BUILD_PENDING
 RULE_CORE_CHAMPION_REGISTRY_CUSTODY = PASS_LOCALLY_EXTERNAL_ACTION_PENDING
 PROMOTION_CHAMPION_CORPUS_BINDING = PASS_LOCALLY_SYNTHETIC_ONLY
 RUNTIME_STAGE_CHAMPION_BINDING = PASS_LOCALLY_DENY_ONLY
+WINDOWS_RUNTIME_CHAMPION_CONFIGURATION = PASS_LOCALLY_DENY_ONLY
 FIRST_AUTOMATIC_SCHEDULED_PROOF = PENDING_2026_07_30_0645_JST
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
@@ -50,7 +51,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.775 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.777 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, pre-bind loopback enforcement, canonical loopback CORS/WebSocket origin allowlist, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | fresh npm, Python development, dan dashboard requirements audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
@@ -63,9 +64,10 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1775 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with optimization enabled | `Ran 1775 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1777 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1777 tests ... OK (skipped=3)`, exit 0 |
 | Runtime-stage champion-binding cluster | 206 PASS per normal/optimized mode |
+| Windows runtime champion-configuration cluster | 49 PASS per normal/optimized mode |
 | Generic repository ship-gate scanner | `DO_NOT_SHIP` as expected from existing vendored/tooling matches and unresolved manual/external gates; 0 findings in changed stage/runtime files |
 | Champion-bound promotion issuer cluster | 152 PASS per normal/optimized mode |
 | Rule-core artifact + registry/custody + configured-tooling focused tests | 36 PASS per normal/optimized mode |
@@ -193,7 +195,7 @@ readiness false.
     tests prove an injected target is not overwritten and a replacement
     staging root is preserved. Temporary-file cleanup and paired-transaction
     pending-marker clear now also require their exact creation identities;
-    replacement files survive. Both full 1,775-test modes remain green.
+    replacement files survive. Both full 1,777-test modes remain green.
 14. The diagnostic runner computed a rule-core hash but no portable artifact
     froze the bytes behind that identity together with config, snapshot,
     cutoff, and Git provenance. A deterministic deny-only ZIP contract now
@@ -233,6 +235,15 @@ readiness false.
     Focused normal/optimized clusters pass 206 tests each; this strengthens
     evidence identity and grants no DEMO_AUTO, order, promotion, or live
     authority.
+18. The Windows production configuration still exposed only the aggregate
+    stage hash after `StageBinding` v3 gained five champion identities.
+    Production-bootstrap schema v2 now requires archive, package, training
+    snapshot, Git tree, and runtime-binding pins as direct reviewed fields,
+    includes them in the safe-binding hash, and compares every value with the
+    separately supplied stage before provider, SQLite, credential, MT5,
+    network, or adapter effects. The aggregate stage-hash check remains. This
+    is a local deny-only configuration contract, not external provider
+    acceptance or activation authority.
 
 ## Findings that remain external or manual
 
