@@ -38,16 +38,25 @@ Tree implementasi yang diaudit adalah
   metadata/trailer/inventory ZIP yang tidak kanonis, checkpoint yang belum
   maju, waktu sebelum boundary, task result yang tidak sehat, transcript yang
   tidak sama dengan checkpoint, source/audit mutation, dan custody overclaim.
+- Toolkit yang sama kini membuat custody-request ZIP deterministik berisi
+  exact acceptance bytes dan canonical request manifest. Boundary receipt
+  memerlukan policy hash terpin, RSA 3072–8192 bit, exact destination/provider,
+  remote object version, Object Lock `COMPLIANCE`, versioning, content hash,
+  serta minimum retention sebelum menerbitkan assessment deny-only.
+- Assessment membedakan signed custodian attestation yang tervalidasi dari
+  inspeksi API storage langsung. Tidak ada private key, credential, MT5,
+  Task Scheduler mutation, order, promotion, atau live authority di toolkit.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.673 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.673 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.684 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.684 PASS, 3 skip, exit 0 |
 | Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |
-| Phillip V5/V6 scheduler + post-run acceptance cluster | 49 PASS, 2 skip per normal/optimized mode |
+| Phillip V5/V6 scheduler + post-run/custody cluster | 60 PASS, 2 skip per normal/optimized mode |
+| Off-host delivery consumers + post-run/custody cluster | 91 PASS per normal/optimized mode |
 | Frontend unit tests | 21 PASS |
 | Dashboard backend tests | 24 PASS |
 | Browser E2E | 14 PASS |
@@ -132,15 +141,21 @@ Source lokal sekarang memiliki:
 - `Invoke-PhillipCommodityV6PostRunAcceptance.ps1` untuk menjalankan health
   checker V6.3 yang hash-pinned, tanpa manual task start;
 - `phillip_commodity_v6_postrun_acceptance.py` untuk verifikasi toolkit,
-  collection, serta re-verification acceptance ZIP di bawah `-I -S -B`;
+  collection, re-verification acceptance ZIP, deterministic custody request,
+  serta RSA receipt verification di bawah `-I -S -B`;
+- `New-PhillipCommodityV6CustodyRequest.ps1` untuk satu request ZIP yang
+  mengikat exact acceptance bytes, tujuan, dan retention minimum;
+- `Test-PhillipCommodityV6CustodyReceipt.ps1` untuk policy-pinned receipt dan
+  assessment tanpa private key atau direct cloud API access;
 - acceptance bundle exact tujuh-member dan runbook custody terpisah.
 
 Toolkit sengaja mencatat
 `independent_hmac_reverification_performed=false`,
 `offhost_custody_performed=false`, dan
 `worm_retention_verified=false`. Nilai itu tidak boleh berubah hanya karena
-bundle lokal berhasil. Scheduled proof pertama dan acknowledgement Object
-Lock/WORM tetap external evidence setelah boundary otomatis.
+bundle atau custody request lokal berhasil. Source verifier untuk signed
+custodian receipt sudah lengkap, tetapi scheduled proof pertama, policy pin
+independen, upload WORM aktual, dan receipt eksternal tetap belum ada.
 
 ## Posisi roadmap
 
@@ -153,8 +168,9 @@ Urutan berikutnya tetap:
 
 1. setelah boundary, verifikasi toolkit terhadap archive/commit/tree pins,
    jalankan wrapper satu kali, lalu re-verify exact acceptance ZIP;
-2. salin exact acceptance ZIP ke storage immutable di luar VPS dan simpan
-   acknowledgement receipt terpisah;
+2. buat custody-request ZIP, kirim exact embedded acceptance bytes ke storage
+   immutable di luar VPS, lalu verifikasi canonical policy/receipt RSA dan
+   simpan assessment terpisah;
 3. bangun ulang atomic five-role suite dua kali pada exact Windows source,
    cocokkan semua hash, lalu buat satu transfer ZIP dan verifikasi empat pin
    independennya sebelum dipindahkan;

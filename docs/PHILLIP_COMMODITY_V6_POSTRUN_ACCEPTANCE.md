@@ -5,7 +5,9 @@ Status: **READ-ONLY / POST-SCHEDULED-RUN ONLY / ORDER DISABLED**
 Toolkit ini menutup handoff setelah pemicu otomatis V6.3. Ia menjalankan exact
 health checker yang sudah terpasang, memverifikasi task dan signed checkpoint,
 lalu mengikat checkpoint terbaru, exact audit pair, installation receipt,
-installed task XML, dan health transcript ke satu ZIP create-exclusive.
+installed task XML, dan health transcript ke satu ZIP create-exclusive. Toolkit
+yang sama juga membuat custody-request ZIP deterministik dan memverifikasi
+receipt RSA dari kustodian WORM independen.
 
 Toolkit ini tidak:
 
@@ -14,6 +16,9 @@ Toolkit ini tidak:
 - mengakses credential secara langsung;
 - mengimpor MetaTrader5 atau membawa primitive order;
 - menyalin bukti ke storage off-host;
+- menyimpan private key kustodian;
+- menganggap receipt tanpa tanda tangan sebagai bukti;
+- mengklaim inspeksi langsung API storage;
 - membuka demo-auto, promotion, atau live trading.
 
 ## Kapan dijalankan
@@ -129,3 +134,131 @@ Setelah itu salin exact ZIP ke Object Lock/WORM di luar VPS. Acceptance ZIP
 tetap menyatakan `offhost_custody_performed=false`; klaim itu hanya dapat
 ditutup oleh acknowledgement receipt dari provider/custodian independen.
 Jangan mengedit ZIP lokal untuk mengubah status tersebut.
+
+## Buat satu custody-request ZIP
+
+`New-PhillipCommodityV6CustodyRequest.ps1` membungkus exact acceptance ZIP dan
+manifest permintaan ke satu ZIP create-exclusive. Dengan input, timestamp,
+tujuan, dan retention yang sama, byte output harus identik. Nilai minimum
+engineering adalah 365 hari dari waktu permintaan dan tidak boleh lebih awal
+dari `2027-09-21T15:16:00Z`. Ini adalah lantai engineering untuk custody
+evidence, bukan penetapan kewajiban hukum.
+
+```powershell
+$custodyRequest = (
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-custody-requests\" +
+  "phillip-commodity-v6-custody-request-" +
+  [DateTimeOffset]::UtcNow.ToString("yyyyMMddTHHmmssfffZ") +
+  ".zip"
+)
+
+& "$toolkitRoot\New-PhillipCommodityV6CustodyRequest.ps1" `
+  -ToolkitArchive $archive `
+  -ExpectedToolkitArchiveSHA256 $expectedArchiveSHA256 `
+  -AcceptanceArchive $output `
+  -ExpectedAcceptanceArchiveSHA256 $acceptanceSHA256 `
+  -DestinationId "independent-worm-jp-01" `
+  -Output $custodyRequest
+
+if (-not $?) {
+  throw "Custody request gagal."
+}
+```
+
+Output yang benar masih menyatakan:
+
+```text
+OffhostCustodyPerformed = False
+OrderCapability         = DISABLED
+LiveAllowed             = False
+PromotionEligible       = False
+```
+
+Kirim exact custody-request ZIP beserta SHA-256 luarnya ke kustodian. Kustodian
+harus menyimpan member `phillip-commodity-v6-postrun-acceptance.zip` tanpa
+perubahan byte, mengaktifkan versioning dan Object Lock mode `COMPLIANCE`, lalu
+mengembalikan policy serta receipt JSON kanonis.
+
+## Kontrak policy dan receipt eksternal
+
+Policy harus berasal dari pihak independen, berisi public key RSA 3072–8192
+bit dengan exponent 65537, dan dipin melalui exact SHA-256. Private key tidak
+boleh berada di repository, toolkit, VPS, atau assessment. JSON policy dan
+receipt harus berupa UTF-8 canonical JSON: key terurut, tanpa whitespace
+tambahan, tanpa duplicate key, dan tanpa newline akhir.
+
+Policy juga mengikat exact destination ID, storage-provider ID, dan minimum
+retain-until yang diizinkan; receipt dari provider atau tujuan lain ditolak.
+
+Policy schema:
+
+```text
+phillip-commodity-v6-worm-custody-rsa-policy-v1
+```
+
+Receipt schema:
+
+```text
+phillip-commodity-v6-worm-custody-receipt-v1
+```
+
+Receipt wajib mengikat:
+
+- SHA-256 custody-request ZIP;
+- request identity;
+- SHA-256 dan bundle identity acceptance ZIP;
+- destination ID yang sama dengan policy;
+- provider ID serta hash bucket, object key, dan object version;
+- exact content SHA-256 dan size acceptance ZIP;
+- Object Lock `COMPLIANCE`, versioning, WORM, dan retain-until;
+- policy SHA-256, custodian ID, key ID, dan public-key fingerprint;
+- seluruh safety field tetap deny-only.
+
+Tanda tangan dihitung oleh kustodian atas canonical receipt tanpa field
+signature, diawali domain berikut:
+
+```text
+AI_SCALPER:PHILLIP_COMMODITY_V6_WORM_CUSTODY_RECEIPT:v1\0
+```
+
+Algoritma yang diterima hanya `RSASSA-PKCS1-v1_5-SHA256`.
+
+## Verifikasi receipt dan buat assessment
+
+Salin policy dan receipt dari kustodian ke Windows, hitung dan konfirmasi hash
+policy melalui kanal independen, lalu jalankan:
+
+```powershell
+$policy = "C:\AI_SCALPER_PRIVATE\custodian\worm-policy.json"
+$receipt = "C:\AI_SCALPER_PRIVATE\custodian\worm-receipt.json"
+$expectedPolicySHA256 = "<64_HEX_FROM_INDEPENDENT_CHANNEL>"
+$custodyRequestSHA256 = (
+  Get-FileHash -LiteralPath $custodyRequest -Algorithm SHA256
+).Hash.ToLowerInvariant()
+$assessment = (
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-custody-assessments\" +
+  "phillip-commodity-v6-custody-assessment-" +
+  [DateTimeOffset]::UtcNow.ToString("yyyyMMddTHHmmssfffZ") +
+  ".json"
+)
+
+& "$toolkitRoot\Test-PhillipCommodityV6CustodyReceipt.ps1" `
+  -ToolkitArchive $archive `
+  -ExpectedToolkitArchiveSHA256 $expectedArchiveSHA256 `
+  -CustodyRequestArchive $custodyRequest `
+  -ExpectedCustodyRequestArchiveSHA256 $custodyRequestSHA256 `
+  -Policy $policy `
+  -ExpectedPolicySHA256 $expectedPolicySHA256 `
+  -Receipt $receipt `
+  -AssessmentOutput $assessment
+
+if (-not $?) {
+  throw "Receipt custody tidak sah."
+}
+```
+
+Assessment sukses membuktikan bahwa signed attestation kustodian diterima dan
+terikat ke exact acceptance bytes. Ia secara eksplisit menyatakan
+`direct_storage_api_inspection_performed=false`; verifier lokal tidak
+menyamakan verifikasi tanda tangan dengan akses langsung ke API cloud. Hasil
+ini tetap tidak memberi authority untuk demo-auto, promotion, atau live order.

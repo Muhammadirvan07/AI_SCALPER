@@ -40,9 +40,11 @@ therefore records both facts separately:
 The toolkit ZIP MUST be deterministic and contain exactly:
 
 1. `Invoke-PhillipCommodityV6PostRunAcceptance.ps1`;
-2. `PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE.md`;
-3. `phillip_commodity_v6_postrun_acceptance.py`;
-4. `PHILLIP_COMMODITY_V6_POSTRUN_TOOLKIT.json`.
+2. `New-PhillipCommodityV6CustodyRequest.ps1`;
+3. `Test-PhillipCommodityV6CustodyReceipt.ps1`;
+4. `PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE.md`;
+5. `phillip_commodity_v6_postrun_acceptance.py`;
+6. `PHILLIP_COMMODITY_V6_POSTRUN_TOOLKIT.json`.
 
 Verification MUST require independent outer archive SHA-256, source commit,
 and source tree pins. Duplicate/case-colliding names, path traversal, archive
@@ -104,6 +106,34 @@ Local collection and verification MUST never change any custody or promotion
 field to true. Independent Object Lock/WORM acknowledgement is a later external
 gate and MUST use a separate receipt.
 
+### FR-8 — Deterministic custody request
+
+The toolkit MUST create one create-exclusive custody-request ZIP containing
+exactly the unchanged acceptance ZIP and one canonical request manifest. The
+manifest MUST bind the outer acceptance hash/size, inner bundle identity,
+toolkit commit/tree, checkpoint HMAC, latest heartbeat, event count,
+destination, request time, exact-byte verification, versioning, WORM,
+Object Lock `COMPLIANCE`, and a retention floor. Equal explicit inputs MUST
+produce equal output bytes. Nested acceptance verification MUST run again;
+rehashed malformed nested ZIPs MUST fail.
+
+The engineering retention floor is 365 days from the request and never before
+`2027-09-21T15:16:00Z`. This floor is not a legal determination.
+
+### FR-9 — Independent signed custody receipt
+
+Receipt verification MUST require separately pinned canonical policy JSON and
+canonical receipt JSON. Duplicate keys, noncanonical bytes, policy pin drift,
+destination/storage-provider drift, exact-content hash/size drift,
+remote-version absence, retention shortfall, future acknowledgement, expired
+retention, or signature failure MUST reject before assessment publication.
+
+The only supported public-key boundary is RSA 3072–8192 bit, exponent 65537,
+`RSASSA-PKCS1-v1_5-SHA256`, under the reviewed domain separator. No private
+key may be present in source or toolkit. A successful assessment MUST say that
+the signed custodian attestation was accepted while preserving
+`direct_storage_api_inspection_performed=false`.
+
 ## Safety invariants
 
 Every toolkit manifest, acceptance manifest, collection result, and verifier
@@ -128,7 +158,11 @@ broker_mutation = NOT_PERFORMED
 - AC-5: archive mutation, appended bytes, duplicate/case/path tricks, member
   substitution, source identity drift, or custody overclaim fails;
 - AC-6: normal and optimized focused tests pass;
-- AC-7: complete regressions pass without changing any execution safety lock.
+- AC-7: equal custody inputs produce byte-identical request ZIPs and a valid
+  real-RSA fixture produces one create-exclusive deny-only assessment;
+- AC-8: signature, binding, policy-pin, canonical-JSON, retention, nested-ZIP,
+  or output-collision attacks fail without publishing an assessment;
+- AC-9: complete regressions pass without changing any execution safety lock.
 
 ## Operational sequence
 
@@ -137,5 +171,8 @@ broker_mutation = NOT_PERFORMED
 3. run the wrapper once; do not start the task manually;
 4. record archive SHA-256 and bundle identity;
 5. re-verify the acceptance ZIP;
-6. copy the exact ZIP to independent Object Lock/WORM custody;
-7. obtain and separately verify the custodian acknowledgement receipt.
+6. create and independently hash the custody-request ZIP;
+7. send that exact request ZIP to independent Object Lock/WORM custody;
+8. obtain canonical policy and RSA-signed acknowledgement receipt;
+9. verify the policy pin, request, receipt, retention, and signature;
+10. retain the deny-only assessment with all three external artifacts.

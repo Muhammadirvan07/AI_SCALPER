@@ -91,9 +91,14 @@ class PhillipCommodityV6PostRunToolkitBuilderTests(unittest.TestCase):
         with zipfile.ZipFile(first) as package:
             self.assertEqual(expected_names, tuple(package.namelist()))
             manifest = json.loads(package.read(builder.TOOLKIT_MANIFEST))
-            wrapper = package.read(
-                "Invoke-PhillipCommodityV6PostRunAcceptance.ps1"
-            ).decode("utf-8")
+            wrappers = [
+                package.read(name).decode("utf-8")
+                for name in sorted(
+                    path
+                    for path in builder.SOURCE_PATHS
+                    if path.endswith(".ps1")
+                )
+            ]
             tool = package.read(
                 "phillip_commodity_v6_postrun_acceptance.py"
             )
@@ -111,14 +116,15 @@ class PhillipCommodityV6PostRunToolkitBuilderTests(unittest.TestCase):
         self.assertEqual("DISABLED", manifest["safety"]["order_capability"])
         self.assertFalse(manifest["safety"]["live_allowed"])
         self.assertFalse(manifest["safety"]["offhost_custody_performed"])
-        self.assertNotIn("__TOOLKIT_SOURCE_COMMIT__", wrapper)
-        self.assertNotIn("__TOOLKIT_SOURCE_TREE__", wrapper)
-        self.assertNotIn("__POSTRUN_TOOL_SHA256__", wrapper)
-        self.assertIn(commit, wrapper)
-        self.assertIn(tree, wrapper)
-        self.assertIn(hashlib.sha256(tool).hexdigest(), wrapper)
-        self.assertIn(builder.V63_HEALTH_CHECKER_SHA256[:32], wrapper)
-        self.assertIn(builder.V63_HEALTH_CHECKER_SHA256[32:], wrapper)
+        for wrapper in wrappers:
+            self.assertNotIn("__TOOLKIT_SOURCE_COMMIT__", wrapper)
+            self.assertNotIn("__TOOLKIT_SOURCE_TREE__", wrapper)
+            self.assertNotIn("__POSTRUN_TOOL_SHA256__", wrapper)
+            self.assertIn(commit, wrapper)
+            self.assertIn(tree, wrapper)
+            self.assertIn(hashlib.sha256(tool).hexdigest(), wrapper)
+        self.assertIn(builder.V63_HEALTH_CHECKER_SHA256[:32], wrappers[0])
+        self.assertIn(builder.V63_HEALTH_CHECKER_SHA256[32:], wrappers[0])
 
     def test_rejects_tracked_source_drift_and_output_collision(self) -> None:
         relative = next(iter(builder.SOURCE_PATHS.values()))
@@ -206,10 +212,9 @@ class PhillipCommodityV6PostRunToolkitBuilderTests(unittest.TestCase):
         with zipfile.ZipFile(archive) as package:
             combined = "\n".join(
                 package.read(name).decode("utf-8", errors="replace")
-                for name in (
-                    "Invoke-PhillipCommodityV6PostRunAcceptance.ps1",
-                    "phillip_commodity_v6_postrun_acceptance.py",
-                )
+                for name in builder.SOURCE_PATHS
+                if name.endswith(".ps1")
+                or name == "phillip_commodity_v6_postrun_acceptance.py"
             ).lower()
         for forbidden in (
             "start-scheduledtask",

@@ -5,6 +5,8 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -13,6 +15,37 @@ from windows_operator import phillip_commodity_v6_postrun_acceptance as acceptan
 
 
 ROOT = Path(__file__).resolve().parent
+TEST_RSA_N_HEX = (
+    "b255752ab2bd742a42f53ff66a77489fc8c1ab65f50b18849f24b88777f8e6a"
+    "33d0b66e9adfd494aefee1566f62774f701407dbebae74ed091d4c409ce6476b0"
+    "16b5d8015112f9c9944c1608d5ec5d4b06954b318111953c76a6c854f5a8ffc9"
+    "de6e71731ce8d1ad0212a78b36ec2806c60a817532d442a4f6aa14624afd945b0"
+    "97733acd802d7d729d9f6f68eacf0718514d19dba0e0523052cb5e8e8ecaa6dc"
+    "9120b4e225a240d24894fb75fd75b039b91a87b4b7afcea0fbe7b86a91bf6879"
+    "a97e88ec86107b48da4586273e3dc7969145375b42850d4586ecacf50bb6621476"
+    "6bfae75f9b5208eb8e4bd0ef7ee390130f5d3d01c44982713e51ee383dc50a120"
+    "625c1c7ab903b7494309e8960499e3a0f9e7a5ae5cc167bd59e71f95cfb05954c"
+    "0b2dc00747a33d877ea6362156f78854d4feb3f26529e4cea5a1e9ccecd8efcfe"
+    "fb06b1f14e9c40e7a0ff213c61367a8135b710bba9be88c75e0b40cb80a859499"
+    "50a8a14e9bdd3560bc3200fe84ac9fa758d751fe124fa93bac2594e55"
+)
+TEST_RSA_D_HEX = (
+    "0c297ad7a21ffc8ba34c6183d727f26a7f410204ee8cc6abc8c4b2d6fe4e19c0"
+    "9939ad5793779a2783ac6b863d945c4c3a28214b4028e53da12c6f003234b4c9"
+    "768b0943b1b94712c1cbdc96d6ac0b82c1dcada79f234957b9c9cf10c83e31cf"
+    "9d1d501c6724d3a3e667ca485ac30949c8f8cf72643888a102777ff36224e018c"
+    "350ff53b2d9a2c9b83f76b1c2f23565b08b466e68d16af543f5942461ba3e374"
+    "586b701a9a3172154540efd350a9558ee23a5675f32f08bafee30337356065e84c"
+    "80699f974f6bc7e641c808f45d24d892e10c82e9740acf4df9502e9d7f7831fa"
+    "f61223a3f0efadd5d8e2ef1937dc6e2624af137350084f49a5a664999889b87c6"
+    "97add9172b606f1cc3f3646d6d4c42ae6e5a0e4e37f306683f2d6865310163188"
+    "18288df54fad9c6a22e37daa5150eec82143dd950d240c1270da495bd9acd01a17"
+    "4a49877528a243044aed804430fef404055367bfe2b2fb9553b723a174e75588ea"
+    "f328a702fe62d32222ef756f00c23f4e4f04e1f107e759a169f9983"
+)
+SHA256_DIGEST_INFO_PREFIX = bytes.fromhex(
+    "3031300d060960864801650304020105000420"
+)
 
 
 def canonical(value: object) -> bytes:
@@ -35,6 +68,21 @@ def digest(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def rsa_sign(message: bytes) -> str:
+    modulus = int(TEST_RSA_N_HEX, 16)
+    private_exponent = int(TEST_RSA_D_HEX, 16)
+    length = (modulus.bit_length() + 7) // 8
+    digest_info = SHA256_DIGEST_INFO_PREFIX + hashlib.sha256(message).digest()
+    padding = b"\xff" * (length - len(digest_info) - 3)
+    encoded = b"\x00\x01" + padding + b"\x00" + digest_info
+    signature = pow(
+        int.from_bytes(encoded, "big"),
+        private_exponent,
+        modulus,
+    ).to_bytes(length, "big")
+    return signature.hex()
+
+
 class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -51,18 +99,21 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
         )
         self.tool = self.toolkit / acceptance.TOOL_PATH
         shutil.copy2(tool_source, self.tool)
-        (self.toolkit / acceptance.WRAPPER_PATH).write_text(
-            "# reviewed fixture wrapper\n",
-            encoding="utf-8",
-        )
+        for wrapper in (
+            acceptance.WRAPPER_PATH,
+            acceptance.CUSTODY_REQUEST_WRAPPER_PATH,
+            acceptance.CUSTODY_RECEIPT_WRAPPER_PATH,
+        ):
+            (self.toolkit / wrapper).write_text(
+                f"# reviewed fixture {wrapper}\n",
+                encoding="utf-8",
+            )
         (self.toolkit / acceptance.RUNBOOK_PATH).write_text(
             "reviewed fixture runbook\n",
             encoding="utf-8",
         )
         rows = []
-        for name in sorted(
-            (acceptance.RUNBOOK_PATH, acceptance.WRAPPER_PATH, acceptance.TOOL_PATH)
-        ):
+        for name in sorted(acceptance.TOOLKIT_SOURCE_PATHS):
             data = (self.toolkit / name).read_bytes()
             rows.append(
                 {"path": name, "size_bytes": len(data), "sha256": digest(data)}
@@ -515,14 +566,518 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
                 expected_toolkit_source_tree=self.source_tree,
             )
 
+    def _prepare_custody(
+        self,
+        name: str = "custody-request.zip",
+    ) -> tuple[Path, Path, dict[str, object], dict[str, object]]:
+        acceptance_archive, acceptance_result = self._collect(
+            f"{name}-acceptance.zip"
+        )
+        request_archive = self.root / name
+        request_result = acceptance.prepare_custody_request(
+            acceptance_archive=acceptance_archive,
+            expected_acceptance_archive_sha256=digest(
+                acceptance_archive.read_bytes()
+            ),
+            expected_toolkit_source_commit=self.source_commit,
+            expected_toolkit_source_tree=self.source_tree,
+            destination_id="independent-worm-jp-01",
+            requested_at_utc="2026-07-29T22:00:00Z",
+            minimum_retain_until_utc="2027-09-22T00:00:00Z",
+            output=request_archive,
+        )
+        return (
+            acceptance_archive,
+            request_archive,
+            acceptance_result,
+            request_result,
+        )
+
+    def _custody_documents(
+        self,
+        request_archive: Path,
+        request_result: dict[str, object],
+    ) -> tuple[Path, Path, dict[str, object]]:
+        with zipfile.ZipFile(request_archive) as package:
+            request = json.loads(
+                package.read(acceptance.CUSTODY_REQUEST_MANIFEST)
+            )
+        fingerprint = acceptance.custody_public_key_fingerprint_sha256(
+            TEST_RSA_N_HEX,
+            acceptance.RSA_PUBLIC_EXPONENT,
+        )
+        policy = {
+            "schema_version": acceptance.CUSTODY_POLICY_SCHEMA,
+            "policy_id": "phillip-v6-worm-policy-v1",
+            "custodian_id": "independent-custodian-01",
+            "custodian_key_id": "custodian-rsa-2026-01",
+            "destination_id": request_result["destination_id"],
+            "storage_provider_id": "fixture-worm-provider",
+            "minimum_retain_until_utc": "2027-09-22T00:00:00Z",
+            "rsa_modulus_hex": TEST_RSA_N_HEX,
+            "rsa_exponent": acceptance.RSA_PUBLIC_EXPONENT,
+            "public_key_fingerprint_sha256": fingerprint,
+            "signature_algorithm": acceptance.CUSTODY_SIGNATURE_ALGORITHM,
+            "safety": acceptance._custody_safety(),
+        }
+        policy_bytes = canonical(policy)
+        policy_path = self.root / "custody-policy.json"
+        policy_path.write_bytes(policy_bytes)
+        unsigned_receipt = {
+            "schema_version": acceptance.CUSTODY_RECEIPT_SCHEMA,
+            "receipt_id": "phillip-v6-custody-receipt-0001",
+            "request_identity_sha256": request_result[
+                "request_identity_sha256"
+            ],
+            "custody_request_archive_sha256": request_result[
+                "archive_sha256"
+            ],
+            "acceptance_archive_sha256": request_result[
+                "acceptance_archive_sha256"
+            ],
+            "acceptance_bundle_identity_sha256": request_result[
+                "acceptance_bundle_identity_sha256"
+            ],
+            "destination_id": request_result["destination_id"],
+            "remote_object": {
+                "storage_provider_id": "fixture-worm-provider",
+                "bucket_alias_sha256": digest(b"fixture-bucket-alias"),
+                "object_key_sha256": digest(b"fixture-object-key"),
+                "object_version_id_sha256": digest(b"fixture-version-id"),
+                "content_sha256": request_result[
+                    "acceptance_archive_sha256"
+                ],
+                "size_bytes": request["acceptance"]["archive_size_bytes"],
+                "object_lock_mode": acceptance.CUSTODY_OBJECT_LOCK_MODE,
+                "retain_until_utc": "2027-10-01T00:00:00Z",
+                "versioning_enabled": True,
+                "worm_retention_enabled": True,
+                "content_hash_verified": True,
+            },
+            "acknowledged_at_utc": "2026-07-29T22:01:00Z",
+            "custodian_id": policy["custodian_id"],
+            "custodian_key_id": policy["custodian_key_id"],
+            "public_key_fingerprint_sha256": fingerprint,
+            "trust_policy_sha256": digest(policy_bytes),
+            "signature_algorithm": acceptance.CUSTODY_SIGNATURE_ALGORITHM,
+            "external_custody": {
+                "custodian_attests_custody_performed": True,
+                "custodian_attests_exact_bytes_verified": True,
+                "custodian_attests_worm_retention_enabled": True,
+            },
+            "safety": acceptance._custody_safety(),
+        }
+        receipt = {
+            **unsigned_receipt,
+            "signature_rsa_pkcs1v15_sha256_hex": rsa_sign(
+                acceptance.CUSTODY_RECEIPT_DOMAIN
+                + canonical(unsigned_receipt)
+            ),
+        }
+        receipt_path = self.root / "custody-receipt.json"
+        receipt_path.write_bytes(canonical(receipt))
+        return policy_path, receipt_path, receipt
+
+    def test_custody_request_is_deterministic_and_verifies_nested_archive(
+        self,
+    ) -> None:
+        acceptance_archive, first, _acceptance_result, first_result = (
+            self._prepare_custody("first-custody.zip")
+        )
+        second = self.root / "second-custody.zip"
+        second_result = acceptance.prepare_custody_request(
+            acceptance_archive=acceptance_archive,
+            expected_acceptance_archive_sha256=digest(
+                acceptance_archive.read_bytes()
+            ),
+            expected_toolkit_source_commit=self.source_commit,
+            expected_toolkit_source_tree=self.source_tree,
+            destination_id="independent-worm-jp-01",
+            requested_at_utc="2026-07-29T22:00:00Z",
+            minimum_retain_until_utc="2027-09-22T00:00:00Z",
+            output=second,
+        )
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+        self.assertEqual(
+            first_result["request_identity_sha256"],
+            second_result["request_identity_sha256"],
+        )
+        verified = acceptance.verify_custody_request_archive(
+            first,
+            expected_archive_sha256=digest(first.read_bytes()),
+            expected_toolkit_source_commit=self.source_commit,
+            expected_toolkit_source_tree=self.source_tree,
+        )
+        self.assertFalse(verified["offhost_custody_performed"])
+        self.assertFalse(verified["live_allowed"])
+        with zipfile.ZipFile(first) as package:
+            self.assertEqual(
+                acceptance.CUSTODY_REQUEST_PATHS,
+                tuple(package.namelist()),
+            )
+            manifest_bytes = package.read(
+                acceptance.CUSTODY_REQUEST_MANIFEST
+            )
+            self.assertEqual(
+                canonical(json.loads(manifest_bytes)),
+                manifest_bytes,
+            )
+
+    def test_signed_custody_receipt_writes_deny_only_assessment(self) -> None:
+        _acceptance_archive, request, _acceptance_result, request_result = (
+            self._prepare_custody()
+        )
+        policy, receipt, _receipt_payload = self._custody_documents(
+            request,
+            request_result,
+        )
+        assessment = self.root / "custody-assessment.json"
+        result = acceptance.verify_custody_receipt(
+            custody_request_archive=request,
+            expected_custody_request_archive_sha256=digest(
+                request.read_bytes()
+            ),
+            expected_toolkit_source_commit=self.source_commit,
+            expected_toolkit_source_tree=self.source_tree,
+            policy_path=policy,
+            expected_policy_sha256=digest(policy.read_bytes()),
+            receipt_path=receipt,
+            verified_at_utc="2026-07-29T22:02:00Z",
+            assessment_output=assessment,
+        )
+        self.assertEqual(
+            "PHILLIP_COMMODITY_V6_WORM_CUSTODY_ATTESTATION_VERIFIED",
+            result["status"],
+        )
+        self.assertTrue(result["signed_custodian_attestation_accepted"])
+        self.assertFalse(result["direct_storage_api_inspection_performed"])
+        self.assertFalse(result["live_allowed"])
+        payload = json.loads(assessment.read_bytes())
+        self.assertTrue(payload["external_custody"]["performed"])
+        self.assertFalse(
+            payload["external_custody"][
+                "direct_storage_api_inspection_performed"
+            ]
+        )
+        self.assertEqual(
+            payload["assessment_identity_sha256"],
+            digest(
+                canonical(
+                    {
+                        key: value
+                        for key, value in payload.items()
+                        if key != "assessment_identity_sha256"
+                    }
+                )
+            ),
+        )
+
+    def test_custody_receipt_rejects_signature_or_binding_tampering(self) -> None:
+        _acceptance_archive, request, _acceptance_result, request_result = (
+            self._prepare_custody()
+        )
+        policy, receipt, payload = self._custody_documents(
+            request,
+            request_result,
+        )
+        original_signature = payload["signature_rsa_pkcs1v15_sha256_hex"]
+        replacement = "0" if original_signature[0] != "0" else "1"
+        payload["signature_rsa_pkcs1v15_sha256_hex"] = (
+            replacement + original_signature[1:]
+        )
+        receipt.write_bytes(canonical(payload))
+        assessment = self.root / "tampered-assessment.json"
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "CUSTODY_RECEIPT_SIGNATURE_REJECTED",
+        ):
+            acceptance.verify_custody_receipt(
+                custody_request_archive=request,
+                expected_custody_request_archive_sha256=digest(
+                    request.read_bytes()
+                ),
+                expected_toolkit_source_commit=self.source_commit,
+                expected_toolkit_source_tree=self.source_tree,
+                policy_path=policy,
+                expected_policy_sha256=digest(policy.read_bytes()),
+                receipt_path=receipt,
+                verified_at_utc="2026-07-29T22:02:00Z",
+                assessment_output=assessment,
+            )
+        self.assertFalse(assessment.exists())
+
+    def test_custody_receipt_rejects_short_retention_even_if_resigned(self) -> None:
+        _acceptance_archive, request, _acceptance_result, request_result = (
+            self._prepare_custody()
+        )
+        policy, receipt, payload = self._custody_documents(
+            request,
+            request_result,
+        )
+        payload["remote_object"]["retain_until_utc"] = (
+            "2027-09-21T00:00:00Z"
+        )
+        payload.pop("signature_rsa_pkcs1v15_sha256_hex")
+        payload["signature_rsa_pkcs1v15_sha256_hex"] = rsa_sign(
+            acceptance.CUSTODY_RECEIPT_DOMAIN + canonical(payload)
+        )
+        receipt.write_bytes(canonical(payload))
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "CUSTODY_RECEIPT_TIME_REJECTED",
+        ):
+            acceptance.verify_custody_receipt(
+                custody_request_archive=request,
+                expected_custody_request_archive_sha256=digest(
+                    request.read_bytes()
+                ),
+                expected_toolkit_source_commit=self.source_commit,
+                expected_toolkit_source_tree=self.source_tree,
+                policy_path=policy,
+                expected_policy_sha256=digest(policy.read_bytes()),
+                receipt_path=receipt,
+                verified_at_utc="2026-07-29T22:02:00Z",
+                assessment_output=self.root / "short-retention.json",
+            )
+
+    def test_custody_receipt_rejects_resigned_content_binding_drift(self) -> None:
+        _acceptance_archive, request, _acceptance_result, request_result = (
+            self._prepare_custody()
+        )
+        policy, receipt, payload = self._custody_documents(
+            request,
+            request_result,
+        )
+        payload["acceptance_archive_sha256"] = "f" * 64
+        payload.pop("signature_rsa_pkcs1v15_sha256_hex")
+        payload["signature_rsa_pkcs1v15_sha256_hex"] = rsa_sign(
+            acceptance.CUSTODY_RECEIPT_DOMAIN + canonical(payload)
+        )
+        receipt.write_bytes(canonical(payload))
+        assessment = self.root / "binding-drift-assessment.json"
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "CUSTODY_RECEIPT_BINDING_REJECTED",
+        ):
+            acceptance.verify_custody_receipt(
+                custody_request_archive=request,
+                expected_custody_request_archive_sha256=digest(
+                    request.read_bytes()
+                ),
+                expected_toolkit_source_commit=self.source_commit,
+                expected_toolkit_source_tree=self.source_tree,
+                policy_path=policy,
+                expected_policy_sha256=digest(policy.read_bytes()),
+                receipt_path=receipt,
+                verified_at_utc="2026-07-29T22:02:00Z",
+                assessment_output=assessment,
+            )
+        self.assertFalse(assessment.exists())
+
+    def test_custody_assessment_collision_preserves_existing_bytes(self) -> None:
+        _acceptance_archive, request, _acceptance_result, request_result = (
+            self._prepare_custody()
+        )
+        policy, receipt, _payload = self._custody_documents(
+            request,
+            request_result,
+        )
+        assessment = self.root / "existing-assessment.json"
+        assessment.write_bytes(b"preserve-existing-assessment")
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "OUTPUT_ALREADY_EXISTS",
+        ):
+            acceptance.verify_custody_receipt(
+                custody_request_archive=request,
+                expected_custody_request_archive_sha256=digest(
+                    request.read_bytes()
+                ),
+                expected_toolkit_source_commit=self.source_commit,
+                expected_toolkit_source_tree=self.source_tree,
+                policy_path=policy,
+                expected_policy_sha256=digest(policy.read_bytes()),
+                receipt_path=receipt,
+                verified_at_utc="2026-07-29T22:02:00Z",
+                assessment_output=assessment,
+            )
+        self.assertEqual(b"preserve-existing-assessment", assessment.read_bytes())
+
+    def test_custody_request_collision_preserves_existing_bytes(self) -> None:
+        acceptance_archive, request, _acceptance_result, _request_result = (
+            self._prepare_custody()
+        )
+        original = request.read_bytes()
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "OUTPUT_ALREADY_EXISTS",
+        ):
+            acceptance.prepare_custody_request(
+                acceptance_archive=acceptance_archive,
+                expected_acceptance_archive_sha256=digest(
+                    acceptance_archive.read_bytes()
+                ),
+                expected_toolkit_source_commit=self.source_commit,
+                expected_toolkit_source_tree=self.source_tree,
+                destination_id="independent-worm-jp-01",
+                requested_at_utc="2026-07-29T22:00:00Z",
+                minimum_retain_until_utc="2027-09-22T00:00:00Z",
+                output=request,
+            )
+        self.assertEqual(original, request.read_bytes())
+
+    def test_custody_request_rejects_rehashed_invalid_nested_archive(self) -> None:
+        _acceptance_archive, request, _acceptance_result, _request_result = (
+            self._prepare_custody()
+        )
+        with zipfile.ZipFile(request) as package:
+            members = {name: package.read(name) for name in package.namelist()}
+        nested = members[acceptance.CUSTODY_ACCEPTANCE_MEMBER] + b"trailing"
+        manifest = json.loads(members[acceptance.CUSTODY_REQUEST_MANIFEST])
+        manifest["acceptance"]["archive_sha256"] = digest(nested)
+        manifest["acceptance"]["archive_size_bytes"] = len(nested)
+        manifest.pop("request_identity_sha256")
+        manifest["request_identity_sha256"] = digest(canonical(manifest))
+        forged = self.root / "forged-custody-request.zip"
+        acceptance._write_archive(
+            forged,
+            {
+                acceptance.CUSTODY_ACCEPTANCE_MEMBER: nested,
+                acceptance.CUSTODY_REQUEST_MANIFEST: canonical(manifest),
+            },
+            acceptance.CUSTODY_REQUEST_PATHS,
+        )
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "ARCHIVE_INVALID",
+        ):
+            acceptance.verify_custody_request_archive(
+                forged,
+                expected_archive_sha256=digest(forged.read_bytes()),
+                expected_toolkit_source_commit=self.source_commit,
+                expected_toolkit_source_tree=self.source_tree,
+            )
+
+    def test_custody_receipt_rejects_duplicate_json_keys(self) -> None:
+        _acceptance_archive, request, _acceptance_result, request_result = (
+            self._prepare_custody()
+        )
+        policy, receipt, _payload = self._custody_documents(
+            request,
+            request_result,
+        )
+        receipt.write_bytes(
+            b'{"schema_version":"duplicate",' + receipt.read_bytes()[1:]
+        )
+        assessment = self.root / "duplicate-key-assessment.json"
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "CUSTODY_RECEIPT_DUPLICATE_KEY",
+        ):
+            acceptance.verify_custody_receipt(
+                custody_request_archive=request,
+                expected_custody_request_archive_sha256=digest(
+                    request.read_bytes()
+                ),
+                expected_toolkit_source_commit=self.source_commit,
+                expected_toolkit_source_tree=self.source_tree,
+                policy_path=policy,
+                expected_policy_sha256=digest(policy.read_bytes()),
+                receipt_path=receipt,
+                verified_at_utc="2026-07-29T22:02:00Z",
+                assessment_output=assessment,
+            )
+        self.assertFalse(assessment.exists())
+
+    def test_custody_policy_is_hash_pinned_and_canonical(self) -> None:
+        _acceptance_archive, request, _acceptance_result, request_result = (
+            self._prepare_custody()
+        )
+        policy, receipt, _payload = self._custody_documents(
+            request,
+            request_result,
+        )
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "CUSTODY_POLICY_PIN_MISMATCH",
+        ):
+            acceptance.verify_custody_receipt(
+                custody_request_archive=request,
+                expected_custody_request_archive_sha256=digest(
+                    request.read_bytes()
+                ),
+                expected_toolkit_source_commit=self.source_commit,
+                expected_toolkit_source_tree=self.source_tree,
+                policy_path=policy,
+                expected_policy_sha256="f" * 64,
+                receipt_path=receipt,
+                verified_at_utc="2026-07-29T22:02:00Z",
+                assessment_output=self.root / "bad-policy.json",
+            )
+
+    def test_custody_receipt_cli_runs_isolated_without_site_packages(
+        self,
+    ) -> None:
+        _acceptance_archive, request, _acceptance_result, request_result = (
+            self._prepare_custody()
+        )
+        policy, receipt, _payload = self._custody_documents(
+            request,
+            request_result,
+        )
+        assessment = self.root / "isolated-cli-assessment.json"
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                "-S",
+                "-B",
+                str(self.tool),
+                "verify-custody-receipt",
+                "--custody-request-archive",
+                str(request),
+                "--expected-custody-request-archive-sha256",
+                digest(request.read_bytes()),
+                "--expected-toolkit-source-commit",
+                self.source_commit,
+                "--expected-toolkit-source-tree",
+                self.source_tree,
+                "--policy",
+                str(policy),
+                "--expected-policy-sha256",
+                digest(policy.read_bytes()),
+                "--receipt",
+                str(receipt),
+                "--verified-at-utc",
+                "2026-07-29T22:02:00Z",
+                "--assessment-output",
+                str(assessment),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        result = json.loads(completed.stdout)
+        self.assertEqual(
+            "PHILLIP_COMMODITY_V6_WORM_CUSTODY_ATTESTATION_VERIFIED",
+            result["status"],
+        )
+        self.assertTrue(assessment.is_file())
+
     def test_tool_has_no_task_or_broker_mutation_primitive(self) -> None:
         tool = self.tool.read_text(encoding="utf-8").lower()
-        wrapper = (
-            ROOT
-            / "windows_operator"
-            / "Invoke-PhillipCommodityV6PostRunAcceptance.ps1"
-        ).read_text(encoding="utf-8").lower()
-        combined = tool + wrapper
+        wrappers = "\n".join(
+            (
+                ROOT / "windows_operator" / wrapper
+            ).read_text(encoding="utf-8").lower()
+            for wrapper in (
+                acceptance.WRAPPER_PATH,
+                acceptance.CUSTODY_REQUEST_WRAPPER_PATH,
+                acceptance.CUSTODY_RECEIPT_WRAPPER_PATH,
+            )
+        )
+        combined = tool + wrappers
         for forbidden in (
             "start-scheduledtask",
             "register-scheduledtask",
@@ -534,6 +1089,7 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, combined)
+        self.assertNotIn("begin private key", combined)
         self.assertIn('"order_capability": "disabled"', tool)
 
 

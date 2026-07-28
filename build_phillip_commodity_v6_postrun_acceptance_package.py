@@ -41,6 +41,12 @@ SOURCE_PATHS = {
     "Invoke-PhillipCommodityV6PostRunAcceptance.ps1": (
         "windows_operator/Invoke-PhillipCommodityV6PostRunAcceptance.ps1"
     ),
+    "New-PhillipCommodityV6CustodyRequest.ps1": (
+        "windows_operator/New-PhillipCommodityV6CustodyRequest.ps1"
+    ),
+    "Test-PhillipCommodityV6CustodyReceipt.ps1": (
+        "windows_operator/Test-PhillipCommodityV6CustodyReceipt.ps1"
+    ),
     "phillip_commodity_v6_postrun_acceptance.py": (
         "windows_operator/phillip_commodity_v6_postrun_acceptance.py"
     ),
@@ -159,12 +165,15 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         for archive_path, source_path in SOURCE_PATHS.items()
     }
     tool_data = tracked["phillip_commodity_v6_postrun_acceptance.py"]
-    tracked["Invoke-PhillipCommodityV6PostRunAcceptance.ps1"] = _render_wrapper(
-        tracked["Invoke-PhillipCommodityV6PostRunAcceptance.ps1"],
-        commit=commit,
-        tree=tree,
-        tool_sha256=_sha256(tool_data),
-    )
+    for wrapper_path in sorted(
+        path for path in SOURCE_PATHS if path.endswith(".ps1")
+    ):
+        tracked[wrapper_path] = _render_wrapper(
+            tracked[wrapper_path],
+            commit=commit,
+            tree=tree,
+            tool_sha256=_sha256(tool_data),
+        )
     rows = [_member_row(path, tracked[path]) for path in sorted(tracked)]
     manifest = {
         "schema_version": TOOLKIT_SCHEMA,

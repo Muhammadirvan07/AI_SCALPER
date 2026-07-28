@@ -6,8 +6,10 @@ health checker.  This module then binds its transcript, the newest signed
 checkpoint, the exact audit pair, the installation receipt, and the installed
 task XML into one create-exclusive ZIP for independent custody.
 
-The ZIP is transport evidence only.  It does not claim that off-host/WORM
-custody happened and it grants no execution or promotion authority.
+The acceptance ZIP is transport evidence only.  A separate deterministic
+custody request carries it to an independent WORM custodian.  Only an exact,
+policy-pinned RSA receipt can produce a local custody assessment, and that
+assessment still grants no execution or promotion authority.
 """
 
 from __future__ import annotations
@@ -15,9 +17,12 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta, timezone
 import hashlib
+import hmac
+import io
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
+import re
 import stat
 import sys
 from typing import BinaryIO, Iterable
@@ -61,15 +66,36 @@ FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 MAX_MEMBER_BYTES = 16 * 1024 * 1024
 MAX_EXPANDED_BYTES = 48 * 1024 * 1024
+MAX_CUSTODY_ARCHIVE_BYTES = 40 * 1024 * 1024
+MAX_CUSTODY_MEMBER_BYTES = 32 * 1024 * 1024
+MAX_CUSTODY_EXPANDED_BYTES = 40 * 1024 * 1024
+MAX_CUSTODY_DOCUMENT_BYTES = 262_144
 CHECKPOINT_SCHEMA = "phillip-commodity-v6-scheduler-evidence-checkpoint-v1"
 TOOLKIT_SCHEMA = "phillip-commodity-v6-postrun-toolkit-v1"
 BUNDLE_SCHEMA = "phillip-commodity-v6-postrun-acceptance-bundle-v1"
+CUSTODY_REQUEST_SCHEMA = "phillip-commodity-v6-worm-custody-request-v1"
+CUSTODY_POLICY_SCHEMA = "phillip-commodity-v6-worm-custody-rsa-policy-v1"
+CUSTODY_RECEIPT_SCHEMA = "phillip-commodity-v6-worm-custody-receipt-v1"
+CUSTODY_ASSESSMENT_SCHEMA = (
+    "phillip-commodity-v6-worm-custody-assessment-v1"
+)
 BUNDLE_MANIFEST = "PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE.json"
+CUSTODY_REQUEST_MANIFEST = "PHILLIP_COMMODITY_V6_WORM_CUSTODY_REQUEST.json"
+CUSTODY_ACCEPTANCE_MEMBER = "phillip-commodity-v6-postrun-acceptance.zip"
 TOOLKIT_MANIFEST = "PHILLIP_COMMODITY_V6_POSTRUN_TOOLKIT.json"
 TOOL_PATH = "phillip_commodity_v6_postrun_acceptance.py"
 WRAPPER_PATH = "Invoke-PhillipCommodityV6PostRunAcceptance.ps1"
+CUSTODY_REQUEST_WRAPPER_PATH = "New-PhillipCommodityV6CustodyRequest.ps1"
+CUSTODY_RECEIPT_WRAPPER_PATH = "Test-PhillipCommodityV6CustodyReceipt.ps1"
 RUNBOOK_PATH = "PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE.md"
-TOOLKIT_PATHS = (RUNBOOK_PATH, WRAPPER_PATH, TOOL_PATH, TOOLKIT_MANIFEST)
+TOOLKIT_SOURCE_PATHS = (
+    RUNBOOK_PATH,
+    WRAPPER_PATH,
+    CUSTODY_REQUEST_WRAPPER_PATH,
+    CUSTODY_RECEIPT_WRAPPER_PATH,
+    TOOL_PATH,
+)
+TOOLKIT_PATHS = (*TOOLKIT_SOURCE_PATHS, TOOLKIT_MANIFEST)
 EVIDENCE_PATHS = (
     "audit-export.json",
     "audit-manifest.json",
@@ -79,7 +105,25 @@ EVIDENCE_PATHS = (
     "installed-task.xml",
 )
 BUNDLE_PATHS = (*EVIDENCE_PATHS, BUNDLE_MANIFEST)
+CUSTODY_REQUEST_PATHS = (CUSTODY_ACCEPTANCE_MEMBER, CUSTODY_REQUEST_MANIFEST)
 SHA256_ZERO = "0" * 64
+CUSTODY_SIGNATURE_ALGORITHM = "RSASSA-PKCS1-v1_5-SHA256"
+CUSTODY_OBJECT_LOCK_MODE = "COMPLIANCE"
+CUSTODY_MINIMUM_RETENTION_DAYS = 365
+CUSTODY_RETENTION_FLOOR_UTC = SCHEDULE_END_UTC + timedelta(
+    days=CUSTODY_MINIMUM_RETENTION_DAYS
+)
+CUSTODY_RECEIPT_DOMAIN = (
+    b"AI_SCALPER:PHILLIP_COMMODITY_V6_WORM_CUSTODY_RECEIPT:v1\x00"
+)
+MINIMUM_RSA_BITS = 3072
+MAXIMUM_RSA_BITS = 8192
+RSA_PUBLIC_EXPONENT = 65537
+_SHA256_DIGEST_INFO_PREFIX = bytes.fromhex(
+    "3031300d060960864801650304020105000420"
+)
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
+_LOWER_HEX_RE = re.compile(r"^[0-9a-f]+$")
 
 
 class PostRunAcceptanceError(RuntimeError):
@@ -204,6 +248,87 @@ def _json_object(value: bytes, code: str) -> dict[str, object]:
     return parsed
 
 
+def _strict_canonical_json_object(value: bytes, kind: str) -> dict[str, object]:
+    if not isinstance(value, bytes) or len(value) > MAX_CUSTODY_DOCUMENT_BYTES:
+        _reject(f"{kind}_TOO_LARGE")
+    try:
+        text = value.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise PostRunAcceptanceError(f"{kind}_JSON_INVALID") from exc
+
+    def reject_duplicates(
+        pairs: list[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, item in pairs:
+            if key in result:
+                _reject(f"{kind}_DUPLICATE_KEY")
+            result[key] = item
+        return result
+
+    try:
+        parsed = json.loads(text, object_pairs_hook=reject_duplicates)
+    except PostRunAcceptanceError:
+        raise
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise PostRunAcceptanceError(f"{kind}_JSON_INVALID") from exc
+    if not isinstance(parsed, dict) or _canonical_json(parsed) != value:
+        _reject(f"{kind}_JSON_NOT_CANONICAL")
+    return parsed
+
+
+def _identifier(value: object, code: str) -> str:
+    if not isinstance(value, str) or _IDENTIFIER_RE.fullmatch(value) is None:
+        _reject(code)
+    return value
+
+
+def _nonzero_sha256(value: object, code: str) -> str:
+    if not _is_sha256(value) or value == SHA256_ZERO:
+        _reject(code)
+    return str(value)
+
+
+def custody_public_key_fingerprint_sha256(
+    modulus_hex: str,
+    exponent: int,
+) -> str:
+    return _sha256(
+        _canonical_json(
+            {"rsa_exponent": exponent, "rsa_modulus_hex": modulus_hex}
+        )
+    )
+
+
+def _verify_rsa_pkcs1v15_sha256(
+    *,
+    modulus_hex: str,
+    exponent: int,
+    message: bytes,
+    signature_hex: str,
+) -> bool:
+    if not isinstance(message, bytes):
+        raise TypeError("message must be bytes")
+    try:
+        modulus = int(modulus_hex, 16)
+        signature = bytes.fromhex(signature_hex)
+    except (TypeError, ValueError):
+        return False
+    length = (modulus.bit_length() + 7) // 8
+    if len(signature) != length:
+        return False
+    encoded_integer = int.from_bytes(signature, "big")
+    if encoded_integer >= modulus:
+        return False
+    encoded = pow(encoded_integer, exponent, modulus).to_bytes(length, "big")
+    digest_info = _SHA256_DIGEST_INFO_PREFIX + hashlib.sha256(message).digest()
+    padding_length = length - len(digest_info) - 3
+    if padding_length < 8:
+        return False
+    expected = b"\x00\x01" + b"\xff" * padding_length + b"\x00" + digest_info
+    return hmac.compare_digest(encoded, expected)
+
+
 def _parse_utc(value: object, code: str) -> datetime:
     if not isinstance(value, str) or not value.endswith("Z"):
         _reject(code)
@@ -218,6 +343,16 @@ def _parse_utc(value: object, code: str) -> datetime:
 
 def _utc_text(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_canonical_utc(value: object, code: str) -> datetime:
+    parsed = _parse_utc(value, code)
+    microseconds = parsed.astimezone(timezone.utc).isoformat(
+        timespec="microseconds"
+    ).replace("+00:00", "Z")
+    if value not in {_utc_text(parsed), microseconds}:
+        _reject(code)
+    return parsed
 
 
 def _valid_member_path(value: str) -> bool:
@@ -318,7 +453,7 @@ def _validate_toolkit_manifest(
         or manifest.get("schema_version") != TOOLKIT_SCHEMA
     ):
         _reject("TOOLKIT_MANIFEST_INVALID")
-    rows = _rows_by_path(manifest.get("members"), (RUNBOOK_PATH, WRAPPER_PATH, TOOL_PATH))
+    rows = _rows_by_path(manifest.get("members"), TOOLKIT_SOURCE_PATHS)
     return manifest, rows
 
 
@@ -773,7 +908,15 @@ def _zip_info(path: str) -> zipfile.ZipInfo:
     return info
 
 
-def _write_archive(path: Path, members: dict[str, bytes]) -> None:
+def _write_archive(
+    path: Path,
+    members: dict[str, bytes],
+    ordered_paths: tuple[str, ...],
+) -> None:
+    if set(members) != set(ordered_paths) or len(ordered_paths) != len(
+        set(ordered_paths)
+    ):
+        _reject("OUTPUT_INVENTORY_REJECTED")
     if path.exists():
         _reject("OUTPUT_ALREADY_EXISTS")
     parent = path.parent
@@ -793,7 +936,7 @@ def _write_archive(path: Path, members: dict[str, bytes]) -> None:
                 compression=zipfile.ZIP_DEFLATED,
                 compresslevel=9,
             ) as archive:
-                for name in (*sorted(EVIDENCE_PATHS), BUNDLE_MANIFEST):
+                for name in ordered_paths:
                     archive.writestr(_zip_info(name), members[name])
             handle.flush()
             os.fsync(handle.fileno())
@@ -993,7 +1136,11 @@ def collect_acceptance(
     bundle["bundle_identity_sha256"] = _sha256(_canonical_json(bundle))
     evidence[BUNDLE_MANIFEST] = _pretty_json(bundle)
     output_path = output.absolute()
-    _write_archive(output_path, evidence)
+    _write_archive(
+        output_path,
+        evidence,
+        (*sorted(EVIDENCE_PATHS), BUNDLE_MANIFEST),
+    )
     archive_bytes = _read_regular(
         output_path,
         "OUTPUT_ARCHIVE_UNAVAILABLE",
@@ -1022,11 +1169,15 @@ def collect_acceptance(
     }
 
 
-def _validate_eocd(handle: BinaryIO, expected_members: int) -> None:
+def _validate_eocd(
+    handle: BinaryIO,
+    expected_members: int,
+    maximum_archive_bytes: int = MAX_ARCHIVE_BYTES,
+) -> None:
     try:
         handle.seek(0, os.SEEK_END)
         size = handle.tell()
-        if size < 22 or size > MAX_ARCHIVE_BYTES:
+        if size < 22 or size > maximum_archive_bytes:
             _reject("ARCHIVE_INVALID")
         handle.seek(-22, os.SEEK_END)
         eocd = handle.read(22)
@@ -1056,6 +1207,9 @@ def _validate_eocd(handle: BinaryIO, expected_members: int) -> None:
 def _archive_members(
     archive: zipfile.ZipFile,
     expected: tuple[str, ...],
+    *,
+    maximum_member_bytes: int = MAX_MEMBER_BYTES,
+    maximum_expanded_bytes: int = MAX_EXPANDED_BYTES,
 ) -> dict[str, zipfile.ZipInfo]:
     infos = archive.infolist()
     expected_order = tuple((*sorted(expected[:-1]), expected[-1]))
@@ -1088,7 +1242,7 @@ def _archive_members(
             or info.extra != b""
             or info.comment != b""
             or info.file_size <= 0
-            or info.file_size > MAX_MEMBER_BYTES
+            or info.file_size > maximum_member_bytes
             or info.compress_size <= 0
             or info.header_offset in offsets
         ):
@@ -1097,7 +1251,7 @@ def _archive_members(
         folded.add(name.casefold())
         offsets.add(info.header_offset)
         total += info.file_size
-    if set(observed) != set(expected) or total > MAX_EXPANDED_BYTES:
+    if set(observed) != set(expected) or total > maximum_expanded_bytes:
         _reject("ARCHIVE_INVENTORY_REJECTED")
     return observed
 
@@ -1105,16 +1259,67 @@ def _archive_members(
 def _read_archive_member(
     archive: zipfile.ZipFile,
     info: zipfile.ZipInfo,
+    *,
+    maximum_member_bytes: int = MAX_MEMBER_BYTES,
 ) -> bytes:
     try:
         with archive.open(info, "r") as member:
-            value = member.read(MAX_MEMBER_BYTES + 1)
+            value = member.read(maximum_member_bytes + 1)
             trailing = member.read(1)
     except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
         raise PostRunAcceptanceError("ARCHIVE_MEMBER_REJECTED") from exc
-    if trailing or len(value) != info.file_size or len(value) > MAX_MEMBER_BYTES:
+    if (
+        trailing
+        or len(value) != info.file_size
+        or len(value) > maximum_member_bytes
+    ):
         _reject("ARCHIVE_MEMBER_REJECTED")
     return value
+
+
+def _open_verified_archive_bytes(
+    value: bytes,
+    *,
+    expected_sha256: str,
+    expected_paths: tuple[str, ...],
+    maximum_archive_bytes: int = MAX_ARCHIVE_BYTES,
+    maximum_member_bytes: int = MAX_MEMBER_BYTES,
+    maximum_expanded_bytes: int = MAX_EXPANDED_BYTES,
+) -> tuple[dict[str, bytes], str]:
+    if not _is_sha256(expected_sha256):
+        _reject("EXPECTED_ARCHIVE_SHA256_REJECTED")
+    if not isinstance(value, bytes) or not value:
+        _reject("ARCHIVE_UNAVAILABLE")
+    observed_sha = _sha256(value)
+    if observed_sha != expected_sha256:
+        _reject("ARCHIVE_SHA256_MISMATCH")
+    handle = io.BytesIO(value)
+    try:
+        _validate_eocd(
+            handle,
+            len(expected_paths),
+            maximum_archive_bytes,
+        )
+        with zipfile.ZipFile(handle, "r") as archive:
+            infos = _archive_members(
+                archive,
+                expected_paths,
+                maximum_member_bytes=maximum_member_bytes,
+                maximum_expanded_bytes=maximum_expanded_bytes,
+            )
+            members = {
+                name: _read_archive_member(
+                    archive,
+                    infos[name],
+                    maximum_member_bytes=maximum_member_bytes,
+                )
+                for name in expected_paths
+            }
+    except PostRunAcceptanceError:
+        raise
+    except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise PostRunAcceptanceError("ARCHIVE_INVALID") from exc
+    return members, observed_sha
 
 
 def _open_verified_archive(
@@ -1122,34 +1327,23 @@ def _open_verified_archive(
     *,
     expected_sha256: str,
     expected_paths: tuple[str, ...],
+    maximum_archive_bytes: int = MAX_ARCHIVE_BYTES,
+    maximum_member_bytes: int = MAX_MEMBER_BYTES,
+    maximum_expanded_bytes: int = MAX_EXPANDED_BYTES,
 ) -> tuple[dict[str, bytes], str]:
-    if not _is_sha256(expected_sha256):
-        _reject("EXPECTED_ARCHIVE_SHA256_REJECTED")
-    safe = _regular(path, "ARCHIVE_UNAVAILABLE")
-    try:
-        with safe.open("rb") as handle:
-            _validate_eocd(handle, len(expected_paths))
-            digest = hashlib.sha256()
-            while True:
-                chunk = handle.read(1024 * 1024)
-                if not chunk:
-                    break
-                digest.update(chunk)
-            observed_sha = digest.hexdigest()
-            handle.seek(0)
-            if observed_sha != expected_sha256:
-                _reject("ARCHIVE_SHA256_MISMATCH")
-            with zipfile.ZipFile(handle, "r") as archive:
-                infos = _archive_members(archive, expected_paths)
-                members = {
-                    name: _read_archive_member(archive, infos[name])
-                    for name in expected_paths
-                }
-    except PostRunAcceptanceError:
-        raise
-    except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
-        raise PostRunAcceptanceError("ARCHIVE_INVALID") from exc
-    return members, observed_sha
+    value = _read_regular(
+        path,
+        "ARCHIVE_UNAVAILABLE",
+        maximum=maximum_archive_bytes,
+    )
+    return _open_verified_archive_bytes(
+        value,
+        expected_sha256=expected_sha256,
+        expected_paths=expected_paths,
+        maximum_archive_bytes=maximum_archive_bytes,
+        maximum_member_bytes=maximum_member_bytes,
+        maximum_expanded_bytes=maximum_expanded_bytes,
+    )
 
 
 def verify_toolkit_archive(
@@ -1205,6 +1399,28 @@ def verify_acceptance_archive(
         expected_sha256=expected_archive_sha256,
         expected_paths=BUNDLE_PATHS,
     )
+    return _verify_acceptance_members(
+        members,
+        archive_sha=archive_sha,
+        expected_toolkit_source_commit=expected_toolkit_source_commit,
+        expected_toolkit_source_tree=expected_toolkit_source_tree,
+    )
+
+
+def _verify_acceptance_members(
+    members: dict[str, bytes],
+    *,
+    archive_sha: str,
+    expected_toolkit_source_commit: str,
+    expected_toolkit_source_tree: str,
+) -> dict[str, object]:
+    if (
+        set(members) != set(BUNDLE_PATHS)
+        or not _is_sha256(archive_sha)
+        or not _is_git_oid(expected_toolkit_source_commit)
+        or not _is_git_oid(expected_toolkit_source_tree)
+    ):
+        _reject("BUNDLE_INPUT_REJECTED")
     bundle = _json_object(members[BUNDLE_MANIFEST], "BUNDLE_MANIFEST_REJECTED")
     identity = bundle.get("bundle_identity_sha256")
     unsigned = dict(bundle)
@@ -1356,6 +1572,675 @@ def verify_acceptance_archive(
     }
 
 
+def _custody_safety() -> dict[str, object]:
+    return {
+        "order_capability": "DISABLED",
+        "live_allowed": False,
+        "safe_to_demo_auto_order": False,
+        "promotion_eligible": False,
+        "execution_authority_granted": False,
+        "task_scheduler_mutation": "NOT_PERFORMED",
+        "broker_mutation": "NOT_PERFORMED",
+    }
+
+
+def _write_document_exclusive(path: Path, value: bytes) -> None:
+    if not value:
+        _reject("OUTPUT_DOCUMENT_REJECTED")
+    if path.exists():
+        _reject("OUTPUT_ALREADY_EXISTS")
+    parent = path.parent
+    if parent.exists():
+        _directory(parent, "OUTPUT_PARENT_REJECTED")
+    else:
+        try:
+            parent.mkdir(parents=True, exist_ok=False)
+        except OSError as exc:
+            raise PostRunAcceptanceError("OUTPUT_PARENT_REJECTED") from exc
+        _directory(parent, "OUTPUT_PARENT_REJECTED")
+    try:
+        with path.open("xb") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except Exception:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def _validate_custody_request_manifest(
+    manifest: dict[str, object],
+) -> tuple[datetime, datetime, dict[str, object]]:
+    expected_keys = {
+        "schema_version",
+        "status",
+        "candidate_id",
+        "requested_at_utc",
+        "destination_id",
+        "acceptance",
+        "retention_requirements",
+        "external_custody",
+        "safety",
+        "request_identity_sha256",
+    }
+    identity = manifest.get("request_identity_sha256")
+    unsigned = dict(manifest)
+    unsigned.pop("request_identity_sha256", None)
+    acceptance = manifest.get("acceptance")
+    retention = manifest.get("retention_requirements")
+    if (
+        set(manifest) != expected_keys
+        or manifest.get("schema_version") != CUSTODY_REQUEST_SCHEMA
+        or manifest.get("status")
+        != "PHILLIP_COMMODITY_V6_WORM_CUSTODY_REQUESTED"
+        or manifest.get("candidate_id") != "phillip-commodity"
+        or not _is_sha256(identity)
+        or identity != _sha256(_canonical_json(unsigned))
+        or manifest.get("external_custody")
+        != {
+            "performed": False,
+            "receipt_present": False,
+            "worm_retention_attested": False,
+        }
+        or manifest.get("safety") != _custody_safety()
+        or not isinstance(acceptance, dict)
+        or set(acceptance)
+        != {
+            "archive_member",
+            "archive_sha256",
+            "archive_size_bytes",
+            "bundle_identity_sha256",
+            "toolkit_source_commit",
+            "toolkit_source_tree",
+            "checkpoint_hmac_sha256",
+            "latest_heartbeat_at_utc",
+            "source_event_count",
+        }
+        or acceptance.get("archive_member") != CUSTODY_ACCEPTANCE_MEMBER
+        or not _is_sha256(acceptance.get("archive_sha256"))
+        or not _is_sha256(acceptance.get("bundle_identity_sha256"))
+        or not _is_git_oid(acceptance.get("toolkit_source_commit"))
+        or not _is_git_oid(acceptance.get("toolkit_source_tree"))
+        or not _is_sha256(acceptance.get("checkpoint_hmac_sha256"))
+        or isinstance(acceptance.get("archive_size_bytes"), bool)
+        or not isinstance(acceptance.get("archive_size_bytes"), int)
+        or int(acceptance["archive_size_bytes"]) <= 0
+        or int(acceptance["archive_size_bytes"]) > MAX_ARCHIVE_BYTES
+        or isinstance(acceptance.get("source_event_count"), bool)
+        or not isinstance(acceptance.get("source_event_count"), int)
+        or int(acceptance["source_event_count"]) < 1
+        or not isinstance(retention, dict)
+        or retention
+        != {
+            "content_hash_verification_required": True,
+            "minimum_retain_until_utc": retention.get(
+                "minimum_retain_until_utc"
+            ),
+            "minimum_retention_days": CUSTODY_MINIMUM_RETENTION_DAYS,
+            "object_lock_mode": CUSTODY_OBJECT_LOCK_MODE,
+            "versioning_required": True,
+            "worm_required": True,
+        }
+    ):
+        _reject("CUSTODY_REQUEST_MANIFEST_REJECTED")
+    _identifier(manifest.get("destination_id"), "CUSTODY_DESTINATION_REJECTED")
+    requested = _parse_canonical_utc(
+        manifest.get("requested_at_utc"),
+        "CUSTODY_REQUEST_TIME_REJECTED",
+    )
+    heartbeat = _parse_canonical_utc(
+        acceptance.get("latest_heartbeat_at_utc"),
+        "CUSTODY_REQUEST_HEARTBEAT_REJECTED",
+    )
+    retain_until = _parse_canonical_utc(
+        retention.get("minimum_retain_until_utc"),
+        "CUSTODY_RETENTION_REJECTED",
+    )
+    if (
+        requested < heartbeat
+        or requested < FIRST_SCHEDULED_START_UTC
+        or retain_until < CUSTODY_RETENTION_FLOOR_UTC
+        or retain_until < requested + timedelta(
+            days=CUSTODY_MINIMUM_RETENTION_DAYS
+        )
+    ):
+        _reject("CUSTODY_RETENTION_REJECTED")
+    return requested, retain_until, acceptance
+
+
+def _load_verified_custody_request(
+    archive: Path,
+    *,
+    expected_archive_sha256: str,
+    expected_toolkit_source_commit: str,
+    expected_toolkit_source_tree: str,
+) -> tuple[dict[str, object], dict[str, object]]:
+    if (
+        not _is_git_oid(expected_toolkit_source_commit)
+        or not _is_git_oid(expected_toolkit_source_tree)
+    ):
+        _reject("EXPECTED_SOURCE_IDENTITY_REJECTED")
+    members, archive_sha = _open_verified_archive(
+        archive,
+        expected_sha256=expected_archive_sha256,
+        expected_paths=CUSTODY_REQUEST_PATHS,
+        maximum_archive_bytes=MAX_CUSTODY_ARCHIVE_BYTES,
+        maximum_member_bytes=MAX_CUSTODY_MEMBER_BYTES,
+        maximum_expanded_bytes=MAX_CUSTODY_EXPANDED_BYTES,
+    )
+    manifest = _strict_canonical_json_object(
+        members[CUSTODY_REQUEST_MANIFEST],
+        "CUSTODY_REQUEST",
+    )
+    _requested, retain_until, acceptance = _validate_custody_request_manifest(
+        manifest
+    )
+    acceptance_bytes = members[CUSTODY_ACCEPTANCE_MEMBER]
+    if (
+        len(acceptance_bytes) != acceptance["archive_size_bytes"]
+        or _sha256(acceptance_bytes) != acceptance["archive_sha256"]
+        or acceptance["toolkit_source_commit"]
+        != expected_toolkit_source_commit
+        or acceptance["toolkit_source_tree"] != expected_toolkit_source_tree
+    ):
+        _reject("CUSTODY_REQUEST_ACCEPTANCE_BINDING_REJECTED")
+    inner_members, inner_sha = _open_verified_archive_bytes(
+        acceptance_bytes,
+        expected_sha256=str(acceptance["archive_sha256"]),
+        expected_paths=BUNDLE_PATHS,
+    )
+    inner = _verify_acceptance_members(
+        inner_members,
+        archive_sha=inner_sha,
+        expected_toolkit_source_commit=expected_toolkit_source_commit,
+        expected_toolkit_source_tree=expected_toolkit_source_tree,
+    )
+    if (
+        inner["bundle_identity_sha256"]
+        != acceptance["bundle_identity_sha256"]
+        or inner["checkpoint_hmac_sha256"]
+        != acceptance["checkpoint_hmac_sha256"]
+        or inner["latest_heartbeat_at_utc"]
+        != acceptance["latest_heartbeat_at_utc"]
+        or inner["source_event_count"] != acceptance["source_event_count"]
+        or inner["offhost_custody_performed"] is not False
+    ):
+        _reject("CUSTODY_REQUEST_ACCEPTANCE_PROJECTION_REJECTED")
+    result = {
+        "schema_version": CUSTODY_REQUEST_SCHEMA,
+        "status": "PHILLIP_COMMODITY_V6_WORM_CUSTODY_REQUEST_VERIFIED",
+        "archive_sha256": archive_sha,
+        "request_identity_sha256": manifest["request_identity_sha256"],
+        "acceptance_archive_sha256": acceptance["archive_sha256"],
+        "acceptance_bundle_identity_sha256": acceptance[
+            "bundle_identity_sha256"
+        ],
+        "destination_id": manifest["destination_id"],
+        "minimum_retain_until_utc": _utc_text(retain_until),
+        "offhost_custody_performed": False,
+        "order_capability": "DISABLED",
+        "live_allowed": False,
+        "promotion_eligible": False,
+    }
+    return manifest, result
+
+
+def verify_custody_request_archive(
+    archive: Path,
+    *,
+    expected_archive_sha256: str,
+    expected_toolkit_source_commit: str,
+    expected_toolkit_source_tree: str,
+) -> dict[str, object]:
+    _manifest, result = _load_verified_custody_request(
+        archive,
+        expected_archive_sha256=expected_archive_sha256,
+        expected_toolkit_source_commit=expected_toolkit_source_commit,
+        expected_toolkit_source_tree=expected_toolkit_source_tree,
+    )
+    return result
+
+
+def prepare_custody_request(
+    *,
+    acceptance_archive: Path,
+    expected_acceptance_archive_sha256: str,
+    expected_toolkit_source_commit: str,
+    expected_toolkit_source_tree: str,
+    destination_id: str,
+    requested_at_utc: str,
+    minimum_retain_until_utc: str,
+    output: Path,
+) -> dict[str, object]:
+    destination = _identifier(
+        destination_id,
+        "CUSTODY_DESTINATION_REJECTED",
+    )
+    requested = _parse_canonical_utc(
+        requested_at_utc,
+        "CUSTODY_REQUEST_TIME_REJECTED",
+    )
+    retain_until = _parse_canonical_utc(
+        minimum_retain_until_utc,
+        "CUSTODY_RETENTION_REJECTED",
+    )
+    acceptance = verify_acceptance_archive(
+        acceptance_archive,
+        expected_archive_sha256=expected_acceptance_archive_sha256,
+        expected_toolkit_source_commit=expected_toolkit_source_commit,
+        expected_toolkit_source_tree=expected_toolkit_source_tree,
+    )
+    heartbeat = _parse_canonical_utc(
+        acceptance["latest_heartbeat_at_utc"],
+        "CUSTODY_REQUEST_HEARTBEAT_REJECTED",
+    )
+    if (
+        requested < heartbeat
+        or requested < FIRST_SCHEDULED_START_UTC
+        or retain_until < CUSTODY_RETENTION_FLOOR_UTC
+        or retain_until < requested + timedelta(
+            days=CUSTODY_MINIMUM_RETENTION_DAYS
+        )
+    ):
+        _reject("CUSTODY_RETENTION_REJECTED")
+    acceptance_bytes = _read_regular(
+        acceptance_archive,
+        "ACCEPTANCE_ARCHIVE_UNAVAILABLE",
+        maximum=MAX_ARCHIVE_BYTES,
+    )
+    manifest: dict[str, object] = {
+        "schema_version": CUSTODY_REQUEST_SCHEMA,
+        "status": "PHILLIP_COMMODITY_V6_WORM_CUSTODY_REQUESTED",
+        "candidate_id": "phillip-commodity",
+        "requested_at_utc": _utc_text(requested),
+        "destination_id": destination,
+        "acceptance": {
+            "archive_member": CUSTODY_ACCEPTANCE_MEMBER,
+            "archive_sha256": acceptance["archive_sha256"],
+            "archive_size_bytes": len(acceptance_bytes),
+            "bundle_identity_sha256": acceptance[
+                "bundle_identity_sha256"
+            ],
+            "toolkit_source_commit": expected_toolkit_source_commit,
+            "toolkit_source_tree": expected_toolkit_source_tree,
+            "checkpoint_hmac_sha256": acceptance[
+                "checkpoint_hmac_sha256"
+            ],
+            "latest_heartbeat_at_utc": acceptance[
+                "latest_heartbeat_at_utc"
+            ],
+            "source_event_count": acceptance["source_event_count"],
+        },
+        "retention_requirements": {
+            "content_hash_verification_required": True,
+            "minimum_retain_until_utc": _utc_text(retain_until),
+            "minimum_retention_days": CUSTODY_MINIMUM_RETENTION_DAYS,
+            "object_lock_mode": CUSTODY_OBJECT_LOCK_MODE,
+            "versioning_required": True,
+            "worm_required": True,
+        },
+        "external_custody": {
+            "performed": False,
+            "receipt_present": False,
+            "worm_retention_attested": False,
+        },
+        "safety": _custody_safety(),
+    }
+    manifest["request_identity_sha256"] = _sha256(_canonical_json(manifest))
+    output_path = output.absolute()
+    published = False
+    try:
+        _write_archive(
+            output_path,
+            {
+                CUSTODY_ACCEPTANCE_MEMBER: acceptance_bytes,
+                CUSTODY_REQUEST_MANIFEST: _canonical_json(manifest),
+            },
+            CUSTODY_REQUEST_PATHS,
+        )
+        published = True
+        output_bytes = _read_regular(
+            output_path,
+            "CUSTODY_REQUEST_ARCHIVE_UNAVAILABLE",
+            maximum=MAX_CUSTODY_ARCHIVE_BYTES,
+        )
+        archive_sha = _sha256(output_bytes)
+        verified = verify_custody_request_archive(
+            output_path,
+            expected_archive_sha256=archive_sha,
+            expected_toolkit_source_commit=expected_toolkit_source_commit,
+            expected_toolkit_source_tree=expected_toolkit_source_tree,
+        )
+    except Exception:
+        if published:
+            try:
+                output_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+    return {
+        **verified,
+        "status": "PHILLIP_COMMODITY_V6_WORM_CUSTODY_REQUEST_READY",
+        "archive": str(output_path),
+        "archive_size_bytes": len(output_bytes),
+    }
+
+
+def _decode_custody_policy(
+    policy_bytes: bytes,
+    *,
+    expected_policy_sha256: str,
+) -> tuple[dict[str, object], str, datetime]:
+    expected_sha = _nonzero_sha256(
+        expected_policy_sha256,
+        "CUSTODY_POLICY_PIN_REJECTED",
+    )
+    observed_sha = _sha256(policy_bytes)
+    if observed_sha != expected_sha:
+        _reject("CUSTODY_POLICY_PIN_MISMATCH")
+    policy = _strict_canonical_json_object(policy_bytes, "CUSTODY_POLICY")
+    if set(policy) != {
+        "schema_version",
+        "policy_id",
+        "custodian_id",
+        "custodian_key_id",
+        "destination_id",
+        "storage_provider_id",
+        "minimum_retain_until_utc",
+        "rsa_modulus_hex",
+        "rsa_exponent",
+        "public_key_fingerprint_sha256",
+        "signature_algorithm",
+        "safety",
+    }:
+        _reject("CUSTODY_POLICY_SCHEMA_REJECTED")
+    for field in (
+        "policy_id",
+        "custodian_id",
+        "custodian_key_id",
+        "destination_id",
+        "storage_provider_id",
+    ):
+        _identifier(policy.get(field), "CUSTODY_POLICY_SCHEMA_REJECTED")
+    modulus_hex = policy.get("rsa_modulus_hex")
+    exponent = policy.get("rsa_exponent")
+    if (
+        policy.get("schema_version") != CUSTODY_POLICY_SCHEMA
+        or policy.get("signature_algorithm") != CUSTODY_SIGNATURE_ALGORITHM
+        or policy.get("safety") != _custody_safety()
+        or not isinstance(modulus_hex, str)
+        or _LOWER_HEX_RE.fullmatch(modulus_hex) is None
+        or not (
+            MINIMUM_RSA_BITS // 4
+            <= len(modulus_hex)
+            <= MAXIMUM_RSA_BITS // 4
+        )
+        or len(modulus_hex) % 2
+        or modulus_hex.startswith("00")
+        or isinstance(exponent, bool)
+        or exponent != RSA_PUBLIC_EXPONENT
+    ):
+        _reject("CUSTODY_POLICY_SCHEMA_REJECTED")
+    modulus = int(modulus_hex, 16)
+    if (
+        not MINIMUM_RSA_BITS <= modulus.bit_length() <= MAXIMUM_RSA_BITS
+        or modulus % 2 == 0
+        or policy.get("public_key_fingerprint_sha256")
+        != custody_public_key_fingerprint_sha256(modulus_hex, exponent)
+    ):
+        _reject("CUSTODY_POLICY_KEY_REJECTED")
+    minimum_retain = _parse_canonical_utc(
+        policy.get("minimum_retain_until_utc"),
+        "CUSTODY_POLICY_RETENTION_REJECTED",
+    )
+    if minimum_retain < CUSTODY_RETENTION_FLOOR_UTC:
+        _reject("CUSTODY_POLICY_RETENTION_REJECTED")
+    return policy, observed_sha, minimum_retain
+
+
+def verify_custody_receipt(
+    *,
+    custody_request_archive: Path,
+    expected_custody_request_archive_sha256: str,
+    expected_toolkit_source_commit: str,
+    expected_toolkit_source_tree: str,
+    policy_path: Path,
+    expected_policy_sha256: str,
+    receipt_path: Path,
+    verified_at_utc: str,
+    assessment_output: Path,
+) -> dict[str, object]:
+    request, request_result = _load_verified_custody_request(
+        custody_request_archive,
+        expected_archive_sha256=expected_custody_request_archive_sha256,
+        expected_toolkit_source_commit=expected_toolkit_source_commit,
+        expected_toolkit_source_tree=expected_toolkit_source_tree,
+    )
+    policy_bytes = _read_regular(
+        policy_path,
+        "CUSTODY_POLICY_UNAVAILABLE",
+        maximum=MAX_CUSTODY_DOCUMENT_BYTES,
+    )
+    policy, policy_sha, policy_minimum_retain = _decode_custody_policy(
+        policy_bytes,
+        expected_policy_sha256=expected_policy_sha256,
+    )
+    receipt_bytes = _read_regular(
+        receipt_path,
+        "CUSTODY_RECEIPT_UNAVAILABLE",
+        maximum=MAX_CUSTODY_DOCUMENT_BYTES,
+    )
+    receipt = _strict_canonical_json_object(receipt_bytes, "CUSTODY_RECEIPT")
+    expected_receipt_keys = {
+        "schema_version",
+        "receipt_id",
+        "request_identity_sha256",
+        "custody_request_archive_sha256",
+        "acceptance_archive_sha256",
+        "acceptance_bundle_identity_sha256",
+        "destination_id",
+        "remote_object",
+        "acknowledged_at_utc",
+        "custodian_id",
+        "custodian_key_id",
+        "public_key_fingerprint_sha256",
+        "trust_policy_sha256",
+        "signature_algorithm",
+        "external_custody",
+        "safety",
+        "signature_rsa_pkcs1v15_sha256_hex",
+    }
+    remote = receipt.get("remote_object")
+    signature = receipt.get("signature_rsa_pkcs1v15_sha256_hex")
+    if (
+        set(receipt) != expected_receipt_keys
+        or receipt.get("schema_version") != CUSTODY_RECEIPT_SCHEMA
+        or receipt.get("signature_algorithm") != CUSTODY_SIGNATURE_ALGORITHM
+        or receipt.get("safety") != _custody_safety()
+        or receipt.get("external_custody")
+        != {
+            "custodian_attests_custody_performed": True,
+            "custodian_attests_exact_bytes_verified": True,
+            "custodian_attests_worm_retention_enabled": True,
+        }
+        or not isinstance(remote, dict)
+        or set(remote)
+        != {
+            "storage_provider_id",
+            "bucket_alias_sha256",
+            "object_key_sha256",
+            "object_version_id_sha256",
+            "content_sha256",
+            "size_bytes",
+            "object_lock_mode",
+            "retain_until_utc",
+            "versioning_enabled",
+            "worm_retention_enabled",
+            "content_hash_verified",
+        }
+        or not isinstance(signature, str)
+        or _LOWER_HEX_RE.fullmatch(signature) is None
+        or len(signature) % 2
+        or receipt.get("request_identity_sha256")
+        != request_result["request_identity_sha256"]
+        or receipt.get("custody_request_archive_sha256")
+        != request_result["archive_sha256"]
+        or receipt.get("acceptance_archive_sha256")
+        != request_result["acceptance_archive_sha256"]
+        or receipt.get("acceptance_bundle_identity_sha256")
+        != request_result["acceptance_bundle_identity_sha256"]
+        or receipt.get("destination_id") != request_result["destination_id"]
+        or receipt.get("destination_id") != policy.get("destination_id")
+        or remote.get("storage_provider_id")
+        != policy.get("storage_provider_id")
+        or receipt.get("custodian_id") != policy.get("custodian_id")
+        or receipt.get("custodian_key_id") != policy.get("custodian_key_id")
+        or receipt.get("public_key_fingerprint_sha256")
+        != policy.get("public_key_fingerprint_sha256")
+        or receipt.get("trust_policy_sha256") != policy_sha
+        or remote.get("content_sha256")
+        != request_result["acceptance_archive_sha256"]
+        or remote.get("size_bytes")
+        != request["acceptance"]["archive_size_bytes"]
+        or remote.get("object_lock_mode") != CUSTODY_OBJECT_LOCK_MODE
+        or remote.get("versioning_enabled") is not True
+        or remote.get("worm_retention_enabled") is not True
+        or remote.get("content_hash_verified") is not True
+    ):
+        _reject("CUSTODY_RECEIPT_BINDING_REJECTED")
+    for field in ("receipt_id", "custodian_id", "custodian_key_id"):
+        _identifier(receipt.get(field), "CUSTODY_RECEIPT_SCHEMA_REJECTED")
+    _identifier(
+        remote.get("storage_provider_id"),
+        "CUSTODY_RECEIPT_SCHEMA_REJECTED",
+    )
+    for field in (
+        "bucket_alias_sha256",
+        "object_key_sha256",
+        "object_version_id_sha256",
+    ):
+        _nonzero_sha256(
+            remote.get(field),
+            "CUSTODY_RECEIPT_SCHEMA_REJECTED",
+        )
+    if (
+        isinstance(remote.get("size_bytes"), bool)
+        or not isinstance(remote.get("size_bytes"), int)
+        or int(remote["size_bytes"]) <= 0
+    ):
+        _reject("CUSTODY_RECEIPT_SCHEMA_REJECTED")
+    requested = _parse_canonical_utc(
+        request.get("requested_at_utc"),
+        "CUSTODY_REQUEST_TIME_REJECTED",
+    )
+    request_minimum_retain = _parse_canonical_utc(
+        request["retention_requirements"]["minimum_retain_until_utc"],
+        "CUSTODY_RETENTION_REJECTED",
+    )
+    acknowledged = _parse_canonical_utc(
+        receipt.get("acknowledged_at_utc"),
+        "CUSTODY_RECEIPT_TIME_REJECTED",
+    )
+    retain_until = _parse_canonical_utc(
+        remote.get("retain_until_utc"),
+        "CUSTODY_RECEIPT_RETENTION_REJECTED",
+    )
+    verified_at = _parse_canonical_utc(
+        verified_at_utc,
+        "CUSTODY_VERIFICATION_TIME_REJECTED",
+    )
+    if (
+        acknowledged < requested
+        or acknowledged > verified_at
+        or retain_until < request_minimum_retain
+        or retain_until < policy_minimum_retain
+        or retain_until <= verified_at
+    ):
+        _reject("CUSTODY_RECEIPT_TIME_REJECTED")
+    unsigned_receipt = dict(receipt)
+    unsigned_receipt.pop("signature_rsa_pkcs1v15_sha256_hex", None)
+    if not _verify_rsa_pkcs1v15_sha256(
+        modulus_hex=str(policy["rsa_modulus_hex"]),
+        exponent=int(policy["rsa_exponent"]),
+        message=CUSTODY_RECEIPT_DOMAIN + _canonical_json(unsigned_receipt),
+        signature_hex=signature,
+    ):
+        _reject("CUSTODY_RECEIPT_SIGNATURE_REJECTED")
+    receipt_sha = _sha256(receipt_bytes)
+    assessment: dict[str, object] = {
+        "schema_version": CUSTODY_ASSESSMENT_SCHEMA,
+        "status": "PHILLIP_COMMODITY_V6_WORM_CUSTODY_ATTESTATION_VERIFIED",
+        "candidate_id": "phillip-commodity",
+        "verified_at_utc": _utc_text(verified_at),
+        "toolkit": {
+            "source_commit": expected_toolkit_source_commit,
+            "source_tree": expected_toolkit_source_tree,
+        },
+        "custody_request": {
+            "archive_sha256": request_result["archive_sha256"],
+            "request_identity_sha256": request_result[
+                "request_identity_sha256"
+            ],
+        },
+        "acceptance": {
+            "archive_sha256": request_result["acceptance_archive_sha256"],
+            "bundle_identity_sha256": request_result[
+                "acceptance_bundle_identity_sha256"
+            ],
+        },
+        "custodian": {
+            "policy_sha256": policy_sha,
+            "policy_id": policy["policy_id"],
+            "custodian_id": policy["custodian_id"],
+            "custodian_key_id": policy["custodian_key_id"],
+            "public_key_fingerprint_sha256": policy[
+                "public_key_fingerprint_sha256"
+            ],
+            "receipt_sha256": receipt_sha,
+            "receipt_id": receipt["receipt_id"],
+        },
+        "remote_object": remote,
+        "external_custody": {
+            "performed": True,
+            "signed_custodian_attestation_accepted": True,
+            "exact_acceptance_bytes_attested": True,
+            "worm_retention_attestation_verified": True,
+            "direct_storage_api_inspection_performed": False,
+        },
+        "safety": _custody_safety(),
+    }
+    assessment["assessment_identity_sha256"] = _sha256(
+        _canonical_json(assessment)
+    )
+    output_path = assessment_output.absolute()
+    assessment_bytes = _canonical_json(assessment)
+    _write_document_exclusive(output_path, assessment_bytes)
+    return {
+        "schema_version": CUSTODY_ASSESSMENT_SCHEMA,
+        "status": assessment["status"],
+        "assessment": str(output_path),
+        "assessment_sha256": _sha256(assessment_bytes),
+        "assessment_identity_sha256": assessment[
+            "assessment_identity_sha256"
+        ],
+        "custody_request_archive_sha256": request_result["archive_sha256"],
+        "acceptance_archive_sha256": request_result[
+            "acceptance_archive_sha256"
+        ],
+        "receipt_sha256": receipt_sha,
+        "policy_sha256": policy_sha,
+        "retain_until_utc": _utc_text(retain_until),
+        "signed_custodian_attestation_accepted": True,
+        "direct_storage_api_inspection_performed": False,
+        "order_capability": "DISABLED",
+        "live_allowed": False,
+        "promotion_eligible": False,
+    }
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1384,6 +2269,48 @@ def _parser() -> argparse.ArgumentParser:
     verify.add_argument("--expected-archive-sha256", required=True)
     verify.add_argument("--expected-toolkit-source-commit", required=True)
     verify.add_argument("--expected-toolkit-source-tree", required=True)
+    prepare_custody = subparsers.add_parser("prepare-custody")
+    prepare_custody.add_argument("--acceptance-archive", type=Path, required=True)
+    prepare_custody.add_argument(
+        "--expected-acceptance-archive-sha256", required=True
+    )
+    prepare_custody.add_argument(
+        "--expected-toolkit-source-commit", required=True
+    )
+    prepare_custody.add_argument(
+        "--expected-toolkit-source-tree", required=True
+    )
+    prepare_custody.add_argument("--destination-id", required=True)
+    prepare_custody.add_argument("--requested-at-utc", required=True)
+    prepare_custody.add_argument("--minimum-retain-until-utc", required=True)
+    prepare_custody.add_argument("--output", type=Path, required=True)
+    verify_request = subparsers.add_parser("verify-custody-request")
+    verify_request.add_argument("--archive", type=Path, required=True)
+    verify_request.add_argument("--expected-archive-sha256", required=True)
+    verify_request.add_argument(
+        "--expected-toolkit-source-commit", required=True
+    )
+    verify_request.add_argument(
+        "--expected-toolkit-source-tree", required=True
+    )
+    verify_receipt = subparsers.add_parser("verify-custody-receipt")
+    verify_receipt.add_argument(
+        "--custody-request-archive", type=Path, required=True
+    )
+    verify_receipt.add_argument(
+        "--expected-custody-request-archive-sha256", required=True
+    )
+    verify_receipt.add_argument(
+        "--expected-toolkit-source-commit", required=True
+    )
+    verify_receipt.add_argument(
+        "--expected-toolkit-source-tree", required=True
+    )
+    verify_receipt.add_argument("--policy", type=Path, required=True)
+    verify_receipt.add_argument("--expected-policy-sha256", required=True)
+    verify_receipt.add_argument("--receipt", type=Path, required=True)
+    verify_receipt.add_argument("--verified-at-utc", required=True)
+    verify_receipt.add_argument("--assessment-output", type=Path, required=True)
     return parser
 
 
@@ -1414,12 +2341,52 @@ def main(argv: list[str] | None = None) -> int:
                 observed_at_utc=args.observed_at_utc,
                 output=args.output,
             )
-        else:
+        elif args.command == "verify":
             result = verify_acceptance_archive(
                 args.archive,
                 expected_archive_sha256=args.expected_archive_sha256,
                 expected_toolkit_source_commit=args.expected_toolkit_source_commit,
                 expected_toolkit_source_tree=args.expected_toolkit_source_tree,
+            )
+        elif args.command == "prepare-custody":
+            result = prepare_custody_request(
+                acceptance_archive=args.acceptance_archive,
+                expected_acceptance_archive_sha256=(
+                    args.expected_acceptance_archive_sha256
+                ),
+                expected_toolkit_source_commit=(
+                    args.expected_toolkit_source_commit
+                ),
+                expected_toolkit_source_tree=args.expected_toolkit_source_tree,
+                destination_id=args.destination_id,
+                requested_at_utc=args.requested_at_utc,
+                minimum_retain_until_utc=args.minimum_retain_until_utc,
+                output=args.output,
+            )
+        elif args.command == "verify-custody-request":
+            result = verify_custody_request_archive(
+                args.archive,
+                expected_archive_sha256=args.expected_archive_sha256,
+                expected_toolkit_source_commit=(
+                    args.expected_toolkit_source_commit
+                ),
+                expected_toolkit_source_tree=args.expected_toolkit_source_tree,
+            )
+        else:
+            result = verify_custody_receipt(
+                custody_request_archive=args.custody_request_archive,
+                expected_custody_request_archive_sha256=(
+                    args.expected_custody_request_archive_sha256
+                ),
+                expected_toolkit_source_commit=(
+                    args.expected_toolkit_source_commit
+                ),
+                expected_toolkit_source_tree=args.expected_toolkit_source_tree,
+                policy_path=args.policy,
+                expected_policy_sha256=args.expected_policy_sha256,
+                receipt_path=args.receipt,
+                verified_at_utc=args.verified_at_utc,
+                assessment_output=args.assessment_output,
             )
     except (OSError, ValueError, PostRunAcceptanceError) as exc:
         print(f"PHILLIP_COMMODITY_V6_POSTRUN_REJECTED: {exc}", file=sys.stderr)

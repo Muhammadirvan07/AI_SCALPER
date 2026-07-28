@@ -11,6 +11,7 @@ ATOMIC_FIVE_ROLE_BUILD = PASS_REPRODUCIBLE_LOCALLY
 ATOMIC_SUITE_SINGLE_ZIP_TRANSFER = PASS_LOCALLY
 PHILLIP_COMMODITY_V6_3 = PRE_START
 V6_3_POSTRUN_ACCEPTANCE_TOOLKIT = PASS_LOCALLY
+V6_3_WORM_CUSTODY_REQUEST_AND_RECEIPT_BOUNDARY = PASS_LOCALLY
 FIRST_AUTOMATIC_SCHEDULED_PROOF = PENDING_2026_07_30_0645_JST
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
@@ -40,7 +41,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.673 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.684 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, explicit loopback CORS, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | npm audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
@@ -52,11 +53,12 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1673 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with optimization enabled | `Ran 1673 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1684 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1684 tests ... OK (skipped=3)`, exit 0 |
 | Atomic-suite + one-ZIP transfer feature tests | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer tests | 62 PASS per normal/optimized mode |
-| Phillip V5/V6 scheduler + post-run acceptance tests | 49 PASS, 2 skip per normal/optimized mode |
+| Phillip V5/V6 scheduler + post-run/custody tests | 60 PASS, 2 skip per normal/optimized mode |
+| Off-host delivery consumer + post-run/custody tests | 91 PASS per normal/optimized mode |
 | Frontend unit suite | 21 PASS |
 | Dashboard backend suite | 24 PASS |
 | Browser E2E suite | 14 PASS |
@@ -106,14 +108,24 @@ readiness false.
    transcript/checkpoint projection, healthy scheduler result, disabled prior
    tasks, and immutable safety fields. Verification still states custody and
    independent HMAC re-verification are not performed locally.
+6. The handoff previously stopped at a copy instruction and generic heartbeat
+   acknowledgement could not prove exact ZIP bytes, remote object version, or
+   Object Lock. The toolkit now creates a deterministic nested custody request
+   and verifies a separately pinned canonical RSA policy/receipt. It rejects
+   duplicate JSON keys, policy/destination/provider/content/version/retention
+   drift, invalid signatures, malformed nested ZIPs, and output collisions.
+   Success records signed-attestation acceptance while truthfully retaining
+   `direct_storage_api_inspection_performed=false` and every trading lock.
 
 ## Findings that remain external or manual
 
 1. Phillip Commodity V6.3 has not yet produced its first automatic scheduled
    proof. The exact boundary is `2026-07-30T06:45:00+09:00`; the local post-run
    toolkit prepares collection but is not that proof.
-2. Authenticated audit pairs must be mirrored to independent immutable/WORM
-   storage, with alert acknowledgement and restore evidence.
+2. Authenticated audit pairs must still be mirrored to independent
+   immutable/WORM storage. The local request/receipt verifier is ready, but an
+   externally pinned custodian policy, actual upload/version/Object Lock
+   receipt, alert acknowledgement, and restore evidence are still absent.
 3. Exact Windows Decision, Execution, and Status Monitor identities, service
    accounts, task XML, ACL, credential fingerprints, trusted time, IPC/CAS,
    RSA launcher attestation, and provider materialization require independent
