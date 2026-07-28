@@ -45,7 +45,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.712 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.718 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, explicit loopback CORS, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | fresh npm, Python development, dan dashboard requirements audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
@@ -57,13 +57,14 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1712 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with optimization enabled | `Ran 1712 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1718 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1718 tests ... OK (skipped=3)`, exit 0 |
 | Create-exclusive publisher focused tests | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature tests | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer tests | 62 PASS per normal/optimized mode |
 | V6 packaging + post-run/custody focused tests | 31 PASS per normal/optimized mode |
 | Phillip V5/V6 scheduler + post-run/custody tests | 63 PASS, 2 skip per normal/optimized mode |
+| XM/FINEX preparation create-exclusive tests | 15 PASS per normal/optimized mode |
 | Frontend unit suite | 21 PASS |
 | Dashboard backend suite | 26 PASS |
 | Browser E2E suite | 14 PASS |
@@ -144,6 +145,17 @@ readiness false.
    dependency. Fresh audits report no known vulnerabilities, `pip check`
    passes, 26 backend tests pass without warnings, and 14 browser E2E tests
    remain green.
+10. The older XM/FINEX preparation publisher still resolved the requested
+    output leaf and used recursive cleanup without creation identity. A
+    dangling symlink could redirect publication, while a replacement root
+    could be deleted on a later failure. Output root and every leaf now use
+    no-follow create-exclusive custody with exact cleanup identities. The
+    generated Windows helper verifies into a sibling staging root, publishes
+    through a no-replace directory move, and re-verifies the published bytes.
+    Fifteen focused tests per normal/optimized mode cover clean-source
+    enforcement, dangling links, parent indirection, partial-output cleanup,
+    leaf replacement, root replacement, deterministic output, and permanent
+    XM/FINEX trading locks.
 
 ## Findings that remain external or manual
 

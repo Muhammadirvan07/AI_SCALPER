@@ -15,7 +15,8 @@ contract, journal, scheduled task, paper order, demo order, or live order.
 
 ## Build
 
-Run only from the committed source branch:
+Run only from a clean checkout of the committed official source branch. The
+output parent must already exist and must not be a symlink or reparse point:
 
 ```powershell
 python -B .\build_windows_xm_finex_preparation_packages.py `
@@ -23,8 +24,11 @@ python -B .\build_windows_xm_finex_preparation_packages.py `
 ```
 
 Copy each ZIP together with its `.manifest.json` and matching `Expand-*.ps1`
-helper to Windows. Extraction is create-exclusive and verifies archive/member
-hashes before writing the destination.
+helper to Windows. Extraction verifies archive/member hashes into a unique
+sibling staging root, verifies the extracted bytes, then publishes using a
+no-replace directory move and verifies the destination again. A failed staging
+root is preserved for forensic review; rerun with a new destination rather
+than deleting unknown evidence.
 
 ## XM
 

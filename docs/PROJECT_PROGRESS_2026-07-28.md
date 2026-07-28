@@ -74,18 +74,27 @@ commit dibuat.
   python-dotenv 1.2.2, dan httpx2 2.9.1. Audit ulang environment development,
   exact dashboard requirements, dan npm masing-masing melaporkan nol
   vulnerability yang diketahui.
+- Audit lanjutan menemukan builder preparation XM/FINEX masih memakai
+  `exists()` diikuti recursive unconditional cleanup. Builder sekarang
+  mensyaratkan clean checkout, menolak dangling output symlink dan parent
+  indirection, membuat root/leaf secara exclusive, mengikat identitas setiap
+  objek yang dibuat, dan hanya membersihkan identity yang tetap sama. Helper
+  Windows mengekstrak ke sibling staging root, memverifikasi inventory sebelum
+  dan setelah no-replace directory move, serta mempertahankan staging gagal
+  untuk forensic review. XM tetap legal-hold dan FINEX tetap preparation-only.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.712 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.712 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.718 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.718 PASS, 3 skip, exit 0 |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |
 | V6 packaging + post-run/custody focused cluster | 31 PASS per normal/optimized mode |
 | Phillip V5/V6 scheduler + post-run/custody cluster | 63 PASS, 2 skip per normal/optimized mode |
+| XM/FINEX preparation create-exclusive cluster | 15 PASS per normal/optimized mode |
 | Frontend unit tests | 21 PASS |
 | Dashboard backend tests | 26 PASS |
 | Browser E2E | 14 PASS |

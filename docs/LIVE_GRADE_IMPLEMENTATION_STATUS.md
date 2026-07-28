@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-28 menjalankan **1.712 test** tanpa
+Validasi lokal terakhir pada 2026-07-28 menjalankan **1.718 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
 PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
 juga lulus 21 unit test frontend, 26 test backend, 14 browser E2E, lint,
@@ -111,14 +111,16 @@ TLS, authentication, dan security-header policy terpisah.
 
 Create-exclusive output custody kini konsisten pada shared Windows release
 writer, role release/sidecar builder, configured overlay, evidence/feed dan
-provider publisher, provider-pack generator, atomic-suite lock/staging, serta
-configured-candidate cleanup yang relevan. Setiap cleanup membawa exact
-identitas file atau root yang dibuat invocation berjalan; identitas hilang,
-berubah, symlink/reparse, atau object pengganti selalu dipertahankan dan proses
-gagal tertutup. Full regression normal dan optimized sama-sama lulus 1.712
-test dengan tiga platform skip. Kontrak ini hanya memperkuat artifact custody
-dan tidak mengubah `order_capability`, `live_allowed`, demo-auto, promotion,
-atau broker authority.
+provider publisher, provider-pack generator, atomic-suite lock/staging,
+configured-candidate cleanup, serta builder preparation XM/FINEX. Setiap
+cleanup membawa exact identitas file atau root yang dibuat invocation
+berjalan; identitas hilang, berubah, symlink/reparse, atau object pengganti
+selalu dipertahankan dan proses gagal tertutup. Helper extraction XM/FINEX juga
+memakai sibling staging dan no-replace directory move sebelum verifikasi ulang
+destination. Full regression normal dan optimized sama-sama lulus 1.718 test
+dengan tiga platform skip. Kontrak ini hanya memperkuat artifact custody dan
+tidak mengubah `order_capability`, `live_allowed`, demo-auto, promotion, atau
+broker authority.
 
 ## Status roadmap
 
@@ -716,11 +718,12 @@ eksternal belum terpenuhi.
    profile `phillip-commodity` sudah terikat. Immutable Commodity v1 tetap
    kosong. Namespace v2 sudah diregistrasikan dan pre-window proof-nya
    terverifikasi, tetapi tidak dipakai untuk scheduled append karena latency
-   full-environment verification melebihi deadline. Namespace v3 bounded
-   worker harus diregistrasikan dari clean commit, dibuktikan dengan minimal
-   dua child invocation, lalu dipasang sebagai read-only scheduled task;
-   `phillip-fx` tetap menunggu review dan activation lane-nya sendiri. XM
-   Window 02 tetap tidak boleh dijalankan.
+   full-environment verification melebihi deadline. Namespace v3/v4/v5 adalah
+   bukti historis immutable. Remediasi scheduler V6.3 sudah terpasang dan
+   health `PRE_START` Windows sudah sehat; tahap berikutnya wajib menunggu
+   pemicu otomatis pertama pada `2026-07-30T06:45:00+09:00`, lalu menjalankan
+   acceptance post-run tanpa manual start. `phillip-fx` tetap menunggu review
+   dan activation lane-nya sendiri. XM Window 02 tetap tidak boleh dijalankan.
    Setiap kandidat
    tetap membutuhkan minimal 20 sesi terpisah.
 2. Jalankan broker read-only shadow pada exact symbols; ekspor signed session

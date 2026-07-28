@@ -13,9 +13,10 @@ import base64
 from io import BytesIO
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
-import shutil
+import stat
 import subprocess
 import sys
 from typing import Any, Mapping
@@ -63,6 +64,180 @@ TEMPLATE_TOKENS = (
 
 class PackageBuildError(RuntimeError):
     """Raised when preparation packaging cannot preserve its safety contract."""
+
+
+FileIdentity = tuple[int, int, int, int, int, int]
+CreatedFileIdentity = tuple[int, int]
+DirectoryIdentity = tuple[int, int, int, int]
+
+
+def _is_reparse(metadata: os.stat_result) -> bool:
+    return bool(int(getattr(metadata, "st_file_attributes", 0)) & 0x400)
+
+
+def _file_identity(metadata: os.stat_result) -> FileIdentity:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(metadata.st_size),
+        int(metadata.st_mtime_ns),
+        int(getattr(metadata, "st_file_attributes", 0)),
+    )
+
+
+def _created_file_identity(metadata: os.stat_result) -> CreatedFileIdentity:
+    return (int(metadata.st_dev), int(metadata.st_ino))
+
+
+def _directory_identity(metadata: os.stat_result) -> DirectoryIdentity:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(getattr(metadata, "st_file_attributes", 0)),
+    )
+
+
+def _sync_directory(directory: Path) -> None:
+    if os.name == "nt":
+        return
+    flags = os.O_RDONLY | int(getattr(os, "O_DIRECTORY", 0))
+    flags |= int(getattr(os, "O_CLOEXEC", 0))
+    descriptor = os.open(directory, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _remove_created_file(
+    path: Path,
+    identity: CreatedFileIdentity | None,
+) -> None:
+    if identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or _is_reparse(observed)
+        or _created_file_identity(observed) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _remove_if_same(path: Path, identity: FileIdentity) -> None:
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or _is_reparse(observed)
+        or _file_identity(observed) != identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _cleanup_created_root(
+    root: Path,
+    root_identity: DirectoryIdentity,
+    files: list[tuple[Path, FileIdentity]],
+) -> None:
+    try:
+        observed_root = root.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISDIR(observed_root.st_mode)
+        or stat.S_ISLNK(observed_root.st_mode)
+        or _is_reparse(observed_root)
+        or _directory_identity(observed_root) != root_identity
+    ):
+        return
+    for path, identity in reversed(files):
+        try:
+            current_root = root.lstat()
+        except OSError:
+            return
+        if _directory_identity(current_root) != root_identity:
+            return
+        _remove_if_same(path, identity)
+    try:
+        current_root = root.lstat()
+        if _directory_identity(current_root) == root_identity:
+            root.rmdir()
+    except OSError:
+        pass
+
+
+def _create_output_root(path: Path) -> tuple[Path, DirectoryIdentity]:
+    candidate = path.expanduser().absolute()
+    if candidate.name in {"", ".", ".."}:
+        raise PackageBuildError("output root is invalid")
+    try:
+        candidate.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise PackageBuildError("output root is unavailable") from exc
+    else:
+        raise PackageBuildError("output root already exists")
+
+    parent = candidate.parent
+    try:
+        parent_metadata = parent.lstat()
+        resolved_parent = parent.resolve(strict=True)
+    except OSError as exc:
+        raise PackageBuildError("output parent must already exist") from exc
+    parent_identity = _directory_identity(parent_metadata)
+    if (
+        parent != resolved_parent
+        or not stat.S_ISDIR(parent_metadata.st_mode)
+        or stat.S_ISLNK(parent_metadata.st_mode)
+        or _is_reparse(parent_metadata)
+    ):
+        raise PackageBuildError("output parent must be a real directory")
+
+    try:
+        os.mkdir(candidate, 0o700)
+    except FileExistsError as exc:
+        raise PackageBuildError("output root already exists") from exc
+    except OSError as exc:
+        raise PackageBuildError("output root creation failed") from exc
+
+    try:
+        root_metadata = candidate.lstat()
+        current_parent = parent.lstat()
+    except OSError as exc:
+        raise PackageBuildError("output root identity is unstable") from exc
+    root_identity = _directory_identity(root_metadata)
+    if (
+        not stat.S_ISDIR(root_metadata.st_mode)
+        or stat.S_ISLNK(root_metadata.st_mode)
+        or _is_reparse(root_metadata)
+        or _directory_identity(current_parent) != parent_identity
+    ):
+        raise PackageBuildError("output root identity is unstable")
+    try:
+        _sync_directory(parent)
+    except OSError as exc:
+        _cleanup_created_root(candidate, root_identity, [])
+        raise PackageBuildError("output root synchronization failed") from exc
+    return candidate, root_identity
 
 
 def _canonical_json(value: object) -> bytes:
@@ -360,15 +535,46 @@ def _member_records(files: Mapping[str, bytes]) -> list[dict[str, object]]:
     ]
 
 
-def _write_exclusive(path: Path, value: bytes) -> None:
+def _write_exclusive(path: Path, value: bytes) -> FileIdentity:
+    descriptor: int | None = None
+    created_identity: CreatedFileIdentity | None = None
+    completed_identity: FileIdentity | None = None
     try:
-        with path.open("xb") as stream:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        flags |= int(getattr(os, "O_BINARY", 0))
+        flags |= int(getattr(os, "O_CLOEXEC", 0))
+        flags |= int(getattr(os, "O_NOFOLLOW", 0))
+        descriptor = os.open(path, flags, 0o600)
+        with os.fdopen(descriptor, "wb", closefd=True) as stream:
+            descriptor = None
+            created = os.fstat(stream.fileno())
+            if not stat.S_ISREG(created.st_mode) or _is_reparse(created):
+                raise PackageBuildError("output must be a regular file")
+            created_identity = _created_file_identity(created)
             stream.write(value)
             stream.flush()
-    except FileExistsError as exc:
-        raise PackageBuildError(f"output already exists: {path}") from exc
+            os.fsync(stream.fileno())
+            completed_identity = _file_identity(os.fstat(stream.fileno()))
+        _sync_directory(path.parent)
+    except PackageBuildError:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        _remove_created_file(path, created_identity)
+        raise
     except OSError as exc:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        _remove_created_file(path, created_identity)
         raise PackageBuildError(f"output write failed: {path}") from exc
+    if completed_identity is None:
+        raise PackageBuildError(f"output write failed: {path}")
+    return completed_identity
 
 
 def _powershell_literal(value: str) -> str:
@@ -418,10 +624,79 @@ $expectedCommit = __COMMIT__
 $expectedTree = __TREE__
 $expectedCandidate = __CANDIDATE__
 
+function Assert-ExactExtractedInventory {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Root,
+
+    [Parameter(Mandatory = $true)]
+    [object[]]$ExpectedFiles
+  )
+  $rootItem = Get-Item -LiteralPath $Root -Force -ErrorAction Stop
+  if (
+    -not $rootItem.PSIsContainer -or
+    (($rootItem.Attributes -band
+      [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+  ) {
+    throw "EXTRACTED_ROOT_TYPE_INVALID"
+  }
+  $observed = @(Get-ChildItem -LiteralPath $Root -Force)
+  if ($observed.Count -ne $ExpectedFiles.Count) {
+    throw "EXTRACTED_MEMBER_INVENTORY_MISMATCH"
+  }
+  foreach ($item in $observed) {
+    if (
+      $item.PSIsContainer -or
+      (($item.Attributes -band
+        [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+    ) {
+      throw "EXTRACTED_MEMBER_TYPE_INVALID"
+    }
+    $expected = @(
+      $ExpectedFiles | Where-Object { $_.path -ceq $item.Name }
+    )
+    if ($expected.Count -ne 1) {
+      throw "EXTRACTED_MEMBER_INVENTORY_MISMATCH"
+    }
+    $digest = (
+      Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256
+    ).Hash.ToLowerInvariant()
+    if (
+      $item.Length -ne [long]$expected[0].size_bytes -or
+      $digest -ne [string]$expected[0].sha256
+    ) {
+      throw "EXTRACTED_MEMBER_HASH_MISMATCH"
+    }
+  }
+}
+
 foreach ($path in @($ArchivePath, $ManifestPath)) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
     throw "TRANSFER_FILE_MISSING: $path"
   }
+}
+if (-not [System.IO.Path]::IsPathFullyQualified($Destination)) {
+  throw "DESTINATION_PATH_INVALID"
+}
+$destinationFull = [System.IO.Path]::GetFullPath($Destination)
+$destinationParentPath = [System.IO.Path]::GetDirectoryName($destinationFull)
+$destinationLeaf = [System.IO.Path]::GetFileName($destinationFull)
+if (
+  [string]::IsNullOrWhiteSpace($destinationParentPath) -or
+  [string]::IsNullOrWhiteSpace($destinationLeaf)
+) {
+  throw "DESTINATION_PATH_INVALID"
+}
+$destinationParent = Get-Item `
+  -LiteralPath $destinationParentPath `
+  -Force `
+  -ErrorAction Stop
+if (
+  -not $destinationParent.PSIsContainer -or
+  (($destinationParent.Attributes -band
+    [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+) {
+  throw "DESTINATION_PARENT_INVALID"
 }
 if (Test-Path -LiteralPath $Destination) {
   throw "DESTINATION_ALREADY_EXISTS"
@@ -521,28 +796,64 @@ try {
     throw "INTERNAL_MANIFEST_IDENTITY_MISMATCH"
   }
 
-  [System.IO.Directory]::CreateDirectory($Destination) | Out-Null
-  foreach ($entry in $entries) {
-    $target = Join-Path $Destination $entry.FullName
-    $sourceStream = $entry.Open()
-    try {
-      $targetStream = [System.IO.File]::Open(
-        $target,
-        [System.IO.FileMode]::CreateNew,
-        [System.IO.FileAccess]::Write,
-        [System.IO.FileShare]::None
-      )
+  $stagingPath = Join-Path $destinationParent.FullName (
+    "." + $destinationLeaf + ".staging-" +
+    [System.Guid]::NewGuid().ToString("N")
+  )
+  if (Test-Path -LiteralPath $stagingPath) {
+    throw "EXTRACTION_STAGING_COLLISION"
+  }
+  try {
+    [System.IO.Directory]::CreateDirectory($stagingPath) | Out-Null
+    $stagingItem = Get-Item `
+      -LiteralPath $stagingPath `
+      -Force `
+      -ErrorAction Stop
+    if (
+      -not $stagingItem.PSIsContainer -or
+      (($stagingItem.Attributes -band
+        [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+    ) {
+      throw "EXTRACTION_STAGING_INVALID"
+    }
+
+    foreach ($entry in $entries) {
+      $target = Join-Path $stagingPath $entry.FullName
+      $sourceStream = $entry.Open()
       try {
-        $sourceStream.CopyTo($targetStream)
-        $targetStream.Flush($true)
+        $targetStream = [System.IO.File]::Open(
+          $target,
+          [System.IO.FileMode]::CreateNew,
+          [System.IO.FileAccess]::Write,
+          [System.IO.FileShare]::None
+        )
+        try {
+          $sourceStream.CopyTo($targetStream)
+          $targetStream.Flush($true)
+        }
+        finally {
+          $targetStream.Dispose()
+        }
       }
       finally {
-        $targetStream.Dispose()
+        $sourceStream.Dispose()
       }
     }
-    finally {
-      $sourceStream.Dispose()
-    }
+
+    Assert-ExactExtractedInventory `
+      -Root $stagingPath `
+      -ExpectedFiles $expectedFiles
+    [System.IO.Directory]::Move($stagingPath, $destinationFull)
+    $stagingPath = $null
+    Assert-ExactExtractedInventory `
+      -Root $destinationFull `
+      -ExpectedFiles $expectedFiles
+  }
+  catch {
+    throw (
+      "PACKAGE_EXTRACTION_FAILED_PRESERVE_STAGING: " +
+      [string]$stagingPath + ". " + $_.Exception.Message
+    )
   }
 }
 finally {
@@ -552,7 +863,7 @@ finally {
 [PSCustomObject]@{
   Status = "BROKER_PREPARATION_PACKAGE_EXTRACTED_VERIFIED"
   Candidate = $expectedCandidate
-  Destination = $Destination
+  Destination = $destinationFull
   ArchiveSHA256 = $expectedArchiveSHA256
   ReleaseIdentitySHA256 = $expectedReleaseIdentity
   SourceCommit = $expectedCommit
@@ -580,6 +891,7 @@ def _build_one(
     repo_root: Path,
     output_root: Path,
     profile: dict[str, Any],
+    created_outputs: list[tuple[Path, FileIdentity]],
     *,
     commit: str,
     tree: str,
@@ -634,7 +946,9 @@ def _build_one(
     archive_sha256 = _sha256(archive)
     archive_name = profile["archive_name"]
     archive_path = output_root / archive_name
-    _write_exclusive(archive_path, archive)
+    created_outputs.append(
+        (archive_path, _write_exclusive(archive_path, archive))
+    )
 
     companion: dict[str, object] = {
         "schema_version": ARCHIVE_MANIFEST_SCHEMA,
@@ -649,7 +963,13 @@ def _build_one(
     }
     companion_bytes = _canonical_json(companion) + b"\n"
     companion_name = archive_name + ".manifest.json"
-    _write_exclusive(output_root / companion_name, companion_bytes)
+    companion_path = output_root / companion_name
+    created_outputs.append(
+        (
+            companion_path,
+            _write_exclusive(companion_path, companion_bytes),
+        )
+    )
     companion_sha256 = _sha256(companion_bytes)
     helper = _render_helper(
         archive_name=archive_name,
@@ -662,7 +982,10 @@ def _build_one(
         candidate=profile["candidate_id"],
     )
     helper_name = profile["helper_name"]
-    _write_exclusive(output_root / helper_name, helper)
+    helper_path = output_root / helper_name
+    created_outputs.append(
+        (helper_path, _write_exclusive(helper_path, helper))
+    )
     return {
         "candidate_id": profile["candidate_id"],
         "archive_name": archive_name,
@@ -691,11 +1014,6 @@ def build_packages(
     profile_path = profile_path.resolve()
     if not output_root.is_absolute():
         raise PackageBuildError("output root must be absolute")
-    output_root = output_root.resolve()
-    if output_root.exists():
-        raise PackageBuildError("output root already exists")
-    if not output_root.parent.is_dir():
-        raise PackageBuildError("output parent must already exist")
     try:
         profile_relative = profile_path.relative_to(repo_root).as_posix()
     except ValueError as exc:
@@ -717,21 +1035,34 @@ def build_packages(
     profiles = load_profiles(profile_path)
     if official_branch != "agent/live-grade-phase3":
         raise PackageBuildError("unsupported official branch")
-    output_root.mkdir()
+    if _git_text(
+        repo_root,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    ):
+        raise PackageBuildError("source checkout must be clean")
+    output_root, root_identity = _create_output_root(output_root)
+    created_outputs: list[tuple[Path, FileIdentity]] = []
     try:
         results = {
             candidate: _build_one(
                 repo_root,
                 output_root,
                 profiles[candidate],
+                created_outputs,
                 commit=commit,
                 tree=tree,
                 official_branch=official_branch,
             )
             for candidate in sorted(profiles)
         }
-    except Exception:
-        shutil.rmtree(output_root, ignore_errors=True)
+    except BaseException:
+        _cleanup_created_root(
+            output_root,
+            root_identity,
+            created_outputs,
+        )
         raise
     return results
 

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
+import build_windows_xm_finex_preparation_packages as package_builder
 from build_windows_xm_finex_preparation_packages import (
     INTERNAL_MANIFEST_NAME,
     PackageBuildError,
@@ -63,7 +66,7 @@ class WindowsXMFinexPreparationPackageTests(unittest.TestCase):
 
     def test_ac1_builds_two_isolated_deterministic_packages(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            base = Path(raw)
+            base = Path(raw).resolve()
             repo = self._fixture_repo(base)
             first = base / "first"
             second = base / "second"
@@ -103,7 +106,7 @@ class WindowsXMFinexPreparationPackageTests(unittest.TestCase):
             "CredWrite",
         )
         with tempfile.TemporaryDirectory() as raw:
-            base = Path(raw)
+            base = Path(raw).resolve()
             repo = self._fixture_repo(base)
             output = base / "output"
             results = build_packages(
@@ -174,7 +177,7 @@ class WindowsXMFinexPreparationPackageTests(unittest.TestCase):
 
     def test_ac6_helpers_bind_hashes_and_reject_existing_destination(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            base = Path(raw)
+            base = Path(raw).resolve()
             repo = self._fixture_repo(base)
             output = base / "output"
             results = build_packages(
@@ -192,6 +195,17 @@ class WindowsXMFinexPreparationPackageTests(unittest.TestCase):
                     self.assertIn("ARCHIVE_MEMBER_INVENTORY_MISMATCH", helper)
                     self.assertIn("ARCHIVE_MEMBER_HASH_MISMATCH", helper)
                     self.assertIn("CreateNew", helper)
+                    self.assertIn("[System.IO.Directory]::Move", helper)
+                    self.assertIn(".staging-", helper)
+                    self.assertIn(
+                        "PACKAGE_EXTRACTION_FAILED_PRESERVE_STAGING",
+                        helper,
+                    )
+                    self.assertEqual(
+                        3,
+                        helper.count("Assert-ExactExtractedInventory"),
+                    )
+                    self.assertNotIn("CreateDirectory($Destination)", helper)
 
     def test_ac7_instrument_claims_do_not_invent_crypto_symbols(self) -> None:
         profiles = load_profiles(REPO_ROOT / PROFILE_PATH)
@@ -213,7 +227,7 @@ class WindowsXMFinexPreparationPackageTests(unittest.TestCase):
 
     def test_ec1_refuses_existing_output_root(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            base = Path(raw)
+            base = Path(raw).resolve()
             repo = self._fixture_repo(base)
             output = base / "output"
             output.mkdir()
@@ -228,9 +242,156 @@ class WindowsXMFinexPreparationPackageTests(unittest.TestCase):
                     official_branch="agent/live-grade-phase3",
                 )
 
+    def test_ec1_preserves_dangling_output_root_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw).resolve()
+            repo = self._fixture_repo(base)
+            missing_target = base / "missing-target"
+            output = base / "output"
+            try:
+                output.symlink_to(missing_target, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+            with self.assertRaisesRegex(
+                PackageBuildError,
+                "output root already exists",
+            ):
+                build_packages(
+                    repo,
+                    repo / PROFILE_PATH,
+                    output,
+                    official_branch="agent/live-grade-phase3",
+                )
+            self.assertTrue(output.is_symlink())
+            self.assertEqual(missing_target, Path(os.readlink(output)))
+            self.assertFalse(missing_target.exists())
+
+    def test_output_parent_symlink_is_rejected_without_target_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw).resolve()
+            repo = self._fixture_repo(base)
+            real_parent = base / "real-parent"
+            real_parent.mkdir()
+            linked_parent = base / "linked-parent"
+            try:
+                linked_parent.symlink_to(real_parent, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+            with self.assertRaisesRegex(
+                PackageBuildError,
+                "output parent must be a real directory",
+            ):
+                build_packages(
+                    repo,
+                    repo / PROFILE_PATH,
+                    linked_parent / "output",
+                    official_branch="agent/live-grade-phase3",
+                )
+            self.assertFalse((real_parent / "output").exists())
+
+    def test_failure_cleanup_removes_only_owned_partial_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw).resolve()
+            repo = self._fixture_repo(base)
+            output = base / "output"
+            original = package_builder._write_exclusive
+            calls = 0
+
+            def fail_second(path: Path, value: bytes):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise PackageBuildError("injected second-output failure")
+                return original(path, value)
+
+            with mock.patch.object(
+                package_builder,
+                "_write_exclusive",
+                side_effect=fail_second,
+            ):
+                with self.assertRaisesRegex(
+                    PackageBuildError,
+                    "injected second-output failure",
+                ):
+                    build_packages(
+                        repo,
+                        repo / PROFILE_PATH,
+                        output,
+                        official_branch="agent/live-grade-phase3",
+                    )
+            self.assertFalse(os.path.lexists(output))
+
+    def test_failure_cleanup_preserves_replacement_root(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw).resolve()
+            repo = self._fixture_repo(base)
+            output = base / "output"
+            moved_original = base / "moved-original"
+
+            def replace_then_fail(
+                repo_root: Path,
+                output_root: Path,
+                profile: dict[str, object],
+                created_outputs: list[tuple[Path, tuple[int, ...]]],
+                **kwargs: object,
+            ) -> dict[str, object]:
+                del repo_root, profile, created_outputs, kwargs
+                output_root.rename(moved_original)
+                output_root.mkdir()
+                (output_root / "sentinel.txt").write_text(
+                    "replacement-owned\n",
+                    encoding="utf-8",
+                )
+                raise PackageBuildError("injected replacement failure")
+
+            with mock.patch.object(
+                package_builder,
+                "_build_one",
+                side_effect=replace_then_fail,
+            ):
+                with self.assertRaisesRegex(
+                    PackageBuildError,
+                    "injected replacement failure",
+                ):
+                    build_packages(
+                        repo,
+                        repo / PROFILE_PATH,
+                        output,
+                        official_branch="agent/live-grade-phase3",
+                    )
+            self.assertEqual(
+                "replacement-owned\n",
+                (output / "sentinel.txt").read_text(encoding="utf-8"),
+            )
+            self.assertTrue(moved_original.is_dir())
+
+    def test_file_sync_failure_preserves_replacement_leaf(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw).resolve()
+            output = root / "artifact.bin"
+            replacement = b"replacement-owned"
+
+            def replace_on_sync(directory: Path) -> None:
+                self.assertEqual(root, directory)
+                output.unlink()
+                output.write_bytes(replacement)
+                raise OSError("injected directory sync failure")
+
+            with mock.patch.object(
+                package_builder,
+                "_sync_directory",
+                side_effect=replace_on_sync,
+            ):
+                with self.assertRaisesRegex(
+                    PackageBuildError,
+                    "output write failed",
+                ):
+                    package_builder._write_exclusive(output, b"created")
+            self.assertEqual(replacement, output.read_bytes())
+
     def test_profile_and_source_drift_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            base = Path(raw)
+            base = Path(raw).resolve()
             repo = self._fixture_repo(base)
             profile_path = repo / PROFILE_PATH
             profile_path.write_text("{}\n", encoding="utf-8")
@@ -244,6 +405,27 @@ class WindowsXMFinexPreparationPackageTests(unittest.TestCase):
                     base / "output",
                     official_branch="agent/live-grade-phase3",
                 )
+
+    def test_unrelated_dirty_checkout_is_rejected_before_output_creation(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw).resolve()
+            repo = self._fixture_repo(base)
+            (repo / "untracked.txt").write_text(
+                "not part of the release\n",
+                encoding="utf-8",
+            )
+            output = base / "output"
+            with self.assertRaisesRegex(
+                PackageBuildError,
+                "source checkout must be clean",
+            ):
+                build_packages(
+                    repo,
+                    repo / PROFILE_PATH,
+                    output,
+                    official_branch="agent/live-grade-phase3",
+                )
+            self.assertFalse(os.path.lexists(output))
 
     def test_cli_help_is_stdlib_only(self) -> None:
         completed = subprocess.run(

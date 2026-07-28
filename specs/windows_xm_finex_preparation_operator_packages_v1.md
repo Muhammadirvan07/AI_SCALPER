@@ -7,7 +7,8 @@
 **Approval basis:** Project owner request on 2026-07-26 to prepare XM and
 FINEX in addition to the existing Phillip lane.
 **Related specs:** `specs/phillip_lane_evidence_contract.md`,
-`specs/broker_registration_review_gate.md`
+`specs/broker_registration_review_gate.md`,
+`specs/create_exclusive_output_custody_v1.md`
 
 ## Context
 
@@ -39,7 +40,8 @@ credentials, contracts, scheduled tasks, orders, or promotion evidence.
   distinct archives, manifests, extraction helpers, default extraction roots,
   candidate IDs, and operator entry points.
 - FR-2: Every package MUST bind the exact Git commit, Git tree, branch name,
-  source-file hashes, and archive hash used to build it.
+  source-file hashes, and archive hash used to build it. The builder MUST
+  reject a dirty source checkout before creating the output root.
 - FR-3: Every package MUST set `live_allowed=false`,
   `safe_to_demo_auto_order=false`, `promotion_eligible=false`,
   `order_capability=DISABLED`, and `max_lot=0.01`.
@@ -61,7 +63,9 @@ credentials, contracts, scheduled tasks, orders, or promotion evidence.
   and MUST NOT add a crypto symbol absent from the reviewed FINEX inventory.
 - FR-9: Extraction helpers MUST verify the companion manifest, archive SHA-256,
   internal manifest identity, exact member inventory, member hashes, member
-  sizes, and destination non-existence before extraction.
+  sizes, and destination non-existence before extraction. They MUST extract to
+  a candidate-isolated sibling staging directory and publish with a no-replace
+  directory move; failed staging evidence is preserved for review.
 - FR-10: The build MUST be deterministic for the same Git commit, Git tree,
   profile, and source inventory.
 - FR-11: Existing XM, FINEX, FBS, Phillip, dashboard, dependency-lock, and
@@ -139,8 +143,10 @@ And the complete suite reports zero failures
 
 ## Edge Cases and Error Scenarios
 
-- EC-1: Output archive, manifest, helper, or output root already exists → Fail
-  before overwriting any byte.
+- EC-1: Output archive, manifest, helper, output root, dangling output symlink,
+  or extraction destination already exists → Fail before overwriting any
+  byte. Output cleanup is permitted only while the root and every leaf retain
+  the exact no-follow identities created by the current invocation.
 - EC-2: Git commit or tree cannot be resolved → Reject the build or operator
   validation without falling back to the working tree.
 - EC-3: Source commit is not an ancestor of the configured official branch →
@@ -160,6 +166,9 @@ And the complete suite reports zero failures
 - EC-10: Public XM marketing symbols differ from the future account discovery →
   Treat discovery as authoritative only after the legal gate is independently
   reopened; do not backfill the current package.
+- EC-11: A generated output root or leaf is replaced during a failure path →
+  Preserve the replacement and fail closed; never use recursive unconditional
+  cleanup as ownership evidence.
 
 ## API Contracts
 
