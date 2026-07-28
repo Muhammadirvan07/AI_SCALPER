@@ -134,6 +134,11 @@ key may be present in source or toolkit. A successful assessment MUST say that
 the signed custodian attestation was accepted while preserving
 `direct_storage_api_inspection_performed=false`.
 
+Every create-exclusive output check MUST use no-follow filesystem inspection.
+Regular files, directories, valid symlinks, and dangling symlinks all count as
+pre-existing output and MUST be rejected without mutation. Exception cleanup
+MUST remove only the exact regular file created by the current invocation.
+
 ## Safety invariants
 
 Every toolkit manifest, acceptance manifest, collection result, and verifier
@@ -163,6 +168,8 @@ broker_mutation = NOT_PERFORMED
 - AC-8: signature, binding, policy-pin, canonical-JSON, retention, nested-ZIP,
   or output-collision attacks fail without publishing an assessment;
 - AC-9: complete regressions pass without changing any execution safety lock.
+- AC-10: a dangling symlink at the toolkit, custody-request, or assessment
+  output path is rejected and remains byte-for-byte/path-target unchanged.
 
 ## Operational sequence
 

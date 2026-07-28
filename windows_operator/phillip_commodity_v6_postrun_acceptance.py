@@ -908,6 +908,37 @@ def _zip_info(path: str) -> zipfile.ZipInfo:
     return info
 
 
+def _require_output_absent(path: Path) -> None:
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise PostRunAcceptanceError("OUTPUT_PATH_REJECTED") from exc
+    _reject("OUTPUT_ALREADY_EXISTS")
+
+
+def _remove_created_output(
+    path: Path,
+    created_identity: tuple[int, int] | None,
+) -> None:
+    if created_identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or (observed.st_dev, observed.st_ino) != created_identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def _write_archive(
     path: Path,
     members: dict[str, bytes],
@@ -917,8 +948,7 @@ def _write_archive(
         set(ordered_paths)
     ):
         _reject("OUTPUT_INVENTORY_REJECTED")
-    if path.exists():
-        _reject("OUTPUT_ALREADY_EXISTS")
+    _require_output_absent(path)
     parent = path.parent
     if parent.exists():
         _directory(parent, "OUTPUT_PARENT_REJECTED")
@@ -928,8 +958,11 @@ def _write_archive(
         except OSError as exc:
             raise PostRunAcceptanceError("OUTPUT_PARENT_REJECTED") from exc
         _directory(parent, "OUTPUT_PARENT_REJECTED")
+    created_identity: tuple[int, int] | None = None
     try:
         with path.open("xb") as handle:
+            created = os.fstat(handle.fileno())
+            created_identity = (created.st_dev, created.st_ino)
             with zipfile.ZipFile(
                 handle,
                 mode="w",
@@ -941,10 +974,7 @@ def _write_archive(
             handle.flush()
             os.fsync(handle.fileno())
     except Exception:
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        _remove_created_output(path, created_identity)
         raise
 
 
@@ -1587,8 +1617,7 @@ def _custody_safety() -> dict[str, object]:
 def _write_document_exclusive(path: Path, value: bytes) -> None:
     if not value:
         _reject("OUTPUT_DOCUMENT_REJECTED")
-    if path.exists():
-        _reject("OUTPUT_ALREADY_EXISTS")
+    _require_output_absent(path)
     parent = path.parent
     if parent.exists():
         _directory(parent, "OUTPUT_PARENT_REJECTED")
@@ -1598,16 +1627,16 @@ def _write_document_exclusive(path: Path, value: bytes) -> None:
         except OSError as exc:
             raise PostRunAcceptanceError("OUTPUT_PARENT_REJECTED") from exc
         _directory(parent, "OUTPUT_PARENT_REJECTED")
+    created_identity: tuple[int, int] | None = None
     try:
         with path.open("xb") as handle:
+            created = os.fstat(handle.fileno())
+            created_identity = (created.st_dev, created.st_ino)
             handle.write(value)
             handle.flush()
             os.fsync(handle.fileno())
     except Exception:
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        _remove_created_output(path, created_identity)
         raise
 
 

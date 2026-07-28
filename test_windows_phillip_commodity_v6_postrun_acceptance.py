@@ -926,6 +926,71 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
             )
         self.assertEqual(original, request.read_bytes())
 
+    def test_custody_request_preserves_dangling_symlink_output(self) -> None:
+        acceptance_archive, _result = self._collect(
+            "dangling-request-acceptance.zip"
+        )
+        target = self.root / "missing-custody-request-target.zip"
+        output = self.root / "dangling-custody-request.zip"
+        try:
+            output.symlink_to(target)
+        except OSError:
+            self.skipTest("symbolic links are unavailable")
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "OUTPUT_ALREADY_EXISTS",
+        ):
+            acceptance.prepare_custody_request(
+                acceptance_archive=acceptance_archive,
+                expected_acceptance_archive_sha256=digest(
+                    acceptance_archive.read_bytes()
+                ),
+                expected_toolkit_source_commit=self.source_commit,
+                expected_toolkit_source_tree=self.source_tree,
+                destination_id="independent-worm-jp-01",
+                requested_at_utc="2026-07-29T22:00:00Z",
+                minimum_retain_until_utc="2027-09-22T00:00:00Z",
+                output=output,
+            )
+        self.assertTrue(output.is_symlink())
+        self.assertEqual(target, output.readlink())
+        self.assertFalse(target.exists())
+
+    def test_custody_assessment_preserves_dangling_symlink_output(self) -> None:
+        _acceptance_archive, request, _acceptance_result, request_result = (
+            self._prepare_custody("dangling-assessment-request.zip")
+        )
+        policy, receipt, _payload = self._custody_documents(
+            request,
+            request_result,
+        )
+        target = self.root / "missing-custody-assessment-target.json"
+        assessment = self.root / "dangling-custody-assessment.json"
+        try:
+            assessment.symlink_to(target)
+        except OSError:
+            self.skipTest("symbolic links are unavailable")
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "OUTPUT_ALREADY_EXISTS",
+        ):
+            acceptance.verify_custody_receipt(
+                custody_request_archive=request,
+                expected_custody_request_archive_sha256=digest(
+                    request.read_bytes()
+                ),
+                expected_toolkit_source_commit=self.source_commit,
+                expected_toolkit_source_tree=self.source_tree,
+                policy_path=policy,
+                expected_policy_sha256=digest(policy.read_bytes()),
+                receipt_path=receipt,
+                verified_at_utc="2026-07-29T22:02:00Z",
+                assessment_output=assessment,
+            )
+        self.assertTrue(assessment.is_symlink())
+        self.assertEqual(target, assessment.readlink())
+        self.assertFalse(target.exists())
+
     def test_custody_request_rejects_rehashed_invalid_nested_archive(self) -> None:
         _acceptance_archive, request, _acceptance_result, _request_result = (
             self._prepare_custody()

@@ -146,6 +146,37 @@ def _zip_info(path: str) -> zipfile.ZipInfo:
     return info
 
 
+def _require_output_absent(path: Path) -> None:
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise PostRunToolkitBuildError("output path inspection failed") from exc
+    raise PostRunToolkitBuildError("output artifact already exists")
+
+
+def _remove_created_output(
+    path: Path,
+    created_identity: tuple[int, int] | None,
+) -> None:
+    if created_identity is None:
+        return
+    try:
+        observed = path.lstat()
+    except OSError:
+        return
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or (observed.st_dev, observed.st_ino) != created_identity
+    ):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def build_package(source_root: Path, output: Path) -> dict[str, object]:
     source_root = source_root.resolve()
     output = output.absolute()
@@ -154,8 +185,7 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         output.name,
     ):
         raise PostRunToolkitBuildError("output filename is not the reviewed form")
-    if output.exists():
-        raise PostRunToolkitBuildError("output artifact already exists")
+    _require_output_absent(output)
     if output.parent.exists() and output.parent.is_symlink():
         raise PostRunToolkitBuildError("output parent must not be a symlink")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -200,8 +230,11 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         },
     }
     tracked[TOOLKIT_MANIFEST] = _json_bytes(manifest)
+    created_identity: tuple[int, int] | None = None
     try:
         with output.open("xb") as handle:
+            created = os.fstat(handle.fileno())
+            created_identity = (created.st_dev, created.st_ino)
             with zipfile.ZipFile(
                 handle,
                 mode="w",
@@ -213,7 +246,7 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
             handle.flush()
             os.fsync(handle.fileno())
     except Exception:
-        output.unlink(missing_ok=True)
+        _remove_created_output(output, created_identity)
         raise
     archive_data = output.read_bytes()
     return {

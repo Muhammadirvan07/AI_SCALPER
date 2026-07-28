@@ -179,6 +179,26 @@ class PhillipCommodityV6PostRunToolkitBuilderTests(unittest.TestCase):
             builder.build_package(self.source, output)
         self.assertEqual([], list(target.iterdir()))
 
+    def test_rejects_dangling_symlink_output_without_mutating_it(self) -> None:
+        short_commit = self._git("rev-parse", "--short=8", "HEAD")
+        target = Path(self.temp.name) / "missing-toolkit-target.zip"
+        output = (
+            Path(self.temp.name)
+            / f"phillip-commodity-v6-postrun-toolkit-{short_commit}.zip"
+        )
+        try:
+            output.symlink_to(target)
+        except OSError:
+            self.skipTest("symbolic links are unavailable")
+        with self.assertRaisesRegex(
+            builder.PostRunToolkitBuildError,
+            "output artifact already exists",
+        ):
+            builder.build_package(self.source, output)
+        self.assertTrue(output.is_symlink())
+        self.assertEqual(target, output.readlink())
+        self.assertFalse(target.exists())
+
     def test_verifier_rejects_archive_mutation_and_wrong_source_identity(
         self,
     ) -> None:

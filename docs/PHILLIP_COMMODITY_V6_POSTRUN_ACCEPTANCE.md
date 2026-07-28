@@ -21,6 +21,11 @@ Toolkit ini tidak:
 - mengklaim inspeksi langsung API storage;
 - membuka demo-auto, promotion, atau live trading.
 
+Semua output bersifat create-exclusive dengan pemeriksaan no-follow. File,
+folder, symlink valid, maupun dangling symlink yang sudah ada akan ditolak dan
+tidak dihapus. Gunakan nama output baru; jangan membersihkan path evidence
+secara otomatis setelah collision.
+
 ## Kapan dijalankan
 
 Jangan jalankan sebelum boundary otomatis
