@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-28 menjalankan **1.721 test** tanpa
+Validasi lokal terakhir pada 2026-07-28 menjalankan **1.723 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
 PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
 juga lulus 21 unit test frontend, 45 test backend, 14 browser E2E, lint,
@@ -121,9 +121,12 @@ itu kini memakai native atomic no-replace pada Windows/macOS/Linux, mem-pin
 identitas parent dan staging, dan hanya membersihkan exact staging root yang
 dibuat invocation berjalan. Identitas hilang, berubah, symlink/reparse, target
 race, atau object pengganti selalu dipertahankan dan proses gagal tertutup.
+File sementara exclusive-write/replace serta marker transaksi
+`paired_pending` juga membawa identity token hingga cleanup atau clear; path
+pengganti tidak pernah dihapus.
 Helper extraction XM/FINEX juga memakai sibling staging dan no-replace
 directory move sebelum verifikasi ulang destination. Full regression normal
-dan optimized sama-sama lulus 1.721 test dengan tiga platform skip. Kontrak ini
+dan optimized sama-sama lulus 1.723 test dengan tiga platform skip. Kontrak ini
 hanya memperkuat artifact custody dan tidak mengubah `order_capability`,
 `live_allowed`, demo-auto, promotion, atau broker authority.
 

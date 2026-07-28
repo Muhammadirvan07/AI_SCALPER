@@ -93,14 +93,16 @@ commit dibuat.
   pembuatan. Frozen snapshot dan forward-contract registration sekarang
   memublikasikan direktori dengan native atomic no-replace pada
   Windows/macOS/Linux, mem-pin parent/staging identity, dan mempertahankan
-  target race atau staging pengganti untuk forensic review.
+  target race atau staging pengganti untuk forensic review. Temporary file
+  cleanup dan clear marker `paired_pending` sekarang juga memerlukan exact
+  creation identity sehingga file pengganti dipertahankan.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.721 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.721 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.723 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.723 PASS, 3 skip, exit 0 |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |

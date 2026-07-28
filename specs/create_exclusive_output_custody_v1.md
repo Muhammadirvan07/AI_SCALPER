@@ -45,6 +45,10 @@ It does not grant execution, broker, demo-auto, promotion, or live authority.
     no-follow directory identity remains exactly equal to the root created by
     that invocation; symlink, junction/reparse, identity drift, or an unknown
     platform without atomic no-replace support fails closed.
+12. Temporary files created for exclusive write or atomic replace retain their
+    descriptor-derived identities through cleanup. A transaction marker that
+    is intentionally cleared after commit must likewise be unlinked only when
+    its current no-follow identity equals the file created by that transaction.
 
 ## Failure cases
 
@@ -56,6 +60,8 @@ The implementation must preserve a competing or pre-existing path when:
 - a release sidecar replaces a previously created archive or manifest;
 - a staging root or publication lock is replaced before exception cleanup;
 - an empty destination directory appears between pre-check and publication;
+- a temporary file or paired-transaction pending marker is replaced before
+  cleanup;
 - an internal configured-candidate or provider-pack root is replaced before
   cleanup begins.
 
@@ -71,7 +77,8 @@ They assert that replacement bytes, links, and roots survive unchanged while
 the publisher reports failure. Frozen-snapshot and forward-contract tests also
 inject an empty target at the exact directory-publication boundary, verify the
 native Windows write-through/no-replace path, and replace the staging root
-before cleanup.
+before cleanup. Additional tests replace an exclusive-write temporary file and
+the paired pending marker immediately before deletion.
 
 The contract is verified in normal and optimized Python modes so production
 behavior does not depend on `assert` statements.

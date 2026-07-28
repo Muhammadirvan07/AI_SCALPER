@@ -576,14 +576,54 @@ def _windows_move_write_through(
     )
 
 
-def _atomic_exclusive_write(path: Path, payload: bytes) -> None:
+def _artifact_identity(metadata: os.stat_result) -> tuple[int, int, int, int]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(getattr(metadata, "st_file_attributes", 0)),
+    )
+
+
+def _remove_created_regular_file(
+    path: Path,
+    identity: tuple[int, int, int, int] | None,
+) -> bool:
+    """Unlink only the exact regular file created by this invocation."""
+
+    if identity is None:
+        return False
+    try:
+        observed = path.lstat()
+    except OSError:
+        return False
+    if (
+        _artifact_identity(observed) != identity
+        or not stat.S_ISREG(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or int(getattr(observed, "st_file_attributes", 0)) & 0x400
+    ):
+        return False
+    try:
+        path.unlink()
+    except OSError:
+        return False
+    return True
+
+
+def _atomic_exclusive_write(
+    path: Path,
+    payload: bytes,
+) -> tuple[int, int, int, int]:
     if path.is_symlink():
         raise EvidenceValidationError("ARTIFACT_PATH_SYMLINK", str(path))
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=".pending-", dir=path.parent)
     temporary = Path(temporary_name)
+    temporary_identity: tuple[int, int, int, int] | None = None
     try:
         with os.fdopen(descriptor, "wb") as output:
+            temporary_identity = _artifact_identity(os.fstat(output.fileno()))
             output.write(payload)
             output.flush()
             os.fsync(output.fileno())
@@ -595,8 +635,31 @@ def _atomic_exclusive_write(path: Path, payload: bytes) -> None:
             except FileExistsError as exc:
                 raise EvidenceValidationError("ARTIFACT_EXISTS", str(path)) from exc
             _fsync_directory(path.parent)
+        try:
+            observed = path.lstat()
+        except OSError as exc:
+            raise EvidenceValidationError(
+                "ARTIFACT_COMMIT_IDENTITY_DRIFT",
+                str(path),
+            ) from exc
+        if (
+            _artifact_identity(observed) != temporary_identity
+            or not stat.S_ISREG(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or int(getattr(observed, "st_file_attributes", 0)) & 0x400
+        ):
+            raise EvidenceValidationError(
+                "ARTIFACT_COMMIT_IDENTITY_DRIFT",
+                str(path),
+            )
+        if temporary_identity is None:
+            raise EvidenceValidationError(
+                "ARTIFACT_COMMIT_IDENTITY_DRIFT",
+                str(path),
+            )
+        return temporary_identity
     finally:
-        temporary.unlink(missing_ok=True)
+        _remove_created_regular_file(temporary, temporary_identity)
 
 
 def _atomic_replace(path: Path, payload: bytes) -> None:
@@ -605,8 +668,10 @@ def _atomic_replace(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=".replace-", dir=path.parent)
     temporary = Path(temporary_name)
+    temporary_identity: tuple[int, int, int, int] | None = None
     try:
         with os.fdopen(descriptor, "wb") as output:
+            temporary_identity = _artifact_identity(os.fstat(output.fileno()))
             output.write(payload)
             output.flush()
             os.fsync(output.fileno())
@@ -616,16 +681,7 @@ def _atomic_replace(path: Path, payload: bytes) -> None:
             os.replace(temporary, path)
             _fsync_directory(path.parent)
     finally:
-        temporary.unlink(missing_ok=True)
-
-
-def _directory_identity(metadata: os.stat_result) -> tuple[int, int, int, int]:
-    return (
-        int(metadata.st_dev),
-        int(metadata.st_ino),
-        int(metadata.st_mode),
-        int(getattr(metadata, "st_file_attributes", 0)),
-    )
+        _remove_created_regular_file(temporary, temporary_identity)
 
 
 def _is_directory_reparse_point(path: Path, metadata: os.stat_result) -> bool:
@@ -718,7 +774,7 @@ def _cleanup_created_directory(
         if (
             staging.parent != parent
             or not staging.name.startswith(prefix)
-            or _directory_identity(metadata) != identity
+            or _artifact_identity(metadata) != identity
             or not stat.S_ISDIR(metadata.st_mode)
             or stat.S_ISLNK(metadata.st_mode)
             or _is_directory_reparse_point(staging, metadata)
@@ -751,7 +807,7 @@ def _atomic_directory_commit(
         or _is_directory_reparse_point(parent, parent_metadata)
     ):
         raise EvidenceValidationError("ARTIFACT_DIRECTORY_INVALID", str(parent))
-    parent_identity = _directory_identity(parent_metadata)
+    parent_identity = _artifact_identity(parent_metadata)
     if os.path.lexists(target):
         raise EvidenceValidationError("ARTIFACT_EXISTS", str(target))
     prefix = f".{target.name}.pending-"
@@ -760,7 +816,7 @@ def _atomic_directory_commit(
     try:
         staging = Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
         staging_metadata = staging.lstat()
-        staging_identity = _directory_identity(staging_metadata)
+        staging_identity = _artifact_identity(staging_metadata)
         for relative_name, payload in files.items():
             destination = _safe_artifact_file(staging, relative_name)
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -775,8 +831,8 @@ def _atomic_directory_commit(
                 str(target),
             ) from exc
         if (
-            _directory_identity(current_parent) != parent_identity
-            or _directory_identity(current_staging) != staging_identity
+            _artifact_identity(current_parent) != parent_identity
+            or _artifact_identity(current_staging) != staging_identity
             or not stat.S_ISDIR(current_staging.st_mode)
             or stat.S_ISLNK(current_staging.st_mode)
             or _is_directory_reparse_point(staging, current_staging)
@@ -3855,7 +3911,7 @@ def _write_paired_pending(
     broker_binding_sha256: str,
     coverage_metadata_sha256: str,
     prepared_at: pd.Timestamp,
-) -> Path:
+) -> tuple[Path, tuple[int, int, int, int]]:
     pending = _attach_payload_hash(
         {
             "schema_version": PAIRED_PENDING_SCHEMA_VERSION,
@@ -3881,14 +3937,17 @@ def _write_paired_pending(
     )
     pending_path = _safe_artifact_file(pending_directory, f"{symbol}.json")
     try:
-        _atomic_exclusive_write(pending_path, _pretty_json_bytes(pending))
+        pending_identity = _atomic_exclusive_write(
+            pending_path,
+            _pretty_json_bytes(pending),
+        )
     except EvidenceValidationError as exc:
         if exc.code == "ARTIFACT_EXISTS":
             raise EvidenceValidationError(
                 "PAIRED_APPEND_RECOVERY_REQUIRED", symbol
             ) from exc
         raise
-    return pending_path
+    return pending_path, pending_identity
 
 
 def _assert_paired_export_id_unused(
@@ -4386,7 +4445,7 @@ def append_paired_forward_evidence(
         detail=normalized_symbol,
     )
     prepared = (directory, contract, key, exported, blind)
-    pending_path = _write_paired_pending(
+    pending_path, pending_identity = _write_paired_pending(
         directory,
         contract,
         key,
@@ -4468,7 +4527,8 @@ def append_paired_forward_evidence(
         detail=normalized_symbol,
     )
     try:
-        pending_path.unlink()
+        if not _remove_created_regular_file(pending_path, pending_identity):
+            raise OSError("paired pending identity changed before clear")
         _fsync_directory(pending_path.parent)
     except OSError as exc:
         raise EvidenceValidationError(

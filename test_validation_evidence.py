@@ -2121,6 +2121,49 @@ class ValidationEvidenceTests(unittest.TestCase):
         self.assertEqual(target, calls[-1][1])
         self.assertFalse(calls[-1][2])
 
+    def test_atomic_file_cleanup_preserves_replaced_temporary_path(self):
+        import validation_evidence.secure_core as secure_core
+
+        target = self.root / "atomic-file-target.json"
+        displaced = None
+        replacement = None
+
+        def replace_temporary_then_fail(source, _destination):
+            nonlocal displaced, replacement
+            temporary = Path(source)
+            displaced = temporary.with_name(temporary.name + "-displaced")
+            temporary.rename(displaced)
+            temporary.write_text("preserve", encoding="utf-8")
+            replacement = temporary
+            raise OSError("simulated publication failure")
+
+        with (
+            patch.object(
+                secure_core,
+                "_windows_commit_enabled",
+                return_value=False,
+            ),
+            patch.object(
+                secure_core.os,
+                "link",
+                side_effect=replace_temporary_then_fail,
+            ),
+        ):
+            with self.assertRaises(OSError):
+                secure_core._atomic_exclusive_write(target, b"owned")
+
+        self.assertIsNotNone(displaced)
+        self.assertIsNotNone(replacement)
+        self.assertEqual(
+            b"owned",
+            displaced.read_bytes(),
+        )
+        self.assertEqual(
+            "preserve",
+            replacement.read_text(encoding="utf-8"),
+        )
+        self.assertFalse(target.exists())
+
     def test_atomic_directory_cleanup_preserves_replaced_staging_root(self):
         import validation_evidence.secure_core as secure_core
 
@@ -2165,6 +2208,63 @@ class ValidationEvidenceTests(unittest.TestCase):
             (replacement / "foreign.txt").read_text(encoding="utf-8"),
         )
         self.assertFalse(target.exists())
+
+    def test_paired_pending_clear_preserves_replacement(self):
+        import validation_evidence.secure_core as secure_core
+
+        contract = self._register_contract(
+            contract_id="contract-paired-pending-replacement"
+        )
+        sources = self._broker_sources()
+        specs = contract["instrument_specs"]
+        metadata = self._paired_metadata(
+            "XAUUSD",
+            sources["XAUUSD"],
+            specs["XAUUSD"],
+            "2026-01-02T00:00:00Z",
+        )
+        native_remove = secure_core._remove_created_regular_file
+        replacement = None
+        displaced = None
+
+        def replace_pending_before_clear(path, identity):
+            nonlocal replacement, displaced
+            if path.parent.name == "paired_pending" and path.name == "XAUUSD.json":
+                displaced = path.with_name("XAUUSD.created-by-invocation.json")
+                path.rename(displaced)
+                path.write_text("preserve", encoding="utf-8")
+                replacement = path
+            return native_remove(path, identity)
+
+        with patch.object(
+            secure_core,
+            "_remove_created_regular_file",
+            side_effect=replace_pending_before_clear,
+        ):
+            with self.assertRaisesRegex(
+                EvidenceValidationError,
+                "PAIRED_PENDING_CLEAR_FAILED",
+            ):
+                append_paired_forward_evidence(
+                    self.root,
+                    contract["contract_id"],
+                    "XAUUSD",
+                    self._raw_tick_frame(),
+                    self._segment_frame(),
+                    sources["XAUUSD"],
+                    specs["XAUUSD"],
+                    export_id="paired-pending-replacement",
+                    **metadata,
+                    exported_at="2026-01-02T00:45:00Z",
+                )
+
+        self.assertIsNotNone(displaced)
+        self.assertIsNotNone(replacement)
+        self.assertTrue(displaced.is_file())
+        self.assertEqual(
+            "preserve",
+            replacement.read_text(encoding="utf-8"),
+        )
 
     def test_recursive_secret_and_symlinked_artifact_path_are_rejected(self):
         snapshot = self._create_snapshot()
