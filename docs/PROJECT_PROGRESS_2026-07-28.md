@@ -20,6 +20,8 @@ menjadi baseline audit incremental ini adalah:
 - `c10d4740ded8d798567a2e27404bfffb6e3fce42` — baseline bersih sebelum
   hardening create-exclusive diperluas ke seluruh publisher release,
   evidence, provider, dan atomic-suite yang relevan.
+- `141eae76fd7bbfe3c0bcb7b02f9c588837ac86fc` — exact champion pins
+  diwajibkan langsung pada konfigurasi runtime Windows.
 
 Remediation lintas publisher yang dicatat pada laporan ini turun langsung
 dari baseline `c10d474`. Exact commit dan tree final adalah identitas Git dari
@@ -133,15 +135,27 @@ commit dibuat.
   dengan exact `StageBinding` sebelum provider, credential, SQLite, MT5,
   network, atau adapter effect. Kontraknya berada di
   `specs/windows_runtime_stage_champion_configuration_binding_v1.md`.
+- Audit boundary operator berikutnya menemukan provider pack dan configured
+  candidate masih menerima source hash serta bootstrap binding sebagai dua
+  input caller yang terpisah. Satu deterministic four-member production-config
+  source ZIP sekarang mengikat canonical `ProductionRuntimeConfig`, canonical
+  `StageBinding` v3, dan exact champion terhadap tujuh external pins. Public
+  loader mengembalikan exact sealed source; direct source construction ditolak.
+  Verifier dan preparer stdlib-only hanya berada di configured operator
+  tooling, sedangkan pure verifier/loader berada di Execution release. Semua
+  hasil tetap deny-only. Kontrak dan runbook berada di
+  `specs/windows_execution_production_config_source_v1.md` dan
+  `docs/WINDOWS_EXECUTION_PRODUCTION_CONFIG_SOURCE.md`.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.777 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.777 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.784 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.784 PASS, 3 skip, exit 0 |
 | Runtime-stage champion-binding focused cluster | 206 PASS per normal/optimized mode |
 | Windows runtime champion-configuration cluster | 49 PASS per normal/optimized mode |
+| Windows production-config source focused cluster | 7 PASS per normal/optimized mode |
 | Champion-bound promotion issuer focused cluster | 152 PASS per normal/optimized mode |
 | Rule-core artifact + registry/custody + configured-tooling focused cluster | 36 PASS per normal/optimized mode |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
@@ -314,8 +328,10 @@ Urutan berikutnya tetap:
 3. bangun ulang atomic five-role suite dua kali pada exact Windows source,
    cocokkan semua hash, lalu buat satu transfer ZIP dan verifikasi empat pin
    independennya sebelum dipindahkan;
-4. siapkan, generate, dan validasi Decision, Execution, serta Status Monitor
-   provider pack dan configured candidate dari custody Windows yang direview;
+4. pada exact Windows host, siapkan dan verifikasi production-config source
+   tujuh-pin; gunakan outer hash dan bootstrap binding dari report yang sama,
+   lalu generate serta validasi Decision, Execution, dan Status Monitor
+   provider pack/configured candidate dari custody Windows yang direview;
 5. kumpulkan operations review, provider conformance, independent validation
    receipt, dan sembilan signed pre-manual observations;
 6. jalankan sepuluh controlled manual-demo lifecycle dengan review manusia;

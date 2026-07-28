@@ -27,6 +27,15 @@ pins dan bootstrap membandingkannya dengan `StageBinding` v3 sebelum provider
 atau runtime effect. Rinciannya ada di
 `docs/WINDOWS_RUNTIME_STAGE_CHAMPION_CONFIGURATION.md`.
 
+Source tersebut sekarang mempunyai portable deterministic wrapper
+`windows-execution-production-config-source-v1`. Verifier membutuhkan outer
+archive SHA-256 plus enam pin champion, mencocokkan exact config/stage/champion,
+dan loader mengembalikan sealed `WindowsExecutionProductionConfigSource`.
+Konstruksi source langsung tanpa seal loader ditolak. Gunakan outer ZIP hash
+sebagai `production_config_sha256` pack dan safe-binding dari report yang sama
+sebagai `bootstrap_binding_sha256` configured candidate. Runbook:
+`docs/WINDOWS_EXECUTION_PRODUCTION_CONFIG_SOURCE.md`.
+
 Generated factory tidak mempunyai registry global, environment-selected
 module, dynamic import, atau fallback provider. Tanpa runtime Windows yang
 direview, startup wajib berhenti dengan:
@@ -37,9 +46,9 @@ EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED
 
 ## Batas release
 
-- `live_runtime/windows_execution_provider_pack.py` dan shared
-  `live_runtime/windows_provider_primitives.py` hanya masuk base release
-  `EXECUTION`.
+- `live_runtime/windows_execution_provider_pack.py`, shared
+  `live_runtime/windows_provider_primitives.py`, dan pure source verifier hanya
+  masuk base release `EXECUTION`.
 - Generator/validator serta configured-candidate assembler/validator hanya
   masuk `WINDOWS_CONFIGURED_RELEASE_OPERATOR_TOOLING_V1`.
 - Pack yang dihasilkan berisi tepat empat file:

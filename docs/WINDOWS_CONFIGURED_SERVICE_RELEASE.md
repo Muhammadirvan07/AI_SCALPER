@@ -46,6 +46,11 @@ Repository menyediakan:
   `manage_rule_core_champion_registry.py`: verifier six-pin champion dan
   deny-only registry request/RSA receipt boundary; keduanya stdlib-only,
   tidak mengunggah, dan tidak mempunyai credential atau private-key access;
+- `prepare_windows_execution_production_config_source.py` dan
+  `verify_windows_execution_production_config_source.py`: builder/verifier
+  tujuh-pin yang mengikat exact production config, stage, dan champion ke satu
+  deterministic deny-only ZIP; loader runtime-nya tersegel dan direct source
+  construction ditolak;
 - `live_runtime/configured_service_release.py`: builder/verifier fail-closed;
 - `live_runtime/windows_base_release_suite.py`: verifier read-only untuk
   manifest, lima ZIP, dan lima sidecar atomic suite;
@@ -66,6 +71,8 @@ attestation terhadap policy hash yang dipin independen; ia tidak melakukan
 direct storage API inspection dan tidak memberi model-quality atau trading
 authority. Runbook berada di
 [`RULE_CORE_CHAMPION_REGISTRY_CUSTODY.md`](RULE_CORE_CHAMPION_REGISTRY_CUSTODY.md).
+Runbook production-config source berada di
+[`WINDOWS_EXECUTION_PRODUCTION_CONFIG_SOURCE.md`](WINDOWS_EXECUTION_PRODUCTION_CONFIG_SOURCE.md).
 
 ## Overlay non-secret
 
@@ -100,7 +107,10 @@ ditanamkan dan kontrak factory yang terpisah mengizinkannya.
 
 Sebelum perintah ini dijalankan, reviewer eksternal harus menyediakan exact
 factory, service config, provider source, Task Scheduler definition, serta
-`bootstrap_binding_sha256`. Jangan menaruh credential value di salah satu file.
+`bootstrap_binding_sha256`. Untuk Execution, hash tersebut wajib berasal dari
+report tujuh-pin `WINDOWS_EXECUTION_PRODUCTION_CONFIG_SOURCE_VERIFIED` yang
+sama dengan `production_config_sha256` provider pack. Jangan menaruh credential
+value di salah satu file.
 Candidate overlay awal harus belum memiliki
 `config/windows_factory_manifest.json`.
 

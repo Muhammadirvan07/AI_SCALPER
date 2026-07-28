@@ -12,6 +12,7 @@ from live_runtime.production_bootstrap import ProductionRuntimePorts
 from live_runtime.windows_execution_provider_pack import (
     EXECUTION_CREDENTIAL_PURPOSES,
     EXECUTION_PROVIDER_ROLES,
+    _PRODUCTION_CONFIG_SOURCE_SEAL,
     WindowsExecutionHeartbeatTransport,
     WindowsExecutionProductionConfigSource,
     WindowsExecutionProviderError,
@@ -388,6 +389,7 @@ class WindowsExecutionProviderPackTests(unittest.TestCase):
             return WindowsExecutionProductionConfigSource(
                 config=production_config,
                 source_sha256=provider_config.production_config_sha256,
+                _seal=_PRODUCTION_CONFIG_SOURCE_SEAL,
             )
 
         def credential_backend_factory(*_args, **_kwargs):
@@ -598,6 +600,7 @@ class WindowsExecutionProviderPackTests(unittest.TestCase):
             return WindowsExecutionProductionConfigSource(
                 config=fixture.config(),
                 source_sha256=digest("wrong-source"),
+                _seal=_PRODUCTION_CONFIG_SOURCE_SEAL,
             )
 
         def forbidden(*_args, **_kwargs):

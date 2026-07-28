@@ -83,6 +83,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "live_runtime/model_governance.py",
         "live_runtime/rule_core_champion_registry.py",
         "live_runtime/rule_core_model_artifact.py",
+        "live_runtime/windows_execution_production_config_source.py",
         "live_runtime/windows_decision_service_factory_template.py",
         "live_runtime/windows_external_status_monitor_factory_template.py",
         "live_runtime/windows_base_release_suite.py",
@@ -102,6 +103,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "prepare_windows_configured_overlay_candidate.py",
         "prepare_windows_decision_provider_pack.py",
         "prepare_windows_execution_provider_pack.py",
+        "prepare_windows_execution_production_config_source.py",
         "prepare_windows_status_monitor_provider_pack.py",
         "verify_windows_configured_service_release.py",
         "validate_windows_decision_provider_pack.py",
@@ -113,6 +115,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "verify_windows_base_release_suite.py",
         "verify_windows_base_release_suite_transfer.py",
         "verify_rule_core_champion_artifact.py",
+        "verify_windows_execution_production_config_source.py",
     }
 )
 READINESS_BLOCKERS = (
@@ -155,6 +158,7 @@ ALLOWED_LOCAL_IMPORTS = frozenset(
         "live_runtime.model_governance",
         "live_runtime.rule_core_champion_registry",
         "live_runtime.rule_core_model_artifact",
+        "live_runtime.windows_execution_production_config_source",
         "live_runtime.windows_decision_service_factory_template",
         "live_runtime.windows_external_status_monitor_factory_template",
         "live_runtime.windows_base_release_suite",

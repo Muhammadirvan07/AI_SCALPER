@@ -130,6 +130,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "live_runtime/model_governance.py",
             "live_runtime/rule_core_champion_registry.py",
             "live_runtime/rule_core_model_artifact.py",
+            "live_runtime/windows_execution_production_config_source.py",
             "live_runtime/windows_base_release_suite.py",
             "live_runtime/windows_base_release_suite_transfer.py",
             "live_runtime/windows_decision_configured_candidate.py",
@@ -152,6 +153,8 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "verify_windows_base_release_suite.py",
             "verify_windows_base_release_suite_transfer.py",
             "verify_rule_core_champion_artifact.py",
+            "prepare_windows_execution_production_config_source.py",
+            "verify_windows_execution_production_config_source.py",
             "manage_rule_core_champion_registry.py",
         }
         self.assertTrue(required.issubset(APPROVED_SOURCE_PATHS))
@@ -234,6 +237,14 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
                     "--expected-model-artifact-sha256",
                 ),
                 (
+                    "prepare_windows_execution_production_config_source.py",
+                    "--production-config",
+                ),
+                (
+                    "verify_windows_execution_production_config_source.py",
+                    "--expected-source-archive-sha256",
+                ),
+                (
                     "manage_rule_core_champion_registry.py",
                     "prepare-request",
                 ),
@@ -271,6 +282,8 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "validate_windows_decision_configured_candidate.py",
             "validate_windows_execution_configured_candidate.py",
             "validate_windows_status_monitor_configured_candidate.py",
+            "prepare_windows_execution_production_config_source.py",
+            "verify_windows_execution_production_config_source.py",
         }
         service_allowlists = (
             "config/windows_decision_service_allowlist.v1.json",

@@ -17,7 +17,7 @@ import hashlib
 import json
 import math
 import re
-from pathlib import PureWindowsPath
+from pathlib import Path, PureWindowsPath
 import sys
 from typing import Callable, Mapping
 
@@ -33,6 +33,13 @@ from .production_bootstrap import (
     ProductionRuntimeBootstrap,
     ProductionRuntimeConfig,
     ProductionRuntimePorts,
+)
+from .stage_authorization import StageBinding
+from .windows_execution_production_config_source import (
+    MAX_JSON_MEMBER_BYTES as PRODUCTION_CONFIG_SOURCE_MAX_JSON_BYTES,
+    canonical_source_file as canonical_production_config_source_file,
+    strict_source_json as strict_production_config_source_json,
+    verify_windows_execution_production_config_source,
 )
 from .windows_provider_primitives import WindowsClockBinding
 from .windows_service_entrypoint import (
@@ -68,6 +75,7 @@ EXECUTION_CREDENTIAL_PURPOSES = tuple(
 )
 _CONTRACT_BY_ROLE = {item.port_name: item for item in _CONTRACTS}
 _RESULT_SEAL = object()
+_PRODUCTION_CONFIG_SOURCE_SEAL = object()
 _REASON = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -608,8 +616,13 @@ class WindowsExecutionProductionConfigSource:
 
     config: ProductionRuntimeConfig
     source_sha256: str
+    _seal: InitVar[object | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _PRODUCTION_CONFIG_SOURCE_SEAL:
+            raise TypeError(
+                "production config source requires seven-pin loader seal"
+            )
         if type(self.config) is not ProductionRuntimeConfig:
             raise TypeError(
                 "config must be exact ProductionRuntimeConfig"
@@ -622,6 +635,102 @@ class WindowsExecutionProductionConfigSource:
                 "EXECUTION_PRODUCTION_CONFIG_SOURCE_INVALID",
             ),
         )
+
+
+def load_windows_execution_production_config_source(
+    archive_path: str | Path,
+    *,
+    expected_source_archive_sha256: str,
+    expected_champion_archive_sha256: str,
+    expected_model_artifact_sha256: str,
+    expected_training_snapshot_sha256: str,
+    expected_config_sha256: str,
+    expected_git_commit: str,
+    expected_git_tree: str,
+) -> WindowsExecutionProductionConfigSource:
+    """Load one seven-pin-verified source into the exact runtime contract.
+
+    Verification and object reconstruction are still effect-free.  No
+    provider is imported or materialized, and no credential, SQLite, MT5,
+    network, task, service, permit, or broker boundary is reached.
+    """
+
+    report = verify_windows_execution_production_config_source(
+        archive_path,
+        expected_source_archive_sha256=(
+            expected_source_archive_sha256
+        ),
+        expected_champion_archive_sha256=(
+            expected_champion_archive_sha256
+        ),
+        expected_model_artifact_sha256=(
+            expected_model_artifact_sha256
+        ),
+        expected_training_snapshot_sha256=(
+            expected_training_snapshot_sha256
+        ),
+        expected_config_sha256=expected_config_sha256,
+        expected_git_commit=expected_git_commit,
+        expected_git_tree=expected_git_tree,
+    )
+    config_payload = strict_production_config_source_json(
+        report.production_config_bytes,
+        maximum_bytes=PRODUCTION_CONFIG_SOURCE_MAX_JSON_BYTES,
+    )
+    stage_document = strict_production_config_source_json(
+        report.stage_binding_bytes,
+        maximum_bytes=PRODUCTION_CONFIG_SOURCE_MAX_JSON_BYTES,
+    )
+    binding_payload = stage_document.get("binding")
+    if type(binding_payload) is not dict:
+        raise WindowsExecutionProviderError(
+            "EXECUTION_PRODUCTION_CONFIG_SOURCE_INVALID"
+        )
+    config_values = dict(config_payload)
+    for name in (
+        "journal_database",
+        "supervisor_database",
+        "dependency_lock_file",
+    ):
+        config_values[name] = Path(str(config_values[name]))
+    for name in ("symbol_map", "usd_account_currency_symbols"):
+        raw_pairs = config_values[name]
+        if type(raw_pairs) is not list:
+            raise WindowsExecutionProviderError(
+                "EXECUTION_PRODUCTION_CONFIG_SOURCE_INVALID"
+            )
+        config_values[name] = tuple(
+            tuple(str(value) for value in item)
+            for item in raw_pairs
+        )
+    try:
+        stage = StageBinding(**binding_payload)
+        config = ProductionRuntimeConfig(**config_values)
+    except Exception as exc:
+        raise WindowsExecutionProviderError(
+            "EXECUTION_PRODUCTION_CONFIG_SOURCE_INVALID"
+        ) from exc
+    if (
+        canonical_production_config_source_file(
+            stage.to_canonical_dict()
+        )
+        != canonical_production_config_source_file(binding_payload)
+        or stage.binding_sha256 != report.stage_binding_sha256
+        or config.stage_binding_sha256 != stage.binding_sha256
+        or config.safe_binding_sha256 != report.bootstrap_binding_sha256
+        or canonical_production_config_source_file(
+            config.reviewed_configuration_payload
+        )
+        != report.production_config_bytes
+    ):
+        raise WindowsExecutionProviderError(
+            "EXECUTION_PRODUCTION_CONFIG_SOURCE_INVALID"
+        )
+    return WindowsExecutionProductionConfigSource(
+        config=config,
+        source_sha256=report.archive_sha256,
+        _seal=_PRODUCTION_CONFIG_SOURCE_SEAL,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1180,6 +1289,7 @@ __all__ = [
     "WindowsExecutionProviderMaterializationHooks",
     "WindowsExecutionProviderValidation",
     "build_windows_execution_factory_result",
+    "load_windows_execution_production_config_source",
     "validate_windows_execution_provider_configuration",
     "windows_execution_provider_configuration_from_dict",
 ]
