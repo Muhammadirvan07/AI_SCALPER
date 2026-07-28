@@ -5,6 +5,7 @@
 ```text
 LOCAL_SOURCE_GATE = PASS
 LIVE_CANARY_ACTIVATION_EVIDENCE = PASS_LOCALLY_DENY_ONLY
+LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
 DEPENDENCY_OR_FRONTEND_HOST_INSTALL = NOT_CHANGED
 WINDOWS_EXTERNAL_ACCEPTANCE = INCOMPLETE
 DEMO_AUTO_SOAK = NOT_READY
@@ -22,6 +23,9 @@ Reviewed source:
 - `live_runtime/live_canary_activation.py`;
 - `test_live_runtime_live_canary_activation.py`;
 - `specs/live_canary_activation_evidence_v1.md`;
+- `live_runtime/live_canary_prebootstrap_admission.py`;
+- `test_live_runtime_live_canary_prebootstrap_admission.py`;
+- `specs/live_canary_prebootstrap_admission_v1.md`;
 - current status/progress documentation.
 
 The working frontend/dashboard changes were not modified or staged as part of
@@ -31,12 +35,12 @@ this boundary. Runtime or broker state was not accessed or mutated.
 
 | Category | Status | Evidence |
 |---|---|---|
-| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; no raw identity or secret enters canonical artifacts |
+| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; runtime trust IDs/fingerprints must also be disjoint from every activation authority; no raw identity or secret enters canonical artifacts |
 | Database | PASS_LOCAL | Exact SQLite DDL/trigger inventory, WAL, FULL sync, integrity check, HMAC chain, unique replay fields, atomic `BEGIN IMMEDIATE`, path identity, and signed off-host checkpoint verification |
 | Code quality | PASS_LOCAL | Spec-first implementation, 100/100 spec validation, normal/optimized regression, no changed-file whitespace errors |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
-| Deployment | INCOMPLETE_EXTERNAL | Windows provider conformance, task/service composition, ACLs, TLS/auth where applicable, rollback, backup/restore, and WORM custody are not accepted |
+| Deployment | INCOMPLETE_EXTERNAL | A sealed deny-only prebootstrap composition exists locally, but actual Windows provider conformance, portable admission custody, one-use launch capability, task/service composition, ACLs, TLS/auth where applicable, rollback, backup/restore, and WORM custody are not accepted |
 | Frontend | OUTSIDE_CHANGE_SCOPE / WINDOWS_NODE_MISSING | No frontend source was changed by this milestone; Windows still needs a verified Node.js LTS installation to run Vite |
 | Observability | PASS_BOUNDARY / EXTERNAL_PENDING | Canonical reason codes and replay checkpoints exist; external uptime/alert/custody proof is not present |
 
@@ -47,9 +51,12 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Live-canary spec validator (`--strict`) | 100/100, no findings |
 | Focused live-canary tests | 16 PASS normal |
 | Focused live-canary tests under `-O` | 16 PASS, one intentional nested optimized self-test skip |
+| Prebootstrap spec validator (`--strict`) | 100/100; 0 errors/warnings and one informational TypeScript-N/A note |
+| Focused prebootstrap tests | 10 PASS normal; 10 PASS optimized with one intentional nested-suite skip |
+| Activation/source-bound/provider cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage regression | 81 PASS in both normal and optimized modes |
-| Full Python regression | 1,815 PASS, 3 platform skips |
-| Full Python optimized regression | 1,815 PASS, 4 skips |
+| Full Python regression | 1,825 PASS, 3 platform skips |
+| Full Python optimized regression | 1,825 PASS, 5 skips |
 | Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` remains false; no MT5, order, credential, network, or process primitive in the new module |
 
 The generic repository scanner reported `DO_NOT_SHIP` with ten critical
@@ -84,6 +91,11 @@ changed-source findings.
    validation projection while still rechecking freshness at consumption.
 6. Authorization timing now requires every approval to predate issuance, and
    consumption requires the authorization to be currently valid.
+7. The consumed activation validation previously had no typed bridge to a
+   complete LIVE runtime candidate. The new prebootstrap boundary binds its
+   exact hash to full non-secret runtime inputs, a verifier-sealed DEMO
+   source-bound lineage, all champion pins, disjoint runtime trust domains,
+   and the still-false central LIVE policy decision.
 
 ## Blocking facts
 
@@ -91,7 +103,9 @@ changed-source findings.
 - No exact LIVE promotion receipt or nine external gate receipts exist.
 - No actual three-person approval set, deployment authorization, or off-host
   replay checkpoint custody has been accepted.
-- Production bootstrap and supervisor do not yet consume this new boundary.
+- The effect-capable production bootstrap and supervisor do not yet consume a
+  portable, independently custodied, one-use launch capability derived from
+  this deny-only admission.
 - The central live lock remains false and must not change in this milestone.
 
 Therefore the final verdict is **DO NOT SHIP LIVE TRADING**.

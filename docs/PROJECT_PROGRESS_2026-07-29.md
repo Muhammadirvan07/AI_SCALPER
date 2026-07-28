@@ -9,6 +9,7 @@ enable live trading, broker mutation, or any central execution lock.
 ```text
 LOCAL_SOURCE_GATE = PASS
 LIVE_CANARY_EVIDENCE_BOUNDARY = PASS_LOCALLY_DENY_ONLY
+LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
 DEMO_AUTO_SOAK = NOT_READY
@@ -40,16 +41,31 @@ LIVE_TRADING = DO_NOT_SHIP
 - Every public artifact retains `live_allowed=false`,
   `execution_authorized=false`, `activation_authorized=false`,
   `order_capability=DISABLED`, `max_lot=0.01`, and one-position scope.
+- `LiveCanaryRuntimeCandidate` now binds a complete non-secret LIVE candidate:
+  exact Windows paths, XAUUSD broker symbol, journal/release/runtime/dependency
+  pins, installed-environment and MT5 distribution pins, risk/news/supervisor
+  trust domains, and the complete sealed DEMO Execution source-bound ancestry.
+- `assess_live_canary_prebootstrap_admission` requires the real verifier seal
+  on that source-bound result, the exact trust policy and authorization, and a
+  successful one-use activation validation. It rejects cross-request
+  validation, provenance substitution, runtime/authority key reuse, expiry,
+  clock regression, and any drift from the checked-in central LIVE denial.
+- The resulting status is explicitly
+  `PREBOOTSTRAP_EVIDENCE_COMPLETE_CENTRAL_UNLOCK_REQUIRED`; it is not a launch
+  capability and retains `bootstrap_authorized=false` together with every
+  existing safety lock.
 
 ## Verification
 
 | Check | Result |
 |---|---|
-| Spec validation | 100/100, Grade A, no findings |
+| Spec validation | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused live-canary suite | 16 PASS normal; 16 PASS optimized with one intentional nested-suite skip |
+| Focused prebootstrap suite | 10 PASS normal; 10 PASS optimized with one intentional nested-suite skip |
+| Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,815 PASS, 3 platform skips |
-| Full Python regression with `-O` | 1,815 PASS, 4 skips including the nested optimized self-test |
+| Full Python regression | 1,825 PASS, 3 platform skips |
+| Full Python regression with `-O` | 1,825 PASS, 5 skips including optimized-only nested self-tests |
 | Checked-in central live lock | remains exactly false |
 | Broker/order/credential/process effects | not performed |
 
@@ -73,10 +89,13 @@ uptime monitoring remain external work.
 5. Obtain the exact LIVE promotion receipt, nine independent gate receipts,
    three actual role approvals, deployment signature, and off-host/WORM replay
    checkpoint custody.
-6. Separately specify, implement, and review the production bootstrap and
-   supervisor composition that consumes this validation while retaining the
-   central kill switch. Only that later composition can be considered for the
-   first bounded 0.01-lot XAUUSD live canary.
+6. Build the actual XM/Windows LIVE candidate and feed its independently
+   verified source-bound ancestry plus consumed validation through the new
+   prebootstrap admission; local tests use synthetic values only.
+7. Separately specify, implement, and review a portable Windows custody and
+   one-use launch-capability boundary, then the effect-capable production
+   bootstrap/supervisor composition. The central lock remains unchanged until
+   that later ceremony and all external evidence are accepted.
 
 No percentage or passing unit-test count should be interpreted as broker
 authority. Until the external evidence and later runtime integration exist,
