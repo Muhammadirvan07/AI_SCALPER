@@ -8,7 +8,8 @@ LIVE_CANARY_ACTIVATION_EVIDENCE = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PORTABLE_CUSTODY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_RUNTIME_LAUNCH_SESSION = PASS_LOCALLY_CENTRAL_LOCKED
-LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_OBSERVATION_ONLY
+LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_PER_ORDER_GATED
+LIVE_CANARY_PER_ORDER_EXECUTION = PASS_LOCALLY_FAKE_MT5_ONE_SEND
 DEPENDENCY_OR_FRONTEND_HOST_INSTALL = NOT_CHANGED
 WINDOWS_EXTERNAL_ACCEPTANCE = INCOMPLETE
 DEMO_AUTO_SOAK = NOT_READY
@@ -37,8 +38,13 @@ Reviewed source:
 - `specs/live_canary_runtime_launch_session_v1.md`;
 - `live_runtime/live_canary_runtime_authority.py`;
 - production bootstrap/composition and runtime supervisor LIVE integration;
+- `live_runtime/live_canary_order_authorization.py` and its exact one-second,
+  XAUUSD/0.01-lot sealed authority;
+- coordinator, runtime service, durable lease, and MT5 adapter LIVE binding;
 - `test_live_runtime_live_canary_production_runtime_integration.py`;
 - `specs/live_canary_production_runtime_integration_v1.md`;
+- `test_live_runtime_live_canary_order_authorization.py`;
+- `specs/live_canary_per_order_execution_v1.md`;
 - mode-aware symbol-boundary inventory in
   `test_execution_policy_mode_aware.py`;
 - verifier-seal hardening in `live_canary_prebootstrap_admission.py` and
@@ -52,14 +58,14 @@ this boundary. Runtime or broker state was not accessed or mutated.
 
 | Category | Status | Evidence |
 |---|---|---|
-| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; runtime trust IDs/fingerprints must also be disjoint from every activation authority; the launch session validates every independent pin before callbacks, observes external state twice, and atomically rejects process-local capability replay; no raw identity or secret enters canonical artifacts |
-| Database | PASS_LOCAL | Exact SQLite DDL/trigger inventory, WAL, FULL sync, integrity check, HMAC chain, unique replay fields, atomic `BEGIN IMMEDIATE`, path identity, and signed off-host checkpoint verification |
-| Code quality | PASS_LOCAL | Spec-first implementation, 100/100 spec validation, normal/optimized regression, no changed-file whitespace errors |
+| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; the launch session and one-second per-order capability validate exact candidate/session/intent/evidence bindings; authority is rechecked at reservation, final lease, adapter, and immediate pre-send boundaries; no raw identity or secret enters the new capability |
+| Database | PASS_LOCAL | Exact SQLite DDL/trigger inventory, WAL, FULL sync, integrity check, HMAC chain, unique replay and authorization-consumption fields, atomic `BEGIN IMMEDIATE`, path identity, and signed off-host checkpoint verification |
+| Code quality | PASS_LOCAL | Spec-first implementation, 100/100 new spec validation, normal/optimized regression, Ruff/compile success, and no changed-file whitespace errors |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
-| Deployment | INCOMPLETE_EXTERNAL | Sealed prebootstrap, portable WORM/CAS verification, launch-only runtime session, and observation-only production integration exist locally, but the checked-in central lock is false and actual Windows provider conformance, real WORM/CAS providers and receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, and backup/restore are not accepted |
-| Frontend | OUTSIDE_CHANGE_SCOPE / WINDOWS_NODE_MISSING | No frontend source was changed by this milestone; Windows still needs a verified Node.js LTS installation to run Vite |
-| Observability | PASS_BOUNDARY / EXTERNAL_PENDING | Canonical reason codes and replay checkpoints exist; external uptime/alert/custody proof is not present |
+| Deployment | INCOMPLETE_EXTERNAL | Sealed prebootstrap, portable WORM/CAS verification, launch session, and per-order runtime chain exist locally, but the checked-in central lock is false and actual Windows LIVE provider callbacks/release, provider conformance, real WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, and backup/restore are not accepted |
+| Frontend | OUTSIDE_CHANGE_SCOPE / BLOCKED | No frontend source was changed by this milestone. Windows still lacks verified Node.js LTS; the running old API and uncommitted new frontend use different API/WebSocket prefixes, and the latest refactor test run is not green |
+| Observability | PASS_BOUNDARY / EXTERNAL_PENDING | Canonical reason codes, pre-dispatch records, execution result bindings, and replay checkpoints exist; external uptime/alert/custody and first real canary evidence are not present |
 
 ## Automated evidence
 
@@ -77,13 +83,17 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Focused runtime launch-session tests | 6 PASS normal; 6 PASS optimized |
 | Production-runtime integration spec validator (`--strict`) | 100/100; 0 errors/warnings and one informational TypeScript-N/A note |
 | Production-runtime integration tests | 7 PASS normal; 7 PASS optimized |
+| Per-order LIVE execution spec validator (`--strict`) | 100/100; 0 errors, warnings, or informational findings |
+| Focused per-order authorization tests | 8 PASS normal; 8 PASS optimized |
+| Live/Windows execution regression cluster | 196 PASS normal; 196 PASS optimized with three intentional skips |
 | Related bootstrap/supervisor/release regression | 122 PASS normal; 121 PASS plus one intentional optimized skip |
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage regression | 81 PASS in both normal and optimized modes |
-| Full Python regression | 1,848 PASS, 3 platform skips |
-| Full Python optimized regression | 1,848 PASS, 6 skips |
-| Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` and `SAFE_TO_DEMO_AUTO_ORDER` remain false; no MT5, order, credential, network, filesystem-write, or process-launch primitive in the runtime launch-session module |
+| Full Python regression | 1,856 tests OK, 3 platform skips |
+| Full Python optimized regression | 1,856 tests OK, 6 skips |
+| Static quality checks | Ruff, Python compile, and scoped `git diff --check` PASS |
+| Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` and `SAFE_TO_DEMO_AUTO_ORDER` remain false; focused tests use fake MT5 only; no credential, network, Windows task, real MT5 initialization, or broker effect occurred |
 
 The generic repository scanner reported `DO_NOT_SHIP` with ten critical
 items. Four automated categories were dominated by scanner false positives in
@@ -138,9 +148,18 @@ changed-source findings.
 10. The sealed launch session previously stopped before the effect-capable
     production runtime. LIVE config/bootstrap/composition/supervisor now
     require exact candidate and session authority, recheck currentness before
-    effects, avoid the DEMO stage provider, and allow only `NO_ACTION` cycles.
-    Preflight relock/expiry uses a local-only critical latch so it cannot call
-    external checkpoint, reconciliation, decision, or broker ports.
+    effects, avoid the DEMO stage provider, and isolate LIVE decisions from
+    DEMO/DEMO_AUTO callbacks. Preflight relock/expiry uses a local-only
+    critical latch so it cannot call external checkpoint, reconciliation,
+    decision, or broker ports.
+11. The runtime previously had no authority that could safely cross from a
+    LIVE supervisor decision to `order_send`. A new factory-sealed one-second
+    capability binds exactly one XAUUSD/0.01 intent and its complete fresh
+    evidence chain. Supervisor pre-dispatch, coordinator journal payload,
+    runtime authorization, durable submission lease, service boundary, and
+    adapter all bind the same hash and revalidate it through the immediate
+    pre-send boundary. Fake-MT5 integration proves one send and replay denial;
+    the checked-in central lock still prevents production minting.
 
 ## Blocking facts
 
@@ -151,9 +170,16 @@ changed-source findings.
 - No actual independent WORM admission upload/readback or atomic external
   CAS/nonce ledger receipt has been accepted; local test doubles are not
   external custody evidence.
-- No separately specified or reviewed per-order LIVE execution boundary
-  exists; the integrated supervisor deliberately rejects every non-NO_ACTION
-  LIVE decision before execution callbacks.
+- No exact Windows LIVE factory/provider release supplies and externally
+  attests the three LIVE callbacks. Canonical Windows factory-template v1
+  remains DEMO-only and cannot be relabeled as LIVE.
+- No real LIVE canary order, broker acknowledgement, reconciliation evidence,
+  rollback drill, or operator observation exists; fake-MT5 success is source
+  verification only.
+- The running Windows dashboard API reports a stale snapshot with zero
+  WebSocket clients. Its old `/api/health` and `/ws/v1/dashboard` contract does
+  not match the uncommitted frontend refactor's `/api/v1` and `/api/v1/ws`
+  configuration; that refactor's tests are also not green.
 - The central live lock remains false and must not change in this milestone.
 
 Therefore the final verdict is **DO NOT SHIP LIVE TRADING**.

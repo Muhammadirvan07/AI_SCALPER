@@ -45,7 +45,7 @@ from .demo_auto_session_capability import (
     DemoAutoSessionDispatchVerification,
     DemoAutoSessionLease,
 )
-from .health import RuntimeHealthDecision, RuntimeHealthFacts, evaluate_runtime_health
+from .health import RuntimeHealthFacts, evaluate_runtime_health
 from .journal import (
     DuplicateIntentError,
     ExecutionJournal,
@@ -56,9 +56,15 @@ from .journal import (
     SubmissionLimitError,
 )
 from .market_guard import MarketGuardDecision
+from .live_canary_order_authorization import (
+    LiveCanaryOrderAuthorization,
+    LiveCanaryOrderAuthorizationError,
+    is_live_canary_order_authorization,
+    verify_live_canary_order_execution_binding,
+)
+from .live_canary_runtime_authority import is_live_canary_runtime_candidate
 from .model_governance import (
     ModelArtifactManifest,
-    ModelBindingDecision,
     verify_decision_model,
 )
 from .mt5_adapter import (
@@ -98,6 +104,7 @@ def _utc_now() -> datetime:
 
 def _promotion_champion_expectations(
     ipc_input: DemoAutoIPCRiskIntentInput | None,
+    live_candidate: Any | None = None,
 ) -> dict[str, str | None]:
     """Return only independently stage-bound champion identities.
 
@@ -106,6 +113,22 @@ def _promotion_champion_expectations(
     than allowing the signed receipt to select its own expected champion.
     """
 
+    if is_live_canary_runtime_candidate(live_candidate):
+        return {
+            "expected_champion_archive_sha256": (
+                live_candidate.champion_archive_sha256
+            ),
+            "expected_champion_package_identity_sha256": (
+                live_candidate.champion_package_identity_sha256
+            ),
+            "expected_champion_training_snapshot_sha256": (
+                live_candidate.champion_training_snapshot_sha256
+            ),
+            "expected_champion_git_tree": live_candidate.champion_git_tree,
+            "expected_champion_runtime_binding_sha256": (
+                live_candidate.champion_runtime_binding_sha256
+            ),
+        }
     stage = (
         ipc_input.stage_binding
         if type(ipc_input) is DemoAutoIPCRiskIntentInput
@@ -510,6 +533,9 @@ class ExecutionCoordinator:
         demo_auto_session_dispatch_verification: (
             DemoAutoSessionDispatchVerification | None
         ) = None,
+        live_candidate: Any | None = None,
+        live_launch_session: Any | None = None,
+        live_order_authorization: LiveCanaryOrderAuthorization | None = None,
         now: datetime | None = None,
     ) -> ExecutionOutcome:
         """Evaluate, preflight, and at most once submit one immutable intent."""
@@ -527,6 +553,42 @@ class ExecutionCoordinator:
             raise TypeError("market_guard must be an exact evaluated decision")
         if type(model_artifact) is not ModelArtifactManifest:
             raise TypeError("model_artifact must be exact ModelArtifactManifest")
+        live_inputs = (
+            live_candidate,
+            live_launch_session,
+            live_order_authorization,
+        )
+        if intent.mode == "LIVE":
+            try:
+                verify_live_canary_order_execution_binding(
+                    live_order_authorization,
+                    candidate=live_candidate,
+                    launch_session=live_launch_session,
+                    intent=intent,
+                    broker_symbol=broker_symbol,
+                    broker_spec=broker_spec,
+                    now=now,
+                )
+            except (LiveCanaryOrderAuthorizationError, TypeError, ValueError) as exc:
+                raise TypeError(
+                    "LIVE execution requires exact current per-order authority"
+                ) from exc
+        elif any(value is not None for value in live_inputs):
+            raise TypeError("LIVE authority is forbidden for non-LIVE execution")
+
+        def verify_live_authority_at(check_now: datetime) -> None:
+            if intent.mode != "LIVE":
+                return
+            verify_live_canary_order_execution_binding(
+                live_order_authorization,
+                candidate=live_candidate,
+                launch_session=live_launch_session,
+                intent=intent,
+                broker_symbol=broker_symbol,
+                broker_spec=broker_spec,
+                now=check_now,
+            )
+
         trusted_context = require_verified_risk_context(
             risk_context,
             now=now,
@@ -608,7 +670,10 @@ class ExecutionCoordinator:
                 expected_model_artifact_sha256=(
                     intent.decision.model_artifact_sha256
                 ),
-                **_promotion_champion_expectations(demo_auto_ipc_input),
+                **_promotion_champion_expectations(
+                    demo_auto_ipc_input,
+                    live_candidate,
+                ),
             )
         promotion_evidence_sha256 = (
             promotion_validation.receipt_sha256
@@ -701,6 +766,11 @@ class ExecutionCoordinator:
                 demo_auto_session_dispatch_verification.content_sha256
                 if type(demo_auto_session_dispatch_verification)
                 is DemoAutoSessionDispatchVerification
+                else None
+            ),
+            "live_canary_order_authorization_sha256": (
+                live_order_authorization.content_sha256
+                if is_live_canary_order_authorization(live_order_authorization)
                 else None
             ),
         }
@@ -1083,7 +1153,10 @@ class ExecutionCoordinator:
                 expected_model_artifact_sha256=(
                     intent.decision.model_artifact_sha256
                 ),
-                **_promotion_champion_expectations(demo_auto_ipc_input),
+                **_promotion_champion_expectations(
+                    demo_auto_ipc_input,
+                    live_candidate,
+                ),
             )
         refreshed_reasons: list[str] = []
         refreshed_mode_allowed, refreshed_mode_reasons = (
@@ -1109,6 +1182,17 @@ class ExecutionCoordinator:
             != promotion_evidence_sha256
         ):
             refreshed_reasons.append("PROMOTION_EVIDENCE_STALE_AT_RESERVATION")
+        if intent.mode == "LIVE":
+            try:
+                verify_live_authority_at(reserve_now)
+            except (
+                LiveCanaryOrderAuthorizationError,
+                TypeError,
+                ValueError,
+            ):
+                refreshed_reasons.append(
+                    "LIVE_CANARY_ORDER_AUTHORITY_STALE_AT_RESERVATION"
+                )
         if intent.mode == "DEMO_AUTO" and refreshed_mode_allowed:
             refreshed_reasons.extend(
                 _demo_auto_control_reasons(
@@ -1160,6 +1244,147 @@ class ExecutionCoordinator:
         # Therefore every DEMO_AUTO authority that can fail without broker facts
         # is rechecked while the intent is still PREFLIGHT_PASSED.  Only a fully
         # current control set may acquire the global submission reservation.
+        if intent.mode == "LIVE":
+            final_live_now = self._trusted_now()
+            final_live_reasons: list[str] = []
+            final_live_mode_allowed, final_live_mode_reasons = (
+                execution_policy.execution_mode_policy_decision(intent.mode)
+            )
+            if not final_live_mode_allowed:
+                final_live_reasons.extend(final_live_mode_reasons)
+            final_live_arm = read_environment_arm(
+                intent.account_id,
+                intent.server,
+                intent.mode,
+                final_live_now,
+                self.journal.journal_sha256,
+            )
+            if (
+                not final_live_arm.armed
+                or final_live_arm.binding_sha256
+                != refreshed_arm_decision.binding_sha256
+                or final_live_arm.observed_value_sha256
+                != refreshed_arm_decision.observed_value_sha256
+            ):
+                final_live_reasons.append(
+                    "LIVE_CANARY_ARM_STALE_BEFORE_RESERVATION"
+                )
+            try:
+                final_live_permit = validate_permit(
+                    permit,
+                    self.permit_secret_provider(),
+                    now=final_live_now,
+                    expected_mode=intent.mode,
+                    expected_account_alias=intent.account_id,
+                    expected_server=intent.server,
+                    expected_symbols=(intent.symbol,),
+                    expected_commit_sha=intent.decision.commit_sha,
+                    expected_config_sha256=intent.decision.config_sha256,
+                    expected_model_artifact_sha256=(
+                        intent.decision.model_artifact_sha256
+                    ),
+                    expected_journal_sha256=self.journal.journal_sha256,
+                    expected_promotion_evidence_sha256=(
+                        promotion_evidence_sha256
+                    ),
+                )
+            except (TypeError, ValueError):
+                final_live_permit = None
+            if (
+                final_live_permit is None
+                or not final_live_permit.valid
+                or final_live_permit.permit_id != intent.permit_id
+            ):
+                final_live_reasons.append(
+                    "LIVE_CANARY_PERMIT_STALE_BEFORE_RESERVATION"
+                )
+            final_live_promotion = None
+            if (
+                type(promotion_evidence) is PromotionEvidenceReceipt
+                and self.promotion_evidence_key_provider is not None
+            ):
+                final_live_promotion = validate_promotion_evidence_receipt(
+                    promotion_evidence,
+                    self.promotion_evidence_key_provider,
+                    now=final_live_now,
+                    expected_mode=intent.mode,
+                    expected_account_alias=intent.account_id,
+                    expected_server=intent.server,
+                    expected_journal_sha256=self.journal.journal_sha256,
+                    expected_symbol=intent.symbol,
+                    expected_strategy=intent.decision.strategy,
+                    expected_commit_sha=intent.decision.commit_sha,
+                    expected_config_sha256=intent.decision.config_sha256,
+                    expected_model_artifact_sha256=(
+                        intent.decision.model_artifact_sha256
+                    ),
+                    **_promotion_champion_expectations(
+                        demo_auto_ipc_input,
+                        live_candidate,
+                    ),
+                )
+            if (
+                final_live_promotion is None
+                or not final_live_promotion.valid
+                or final_live_promotion.receipt_sha256
+                != promotion_evidence_sha256
+            ):
+                final_live_reasons.append(
+                    "LIVE_CANARY_PROMOTION_STALE_BEFORE_RESERVATION"
+                )
+            try:
+                verify_live_authority_at(final_live_now)
+            except (
+                LiveCanaryOrderAuthorizationError,
+                TypeError,
+                ValueError,
+            ):
+                final_live_reasons.append(
+                    "LIVE_CANARY_ORDER_AUTHORITY_STALE_BEFORE_RESERVATION"
+                )
+            final_live_record = self.journal.get_intent(intent.intent_id)
+            expected_live_authorization_sha256 = (
+                live_order_authorization.content_sha256
+                if is_live_canary_order_authorization(live_order_authorization)
+                else None
+            )
+            if (
+                final_live_record is None
+                or final_live_record.decision_id != intent.decision.snapshot_id
+                or final_live_record.state != "PREFLIGHT_PASSED"
+                or final_live_record.payload.get(
+                    "live_canary_order_authorization_sha256"
+                )
+                != expected_live_authorization_sha256
+            ):
+                final_live_reasons.append(
+                    "LIVE_CANARY_JOURNAL_BINDING_MISMATCH"
+                )
+            if final_live_reasons:
+                reason_codes = tuple(sorted(set(final_live_reasons)))
+                rejected = self.journal.transition(
+                    intent.intent_id,
+                    "REJECTED",
+                    expected_state="PREFLIGHT_PASSED",
+                    details={
+                        "reason_codes": list(reason_codes),
+                        "retry_allowed": False,
+                        "broker_submit_called": False,
+                        "reconciliation_required": False,
+                    },
+                    occurred_at=final_live_now,
+                    last_error="LIVE_CANARY_FINAL_DISPATCH_REJECTED",
+                )
+                return self._outcome(
+                    rejected,
+                    status="SUBMISSION_HELD_BEFORE_SEND",
+                    reasons=reason_codes,
+                    risk=risk,
+                )
+            refreshed_arm_decision = final_live_arm
+            refreshed_validation = final_live_permit
+            refreshed_promotion_validation = final_live_promotion
+
         if intent.mode == "DEMO_AUTO":
             final_check_now = self._trusted_now()
             final_reasons: list[str] = list(
@@ -1242,7 +1467,10 @@ class ExecutionCoordinator:
                     expected_model_artifact_sha256=(
                         intent.decision.model_artifact_sha256
                     ),
-                    **_promotion_champion_expectations(demo_auto_ipc_input),
+                    **_promotion_champion_expectations(
+                        demo_auto_ipc_input,
+                        live_candidate,
+                    ),
                 )
             if (
                 final_promotion_validation is None
@@ -1408,7 +1636,11 @@ class ExecutionCoordinator:
                 ),
                 risk=risk,
             )
+        authorization_now = (
+            self._trusted_now() if intent.mode == "LIVE" else reserve_now
+        )
         try:
+            verify_live_authority_at(authorization_now)
             gate_capability = _mint_execution_gate_capability(
                 intent=intent,
                 risk_decision=risk,
@@ -1420,7 +1652,7 @@ class ExecutionCoordinator:
                 broker_spec=broker_spec,
                 reservation=record,
                 journal_sha256=self.journal.journal_sha256,
-                now=reserve_now,
+                now=authorization_now,
             )
             authorization = build_runtime_authorization(
                 intent=intent,
@@ -1433,7 +1665,15 @@ class ExecutionCoordinator:
                 journal_sha256=self.journal.journal_sha256,
                 environment_arm_decision=refreshed_arm_decision,
                 manual_demo_approval_validation=refreshed_manual_validation,
-                now=reserve_now,
+                live_canary_order_authorization_sha256=(
+                    live_order_authorization.content_sha256
+                    if intent.mode == "LIVE"
+                    and is_live_canary_order_authorization(
+                        live_order_authorization
+                    )
+                    else None
+                ),
+                now=authorization_now,
                 additional_valid_until_utc=(
                     min(
                         demo_auto_ipc_input.valid_until_utc,
@@ -1448,7 +1688,19 @@ class ExecutionCoordinator:
                     is DemoAutoSessionDispatchVerification
                     and type(refreshed_promotion_validation)
                     is PromotionEvidenceValidation
-                    else None
+                    else (
+                        min(
+                            live_order_authorization.valid_until_utc,
+                            refreshed_promotion_validation.expires_at,
+                        )
+                        if intent.mode == "LIVE"
+                        and is_live_canary_order_authorization(
+                            live_order_authorization
+                        )
+                        and type(refreshed_promotion_validation)
+                        is PromotionEvidenceValidation
+                        else None
+                    )
                 ),
             )
         except (ExecutionLockedError, TypeError, ValueError) as exc:
@@ -1506,10 +1758,21 @@ class ExecutionCoordinator:
                 risk=risk,
             )
         submission_now = self._trusted_now()
+        live_authority_current = True
+        if intent.mode == "LIVE":
+            try:
+                verify_live_authority_at(submission_now)
+            except (
+                LiveCanaryOrderAuthorizationError,
+                TypeError,
+                ValueError,
+            ):
+                live_authority_current = False
         if (
             not authorization.allows_order_send(now=submission_now)
             or submission_now >= preflight.valid_until_utc
             or submission_now >= intent.expires_at
+            or not live_authority_current
         ):
             if intent.mode == "DEMO_AUTO":
                 assert type(demo_auto_session_store) is DemoAutoSessionCapabilityStore
@@ -1648,7 +1911,8 @@ class ExecutionCoordinator:
                                     intent.decision.model_artifact_sha256
                                 ),
                                 **_promotion_champion_expectations(
-                                    demo_auto_ipc_input
+                                    demo_auto_ipc_input,
+                                    live_candidate,
                                 ),
                             )
                             if type(promotion_evidence)
@@ -1693,13 +1957,37 @@ class ExecutionCoordinator:
                         raise ExecutionLockedError(
                             ",".join(sorted(set(send_reasons)))
                         )
-                receipt = self.adapter.submit(
-                    intent,
-                    preflight,
-                    authorization,
-                    submission_lease,
-                    now=submission_now,
-                )
+                if intent.mode == "LIVE":
+                    final_live_send_now = self._trusted_now()
+                    try:
+                        verify_live_authority_at(final_live_send_now)
+                    except (
+                        LiveCanaryOrderAuthorizationError,
+                        TypeError,
+                        ValueError,
+                    ) as exc:
+                        raise ExecutionLockedError(
+                            "LIVE canary authority stale at final journal guard"
+                        ) from exc
+                    receipt = self.adapter.submit(
+                        intent,
+                        preflight,
+                        authorization,
+                        submission_lease,
+                        live_candidate=live_candidate,
+                        live_launch_session=live_launch_session,
+                        live_order_authorization=live_order_authorization,
+                        live_broker_spec=broker_spec,
+                        now=final_live_send_now,
+                    )
+                else:
+                    receipt = self.adapter.submit(
+                        intent,
+                        preflight,
+                        authorization,
+                        submission_lease,
+                        now=submission_now,
+                    )
         except KillSwitchLatchedError as exc:
             if intent.mode == "DEMO_AUTO":
                 assert type(demo_auto_session_store) is DemoAutoSessionCapabilityStore

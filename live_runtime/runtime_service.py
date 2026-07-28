@@ -27,6 +27,11 @@ from .contracts import (
 from .executor import ExecutionOutcome
 from .health import RuntimeHealthFacts, evaluate_runtime_health
 from .journal import ExecutionJournal
+from .live_canary_order_authorization import (
+    LiveCanaryOrderAuthorization,
+    LiveCanaryPreparedOrder,
+    verify_live_canary_order_execution_binding,
+)
 from .market_guard import MarketGuardDecision
 from .model_governance import ModelArtifactManifest, verify_decision_model
 from .mt5_adapter import BrokerSizingQuote
@@ -1139,6 +1144,74 @@ class LiveRuntimeService:
             decision_snapshot_id=decision.snapshot_id,
             sizing_quote=quote,
             intent=record.intent,
+            execution_outcome=outcome,
+        )
+
+    def execute_prepared_live_canary(
+        self,
+        *,
+        prepared_order: LiveCanaryPreparedOrder,
+        live_candidate: object,
+        live_launch_session: object,
+        live_order_authorization: LiveCanaryOrderAuthorization,
+        owner_id: str,
+        fence_token: int,
+        now: datetime | None = None,
+    ) -> RuntimeCycleResult:
+        """Delegate one verifier-authorized LIVE canary intent without resizing."""
+
+        checked_at = self._trusted_now(now)
+        if type(prepared_order) is not LiveCanaryPreparedOrder:
+            raise TypeError("prepared_order must be an exact LiveCanaryPreparedOrder")
+        if type(live_order_authorization) is not LiveCanaryOrderAuthorization:
+            raise TypeError(
+                "live_order_authorization must be exact verifier-sealed authority"
+            )
+        if isinstance(fence_token, bool) or not isinstance(fence_token, int):
+            raise TypeError("fence_token must be an integer")
+        normalized_owner = str(owner_id or "").strip()
+        if not normalized_owner or fence_token < 0:
+            raise ValueError("owner_id and nonnegative fence_token are required")
+        verify_live_canary_order_execution_binding(
+            live_order_authorization,
+            candidate=live_candidate,
+            launch_session=live_launch_session,
+            intent=prepared_order.intent,
+            broker_symbol=prepared_order.broker_symbol,
+            broker_spec=prepared_order.broker_spec,
+            now=checked_at,
+        )
+        outcome = self.coordinator.execute_once(
+            intent=prepared_order.intent,
+            broker_symbol=prepared_order.broker_symbol,
+            broker_spec=prepared_order.broker_spec,
+            risk_context=prepared_order.risk_context,
+            permit=prepared_order.permit,
+            health_facts=prepared_order.health_facts,
+            market_guard=prepared_order.market_guard,
+            model_artifact=prepared_order.model_artifact,
+            owner_id=normalized_owner,
+            fence_token=fence_token,
+            manual_demo_approval=None,
+            promotion_evidence=prepared_order.promotion_evidence,
+            live_candidate=live_candidate,
+            live_launch_session=live_launch_session,
+            live_order_authorization=live_order_authorization,
+            now=checked_at,
+        )
+        if type(outcome) is not ExecutionOutcome:
+            raise RuntimeCompositionError(
+                "execution coordinator must return an exact ExecutionOutcome"
+            )
+        if outcome.intent_id != prepared_order.intent.intent_id:
+            raise RuntimeCompositionError(
+                "execution outcome is bound to another LIVE canary intent"
+            )
+        return RuntimeCycleResult(
+            status=outcome.status,
+            reason_codes=outcome.reason_codes,
+            decision_snapshot_id=prepared_order.intent.decision.snapshot_id,
+            intent=prepared_order.intent,
             execution_outcome=outcome,
         )
 

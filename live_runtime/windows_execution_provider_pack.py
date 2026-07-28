@@ -62,6 +62,13 @@ SAFE_TO_DEMO_AUTO_ORDER = False
 MAX_LOT = 0.01
 PROMOTION_ELIGIBLE = False
 PRODUCTION_EXECUTION_READY = False
+_V1_UNMATERIALIZED_LIVE_CANARY_PORTS = frozenset(
+    {
+        "live_prepared_order_provider",
+        "live_order_authorization_provider",
+        "live_execution_cycle_provider",
+    }
+)
 EXECUTION_CREDENTIAL_TARGET_PREFIX = (
     "AI_SCALPER/WINDOWS_SERVICE/EXECUTION"
 )
@@ -1196,10 +1203,17 @@ def build_windows_execution_factory_result(
         for item in fields(ProductionRuntimePorts)
         if item.name != "mt5_module"
     )
-    if any(name not in values for name in runtime_port_names):
+    missing_runtime_ports = {
+        name for name in runtime_port_names if name not in values
+    }
+    if not missing_runtime_ports.issubset(
+        _V1_UNMATERIALIZED_LIVE_CANARY_PORTS
+    ):
         raise WindowsExecutionProviderError(
             "EXECUTION_RUNTIME_PORT_SET_INVALID"
         )
+    for name in _V1_UNMATERIALIZED_LIVE_CANARY_PORTS:
+        values.setdefault(name, None)
     try:
         ports = ProductionRuntimePorts(
             mt5_module=None,

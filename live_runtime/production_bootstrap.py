@@ -22,7 +22,6 @@ from types import MappingProxyType
 from typing import Any, Callable, Mapping, Sequence
 
 import execution_policy
-from execution_policy import LIVE_ALLOWED, SAFE_TO_DEMO_AUTO_ORDER
 
 from .contracts import (
     CanonicalContract,
@@ -46,6 +45,10 @@ from .live_canary_runtime_authority import (
     LiveCanaryRuntimeLaunchSessionError,
     is_live_canary_runtime_candidate,
     is_live_canary_runtime_launch_session,
+)
+from .live_canary_order_authorization import (
+    LiveCanaryOrderAuthorization,
+    LiveCanaryPreparedOrder,
 )
 from .mt5_adapter import MT5Adapter
 from .mt5_module_attestation import (
@@ -72,6 +75,7 @@ from .runtime_service import LiveRuntimeService
 from .runtime_supervisor import (
     RuntimeDemoAutoExecutionResult,
     RuntimeManualDemoExecutionResult,
+    RuntimeLiveCanaryExecutionResult,
     RuntimeNewsGuardReceipt,
     RuntimeStageAuthorizationPorts,
     RuntimeSupervisor,
@@ -967,6 +971,15 @@ class ProductionRuntimePorts:
         [RuntimeSupervisorDecision, object], object
     ] | None = None
     demo_auto_execution_cycle_provider: Callable[..., RuntimeDemoAutoExecutionResult] | None = None
+    live_prepared_order_provider: Callable[
+        [RuntimeSupervisorDecision], LiveCanaryPreparedOrder
+    ] | None = None
+    live_order_authorization_provider: Callable[
+        ..., LiveCanaryOrderAuthorization
+    ] | None = None
+    live_execution_cycle_provider: Callable[
+        ..., RuntimeLiveCanaryExecutionResult
+    ] | None = None
 
     def __post_init__(self) -> None:
         if self.mt5_module is not None:
@@ -1016,6 +1029,9 @@ class ProductionRuntimePorts:
             "demo_auto_promotion_validation_provider",
             "demo_auto_environment_arm_provider",
             "demo_auto_execution_cycle_provider",
+            "live_prepared_order_provider",
+            "live_order_authorization_provider",
+            "live_execution_cycle_provider",
         ):
             value = getattr(self, name)
             if value is not None:
@@ -1215,7 +1231,34 @@ def _validate_bindings(
             live_candidate=live_candidate,
             live_launch_session=live_launch_session,
         )
+        required_live_ports = (
+            "promotion_evidence_key_provider",
+            "live_prepared_order_provider",
+            "live_order_authorization_provider",
+            "live_execution_cycle_provider",
+        )
+        missing_live_ports = tuple(
+            name
+            for name in required_live_ports
+            if not callable(getattr(ports, name))
+        )
+        if missing_live_ports:
+            raise ProductionBootstrapError(
+                "LIVE_CANARY_RUNTIME_PORTS_MISSING:"
+                + ",".join(missing_live_ports)
+            )
     else:
+        if any(
+            value is not None
+            for value in (
+                ports.live_prepared_order_provider,
+                ports.live_order_authorization_provider,
+                ports.live_execution_cycle_provider,
+            )
+        ):
+            raise ProductionBootstrapError(
+                "LIVE_CANARY_RUNTIME_PORTS_FORBIDDEN_OUTSIDE_LIVE"
+            )
         if type(stage) is not StageBinding:
             raise ProductionBootstrapError("STAGE_BINDING_NOT_EXACT")
         if (
@@ -1410,8 +1453,9 @@ def validate_production_bootstrap_contract(
     else:
         blockers.extend(
             (
-                "LIVE_EXECUTION_PATH_NOT_IMPLEMENTED",
+                "EXTERNAL_LIVE_PREPARED_ORDER_PROVIDER_REQUIRED",
                 "LIVE_PER_ORDER_AUTHORIZATION_REQUIRED",
+                "EXTERNAL_LIVE_EXECUTION_CYCLE_PROVIDER_REQUIRED",
                 "LIVE_SIGNED_PROMOTION_EVIDENCE_REQUIRED",
             )
         )
@@ -2379,6 +2423,19 @@ class ProductionRuntimeBootstrap:
                 )
             return result
 
+        def execute_live_canary_cycle(**kwargs: object) -> RuntimeLiveCanaryExecutionResult:
+            provider = self.ports.live_execution_cycle_provider
+            if not callable(provider):
+                raise ProductionBootstrapError(
+                    "LIVE_EXECUTION_CYCLE_PROVIDER_REQUIRED"
+                )
+            result = provider(runtime_service=runtime_service, **kwargs)
+            if type(result) is not RuntimeLiveCanaryExecutionResult:
+                raise ProductionBootstrapError(
+                    "LIVE_EXECUTION_CYCLE_RISK_EVIDENCE_INVALID"
+                )
+            return result
+
         def journal_checkpoint_verifier(
             checkpoint: ExecutionJournalCheckpoint,
             prior_checkpoint: ExecutionJournalCheckpoint | None,
@@ -2470,6 +2527,24 @@ class ProductionRuntimeBootstrap:
             ),
             demo_auto_execution_service=(
                 execute_demo_auto_cycle if self.config.mode == "DEMO_AUTO" else None
+            ),
+            live_candidate=(
+                self.live_candidate if self.config.mode == "LIVE" else None
+            ),
+            live_prepared_order_provider=(
+                self.ports.live_prepared_order_provider
+                if self.config.mode == "LIVE"
+                else None
+            ),
+            live_order_authorization_provider=(
+                self.ports.live_order_authorization_provider
+                if self.config.mode == "LIVE"
+                else None
+            ),
+            live_execution_service=(
+                execute_live_canary_cycle
+                if self.config.mode == "LIVE"
+                else None
             ),
             key_id=self.config.supervisor_key_id,
             key_provider=supervisor_key_provider,

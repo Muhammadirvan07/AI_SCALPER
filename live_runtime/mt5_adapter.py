@@ -50,6 +50,11 @@ from live_runtime.risk import (
     absolute_risk_cap_usd,
 )
 from live_runtime.market_guard import MarketGuardDecision
+from live_runtime.live_canary_order_authorization import (
+    LiveCanaryOrderAuthorization,
+    LiveCanaryOrderAuthorizationError,
+    verify_live_canary_order_execution_binding,
+)
 from live_runtime.model_governance import ModelBindingDecision
 from live_runtime.risk_context_factory import VerifiedRiskContext
 from live_runtime.mt5_module_attestation import (
@@ -58,7 +63,6 @@ from live_runtime.mt5_module_attestation import (
     require_clean_mt5_import_namespace,
     verify_imported_mt5_module,
 )
-
 
 UTC = timezone.utc
 DEFAULT_MAX_TICK_AGE_SECONDS = 10
@@ -237,6 +241,8 @@ class RuntimeAuthorization:
             allowed, _reason_codes = (
                 execution_policy.execution_mode_policy_decision(mode)
             )
+            if mode == "LIVE":
+                return allowed and self.manual_demo_approval_sha256 != "0" * 64
             return allowed
         if mode == "DEMO":
             return self.manual_demo_approval_sha256 != "0" * 64
@@ -293,6 +299,7 @@ def build_runtime_authorization(
     journal_sha256: str,
     environment_arm_decision: EnvironmentArmDecision,
     manual_demo_approval_validation: ManualDemoApprovalValidation | None,
+    live_canary_order_authorization_sha256: str | None = None,
     now: datetime,
     additional_valid_until_utc: datetime | None = None,
 ) -> RuntimeAuthorization:
@@ -350,6 +357,25 @@ def build_runtime_authorization(
         if not manual_validation_bound:
             raise ExecutionLockedError("manual demo approval is stale or mismatched")
         manual_approval_sha256 = validation.content_sha256
+    if intent.mode == "LIVE":
+        try:
+            live_authorization_sha256 = require_hash(
+                "live_canary_order_authorization_sha256",
+                live_canary_order_authorization_sha256,
+            )
+        except (TypeError, ValueError) as exc:
+            raise ExecutionLockedError(
+                "LIVE runtime authorization requires per-order authority"
+            ) from exc
+        if live_authorization_sha256 == "0" * 64:
+            raise ExecutionLockedError(
+                "LIVE per-order authority hash cannot be zero"
+            )
+        manual_approval_sha256 = live_authorization_sha256
+    elif live_canary_order_authorization_sha256 is not None:
+        raise ExecutionLockedError(
+            "LIVE per-order authority is forbidden for non-LIVE mode"
+        )
     bindings_match = (
         permit_validation.valid
         and intent.permit_id == permit_validation.permit_id
@@ -391,6 +417,11 @@ def build_runtime_authorization(
         == broker_spec.content_sha256
         and reservation.payload.get("verified_risk_context_sha256")
         == verified_risk_context.content_sha256
+        and (
+            intent.mode != "LIVE"
+            or reservation.payload.get("live_canary_order_authorization_sha256")
+            == manual_approval_sha256
+        )
     )
     if not risk_matches or not broker_matches or not reservation_matches:
         raise ExecutionLockedError("risk, broker, or journal reservation binding failed")
@@ -424,10 +455,10 @@ def build_runtime_authorization(
         verified_risk_context.valid_until_utc,
         now + timedelta(seconds=MAX_AUTHORIZATION_AGE_SECONDS),
     )
-    if intent.mode == "DEMO_AUTO":
+    if intent.mode in {"DEMO_AUTO", "LIVE"}:
         if additional_valid_until_utc is None:
             raise ExecutionLockedError(
-                "DEMO_AUTO authorization requires the aggregate control expiry"
+                f"{intent.mode} authorization requires the aggregate control expiry"
             )
         aggregate_expiry = require_utc(
             "additional_valid_until_utc",
@@ -435,7 +466,7 @@ def build_runtime_authorization(
         )
         if aggregate_expiry <= now:
             raise ExecutionLockedError(
-                "DEMO_AUTO aggregate control expiry is stale"
+                f"{intent.mode} aggregate control expiry is stale"
             )
         authorization_expiry = min(authorization_expiry, aggregate_expiry)
     if intent.mode == "DEMO" and manual_demo_approval_validation is not None:
@@ -1674,6 +1705,10 @@ class MT5Adapter:
         authorization: RuntimeAuthorization,
         submission_lease: DurableSubmissionLease,
         *,
+        live_candidate: Any | None = None,
+        live_launch_session: Any | None = None,
+        live_order_authorization: LiveCanaryOrderAuthorization | None = None,
+        live_broker_spec: BrokerSpec | None = None,
         now: datetime | None = None,
     ) -> ExecutionReceipt:
         self._require_initialized()
@@ -1684,6 +1719,42 @@ class MT5Adapter:
             raise ExecutionLockedError(
                 "durable one-use journal submission lease is required"
             )
+        if type(preflight) is not MT5Preflight:
+            raise PreflightRejectedError("validated MT5 preflight is required")
+        live_inputs = (
+            live_candidate,
+            live_launch_session,
+            live_order_authorization,
+            live_broker_spec,
+        )
+        if intent.mode == "LIVE":
+            try:
+                checked_live_authorization = (
+                    verify_live_canary_order_execution_binding(
+                        live_order_authorization,
+                        candidate=live_candidate,
+                        launch_session=live_launch_session,
+                        intent=intent,
+                        broker_symbol=preflight.broker_symbol,
+                        broker_spec=live_broker_spec,
+                        now=now,
+                    )
+                )
+            except (LiveCanaryOrderAuthorizationError, TypeError, ValueError) as exc:
+                raise ExecutionLockedError(
+                    "LIVE per-order authorization is stale or mismatched"
+                ) from exc
+            if (
+                authorization.manual_demo_approval_sha256
+                != checked_live_authorization.content_sha256
+            ):
+                raise ExecutionLockedError(
+                    "runtime authorization does not bind LIVE per-order authority"
+                )
+        elif any(value is not None for value in live_inputs):
+            raise ExecutionLockedError(
+                "LIVE-only authority is forbidden for non-LIVE submission"
+            )
         if (
             not authorization.allows_order_send(now=now)
             or authorization.mode.upper() != intent.mode
@@ -1691,8 +1762,6 @@ class MT5Adapter:
             or authorization.permit_id != intent.permit_id
         ):
             raise ExecutionLockedError("runtime authorization does not allow order_send")
-        if type(preflight) is not MT5Preflight:
-            raise PreflightRejectedError("validated MT5 preflight is required")
         if (
             not preflight.passed
             or preflight.intent_id != intent.intent_id
@@ -1741,6 +1810,25 @@ class MT5Adapter:
         with self._authorization_lock:
             final_stop_risk_cash = preflight.estimated_stop_risk_cash
             final_now = self._trusted_now()
+            if intent.mode == "LIVE":
+                try:
+                    verify_live_canary_order_execution_binding(
+                        live_order_authorization,
+                        candidate=live_candidate,
+                        launch_session=live_launch_session,
+                        intent=intent,
+                        broker_symbol=preflight.broker_symbol,
+                        broker_spec=live_broker_spec,
+                        now=final_now,
+                    )
+                except (
+                    LiveCanaryOrderAuthorizationError,
+                    TypeError,
+                    ValueError,
+                ) as exc:
+                    raise PreflightRejectedError(
+                        "LIVE authority expired at order_send boundary"
+                    ) from exc
             if (
                 not authorization.allows_order_send(now=final_now)
                 or final_now >= preflight.valid_until_utc
@@ -1813,6 +1901,25 @@ class MT5Adapter:
             # authorization can never be consumed merely because it was fresh
             # before the broker calls began.
             send_boundary_now = self._trusted_now()
+            if intent.mode == "LIVE":
+                try:
+                    verify_live_canary_order_execution_binding(
+                        live_order_authorization,
+                        candidate=live_candidate,
+                        launch_session=live_launch_session,
+                        intent=intent,
+                        broker_symbol=preflight.broker_symbol,
+                        broker_spec=live_broker_spec,
+                        now=send_boundary_now,
+                    )
+                except (
+                    LiveCanaryOrderAuthorizationError,
+                    TypeError,
+                    ValueError,
+                ) as exc:
+                    raise PreflightRejectedError(
+                        "LIVE authority expired at final send boundary"
+                    ) from exc
             if (
                 not authorization.allows_order_send(now=send_boundary_now)
                 or send_boundary_now >= preflight.valid_until_utc

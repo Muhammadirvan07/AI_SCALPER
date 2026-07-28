@@ -154,6 +154,14 @@ class WindowsServiceFactoryTemplateTests(unittest.TestCase):
         # attested module is loaded internally by the bootstrap and must never
         # be supplied by an external factory provider.
         production_ports.remove("mt5_module")
+        # Factory template V1 is intentionally limited to DEMO/DEMO_AUTO.
+        # LIVE canary ports remain internal and unmaterialized until a
+        # separately versioned LIVE-capable Windows factory contract exists.
+        v1_unmaterialized_live_ports = {
+            "live_prepared_order_provider",
+            "live_order_authorization_provider",
+            "live_execution_cycle_provider",
+        }
         heartbeat_ports = {
             "heartbeat_outbox",
             "heartbeat_transport",
@@ -161,8 +169,13 @@ class WindowsServiceFactoryTemplateTests(unittest.TestCase):
             "heartbeat_remote_key_provider",
         }
         self.assertEqual(
-            production_ports | heartbeat_ports,
+            (production_ports - v1_unmaterialized_live_ports) | heartbeat_ports,
             {item.port_name for item in provider_contracts()},
+        )
+        self.assertTrue(
+            v1_unmaterialized_live_ports.isdisjoint(
+                {item.port_name for item in provider_contracts()}
+            )
         )
         contract = windows_service_config_contract()
         self.assertEqual(

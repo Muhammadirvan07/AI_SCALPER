@@ -20,7 +20,6 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 import uuid
 
 import execution_policy
-from execution_policy import LIVE_ALLOWED, SAFE_TO_DEMO_AUTO_ORDER
 
 from .contracts import (
     CanonicalContract,
@@ -40,7 +39,13 @@ from .journal_integrity import (
 )
 from .live_canary_runtime_authority import (
     LiveCanaryRuntimeLaunchSessionError,
+    is_live_canary_runtime_candidate,
     is_live_canary_runtime_launch_session,
+)
+from .live_canary_order_authorization import (
+    LiveCanaryOrderAuthorization,
+    LiveCanaryPreparedOrder,
+    verify_live_canary_order_authorization,
 )
 from .reconciliation import (
     BrokerClosedTradeReceipt,
@@ -95,7 +100,12 @@ _EXECUTION_RESULT_SEAL = object()
 _RECONCILIATION_RESULT_SEAL = object()
 _ALLOWED_MODES = frozenset({"SHADOW", "DEMO", "DEMO_AUTO", "LIVE"})
 _ALLOWED_DECISION_ACTIONS = frozenset(
-    {"NO_ACTION", "MANUAL_DEMO_EXECUTE", "DEMO_AUTO_EXECUTE"}
+    {
+        "NO_ACTION",
+        "MANUAL_DEMO_EXECUTE",
+        "DEMO_AUTO_EXECUTE",
+        "LIVE_CANARY_EXECUTE",
+    }
 )
 SUPERVISOR_CHECKPOINT_SCHEMA_VERSION = "runtime-supervisor-checkpoint-v2"
 SUPERVISOR_CHECKPOINT_CAS_ACK_SCHEMA_VERSION = (
@@ -507,7 +517,11 @@ class RuntimeSupervisorDecision(CanonicalContract):
             "decision_payload_sha256",
             require_hash("decision_payload_sha256", self.decision_payload_sha256),
         )
-        if action in {"MANUAL_DEMO_EXECUTE", "DEMO_AUTO_EXECUTE"}:
+        if action in {
+            "MANUAL_DEMO_EXECUTE",
+            "DEMO_AUTO_EXECUTE",
+            "LIVE_CANARY_EXECUTE",
+        }:
             object.__setattr__(
                 self, "intent_id", require_text("intent_id", self.intent_id)
             )
@@ -738,6 +752,160 @@ def seal_runtime_demo_auto_execution_result(
         journal_checkpoint_sha256=journal_checkpoint.content_sha256,
         risk_receipt_sha256=risk_receipt.content_sha256,
         reconciliation_receipt_sha256=reconciliation.content_sha256,
+        _seal=_EXECUTION_RESULT_SEAL,
+    )
+
+
+@dataclass(frozen=True)
+class RuntimeLiveCanaryExecutionResult(CanonicalContract):
+    """Sealed proof joining one LIVE canary authority to one broker fill."""
+
+    execution_receipt: ExecutionReceipt
+    entry_event: EntryRiskEvent
+    entry_source_receipt: RiskSourceReceipt
+    candidate_sha256: str
+    launch_session_sha256: str
+    decision_sha256: str
+    prepared_order_sha256: str
+    order_authorization_sha256: str
+    supervisor_checkpoint_sha256: str
+    journal_checkpoint_sha256: str
+    risk_receipt_sha256: str
+    reconciliation_sha256: str
+    news_guard_sha256: str
+    runtime_fact_receipt_sha256s: tuple[str, ...]
+    schema_version: str = "runtime-live-canary-execution-result-v1"
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _EXECUTION_RESULT_SEAL:
+            raise TypeError("LIVE canary execution results require the sealing factory")
+        if type(self.execution_receipt) is not ExecutionReceipt:
+            raise TypeError("exact sealed ExecutionReceipt is required")
+        if type(self.entry_event) is not EntryRiskEvent:
+            raise TypeError("exact EntryRiskEvent is required")
+        if type(self.entry_source_receipt) is not RiskSourceReceipt:
+            raise TypeError("exact sealed RiskSourceReceipt is required")
+        for name in (
+            "candidate_sha256",
+            "launch_session_sha256",
+            "decision_sha256",
+            "prepared_order_sha256",
+            "order_authorization_sha256",
+            "supervisor_checkpoint_sha256",
+            "journal_checkpoint_sha256",
+            "risk_receipt_sha256",
+            "reconciliation_sha256",
+            "news_guard_sha256",
+        ):
+            object.__setattr__(self, name, require_hash(name, getattr(self, name)))
+        facts = tuple(
+            require_hash("runtime_fact_receipt_sha256", item)
+            for item in self.runtime_fact_receipt_sha256s
+        )
+        if facts != tuple(sorted(facts)) or len(facts) != 1:
+            raise ValueError("LIVE canary result requires one exact runtime fact")
+        object.__setattr__(self, "runtime_fact_receipt_sha256s", facts)
+        receipt = self.execution_receipt
+        event = self.entry_event
+        source = self.entry_source_receipt
+        if (
+            receipt.state not in {"PARTIAL", "FILLED", "RECONCILED"}
+            or event.entry_id != receipt.intent_id
+            or event.symbol != receipt.symbol
+            or event.occurred_at_utc != receipt.received_at
+            or event.binding.account_id_sha256
+            != manual_demo_account_sha256(receipt.account_id)
+            or event.binding.server != receipt.server
+            or event.binding.journal_sha256 != receipt.journal_sha256
+            or source.binding != event.binding
+            or source.source_kind != "ENTRY"
+            or source.event_sha256 != event.content_sha256
+            or source.upstream_receipt_type != "EXECUTION_RECEIPT"
+            or source.upstream_receipt_sha256 != receipt.content_sha256
+        ):
+            raise ValueError("LIVE execution/risk evidence is not exact")
+        if self.schema_version != "runtime-live-canary-execution-result-v1":
+            raise ValueError("unsupported LIVE canary execution result schema")
+
+
+def seal_runtime_live_canary_execution_result(
+    *,
+    execution_receipt: ExecutionReceipt,
+    entry_event: EntryRiskEvent,
+    entry_source_receipt: RiskSourceReceipt,
+    candidate: object,
+    launch_session: object,
+    decision: RuntimeSupervisorDecision,
+    prepared_order: LiveCanaryPreparedOrder,
+    order_authorization: LiveCanaryOrderAuthorization,
+    supervisor_checkpoint: RuntimeSupervisorCheckpoint,
+    journal_checkpoint: ExecutionJournalCheckpoint,
+    risk_receipt: RiskStateReceipt,
+    reconciliation: RuntimeReconciliationRiskResult,
+    news_guard: RuntimeNewsGuardReceipt,
+    runtime_facts: Sequence[RuntimeFactReceipt],
+) -> RuntimeLiveCanaryExecutionResult:
+    """Seal exact LIVE authority-to-fill evidence without minting authority."""
+
+    if not is_live_canary_runtime_candidate(candidate):
+        raise TypeError("candidate must be an exact registered LIVE candidate")
+    if not is_live_canary_runtime_launch_session(launch_session):
+        raise TypeError("launch_session must be verifier sealed")
+    exact = (
+        (decision, RuntimeSupervisorDecision, "decision"),
+        (prepared_order, LiveCanaryPreparedOrder, "prepared_order"),
+        (
+            order_authorization,
+            LiveCanaryOrderAuthorization,
+            "order_authorization",
+        ),
+        (supervisor_checkpoint, RuntimeSupervisorCheckpoint, "supervisor_checkpoint"),
+        (journal_checkpoint, ExecutionJournalCheckpoint, "journal_checkpoint"),
+        (risk_receipt, RiskStateReceipt, "risk_receipt"),
+        (reconciliation, RuntimeReconciliationRiskResult, "reconciliation"),
+        (news_guard, RuntimeNewsGuardReceipt, "news_guard"),
+    )
+    for value, expected, label in exact:
+        if type(value) is not expected:
+            raise TypeError(f"{label} must be exact {expected.__name__}")
+    facts = tuple(runtime_facts)
+    if len(facts) != 1 or type(facts[0]) is not RuntimeFactReceipt:
+        raise TypeError("runtime_facts must contain one exact RuntimeFactReceipt")
+    expected_authority = (
+        order_authorization.candidate_sha256 == candidate.content_sha256,
+        order_authorization.launch_session_sha256 == launch_session.content_sha256,
+        order_authorization.supervisor_decision_sha256 == decision.content_sha256,
+        order_authorization.prepared_order_sha256 == prepared_order.content_sha256,
+        order_authorization.supervisor_checkpoint_sha256
+        == supervisor_checkpoint.content_sha256,
+        order_authorization.journal_checkpoint_sha256
+        == journal_checkpoint.content_sha256,
+        order_authorization.risk_receipt_sha256 == risk_receipt.content_sha256,
+        order_authorization.reconciliation_sha256
+        == reconciliation.content_sha256,
+        order_authorization.news_guard_sha256 == news_guard.content_sha256,
+        order_authorization.runtime_fact_receipt_sha256s
+        == (facts[0].content_sha256,),
+        execution_receipt.intent_id == prepared_order.intent.intent_id,
+    )
+    if not all(expected_authority):
+        raise ValueError("LIVE execution result authority binding mismatch")
+    return RuntimeLiveCanaryExecutionResult(
+        execution_receipt=execution_receipt,
+        entry_event=entry_event,
+        entry_source_receipt=entry_source_receipt,
+        candidate_sha256=candidate.content_sha256,
+        launch_session_sha256=launch_session.content_sha256,
+        decision_sha256=decision.content_sha256,
+        prepared_order_sha256=prepared_order.content_sha256,
+        order_authorization_sha256=order_authorization.content_sha256,
+        supervisor_checkpoint_sha256=supervisor_checkpoint.content_sha256,
+        journal_checkpoint_sha256=journal_checkpoint.content_sha256,
+        risk_receipt_sha256=risk_receipt.content_sha256,
+        reconciliation_sha256=reconciliation.content_sha256,
+        news_guard_sha256=news_guard.content_sha256,
+        runtime_fact_receipt_sha256s=(facts[0].content_sha256,),
         _seal=_EXECUTION_RESULT_SEAL,
     )
 
@@ -2404,6 +2572,13 @@ class RuntimeSupervisor:
         | None = None,
         demo_auto_execution_service: Callable[..., object] | None = None,
         live_launch_session: object | None = None,
+        live_candidate: object | None = None,
+        live_prepared_order_provider: Callable[
+            [RuntimeSupervisorDecision], object
+        ]
+        | None = None,
+        live_order_authorization_provider: Callable[..., object] | None = None,
+        live_execution_service: Callable[..., object] | None = None,
     ) -> None:
         if type(binding) is not RuntimeSupervisorBinding:
             raise TypeError("binding must be RuntimeSupervisorBinding")
@@ -2450,6 +2625,12 @@ class RuntimeSupervisor:
         self.demo_auto_environment_arm_provider = demo_auto_environment_arm_provider
         self.demo_auto_execution_service = demo_auto_execution_service
         self.live_launch_session = live_launch_session
+        self.live_candidate = live_candidate
+        self.live_prepared_order_provider = live_prepared_order_provider
+        self.live_order_authorization_provider = (
+            live_order_authorization_provider
+        )
+        self.live_execution_service = live_execution_service
         self.clock_provider = clock_provider
         self.supervisor_checkpoint_provider = supervisor_checkpoint_provider
         self.supervisor_checkpoint_exporter = supervisor_checkpoint_exporter
@@ -2580,6 +2761,10 @@ class RuntimeSupervisor:
         elif stage_authorization_ports is not None:
             raise ValueError("stage authorization ports are restricted to DEMO stage modes")
         if binding.mode == "LIVE":
+            if live_candidate is not None and not is_live_canary_runtime_candidate(
+                live_candidate
+            ):
+                raise TypeError("live_candidate must be an exact registered candidate")
             if live_launch_session is not None and not (
                 is_live_canary_runtime_launch_session(live_launch_session)
             ):
@@ -2597,6 +2782,30 @@ class RuntimeSupervisor:
                 raise RuntimeSupervisorBindingError(
                     "live launch session binding mismatch"
                 )
+            if is_live_canary_runtime_candidate(live_candidate) and (
+                live_candidate.content_sha256 != binding.config_sha256
+                or live_candidate.account_alias_sha256
+                != binding.account_id_sha256
+                or live_candidate.server != binding.server
+                or live_candidate.account_currency != binding.account_currency
+                or live_candidate.journal_sha256 != binding.journal_sha256
+                or live_candidate.commit_sha != binding.commit_sha
+                or live_candidate.mode != "LIVE"
+                or live_candidate.environment != "LIVE"
+                or live_candidate.live_allowed is not False
+                or live_candidate.execution_authorized is not False
+            ):
+                raise RuntimeSupervisorBindingError(
+                    "live candidate binding mismatch"
+                )
+            live_execution_ports = (
+                ("live_prepared_order_provider", live_prepared_order_provider),
+                (
+                    "live_order_authorization_provider",
+                    live_order_authorization_provider,
+                ),
+                ("live_execution_service", live_execution_service),
+            )
             if execution_policy.LIVE_ALLOWED is True:
                 if not is_live_canary_runtime_launch_session(live_launch_session):
                     raise TypeError(
@@ -2611,8 +2820,35 @@ class RuntimeSupervisor:
                     )
                 except LiveCanaryRuntimeLaunchSessionError as exc:
                     raise RuntimeSupervisorBindingError(exc.reason_code) from exc
-        elif live_launch_session is not None:
-            raise ValueError("live_launch_session is restricted to LIVE mode")
+                if not is_live_canary_runtime_candidate(live_candidate):
+                    raise TypeError(
+                        "enabled LIVE mode requires an exact runtime candidate"
+                    )
+                missing_live_ports = tuple(
+                    name
+                    for name, value in live_execution_ports
+                    if not callable(value)
+                )
+                if missing_live_ports:
+                    raise TypeError(
+                        "enabled LIVE mode requires all per-order ports: "
+                        + ", ".join(missing_live_ports)
+                    )
+            else:
+                for name, value in live_execution_ports:
+                    if value is not None and not callable(value):
+                        raise TypeError(f"{name} must be callable or None")
+        elif any(
+            value is not None
+            for value in (
+                live_launch_session,
+                live_candidate,
+                live_prepared_order_provider,
+                live_order_authorization_provider,
+                live_execution_service,
+            )
+        ):
+            raise ValueError("LIVE candidate, session, and ports are restricted to LIVE mode")
         demo_auto_ports = (
             ("demo_auto_ipc_input_provider", demo_auto_ipc_input_provider),
             ("demo_auto_session_lease_provider", demo_auto_session_lease_provider),
@@ -3128,7 +3364,11 @@ class RuntimeSupervisor:
 
     def _append_entry_risk_event(
         self,
-        result: RuntimeManualDemoExecutionResult | RuntimeDemoAutoExecutionResult,
+        result: (
+            RuntimeManualDemoExecutionResult
+            | RuntimeDemoAutoExecutionResult
+            | RuntimeLiveCanaryExecutionResult
+        ),
         before: RiskStateReceipt,
     ) -> RiskStateReceipt:
         receipt = result.execution_receipt
@@ -4270,6 +4510,240 @@ class RuntimeSupervisor:
         self._require_cycle_evidence_fresh(journal_checkpoint, risk, facts)
         return result.content_sha256, risk, journal_checkpoint, final_guard
 
+    def _execute_live_canary_decision(
+        self,
+        *,
+        cycle_id: str,
+        decision: RuntimeSupervisorDecision,
+        reconciliation: RuntimeReconciliationRiskResult,
+        journal_checkpoint: ExecutionJournalCheckpoint,
+        risk: RiskStateReceipt,
+        facts: tuple[RuntimeFactReceipt, ...],
+        guard: RuntimeNewsGuard | RuntimeNewsGuardReceipt,
+    ) -> tuple[
+        str,
+        RiskStateReceipt,
+        ExecutionJournalCheckpoint,
+        RuntimeNewsGuardReceipt,
+    ]:
+        """Dispatch exactly one XAUUSD 0.01 LIVE canary under sealed authority."""
+
+        if self.binding.mode != "LIVE" or self.binding.environment != "LIVE":
+            raise RuntimeSupervisorCriticalError("LIVE_CANARY_EXECUTION_MODE_DENIED")
+        self._require_live_launch_session_current()
+        candidate = self.live_candidate
+        session = self.live_launch_session
+        if not is_live_canary_runtime_candidate(candidate):
+            raise RuntimeSupervisorCriticalError("LIVE_CANARY_CANDIDATE_MISSING")
+        if not is_live_canary_runtime_launch_session(session):
+            raise RuntimeSupervisorCriticalError(
+                "LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED"
+            )
+        required_ports = (
+            self.live_prepared_order_provider,
+            self.live_order_authorization_provider,
+            self.live_execution_service,
+        )
+        if any(not callable(port) for port in required_ports):
+            raise RuntimeSupervisorCriticalError("LIVE_CANARY_EXECUTION_PORTS_MISSING")
+        prepared_provider = self.live_prepared_order_provider
+        authorization_provider = self.live_order_authorization_provider
+        execution_service = self.live_execution_service
+        if (
+            not callable(prepared_provider)
+            or not callable(authorization_provider)
+            or not callable(execution_service)
+        ):
+            raise RuntimeSupervisorCriticalError("LIVE_CANARY_EXECUTION_PORTS_MISSING")
+
+        owner, fence = self._lease()
+        self._append_and_checkpoint(
+            owner_id=owner,
+            fence_token=fence,
+            cycle_id=f"{cycle_id}-predispatch",
+            phase="PRE_DISPATCH",
+            status="AWAITING_LIVE_CANARY_AUTHORITY",
+            occurred_at=self._now(),
+            reconciliation_status=reconciliation.reconciliation.status,
+            journal_checkpoint_sha256=journal_checkpoint.content_sha256,
+            risk_receipt_hmac_sha256=risk.receipt_hmac_sha256,
+            runtime_fact_receipt_sha256s=tuple(
+                item.content_sha256 for item in facts
+            ),
+            **self._news_store_fields(guard),
+            decision_id=decision.decision_id,
+            decision_payload_sha256=decision.decision_payload_sha256,
+        )
+
+        self._require_decision_fresh(
+            decision,
+            reason_code="DECISION_EXPIRED_DURING_DISPATCH",
+        )
+        supervisor_checkpoint = self._verify_external_supervisor_checkpoint()
+        if self.store.critical_state()["critical_latched"] is True:
+            raise RuntimeSupervisorCriticalError("SUPERVISOR_CRITICAL_LATCHED")
+        self._verify_journal()
+        refreshed_journal = self._verify_journal_checkpoint()
+        if refreshed_journal.content_sha256 != journal_checkpoint.content_sha256:
+            raise RuntimeSupervisorCriticalError(
+                "JOURNAL_STATE_CHANGED_BEFORE_DISPATCH"
+            )
+        refreshed_risk = self._verify_risk()
+        if refreshed_risk.content_sha256 != risk.content_sha256:
+            raise RuntimeSupervisorCriticalError(
+                "RISK_STATE_CHANGED_BEFORE_DISPATCH"
+            )
+        risk = refreshed_risk
+        self._reverify_runtime_facts(facts)
+        self._verify_reconciliation_snapshot_facts(reconciliation, risk, facts)
+        self._require_cycle_evidence_fresh(journal_checkpoint, risk, facts)
+        self._require_execution_account_snapshot(
+            risk,
+            facts,
+            evidence=reconciliation.account_snapshot_evidence,
+        )
+        final_guard = self._verify_news_guard()
+        if (
+            type(final_guard) is not RuntimeNewsGuardReceipt
+            or type(guard) is not RuntimeNewsGuardReceipt
+            or final_guard.content_sha256 == guard.content_sha256
+            or final_guard.feed_sequence <= guard.feed_sequence
+            or final_guard.previous_receipt_sha256 != guard.content_sha256
+        ):
+            raise RuntimeSupervisorCriticalError(
+                "PREDISPATCH_NEWS_GUARD_REFRESH_REQUIRED"
+            )
+
+        prepared_order = prepared_provider(decision)
+        if (
+            type(prepared_order) is not LiveCanaryPreparedOrder
+            or prepared_order.intent.intent_id != decision.intent_id
+        ):
+            raise RuntimeSupervisorCriticalError(
+                "LIVE_CANARY_PREPARED_ORDER_INVALID"
+            )
+        authorize_at = self._now()
+        order_authorization = authorization_provider(
+            candidate=candidate,
+            launch_session=session,
+            supervisor_binding=self.binding,
+            supervisor_decision=decision,
+            prepared_order=prepared_order,
+            supervisor_checkpoint=supervisor_checkpoint,
+            journal_checkpoint=journal_checkpoint,
+            risk_receipt=risk,
+            reconciliation=reconciliation,
+            news_guard=final_guard,
+            runtime_facts=facts,
+            now=authorize_at,
+        )
+        if type(order_authorization) is not LiveCanaryOrderAuthorization:
+            raise RuntimeSupervisorCriticalError(
+                "LIVE_CANARY_ORDER_AUTHORIZATION_INVALID"
+            )
+
+        # No authority-producing callback is permitted below this line.  Every
+        # mutable high-water is sampled again immediately before control is
+        # transferred to the one broker-mutating execution service.
+        dispatch_at = self._now()
+        self._require_live_launch_session_current()
+        current_supervisor = self._verify_external_supervisor_checkpoint()
+        if current_supervisor.content_sha256 != supervisor_checkpoint.content_sha256:
+            raise RuntimeSupervisorCriticalError(
+                "SUPERVISOR_CHECKPOINT_CHANGED_BEFORE_DISPATCH"
+            )
+        if self.store.critical_state()["critical_latched"] is True:
+            raise RuntimeSupervisorCriticalError("SUPERVISOR_CRITICAL_LATCHED")
+        self._verify_journal()
+        current_journal = self._verify_journal_checkpoint()
+        if current_journal.content_sha256 != journal_checkpoint.content_sha256:
+            raise RuntimeSupervisorCriticalError(
+                "JOURNAL_STATE_CHANGED_BEFORE_DISPATCH"
+            )
+        current_risk = self._verify_risk()
+        if current_risk.content_sha256 != risk.content_sha256:
+            raise RuntimeSupervisorCriticalError(
+                "RISK_STATE_CHANGED_BEFORE_DISPATCH"
+            )
+        self._reverify_runtime_facts(facts)
+        self._require_execution_account_snapshot(
+            current_risk,
+            facts,
+            evidence=reconciliation.account_snapshot_evidence,
+        )
+        self._require_cycle_evidence_fresh(
+            current_journal,
+            current_risk,
+            facts,
+            checked_at=dispatch_at,
+        )
+        self._require_decision_fresh(
+            decision,
+            reason_code="DECISION_EXPIRED_DURING_DISPATCH",
+            checked_at=dispatch_at,
+        )
+        self._require_news_guard_current(final_guard, checked_at=dispatch_at)
+        self._lease()
+        verify_live_canary_order_authorization(
+            order_authorization,
+            candidate=candidate,
+            launch_session=session,
+            supervisor_binding=self.binding,
+            supervisor_decision=decision,
+            prepared_order=prepared_order,
+            supervisor_checkpoint=current_supervisor,
+            journal_checkpoint=current_journal,
+            risk_receipt=current_risk,
+            reconciliation=reconciliation,
+            news_guard=final_guard,
+            runtime_facts=facts,
+            now=dispatch_at,
+        )
+
+        result = execution_service(
+            decision=decision,
+            prepared_order=prepared_order,
+            live_candidate=candidate,
+            live_launch_session=session,
+            live_order_authorization=order_authorization,
+            supervisor_checkpoint=current_supervisor,
+            journal_checkpoint=current_journal,
+            risk_receipt=current_risk,
+            reconciliation=reconciliation,
+            news_guard=final_guard,
+            runtime_facts=facts,
+        )
+        if type(result) is not RuntimeLiveCanaryExecutionResult:
+            raise RuntimeSupervisorCriticalError(
+                "LIVE_CANARY_EXECUTION_RESULT_EVIDENCE_INVALID"
+            )
+        expected_hashes = (
+            result.candidate_sha256 == candidate.content_sha256,
+            result.launch_session_sha256 == session.content_sha256,
+            result.decision_sha256 == decision.content_sha256,
+            result.prepared_order_sha256 == prepared_order.content_sha256,
+            result.order_authorization_sha256
+            == order_authorization.content_sha256,
+            result.supervisor_checkpoint_sha256
+            == current_supervisor.content_sha256,
+            result.journal_checkpoint_sha256 == current_journal.content_sha256,
+            result.risk_receipt_sha256 == current_risk.content_sha256,
+            result.reconciliation_sha256 == reconciliation.content_sha256,
+            result.news_guard_sha256 == final_guard.content_sha256,
+            result.runtime_fact_receipt_sha256s
+            == tuple(sorted(item.content_sha256 for item in facts)),
+            result.execution_receipt.intent_id == decision.intent_id,
+        )
+        if not all(expected_hashes):
+            raise RuntimeSupervisorCriticalError(
+                "LIVE_CANARY_EXECUTION_RESULT_BINDING_INVALID"
+            )
+        risk = self._append_entry_risk_event(result, current_risk)
+        self._verify_journal()
+        journal_checkpoint = self._verify_journal_checkpoint()
+        self._require_cycle_evidence_fresh(journal_checkpoint, risk, facts)
+        return result.content_sha256, risk, journal_checkpoint, final_guard
+
     def run_cycle(self) -> RuntimeSupervisorCycleReceipt:
         if self._state != "READY" or self._stopped:
             raise RuntimeSupervisorError("supervisor is not ready")
@@ -4301,9 +4775,12 @@ class RuntimeSupervisor:
             self._require_cycle_evidence_fresh(journal_checkpoint, risk, facts)
             execution_called = False
             execution_result_sha: str | None = None
-            if self.binding.mode == "LIVE" and decision.action != "NO_ACTION":
+            if self.binding.mode == "LIVE" and decision.action not in {
+                "NO_ACTION",
+                "LIVE_CANARY_EXECUTE",
+            }:
                 raise RuntimeSupervisorCriticalError(
-                    "LIVE_EXECUTION_PATH_NOT_IMPLEMENTED"
+                    "LIVE_CANARY_DECISION_ACTION_DENIED"
                 )
             if decision.action == "MANUAL_DEMO_EXECUTE":
                 if self.binding.mode != "DEMO" or self.binding.environment != "DEMO":
@@ -4476,6 +4953,22 @@ class RuntimeSupervisor:
                     guard=guard,
                 )
                 execution_called = True
+            elif decision.action == "LIVE_CANARY_EXECUTE":
+                (
+                    execution_result_sha,
+                    risk,
+                    journal_checkpoint,
+                    guard,
+                ) = self._execute_live_canary_decision(
+                    cycle_id=cycle_id,
+                    decision=decision,
+                    reconciliation=reconciliation,
+                    journal_checkpoint=journal_checkpoint,
+                    risk=risk,
+                    facts=facts,
+                    guard=guard,
+                )
+                execution_called = True
             self._require_live_launch_session_current()
             owner, fence = self._lease()
             return self._append_and_checkpoint(
@@ -4613,6 +5106,7 @@ __all__ = [
     "RuntimeSupervisorCycleReceipt",
     "RuntimeSupervisorDecision",
     "RuntimeDemoAutoExecutionResult",
+    "RuntimeLiveCanaryExecutionResult",
     "RuntimeManualDemoExecutionResult",
     "RuntimeClosedTradeRiskEvidence",
     "RuntimeReconciliationRiskResult",
@@ -4627,6 +5121,7 @@ __all__ = [
     "issue_runtime_news_guard_receipt",
     "runtime_news_guard_trust_sha256",
     "seal_runtime_demo_auto_execution_result",
+    "seal_runtime_live_canary_execution_result",
     "seal_runtime_manual_demo_execution_result",
     "seal_runtime_reconciliation_risk_result",
     "verify_runtime_news_guard_receipt",

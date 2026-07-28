@@ -2,12 +2,12 @@
 
 ## Outcome
 
-The project gained a sealed runtime launch-session boundary and mandatory
-observation-only integration into the production bootstrap, composition, and
-supervisor for a future first XAUUSD live canary. The complete
-activation-to-runtime-observation chain is implemented and verified locally,
-but the checked-in central lock prevents a session from being minted and no
-boundary authorizes an order or broker mutation.
+The project gained a verifier-sealed per-order execution boundary for a future
+first XAUUSD live canary. The activation, launch, supervisor, execution
+coordinator, durable journal lease, runtime authorization, and final MT5
+adapter chain is implemented and verified locally with a fake MT5 module. The
+checked-in central lock still prevents a launch session or order authority
+from being minted, and no real broker order or broker mutation was performed.
 
 ```text
 LOCAL_SOURCE_GATE = PASS
@@ -15,7 +15,8 @@ LIVE_CANARY_EVIDENCE_BOUNDARY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PORTABLE_CUSTODY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_RUNTIME_LAUNCH_SESSION = PASS_LOCALLY_CENTRAL_LOCKED
-LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_OBSERVATION_ONLY
+LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_PER_ORDER_GATED
+LIVE_CANARY_PER_ORDER_EXECUTION = PASS_LOCALLY_FAKE_MT5_ONE_SEND
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
 DEMO_AUTO_SOAK = NOT_READY
@@ -101,11 +102,26 @@ LIVE_TRADING = DO_NOT_SHIP
   evidence, initialization, supervisor-start, and cycle boundaries. LIVE
   maps its existing WORM root to the candidate stage hash plus exact session
   and checkpoint hashes and never consumes the DEMO stage provider.
-- `RuntimeSupervisor` checks central policy and session currentness before its
-  first external checkpoint/reconciliation/decision boundary. A relock or
-  expiry performs only a local critical latch at preflight; LIVE permits
-  `NO_ACTION` observations only, and every other decision fails with
-  `LIVE_EXECUTION_PATH_NOT_IMPLEMENTED` before execution callbacks.
+- `LiveCanaryPreparedOrder` and `LiveCanaryOrderAuthorization` now bind one
+  exact LIVE XAUUSD intent at exactly 0.01 lot to the admitted account hash,
+  server, broker symbol, journal, model/champion lineage, candidate, launch
+  session, permit, promotion, arm, supervisor and journal checkpoints, risk,
+  reconciliation, signed news, and runtime-fact evidence. The authorization
+  is verifier-sealed, immutable, one-use, and valid for at most one second.
+- `RuntimeSupervisor` now accepts only the explicit
+  `LIVE_CANARY_EXECUTE` action for LIVE execution. It writes a durable
+  pre-dispatch record, refreshes mutable evidence, requests the sealed order
+  authority, rechecks every boundary before dispatch, and validates the exact
+  sealed execution result before advancing risk and checkpoint custody.
+- `ExecutionCoordinator`, `RuntimeAuthorization`, the durable submission
+  lease, `LiveRuntimeService`, and `MT5Adapter` all bind and independently
+  revalidate the same authorization hash. The final adapter checks again
+  immediately before `order_send`; replay cannot trigger a second send and a
+  post-consumption crash remains reconciliation-only.
+- Existing SHADOW, DEMO, and DEMO_AUTO flows remain isolated. The canonical
+  Windows factory-template v1 remains DEMO-only and deliberately does not
+  materialize the three new LIVE callbacks; a separately reviewed exact
+  Windows LIVE factory/release boundary is still required before deployment.
 
 ## Verification
 
@@ -121,12 +137,16 @@ LIVE_TRADING = DO_NOT_SHIP
 | Focused runtime launch-session suite | 6 PASS normal; 6 PASS optimized |
 | Production-runtime integration spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused production-runtime integration | 7 PASS normal; 7 PASS optimized |
+| Per-order LIVE execution spec | 100/100, Grade A; 0 errors, warnings, or informational findings |
+| Focused per-order authorization suite | 8 PASS normal; 8 PASS optimized |
+| Live/Windows execution regression cluster | 196 PASS normal; 196 PASS optimized with three intentional skips |
 | Related bootstrap/supervisor/release regression | 122 PASS normal; 121 PASS plus one intentional optimized skip |
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,848 PASS, 3 platform skips |
-| Full Python regression with `-O` | 1,848 PASS, 6 skips including optimized-only nested self-tests |
+| Full Python regression | 1,856 tests OK, 3 platform skips |
+| Full Python regression with `-O` | 1,856 tests OK, 6 skips including optimized-only nested self-tests |
+| Python compile, Ruff, and scoped whitespace checks | PASS |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
 | Checked-in central live lock | remains exactly false |
 | Broker/order/credential/process effects | not performed |
@@ -140,9 +160,12 @@ uptime monitoring remain external work.
 
 ## Remaining critical path
 
-1. Install/verify Node.js LTS on Windows before starting the frontend; the
-   missing `node`/`npm.cmd` commands are a host dependency issue, not a React
-   source failure.
+1. Install/verify Node.js LTS on Windows before starting the frontend. Also
+   deploy one matching dashboard pair: the running tracked API exposes
+   `/api/health` and `/ws/v1/dashboard`, while the uncommitted frontend
+   refactor currently targets `/api/v1` and `/api/v1/ws`. Its latest local
+   test run is not green (8 passed, 3 failed, 1 cancelled), so it remains
+   outside this source commit.
 2. Complete exact Windows provider-conformance v3 and external acceptance for
    Decision, Execution, and Status Monitor.
 3. Run ten reviewed manual-demo lifecycles.
@@ -156,12 +179,18 @@ uptime monitoring remain external work.
    prebootstrap admission; local tests use synthetic values only.
 7. Provision the real independent WORM readback and atomic CAS/nonce custody,
    retain the predecessor pin through an independent channel, and collect the
-   canonical RSA receipts this local boundary expects. Then specify, implement,
-   and independently review the separate per-order LIVE authorization and
-   execution boundary; the current production integration is intentionally
-   observation-only. The central lock remains unchanged until that later
+   canonical RSA receipts this local boundary expects. Build and externally
+   review the exact Windows LIVE factory/provider release that supplies the
+   three LIVE callbacks, then run its brokerless materialization and negative
+   tests on the target host. The central lock remains unchanged until that
    ceremony and all external evidence are accepted.
+8. After independent ship-gate acceptance, use a separate bounded ceremony to
+   open the central policy and execute only the first 0.01 XAUUSD canary. The
+   first real order, reconciliation receipt, rollback proof, and operator
+   observation are still absent.
 
 No percentage or passing unit-test count should be interpreted as broker
-authority. Until the external evidence and later per-order execution boundary exist,
-the truthful state remains `LIVE_TRADING = DO_NOT_SHIP`.
+authority. The per-order boundary now exists locally, but until the external
+evidence, exact Windows LIVE provider release, central unlock ceremony, and
+first reconciled broker canary exist, the truthful state remains
+`LIVE_TRADING = DO_NOT_SHIP`.

@@ -243,6 +243,10 @@ class LiveCanaryProductionRuntimeIntegrationTests(unittest.TestCase):
             manual_approval_provider=named("manual-approval"),
             manual_demo_policy_callback=named("manual-policy"),
             execution_cycle_provider=named("execution"),
+            promotion_evidence_key_provider=named("promotion-key"),
+            live_prepared_order_provider=named("live-prepared-order"),
+            live_order_authorization_provider=named("live-order-authorization"),
+            live_execution_cycle_provider=named("live-execution"),
             clock_provider=clock or (lambda: self.now),
         )
 
@@ -342,7 +346,11 @@ class LiveCanaryProductionRuntimeIntegrationTests(unittest.TestCase):
             )
         self.assertTrue(report.contract_valid)
         self.assertFalse(report.production_execution_ready)
-        self.assertIn("LIVE_EXECUTION_PATH_NOT_IMPLEMENTED", report.blockers)
+        self.assertNotIn("LIVE_EXECUTION_PATH_NOT_IMPLEMENTED", report.blockers)
+        self.assertIn(
+            "LIVE_PER_ORDER_AUTHORIZATION_REQUIRED",
+            report.blockers,
+        )
         self.assertNotIn("EXTERNAL_STAGE_AUTHORIZATION_REQUIRED", report.blockers)
         self.assertEqual([], calls)
 
@@ -472,7 +480,7 @@ class LiveCanaryProductionRuntimeIntegrationTests(unittest.TestCase):
             blocked.start(owner_id="live-owner")
         self.assertEqual([], blocked_trace)
 
-    def test_live_cycles_allow_no_action_only_and_relock_precedes_reconciliation(self):
+    def test_live_cycles_allow_no_action_and_reject_cross_mode_actions(self):
         supervisor, trace = self._supervisor_shell(action="NO_ACTION")
         with mock.patch.object(execution_policy, "LIVE_ALLOWED", True):
             receipt = supervisor.run_cycle()
@@ -485,7 +493,7 @@ class LiveCanaryProductionRuntimeIntegrationTests(unittest.TestCase):
         with mock.patch.object(execution_policy, "LIVE_ALLOWED", True):
             with self.assertRaisesRegex(
                 RuntimeSupervisorCriticalError,
-                "LIVE_EXECUTION_PATH_NOT_IMPLEMENTED",
+                "LIVE_CANARY_DECISION_ACTION_DENIED",
             ):
                 forbidden.run_cycle()
         self.assertEqual(["reconciliation", "decision"], forbidden_trace)
