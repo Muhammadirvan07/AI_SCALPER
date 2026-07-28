@@ -24,26 +24,37 @@ export interface RecommendedAction {
 
 const blockedTokens = [
   'BLOCK',
+  'BLOCKED',
+  'BLOCKING',
   'FAIL',
+  'FAILED',
+  'FAILURE',
   'INVALID',
   'INELIGIBLE',
   'DISABLED',
   'DISCONNECTED',
+  'INACTIVE',
   'LOCKED',
+  'NOT',
+  'REJECTED',
   'VIOLATION',
 ]
 const warningTokens = [
   'WAIT',
+  'WAITING',
   'PENDING',
   'STALE',
   'PARTIAL',
   'WATCH',
   'CAUTION',
+  'WARNING',
+  'WARNINGS',
   'UNVERIFIED',
   'UNKNOWN',
   'OBSERVATION',
 ]
 const safeTokens = [
+  'PASS',
   'PASSED',
   'FRESH',
   'CONNECTED',
@@ -53,11 +64,14 @@ const safeTokens = [
   'ACTIVE',
   'COMPLIANT',
   'READY',
-  'VERIFIED_ELIGIBLE',
+  'ELIGIBLE',
 ]
 
 const containsToken = (value: string, tokens: readonly string[]) =>
-  tokens.some((token) => value.includes(token))
+  value
+    .split(/[^A-Z0-9]+/)
+    .filter(Boolean)
+    .some((statusToken) => tokens.includes(statusToken))
 
 export const operationalTone = (value: string | null | undefined): OperationalTone => {
   const normalized = (value ?? '').toUpperCase()
@@ -135,9 +149,15 @@ const isClosedOrder = (order: ApiPaperOrder) => {
   )
 }
 
+const isNonNegativeInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0
+
 export const deriveNetR = (snapshot: DashboardApiSnapshot | null) => {
   if (!snapshot) return { value: null, sampleCount: 0, expectedCount: null }
-  const expectedCount = snapshot.performance.closed_orders
+  const rawExpectedCount = snapshot.performance.closed_orders
+  const expectedCount = isNonNegativeInteger(rawExpectedCount)
+    ? rawExpectedCount
+    : null
   const closedOrders = snapshot.paper_orders.filter(isClosedOrder)
   const values = closedOrders
     .map((order) => order.r_multiple)
@@ -158,7 +178,13 @@ export const deriveSampleStatus = (snapshot: DashboardApiSnapshot | null) => {
   if (!snapshot) return 'TIDAK TERVERIFIKASI'
   const closed = snapshot.performance.closed_orders
   const target = snapshot.summary.closed_target
-  if (closed === null || target === null || target <= 0) return 'TIDAK TERVERIFIKASI'
+  if (
+    !isNonNegativeInteger(closed) ||
+    !isNonNegativeInteger(target) ||
+    target === 0
+  ) {
+    return 'TIDAK TERVERIFIKASI'
+  }
   if (closed < target) return `SAMPEL BELUM CUKUP · ${closed}/${target}`
   if (snapshot.project_progress.blockers.some((blocker) =>
     blocker.toUpperCase().includes('CLEAN_SAMPLE'),

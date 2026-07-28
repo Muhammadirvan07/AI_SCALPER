@@ -36,8 +36,41 @@ const validSnapshot = () => ({
     safety_violation: false,
     violations: [],
   },
-  summary: { max_lot: 0.01 },
-  performance: { equity_curve: [], by_symbol: {}, by_strategy: {} },
+  summary: {
+    system_mode: 'PAPER',
+    quality_status: 'WATCH',
+    readiness_score: 42,
+    active_pairs: ['XAUUSD'],
+    closed_orders: 4,
+    closed_target: 50,
+    win_rate: 50,
+    profit_factor: 1.2,
+    expectancy: 0.1,
+    net_profit: 12.5,
+    max_drawdown: 1.5,
+    reference_balance: 1000,
+    max_lot: 0.01,
+  },
+  performance: {
+    total_orders: 4,
+    closed_orders: 4,
+    open_orders: 0,
+    wins: 2,
+    losses: 2,
+    timeouts: 0,
+    win_rate: 50,
+    gross_profit: 20,
+    gross_loss: -7.5,
+    net_profit: 12.5,
+    profit_factor: 1.2,
+    expectancy: 0.1,
+    max_drawdown_percent: 1.5,
+    reference_balance: 1000,
+    ending_balance: 1012.5,
+    equity_curve: [],
+    by_symbol: {},
+    by_strategy: {},
+  },
   readiness: {},
   market: {},
   watchlist: [],
@@ -139,6 +172,29 @@ test('guard menolak struktur wajib yang hilang atau malformed', () => {
   const malformedBroker = validSnapshot()
   malformedBroker.broker_readiness[0].symbols_found = { EURUSD: 123 }
   assert.equal(isDashboardSnapshot(malformedBroker), false)
+})
+
+test('guard menolak metrik landing yang hilang atau malformed', () => {
+  const missingClosedTarget = validSnapshot()
+  Reflect.deleteProperty(missingClosedTarget.summary, 'closed_target')
+  assert.equal(isDashboardSnapshot(missingClosedTarget), false)
+
+  const stringWinRate = validSnapshot()
+  Reflect.set(stringWinRate.performance, 'win_rate', '50')
+  assert.equal(isDashboardSnapshot(stringWinRate), false)
+
+  const malformedBreakdown = validSnapshot()
+  Reflect.set(malformedBreakdown.performance, 'by_symbol', { XAUUSD: null })
+  assert.equal(isDashboardSnapshot(malformedBreakdown), false)
+
+  const malformedPaperOrder = validSnapshot()
+  Reflect.set(malformedPaperOrder, 'paper_orders', [{
+    order_id: 'paper-1',
+    close_time: '2026-07-27T11:00:00.000Z',
+    status: 'CLOSED',
+    r_multiple: '1.0',
+  }])
+  assert.equal(isDashboardSnapshot(malformedPaperOrder), false)
 })
 
 test('guard menolak kontrak lama agar landing tidak mengasumsikan evidence', () => {

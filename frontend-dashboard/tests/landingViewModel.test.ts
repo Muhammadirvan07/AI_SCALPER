@@ -46,6 +46,17 @@ test('sample status tidak memberi kesan siap ketika target belum tercapai', () =
   assert.equal(deriveSampleStatus(null), 'TIDAK TERVERIFIKASI')
 })
 
+test('sample status fail-closed ketika metrik wajib hilang atau invalid', () => {
+  const missingClosed = snapshot()
+  Reflect.deleteProperty(missingClosed.performance, 'closed_orders')
+  assert.equal(deriveSampleStatus(missingClosed), 'TIDAK TERVERIFIKASI')
+  assert.equal(deriveNetR(missingClosed).expectedCount, null)
+
+  const invalidClosed = snapshot()
+  invalidClosed.performance.closed_orders = Number.NaN
+  assert.equal(deriveSampleStatus(invalidClosed), 'TIDAK TERVERIFIKASI')
+})
+
 test('target total tidak menyamarkan clean sample gate yang masih diblokir', () => {
   const candidate = snapshot()
   candidate.summary.closed_target = 2
@@ -70,6 +81,13 @@ test('observation window aktif lebih diprioritaskan daripada promosi', () => {
 
 test('status verified-ineligible tidak pernah diberi tone sehat', () => {
   assert.equal(operationalTone('VERIFIED_INELIGIBLE_CURRENT_JAPAN'), 'blocked')
+})
+
+test('status negatif majemuk tidak mewarisi tone dari substring positif', () => {
+  assert.equal(operationalTone('DEMO_AUTO_ORDER_NOT_READY'), 'blocked')
+  assert.equal(operationalTone('INACTIVE'), 'blocked')
+  assert.equal(operationalTone('READY'), 'safe')
+  assert.equal(operationalTone('ACTIVE'), 'safe')
 })
 
 test('timeline hanya dibuat dari timestamp dan evidence aktual', () => {

@@ -30,6 +30,9 @@ const isNullableBoolean = (value: unknown): value is boolean | null =>
 const isNullableNonNegativeInteger = (value: unknown): value is number | null =>
   value === null || isNonNegativeInteger(value)
 
+const isNullableFiniteNumber = (value: unknown): value is number | null =>
+  value === null || isFiniteNumber(value)
+
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
 
@@ -44,6 +47,75 @@ const recordsHaveStrings = (
   value.every((item) =>
     requiredFields.every((field) => isNonEmptyString(item[field])),
   )
+
+const isSummary = (value: unknown) => {
+  if (!isRecord(value)) return false
+  return (
+    isNullableString(value.system_mode) &&
+    isNullableString(value.quality_status) &&
+    isNullableFiniteNumber(value.readiness_score) &&
+    isStringArray(value.active_pairs) &&
+    isNullableNonNegativeInteger(value.closed_orders) &&
+    isNullableNonNegativeInteger(value.closed_target) &&
+    isNullableFiniteNumber(value.win_rate) &&
+    isNullableFiniteNumber(value.profit_factor) &&
+    isNullableFiniteNumber(value.expectancy) &&
+    isNullableFiniteNumber(value.net_profit) &&
+    isNullableFiniteNumber(value.max_drawdown) &&
+    isNullableFiniteNumber(value.reference_balance) &&
+    value.max_lot === 0.01
+  )
+}
+
+const isEquityPoint = (value: unknown) =>
+  isRecord(value) &&
+  isNonNegativeInteger(value.index) &&
+  isNullableIsoTimestamp(value.timestamp) &&
+  isFiniteNumber(value.equity) &&
+  isFiniteNumber(value.cumulative_net_profit) &&
+  isNullableFiniteNumber(value.drawdown_percent) &&
+  isNullableString(value.order_id)
+
+const recordValuesAreRecords = (value: unknown) =>
+  isRecord(value) && Object.values(value).every(isRecord)
+
+const isPerformance = (value: unknown) => {
+  if (!isRecord(value)) return false
+  const countFields = [
+    'total_orders',
+    'closed_orders',
+    'open_orders',
+    'wins',
+    'losses',
+    'timeouts',
+  ] as const
+  const metricFields = [
+    'win_rate',
+    'gross_profit',
+    'gross_loss',
+    'net_profit',
+    'profit_factor',
+    'expectancy',
+    'max_drawdown_percent',
+    'reference_balance',
+    'ending_balance',
+  ] as const
+  return (
+    countFields.every((field) => isNullableNonNegativeInteger(value[field])) &&
+    metricFields.every((field) => isNullableFiniteNumber(value[field])) &&
+    Array.isArray(value.equity_curve) &&
+    value.equity_curve.every(isEquityPoint) &&
+    recordValuesAreRecords(value.by_symbol) &&
+    recordValuesAreRecords(value.by_strategy)
+  )
+}
+
+const isPaperOrder = (value: unknown) =>
+  isRecord(value) &&
+  isNonEmptyString(value.order_id) &&
+  isNullableIsoTimestamp(value.close_time) &&
+  isNullableString(value.status) &&
+  isNullableFiniteNumber(value.r_multiple)
 
 const sourceStates = new Set(['fresh', 'stale', 'partial', 'unavailable', 'invalid'])
 
@@ -190,10 +262,8 @@ export const isDashboardSnapshot = (value: unknown): value is DashboardApiSnapsh
     safety.demo_auto_order === 'OUT_OF_SCOPE' &&
     isNullableString(safety.order_capability) &&
     isStringArray(safety.violations) &&
-    summary.max_lot === 0.01 &&
-    Array.isArray(performance.equity_curve) &&
-    isRecord(performance.by_symbol) &&
-    isRecord(performance.by_strategy) &&
+    isSummary(summary) &&
+    isPerformance(performance) &&
     isRecord(value.readiness) &&
     isMarketRecord(value.market) &&
     recordsHaveStrings(value.watchlist, [
@@ -203,7 +273,8 @@ export const isDashboardSnapshot = (value: unknown): value is DashboardApiSnapsh
       'guard_status',
     ]) &&
     recordsHaveStrings(value.signals, ['id', 'source', 'data_freshness']) &&
-    recordsHaveStrings(value.paper_orders, ['order_id']) &&
+    Array.isArray(value.paper_orders) &&
+    value.paper_orders.every(isPaperOrder) &&
     isStringArray(decisionHealth.blockers) &&
     isStringArray(decisionReadiness.blockers) &&
     isRecord(session.progress) &&
