@@ -3,9 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from dashboard_api.app.main import create_app
+
+
+ALLOWED_ORIGIN_HEADERS = {"origin": "http://localhost:5173"}
 
 
 def test_rest_health_and_snapshot(test_settings) -> None:
@@ -48,7 +53,10 @@ def test_documentation_endpoints_are_allowlisted_and_read_only(test_settings) ->
 
 def test_websocket_initial_snapshot_and_heartbeat(test_settings) -> None:
     with TestClient(create_app(test_settings)) as client:
-        with client.websocket_connect("/ws/v1/dashboard") as websocket:
+        with client.websocket_connect(
+            "/ws/v1/dashboard",
+            headers=ALLOWED_ORIGIN_HEADERS,
+        ) as websocket:
             ready = websocket.receive_json()
             full = websocket.receive_json()
             heartbeat = websocket.receive_json()
@@ -63,7 +71,10 @@ def test_websocket_broadcasts_file_update(
     dashboard_root: Path,
 ) -> None:
     with TestClient(create_app(test_settings)) as client:
-        with client.websocket_connect("/ws/v1/dashboard") as websocket:
+        with client.websocket_connect(
+            "/ws/v1/dashboard",
+            headers=ALLOWED_ORIGIN_HEADERS,
+        ) as websocket:
             websocket.receive_json()
             initial = websocket.receive_json()
             original_version = initial["version"]
@@ -80,3 +91,26 @@ def test_websocket_broadcasts_file_update(
                     break
             else:
                 raise AssertionError("snapshot.updated tidak diterima")
+
+
+@pytest.mark.parametrize(
+    "headers",
+    (
+        {},
+        {"origin": "https://attacker.example"},
+        {"origin": "http://localhost.evil.example:5173"},
+        {"origin": "null"},
+    ),
+)
+def test_websocket_rejects_missing_or_untrusted_origin(
+    test_settings,
+    headers: dict[str, str],
+) -> None:
+    with TestClient(create_app(test_settings)) as client:
+        with pytest.raises(WebSocketDisconnect) as raised:
+            with client.websocket_connect(
+                "/ws/v1/dashboard",
+                headers=headers,
+            ):
+                pass
+        assert raised.value.code == 1008

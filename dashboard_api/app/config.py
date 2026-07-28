@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from ipaddress import ip_address
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -71,6 +73,56 @@ DEFAULT_NEWS_API_URL = (
     "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 )
 DEFAULT_NEWS_PROVIDER_NAME = "FOREX FACTORY / FAIR ECONOMY"
+
+
+class DashboardNetworkBoundaryError(ValueError):
+    """Raised when the local-only dashboard boundary is widened."""
+
+
+def _is_loopback_host(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized == "localhost":
+        return True
+    try:
+        return ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def normalize_loopback_origin(value: str) -> str:
+    """Return one canonical browser origin constrained to loopback."""
+
+    if not isinstance(value, str) or not value.strip():
+        raise DashboardNetworkBoundaryError("dashboard origin is empty")
+    try:
+        parsed = urlsplit(value.strip())
+        port = parsed.port
+    except ValueError as exc:
+        raise DashboardNetworkBoundaryError(
+            "dashboard origin is malformed"
+        ) from exc
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or parsed.hostname is None
+        or not _is_loopback_host(parsed.hostname)
+    ):
+        raise DashboardNetworkBoundaryError(
+            "dashboard origin must be an HTTP(S) loopback origin"
+        )
+    scheme = parsed.scheme.lower()
+    hostname = parsed.hostname.lower()
+    rendered_host = f"[{hostname}]" if ":" in hostname else hostname
+    if port is None or (scheme == "http" and port == 80) or (
+        scheme == "https" and port == 443
+    ):
+        return f"{scheme}://{rendered_host}"
+    return f"{scheme}://{rendered_host}:{port}"
 
 
 def _float_env(name: str, default: float, minimum: float) -> float:
@@ -256,6 +308,25 @@ class Settings:
     @property
     def data_dir(self) -> Path:
         return self.root / "data"
+
+
+def validate_loopback_dashboard_boundary(settings: Settings) -> tuple[str, ...]:
+    """Validate and canonicalize the dashboard's local-only network policy."""
+
+    if settings.host != settings.host.strip() or not _is_loopback_host(settings.host):
+        raise DashboardNetworkBoundaryError(
+            "dashboard API host must remain loopback-only"
+        )
+    if not settings.cors_origins:
+        raise DashboardNetworkBoundaryError(
+            "dashboard origin allowlist must not be empty"
+        )
+    origins = tuple(normalize_loopback_origin(item) for item in settings.cors_origins)
+    if len(set(origins)) != len(origins):
+        raise DashboardNetworkBoundaryError(
+            "dashboard origin allowlist contains duplicates"
+        )
+    return origins
 
 
 settings = Settings()

@@ -9,7 +9,13 @@ from dataclasses import dataclass
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import Settings, settings as default_settings
+from .config import (
+    DashboardNetworkBoundaryError,
+    Settings,
+    normalize_loopback_origin,
+    settings as default_settings,
+    validate_loopback_dashboard_boundary,
+)
 from .connection_manager import DashboardConnectionManager
 from .file_registry import FileRegistry
 from .file_watcher import AsyncFileWatcher
@@ -33,6 +39,7 @@ class DashboardRuntime:
 
 def create_app(settings_override: Settings | None = None) -> FastAPI:
     runtime_settings = settings_override or default_settings
+    allowed_origins = validate_loopback_dashboard_boundary(runtime_settings)
     registry = FileRegistry(runtime_settings)
     builder = SnapshotBuilder(runtime_settings, registry)
     connections = DashboardConnectionManager(
@@ -196,7 +203,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.runtime = runtime
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list(runtime_settings.cors_origins),
+        allow_origins=list(allowed_origins),
         allow_credentials=False,
         allow_methods=["GET"],
         allow_headers=["Accept", "Content-Type"],
@@ -211,6 +218,14 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     @app.websocket("/ws/v1/dashboard")
     async def dashboard_websocket(websocket: WebSocket) -> None:
+        supplied_origin = websocket.headers.get("origin")
+        try:
+            canonical_origin = normalize_loopback_origin(supplied_origin or "")
+        except DashboardNetworkBoundaryError:
+            canonical_origin = None
+        if canonical_origin not in allowed_origins:
+            await websocket.close(code=1008, reason="WebSocket origin not allowed")
+            return
         await connections.connect(websocket)
         try:
             await connections.send_initial(websocket)

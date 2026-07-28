@@ -80,8 +80,12 @@ Alternatif tanpa reload:
 .venv-dashboard/bin/python dashboard_api/run_dashboard_api.py
 ```
 
-API sengaja bind ke `127.0.0.1`. Jangan mengubahnya ke alamat jaringan tanpa
-meninjau implikasi akses data lokal.
+API sengaja dan secara fail-closed hanya menerima bind host loopback
+(`127.0.0.1`, `::1`, atau `localhost`). Origin CORS juga harus berupa origin
+HTTP(S) loopback tanpa wildcard. WebSocket memerlukan header `Origin` yang
+termasuk pada allowlist yang sama; middleware CORS saja tidak melindungi
+WebSocket. Public/non-loopback deployment sengaja ditolak sampai TLS,
+authentication, CSP/security headers, dan network policy direview terpisah.
 
 ## Menjalankan frontend
 

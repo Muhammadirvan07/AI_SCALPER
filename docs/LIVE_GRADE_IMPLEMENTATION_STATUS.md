@@ -5,7 +5,7 @@ Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 Validasi lokal terakhir pada 2026-07-28 menjalankan **1.718 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
 PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
-juga lulus 21 unit test frontend, 26 test backend, 14 browser E2E, lint,
+juga lulus 21 unit test frontend, 45 test backend, 14 browser E2E, lint,
 TypeScript, production build, dan bundle verification. Itu adalah software
 regression evidence, bukan Windows host acceptance, broker-forward evidence,
 atau izin trading.
@@ -102,12 +102,15 @@ tetap fail-closed tanpa reviewed external runtime.
 
 Dashboard operasional sekarang merupakan source yang dilacak dan telah
 dipublikasikan sebagai boundary read-only terpisah. FastAPI hanya menyediakan
-route GET, CORS dibatasi ke origin loopback, frontend menolak payload runtime
-yang tidak lengkap, dan token status negatif seperti `NOT_READY` atau
-`INACTIVE` tidak dapat dipetakan sebagai status positif. Dashboard tidak
-memiliki credential, permit, arm, task mutation, broker mutation, maupun order
-authority. Penggunaan di luar loopback tetap memerlukan deployment review,
-TLS, authentication, dan security-header policy terpisah.
+route GET. Startup menolak bind host non-loopback sebelum `uvicorn.run`; CORS
+dan WebSocket memakai canonical origin allowlist HTTP(S) loopback tanpa
+wildcard, dan handshake WebSocket tanpa origin tepercaya ditutup sebelum
+`accept()`. Frontend menolak payload runtime yang tidak lengkap, dan token
+status negatif seperti `NOT_READY` atau `INACTIVE` tidak dapat dipetakan
+sebagai status positif. Dashboard tidak memiliki credential, permit, arm,
+task mutation, broker mutation, maupun order authority. Penggunaan di luar
+loopback tetap memerlukan deployment review, TLS, authentication, dan
+security-header policy terpisah.
 
 Create-exclusive output custody kini konsisten pada shared Windows release
 writer, role release/sidecar builder, configured overlay, evidence/feed dan

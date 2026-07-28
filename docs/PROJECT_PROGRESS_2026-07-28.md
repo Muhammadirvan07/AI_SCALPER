@@ -82,6 +82,12 @@ commit dibuat.
   Windows mengekstrak ke sibling staging root, memverifikasi inventory sebelum
   dan setelah no-replace directory move, serta mempertahankan staging gagal
   untuk forensic review. XM tetap legal-hold dan FINEX tetap preparation-only.
+- Audit network boundary menemukan CORS REST tidak melindungi route WebSocket.
+  Backend sekarang menolak bind host non-loopback sebelum `uvicorn.run`,
+  menormalisasi dan membatasi origin HTTP(S) ke loopback tanpa wildcard, serta
+  menolak WebSocket tanpa `Origin` atau dengan origin di luar allowlist sebelum
+  `accept()`. Public dashboard tetap tidak didukung tanpa review deployment
+  terpisah.
 
 ## Bukti otomatis
 
@@ -96,7 +102,7 @@ commit dibuat.
 | Phillip V5/V6 scheduler + post-run/custody cluster | 63 PASS, 2 skip per normal/optimized mode |
 | XM/FINEX preparation create-exclusive cluster | 15 PASS per normal/optimized mode |
 | Frontend unit tests | 21 PASS |
-| Dashboard backend tests | 26 PASS |
+| Dashboard backend tests | 45 PASS |
 | Browser E2E | 14 PASS |
 | Frontend lint, TypeScript, production build, bundle verification | PASS |
 | npm dependency audit | 0 known vulnerabilities |

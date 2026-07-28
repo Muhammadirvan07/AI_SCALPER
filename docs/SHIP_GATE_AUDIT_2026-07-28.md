@@ -46,7 +46,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
 | Correctness | PASS_LOCAL | Python normal dan optimized 1.718 PASS per mode; dashboard unit/backend/E2E PASS |
-| Application security | PASS_LOCAL | GET-only API, explicit loopback CORS, no unsafe eval or HTML injection, fail-closed payload guards |
+| Application security | PASS_LOCAL | GET-only API, pre-bind loopback enforcement, canonical loopback CORS/WebSocket origin allowlist, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | fresh npm, Python development, dan dashboard requirements audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
 | Reliability and observability | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | structured logs, health endpoint, signed journals; off-host alert/WORM proof masih eksternal |
@@ -66,7 +66,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Phillip V5/V6 scheduler + post-run/custody tests | 63 PASS, 2 skip per normal/optimized mode |
 | XM/FINEX preparation create-exclusive tests | 15 PASS per normal/optimized mode |
 | Frontend unit suite | 21 PASS |
-| Dashboard backend suite | 26 PASS |
+| Dashboard backend suite | 45 PASS |
 | Browser E2E suite | 14 PASS |
 | Lint, TypeScript, production build, bundle verification | PASS |
 | npm audit | 0 vulnerabilities across 248 dependencies |
@@ -143,7 +143,7 @@ readiness false.
    FastAPI 0.140.7, Starlette 1.3.1, pytest 9.0.3,
    python-dotenv 1.2.2, and Starlette's reviewed httpx2 2.9.1 test-client
    dependency. Fresh audits report no known vulnerabilities, `pip check`
-   passes, 26 backend tests pass without warnings, and 14 browser E2E tests
+   passes, 45 backend tests pass without warnings, and 14 browser E2E tests
    remain green.
 10. The older XM/FINEX preparation publisher still resolved the requested
     output leaf and used recursive cleanup without creation identity. A
@@ -156,6 +156,14 @@ readiness false.
     enforcement, dangling links, parent indirection, partial-output cleanup,
     leaf replacement, root replacement, deterministic output, and permanent
     XM/FINEX trading locks.
+11. REST CORS was loopback-scoped, but the WebSocket route accepted every
+    browser `Origin`; CORS middleware does not cover WebSocket handshakes.
+    Runtime configuration now rejects non-loopback bind hosts before
+    `uvicorn.run`, rejects wildcard/non-loopback/malformed CORS origins, and
+    canonicalizes the allowlist. The WebSocket closes with policy code 1008
+    before `accept()` when `Origin` is missing or not allowlisted. Forty-five
+    backend tests cover allowed CORS/WebSocket traffic, hostile origins,
+    duplicate canonical origins, and pre-bind rejection.
 
 ## Findings that remain external or manual
 
