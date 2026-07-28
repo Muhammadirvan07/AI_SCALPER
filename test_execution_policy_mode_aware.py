@@ -116,6 +116,7 @@ class ModeAwareExecutionSymbolPolicyTests(unittest.TestCase):
     def test_every_live_runtime_symbol_boundary_supplies_exact_mode(self):
         expected_files = {
             "executor.py",
+            "live_canary_runtime_launch_session.py",
             "mt5_adapter.py",
             "production_bootstrap.py",
             "risk.py",

@@ -7,6 +7,7 @@ LOCAL_SOURCE_GATE = PASS
 LIVE_CANARY_ACTIVATION_EVIDENCE = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PORTABLE_CUSTODY = PASS_LOCALLY_DENY_ONLY
+LIVE_CANARY_RUNTIME_LAUNCH_SESSION = PASS_LOCALLY_CENTRAL_LOCKED
 DEPENDENCY_OR_FRONTEND_HOST_INSTALL = NOT_CHANGED
 WINDOWS_EXTERNAL_ACCEPTANCE = INCOMPLETE
 DEMO_AUTO_SOAK = NOT_READY
@@ -30,6 +31,11 @@ Reviewed source:
 - `live_runtime/live_canary_portable_launch_custody.py`;
 - `test_live_runtime_live_canary_portable_launch_custody.py`;
 - `specs/live_canary_portable_launch_custody_v1.md`;
+- `live_runtime/live_canary_runtime_launch_session.py`;
+- `test_live_runtime_live_canary_runtime_launch_session.py`;
+- `specs/live_canary_runtime_launch_session_v1.md`;
+- mode-aware symbol-boundary inventory in
+  `test_execution_policy_mode_aware.py`;
 - verifier-seal hardening in `live_canary_prebootstrap_admission.py` and
   `asymmetric_release_trust.py`;
 - current status/progress documentation.
@@ -41,12 +47,12 @@ this boundary. Runtime or broker state was not accessed or mutated.
 
 | Category | Status | Evidence |
 |---|---|---|
-| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; runtime trust IDs/fingerprints must also be disjoint from every activation authority; no raw identity or secret enters canonical artifacts |
+| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; runtime trust IDs/fingerprints must also be disjoint from every activation authority; the launch session validates every independent pin before callbacks, observes external state twice, and atomically rejects process-local capability replay; no raw identity or secret enters canonical artifacts |
 | Database | PASS_LOCAL | Exact SQLite DDL/trigger inventory, WAL, FULL sync, integrity check, HMAC chain, unique replay fields, atomic `BEGIN IMMEDIATE`, path identity, and signed off-host checkpoint verification |
 | Code quality | PASS_LOCAL | Spec-first implementation, 100/100 spec validation, normal/optimized regression, no changed-file whitespace errors |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
-| Deployment | INCOMPLETE_EXTERNAL | Sealed deny-only prebootstrap and portable WORM/CAS verification boundaries exist locally, but actual Windows provider conformance, real WORM/CAS providers and receipts, task/service composition, effect-capable bootstrap, ACLs, TLS/auth where applicable, rollback, and backup/restore are not accepted |
+| Deployment | INCOMPLETE_EXTERNAL | Sealed prebootstrap, portable WORM/CAS verification, and launch-only runtime-session boundaries exist locally, but the checked-in central lock is false and actual Windows provider conformance, real WORM/CAS providers and receipts, session integration into task/service bootstrap, ACLs, TLS/auth where applicable, rollback, and backup/restore are not accepted |
 | Frontend | OUTSIDE_CHANGE_SCOPE / WINDOWS_NODE_MISSING | No frontend source was changed by this milestone; Windows still needs a verified Node.js LTS installation to run Vite |
 | Observability | PASS_BOUNDARY / EXTERNAL_PENDING | Canonical reason codes and replay checkpoints exist; external uptime/alert/custody proof is not present |
 
@@ -62,11 +68,14 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Portable custody spec validator (`--strict`) | 100/100; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused portable custody tests | 10 PASS normal; 10 PASS optimized with one intentional nested-suite skip |
 | Portable custody integration cluster | 50 PASS normal; 50 PASS optimized with three intentional nested-suite skips |
+| Runtime launch-session spec validator (`--strict`) | 100/100; 0 errors/warnings and one informational TypeScript-N/A note |
+| Focused runtime launch-session tests | 6 PASS normal; 6 PASS optimized |
+| Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage regression | 81 PASS in both normal and optimized modes |
-| Full Python regression | 1,835 PASS, 3 platform skips |
-| Full Python optimized regression | 1,835 PASS, 6 skips |
-| Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` remains false; no MT5, order, credential, network, or process primitive in the portable module |
+| Full Python regression | 1,841 PASS, 3 platform skips |
+| Full Python optimized regression | 1,841 PASS, 6 skips |
+| Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` and `SAFE_TO_DEMO_AUTO_ORDER` remain false; no MT5, order, credential, network, filesystem-write, or process-launch primitive in the runtime launch-session module |
 
 The generic repository scanner reported `DO_NOT_SHIP` with ten critical
 items. Four automated categories were dominated by scanner false positives in
@@ -111,6 +120,13 @@ changed-source findings.
    canonical RSA receipts through narrow readback/CAS callbacks, requires an
    independently retained predecessor pin, rejects signed-head rollback and
    cross-lane substitution, and returns only a sealed deny-only prerequisite.
+9. The portable launch capability previously had no sealed bridge to a
+   reviewed central-policy launch decision. The new runtime launch-session
+   boundary pins every prerequisite independently, re-observes checkpoint and
+   nonce state twice, consumes one exact capability once per process, and
+   rechecks the central policy at the end. Even on successful activation it
+   authorizes process/bootstrap launch only; execution and broker mutation
+   remain false and downstream per-order controls remain mandatory.
 
 ## Blocking facts
 
@@ -121,8 +137,8 @@ changed-source findings.
 - No actual independent WORM admission upload/readback or atomic external
   CAS/nonce ledger receipt has been accepted; local test doubles are not
   external custody evidence.
-- The effect-capable production bootstrap and supervisor do not yet consume
-  this portable, independently custodied, one-use launch prerequisite.
+- The effect-capable production bootstrap and supervisor do not yet require or
+  consume the new sealed launch session on their LIVE path.
 - The central live lock remains false and must not change in this milestone.
 
 Therefore the final verdict is **DO NOT SHIP LIVE TRADING**.
