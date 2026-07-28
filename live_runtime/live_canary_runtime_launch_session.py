@@ -23,6 +23,13 @@ from .asymmetric_release_trust import (
     ExternalLauncherTrustPolicy,
 )
 from .contracts import CanonicalContract, canonicalize
+from .live_canary_runtime_authority import (
+    LiveCanaryRuntimeLaunchSessionError,
+    _REGISTRATION_SEAL,
+    _SESSION_SEAL,
+    _register_live_canary_runtime_launch_session_type,
+    is_live_canary_runtime_launch_session,
+)
 from .live_canary_activation import (
     LIVE_CANARY_MAX_CONCURRENT_POSITIONS,
     LIVE_CANARY_MAX_LOT,
@@ -44,24 +51,8 @@ RUNTIME_LAUNCH_SESSION_SCHEMA = "live-canary-runtime-launch-session-v1"
 ORDER_CAPABILITY = "GATED_PRESENT"
 MAXIMUM_CHECKPOINT_BYTES = 262_144
 _HEX_64 = re.compile(r"^[0-9a-f]{64}$")
-_SESSION_SEAL = object()
 _ACTIVATION_REPLAY_LOCK = threading.Lock()
 _ACTIVATED_CAPABILITIES: dict[str, datetime] = {}
-
-
-class LiveCanaryRuntimeLaunchSessionError(RuntimeError):
-    """One launch-session invariant failed with a stable public reason code."""
-
-    __slots__ = ("reason_code",)
-
-    def __init__(self, reason_code: object) -> None:
-        normalized = re.sub(
-            r"[^A-Z0-9_]+",
-            "_",
-            str(reason_code or "").strip().upper(),
-        ).strip("_")
-        self.reason_code = normalized or "LIVE_CANARY_RUNTIME_LAUNCH_INVALID"
-        super().__init__(self.reason_code)
 
 
 def _reject(reason_code: str) -> None:
@@ -326,13 +317,10 @@ class LiveCanaryRuntimeLaunchSession(CanonicalContract):
             _reject("RUNTIME_LAUNCH_SESSION_NOT_CURRENT")
 
 
-def is_live_canary_runtime_launch_session(value: object) -> bool:
-    """Return true only for a session sealed by this verifier module."""
-
-    return (
-        type(value) is LiveCanaryRuntimeLaunchSession
-        and getattr(value, "_session_seal", None) is _SESSION_SEAL
-    )
+_register_live_canary_runtime_launch_session_type(
+    LiveCanaryRuntimeLaunchSession,
+    _seal=_REGISTRATION_SEAL,
+)
 
 
 def _require_exact_inputs(

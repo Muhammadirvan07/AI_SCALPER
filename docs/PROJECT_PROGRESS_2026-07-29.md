@@ -2,11 +2,12 @@
 
 ## Outcome
 
-The project gained a sealed runtime launch-session boundary for a future first
-XAUUSD live canary. The complete activation-to-launch evidence chain is now
-implemented and verified locally, but the checked-in central lock prevents a
-session from being minted and no boundary authorizes an order or broker
-mutation.
+The project gained a sealed runtime launch-session boundary and mandatory
+observation-only integration into the production bootstrap, composition, and
+supervisor for a future first XAUUSD live canary. The complete
+activation-to-runtime-observation chain is implemented and verified locally,
+but the checked-in central lock prevents a session from being minted and no
+boundary authorizes an order or broker mutation.
 
 ```text
 LOCAL_SOURCE_GATE = PASS
@@ -14,6 +15,7 @@ LIVE_CANARY_EVIDENCE_BOUNDARY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PORTABLE_CUSTODY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_RUNTIME_LAUNCH_SESSION = PASS_LOCALLY_CENTRAL_LOCKED
+LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_OBSERVATION_ONLY
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
 DEMO_AUTO_SOAK = NOT_READY
@@ -88,6 +90,22 @@ LIVE_TRADING = DO_NOT_SHIP
   credential effect, and cannot replace per-order permit, promotion, risk,
   news, journal-lease, or final MT5 checks. With the checked-in
   `LIVE_ALLOWED=false`, production cannot currently mint the session.
+- `ProductionRuntimeConfig` now accepts the exact `LIVE/LIVE` pair only behind
+  the independently reviewed central policy, while its own serializable
+  safety flags remain deny-only. Static bootstrap validation requires the
+  exact registered candidate and verifier-sealed session and compares every
+  shared path, broker/account, source, release, champion, dependency, MT5,
+  trust-domain, symbol, and operational field before any callback.
+- `ProductionRuntimeBootstrap` and `ProductionRuntimeComposition` revalidate
+  the current session before credential, filesystem, journal, MT5, external
+  evidence, initialization, supervisor-start, and cycle boundaries. LIVE
+  maps its existing WORM root to the candidate stage hash plus exact session
+  and checkpoint hashes and never consumes the DEMO stage provider.
+- `RuntimeSupervisor` checks central policy and session currentness before its
+  first external checkpoint/reconciliation/decision boundary. A relock or
+  expiry performs only a local critical latch at preflight; LIVE permits
+  `NO_ACTION` observations only, and every other decision fails with
+  `LIVE_EXECUTION_PATH_NOT_IMPLEMENTED` before execution callbacks.
 
 ## Verification
 
@@ -101,11 +119,14 @@ LIVE_TRADING = DO_NOT_SHIP
 | Portable custody integration cluster | 50 PASS normal; 50 PASS optimized with three intentional nested-suite skips |
 | Runtime launch-session spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused runtime launch-session suite | 6 PASS normal; 6 PASS optimized |
+| Production-runtime integration spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
+| Focused production-runtime integration | 7 PASS normal; 7 PASS optimized |
+| Related bootstrap/supervisor/release regression | 122 PASS normal; 121 PASS plus one intentional optimized skip |
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,841 PASS, 3 platform skips |
-| Full Python regression with `-O` | 1,841 PASS, 6 skips including optimized-only nested self-tests |
+| Full Python regression | 1,848 PASS, 3 platform skips |
+| Full Python regression with `-O` | 1,848 PASS, 6 skips including optimized-only nested self-tests |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
 | Checked-in central live lock | remains exactly false |
 | Broker/order/credential/process effects | not performed |
@@ -135,12 +156,12 @@ uptime monitoring remain external work.
    prebootstrap admission; local tests use synthetic values only.
 7. Provision the real independent WORM readback and atomic CAS/nonce custody,
    retain the predecessor pin through an independent channel, and collect the
-   canonical RSA receipts this local boundary expects. Then integrate the
-   sealed runtime launch session as a mandatory input to the effect-capable
-   production bootstrap and supervisor LIVE path, and review that composition
-   independently. The central lock remains unchanged until that later
+   canonical RSA receipts this local boundary expects. Then specify, implement,
+   and independently review the separate per-order LIVE authorization and
+   execution boundary; the current production integration is intentionally
+   observation-only. The central lock remains unchanged until that later
    ceremony and all external evidence are accepted.
 
 No percentage or passing unit-test count should be interpreted as broker
-authority. Until the external evidence and later runtime integration exist,
+authority. Until the external evidence and later per-order execution boundary exist,
 the truthful state remains `LIVE_TRADING = DO_NOT_SHIP`.

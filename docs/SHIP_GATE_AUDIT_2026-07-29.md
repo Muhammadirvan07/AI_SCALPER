@@ -8,6 +8,7 @@ LIVE_CANARY_ACTIVATION_EVIDENCE = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PORTABLE_CUSTODY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_RUNTIME_LAUNCH_SESSION = PASS_LOCALLY_CENTRAL_LOCKED
+LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_OBSERVATION_ONLY
 DEPENDENCY_OR_FRONTEND_HOST_INSTALL = NOT_CHANGED
 WINDOWS_EXTERNAL_ACCEPTANCE = INCOMPLETE
 DEMO_AUTO_SOAK = NOT_READY
@@ -34,6 +35,10 @@ Reviewed source:
 - `live_runtime/live_canary_runtime_launch_session.py`;
 - `test_live_runtime_live_canary_runtime_launch_session.py`;
 - `specs/live_canary_runtime_launch_session_v1.md`;
+- `live_runtime/live_canary_runtime_authority.py`;
+- production bootstrap/composition and runtime supervisor LIVE integration;
+- `test_live_runtime_live_canary_production_runtime_integration.py`;
+- `specs/live_canary_production_runtime_integration_v1.md`;
 - mode-aware symbol-boundary inventory in
   `test_execution_policy_mode_aware.py`;
 - verifier-seal hardening in `live_canary_prebootstrap_admission.py` and
@@ -52,7 +57,7 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Code quality | PASS_LOCAL | Spec-first implementation, 100/100 spec validation, normal/optimized regression, no changed-file whitespace errors |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
-| Deployment | INCOMPLETE_EXTERNAL | Sealed prebootstrap, portable WORM/CAS verification, and launch-only runtime-session boundaries exist locally, but the checked-in central lock is false and actual Windows provider conformance, real WORM/CAS providers and receipts, session integration into task/service bootstrap, ACLs, TLS/auth where applicable, rollback, and backup/restore are not accepted |
+| Deployment | INCOMPLETE_EXTERNAL | Sealed prebootstrap, portable WORM/CAS verification, launch-only runtime session, and observation-only production integration exist locally, but the checked-in central lock is false and actual Windows provider conformance, real WORM/CAS providers and receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, and backup/restore are not accepted |
 | Frontend | OUTSIDE_CHANGE_SCOPE / WINDOWS_NODE_MISSING | No frontend source was changed by this milestone; Windows still needs a verified Node.js LTS installation to run Vite |
 | Observability | PASS_BOUNDARY / EXTERNAL_PENDING | Canonical reason codes and replay checkpoints exist; external uptime/alert/custody proof is not present |
 
@@ -70,11 +75,14 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Portable custody integration cluster | 50 PASS normal; 50 PASS optimized with three intentional nested-suite skips |
 | Runtime launch-session spec validator (`--strict`) | 100/100; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused runtime launch-session tests | 6 PASS normal; 6 PASS optimized |
+| Production-runtime integration spec validator (`--strict`) | 100/100; 0 errors/warnings and one informational TypeScript-N/A note |
+| Production-runtime integration tests | 7 PASS normal; 7 PASS optimized |
+| Related bootstrap/supervisor/release regression | 122 PASS normal; 121 PASS plus one intentional optimized skip |
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage regression | 81 PASS in both normal and optimized modes |
-| Full Python regression | 1,841 PASS, 3 platform skips |
-| Full Python optimized regression | 1,841 PASS, 6 skips |
+| Full Python regression | 1,848 PASS, 3 platform skips |
+| Full Python optimized regression | 1,848 PASS, 6 skips |
 | Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` and `SAFE_TO_DEMO_AUTO_ORDER` remain false; no MT5, order, credential, network, filesystem-write, or process-launch primitive in the runtime launch-session module |
 
 The generic repository scanner reported `DO_NOT_SHIP` with ten critical
@@ -127,6 +135,12 @@ changed-source findings.
    rechecks the central policy at the end. Even on successful activation it
    authorizes process/bootstrap launch only; execution and broker mutation
    remain false and downstream per-order controls remain mandatory.
+10. The sealed launch session previously stopped before the effect-capable
+    production runtime. LIVE config/bootstrap/composition/supervisor now
+    require exact candidate and session authority, recheck currentness before
+    effects, avoid the DEMO stage provider, and allow only `NO_ACTION` cycles.
+    Preflight relock/expiry uses a local-only critical latch so it cannot call
+    external checkpoint, reconciliation, decision, or broker ports.
 
 ## Blocking facts
 
@@ -137,8 +151,9 @@ changed-source findings.
 - No actual independent WORM admission upload/readback or atomic external
   CAS/nonce ledger receipt has been accepted; local test doubles are not
   external custody evidence.
-- The effect-capable production bootstrap and supervisor do not yet require or
-  consume the new sealed launch session on their LIVE path.
+- No separately specified or reviewed per-order LIVE execution boundary
+  exists; the integrated supervisor deliberately rejects every non-NO_ACTION
+  LIVE decision before execution callbacks.
 - The central live lock remains false and must not change in this milestone.
 
 Therefore the final verdict is **DO NOT SHIP LIVE TRADING**.

@@ -38,6 +38,10 @@ from .journal_integrity import (
     ExecutionJournalCheckpoint,
     ExecutionJournalCheckpointCASAcknowledgement,
 )
+from .live_canary_runtime_authority import (
+    LiveCanaryRuntimeLaunchSessionError,
+    is_live_canary_runtime_launch_session,
+)
 from .reconciliation import (
     BrokerClosedTradeReceipt,
     BrokerDealReceipt,
@@ -61,7 +65,6 @@ from .stage_authorization import (
     StageReadinessAuthorization,
     StageReplayCheckpoint,
 )
-
 
 UTC = timezone.utc
 SUPERVISOR_SCHEMA_VERSION = 3
@@ -2400,6 +2403,7 @@ class RuntimeSupervisor:
         ]
         | None = None,
         demo_auto_execution_service: Callable[..., object] | None = None,
+        live_launch_session: object | None = None,
     ) -> None:
         if type(binding) is not RuntimeSupervisorBinding:
             raise TypeError("binding must be RuntimeSupervisorBinding")
@@ -2445,6 +2449,7 @@ class RuntimeSupervisor:
         )
         self.demo_auto_environment_arm_provider = demo_auto_environment_arm_provider
         self.demo_auto_execution_service = demo_auto_execution_service
+        self.live_launch_session = live_launch_session
         self.clock_provider = clock_provider
         self.supervisor_checkpoint_provider = supervisor_checkpoint_provider
         self.supervisor_checkpoint_exporter = supervisor_checkpoint_exporter
@@ -2574,6 +2579,40 @@ class RuntimeSupervisor:
                 raise TypeError("DEMO stage modes require explicit stage authorization ports")
         elif stage_authorization_ports is not None:
             raise ValueError("stage authorization ports are restricted to DEMO stage modes")
+        if binding.mode == "LIVE":
+            if live_launch_session is not None and not (
+                is_live_canary_runtime_launch_session(live_launch_session)
+            ):
+                raise TypeError("live_launch_session must be verifier sealed")
+            if (
+                is_live_canary_runtime_launch_session(live_launch_session)
+                and (
+                    live_launch_session.candidate_sha256
+                    != binding.config_sha256
+                    or binding.environment != "LIVE"
+                    or live_launch_session.execution_authorized is not False
+                    or live_launch_session.broker_mutation_authorized is not False
+                )
+            ):
+                raise RuntimeSupervisorBindingError(
+                    "live launch session binding mismatch"
+                )
+            if execution_policy.LIVE_ALLOWED is True:
+                if not is_live_canary_runtime_launch_session(live_launch_session):
+                    raise TypeError(
+                        "enabled LIVE mode requires a sealed launch session"
+                    )
+                try:
+                    live_launch_session.assert_current(
+                        now=require_utc(
+                            "trusted live launch clock",
+                            clock_provider(),
+                        )
+                    )
+                except LiveCanaryRuntimeLaunchSessionError as exc:
+                    raise RuntimeSupervisorBindingError(exc.reason_code) from exc
+        elif live_launch_session is not None:
+            raise ValueError("live_launch_session is restricted to LIVE mode")
         demo_auto_ports = (
             ("demo_auto_ipc_input_provider", demo_auto_ipc_input_provider),
             ("demo_auto_session_lease_provider", demo_auto_session_lease_provider),
@@ -2885,6 +2924,36 @@ class RuntimeSupervisor:
                 self.store.release(owner, fence)
             except Exception:
                 pass
+        self.owner_id = None
+        self.fence_token = None
+        message = reason if exc is None else f"{reason}: {type(exc).__name__}"
+        raise RuntimeSupervisorCriticalError(message) from exc
+
+    def _latch_preflight_and_stop(
+        self,
+        reason_code: str,
+        *,
+        exc: Exception | None = None,
+    ) -> None:
+        """Persist a local deny without touching any external runtime port."""
+
+        reason = require_text("reason_code", reason_code, upper=True)
+        try:
+            self.store.latch_critical(reason, occurred_at=self._now())
+        except Exception:
+            pass
+        try:
+            status = self.journal.kill_switch_status()
+            if not isinstance(status, Mapping) or status.get("latched") is not True:
+                self.journal.latch_kill_switch(
+                    reason,
+                    source="RUNTIME_SUPERVISOR",
+                )
+        except Exception:
+            pass
+        self._state = "STOPPED_CRITICAL"
+        self._stopped = True
+        self._stop_reason = reason
         self.owner_id = None
         self.fence_token = None
         message = reason if exc is None else f"{reason}: {type(exc).__name__}"
@@ -3658,6 +3727,37 @@ class RuntimeSupervisor:
             raise RuntimeSupervisorCriticalError("ROLLOVER_BLACKOUT_ACTIVE")
         return guard
 
+    def _require_live_launch_session_current(self) -> None:
+        if self.binding.mode != "LIVE":
+            return
+        allowed, reasons = execution_policy.execution_mode_policy_decision("LIVE")
+        if (
+            execution_policy.LIVE_ALLOWED is not True
+            or execution_policy.SAFE_TO_DEMO_AUTO_ORDER is not False
+            or allowed is not True
+            or reasons != ()
+        ):
+            raise RuntimeSupervisorCriticalError("LIVE_MODE_POLICY_LOCKED")
+        session = self.live_launch_session
+        if not is_live_canary_runtime_launch_session(session):
+            raise RuntimeSupervisorCriticalError(
+                "LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED"
+            )
+        if (
+            self.binding.environment != "LIVE"
+            or session.candidate_sha256 != self.binding.config_sha256
+            or session.execution_authorized is not False
+            or session.broker_mutation_authorized is not False
+            or session.safe_to_demo_auto_order is not False
+        ):
+            raise RuntimeSupervisorCriticalError(
+                "LIVE_RUNTIME_LAUNCH_BINDING_MISMATCH"
+            )
+        try:
+            session.assert_current(now=self._now())
+        except LiveCanaryRuntimeLaunchSessionError as exc:
+            raise RuntimeSupervisorCriticalError(exc.reason_code) from exc
+
     def _verify_stage_authorization(
         self,
     ) -> tuple[
@@ -3668,7 +3768,10 @@ class RuntimeSupervisor:
     ] | None:
         if self.binding.mode == "SHADOW":
             return None
-        if self.binding.mode in {"LIVE", "DEMO_AUTO"}:
+        if self.binding.mode == "LIVE":
+            self._require_live_launch_session_current()
+            return None
+        if self.binding.mode == "DEMO_AUTO":
             mode_allowed, _reason_codes = (
                 execution_policy.execution_mode_policy_decision(self.binding.mode)
             )
@@ -3819,15 +3922,11 @@ class RuntimeSupervisor:
         self.lease_seconds = require_int(
             "lease_seconds", lease_seconds, minimum=1, maximum=300
         )
+        preflight_complete = False
         try:
-            self._verify_external_supervisor_checkpoint()
-            self.owner_id = require_text("owner_id", owner_id)
-            self.fence_token = self.store.claim(
-                self.owner_id,
-                lease_seconds=self.lease_seconds,
-                now=self._now(),
-            )
-            if self.binding.mode in {"LIVE", "DEMO_AUTO"}:
+            if self.binding.mode == "LIVE":
+                self._require_live_launch_session_current()
+            elif self.binding.mode == "DEMO_AUTO":
                 mode_allowed, _reason_codes = (
                     execution_policy.execution_mode_policy_decision(
                         self.binding.mode
@@ -3837,10 +3936,20 @@ class RuntimeSupervisor:
                     raise RuntimeSupervisorCriticalError(
                         f"{self.binding.mode}_MODE_POLICY_LOCKED"
                     )
+            preflight_complete = True
+            self._verify_external_supervisor_checkpoint()
+            self.owner_id = require_text("owner_id", owner_id)
+            self.fence_token = self.store.claim(
+                self.owner_id,
+                lease_seconds=self.lease_seconds,
+                now=self._now(),
+            )
             journal_checkpoint, risk, reconciliation, facts, guard = self._startup_checks()
+            self._require_live_launch_session_current()
             stage_evidence = self._verify_stage_authorization()
             owner, fence = self._lease()
             self._require_cycle_evidence_fresh(journal_checkpoint, risk, facts)
+            self._require_live_launch_session_current()
             receipt = self._append_and_checkpoint(
                 owner_id=owner,
                 fence_token=fence,
@@ -3888,6 +3997,11 @@ class RuntimeSupervisor:
                 if isinstance(exc, RuntimeSupervisorCriticalError)
                 else "STARTUP_VERIFICATION_FAILED"
             )
+            if (
+                not preflight_complete
+                and isinstance(exc, RuntimeSupervisorCriticalError)
+            ):
+                self._latch_preflight_and_stop(reason, exc=exc)
             self._latch_and_stop(reason, exc=exc)
             raise AssertionError("unreachable")
 
@@ -4160,7 +4274,10 @@ class RuntimeSupervisor:
         if self._state != "READY" or self._stopped:
             raise RuntimeSupervisorError("supervisor is not ready")
         cycle_id = f"cycle-{uuid.uuid4().hex}"
+        preflight_complete = False
         try:
+            self._require_live_launch_session_current()
+            preflight_complete = True
             owner, fence = self._lease()
             # Reconciliation is deliberately the first external cycle operation.
             reconciliation = self._verify_reconciliation(self.reconciliation_provider())
@@ -4180,9 +4297,14 @@ class RuntimeSupervisor:
                 decision,
                 reason_code="DECISION_STALE_OR_FUTURE",
             )
+            self._require_live_launch_session_current()
             self._require_cycle_evidence_fresh(journal_checkpoint, risk, facts)
             execution_called = False
             execution_result_sha: str | None = None
+            if self.binding.mode == "LIVE" and decision.action != "NO_ACTION":
+                raise RuntimeSupervisorCriticalError(
+                    "LIVE_EXECUTION_PATH_NOT_IMPLEMENTED"
+                )
             if decision.action == "MANUAL_DEMO_EXECUTE":
                 if self.binding.mode != "DEMO" or self.binding.environment != "DEMO":
                     raise RuntimeSupervisorCriticalError("MANUAL_EXECUTION_MODE_DENIED")
@@ -4354,6 +4476,7 @@ class RuntimeSupervisor:
                     guard=guard,
                 )
                 execution_called = True
+            self._require_live_launch_session_current()
             owner, fence = self._lease()
             return self._append_and_checkpoint(
                 owner_id=owner,
@@ -4382,6 +4505,11 @@ class RuntimeSupervisor:
                     else "RUNTIME_CYCLE_FAILED"
                 )
             )
+            if (
+                not preflight_complete
+                and isinstance(exc, RuntimeSupervisorCriticalError)
+            ):
+                self._latch_preflight_and_stop(reason, exc=exc)
             self._latch_and_stop(reason, exc=exc)
             raise AssertionError("unreachable")
 

@@ -4,8 +4,9 @@ Importing, constructing, or statically validating this module never connects to
 MetaTrader and never submits an order.  Filesystem materialization, credential
 resolution, MT5 initialization, supervisor startup, and bounded execution are
 separate explicit phases.  The checked-in release accepts only controlled
-manual ``DEMO`` mode.  A complete ``DEMO_AUTO`` composition exists behind the
-single reviewed execution-policy lock; live mode remains unsupported.
+manual ``DEMO`` mode.  A complete ``DEMO_AUTO`` composition and a launch-only
+``LIVE`` observation composition exist behind independent reviewed policy
+locks; neither checked-in lock is enabled.
 """
 
 from __future__ import annotations
@@ -40,6 +41,11 @@ from .journal_integrity import (
     ExecutionJournalCheckpoint,
     ExecutionJournalCheckpointCASAcknowledgement,
     verify_execution_journal_checkpoint,
+)
+from .live_canary_runtime_authority import (
+    LiveCanaryRuntimeLaunchSessionError,
+    is_live_canary_runtime_candidate,
+    is_live_canary_runtime_launch_session,
 )
 from .mt5_adapter import MT5Adapter
 from .mt5_module_attestation import (
@@ -239,15 +245,28 @@ class ProductionRuntimeConfig:
         object.__setattr__(self, "server", require_text("server", self.server))
         environment = require_text("environment", self.environment, upper=True)
         mode = require_text("mode", self.mode, upper=True)
-        if environment != "DEMO" or mode not in {"DEMO", "DEMO_AUTO"}:
-            raise ValueError(
-                "GATED v1 production bootstrap is restricted to DEMO stages"
-            )
+        if (environment, mode) not in {
+            ("DEMO", "DEMO"),
+            ("DEMO", "DEMO_AUTO"),
+            ("LIVE", "LIVE"),
+        }:
+            raise ValueError("production bootstrap environment/mode pair invalid")
         if (
             mode == "DEMO_AUTO"
             and not execution_policy.demo_auto_execution_policy_enabled()
         ):
             raise ValueError("DEMO_AUTO_MODE_POLICY_LOCKED")
+        if mode == "LIVE":
+            allowed, reasons = execution_policy.execution_mode_policy_decision(
+                "LIVE"
+            )
+            if (
+                execution_policy.LIVE_ALLOWED is not True
+                or execution_policy.SAFE_TO_DEMO_AUTO_ORDER is not False
+                or allowed is not True
+                or reasons != ()
+            ):
+                raise ValueError("LIVE_MODE_POLICY_LOCKED")
         object.__setattr__(self, "environment", environment)
         object.__setattr__(self, "mode", mode)
         object.__setattr__(
@@ -462,7 +481,7 @@ class ProductionRuntimeConfig:
                     "DEMO_AUTO session custody fingerprint must be trust-domain distinct"
                 )
         elif any(value is not None for value in session_trust):
-            raise ValueError("DEMO config cannot carry DEMO_AUTO session trust")
+            raise ValueError("non-DEMO_AUTO config cannot carry session trust")
         if type(self.live_allowed) is not bool or type(
             self.safe_to_demo_auto_order
         ) is not bool:
@@ -921,7 +940,7 @@ class ProductionRuntimePorts:
     news_guard_provider: Callable[[], RuntimeNewsGuardReceipt]
     news_guard_key_provider: Callable[[str], str | bytes]
     decision_provider: Callable[[tuple[object, ...], RiskStateReceipt], RuntimeSupervisorDecision]
-    stage_binding: StageBinding
+    stage_binding: StageBinding | None
     stage_authorization_ports_provider: Callable[[], RuntimeStageAuthorizationPorts]
     permit_secret_provider: Callable[[], str | bytes]
     manual_approval_provider: Callable[[RuntimeSupervisorDecision], object]
@@ -1011,8 +1030,8 @@ class ProductionRuntimePorts:
                     "demo_auto_session_store must be exact "
                     "DemoAutoSessionCapabilityStore or None"
                 )
-        if type(self.stage_binding) is not StageBinding:
-            raise TypeError("stage_binding must be exact StageBinding")
+        if self.stage_binding is not None and type(self.stage_binding) is not StageBinding:
+            raise TypeError("stage_binding must be exact StageBinding or None")
 
 
 @dataclass(frozen=True)
@@ -1048,40 +1067,182 @@ class ProductionBootstrapContractReport(CanonicalContract):
             raise ValueError("contract report cannot claim execution readiness")
 
 
+def _require_live_runtime_authority(
+    config: ProductionRuntimeConfig,
+    *,
+    live_candidate: object | None,
+    live_launch_session: object | None,
+    now: datetime | None = None,
+) -> None:
+    """Validate exact LIVE launch authority without granting order authority."""
+
+    if config.mode != "LIVE":
+        if live_candidate is not None or live_launch_session is not None:
+            raise ProductionBootstrapError("LIVE_AUTHORITY_FORBIDDEN_FOR_MODE")
+        return
+    if not is_live_canary_runtime_candidate(live_candidate):
+        raise ProductionBootstrapError("LIVE_RUNTIME_CANDIDATE_NOT_EXACT")
+    if not is_live_canary_runtime_launch_session(live_launch_session):
+        raise ProductionBootstrapError("LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED")
+
+    candidate = live_candidate
+    session = live_launch_session
+    if (
+        session.candidate_sha256 != candidate.content_sha256
+        or session.runtime_profile_sha256 != candidate.runtime_profile_sha256
+        or session.release_manifest_sha256 != candidate.release_manifest_sha256
+        or session.live_stage_binding_sha256
+        != candidate.live_stage_binding_sha256
+        or session.symbol != "XAUUSD"
+        or session.max_lot != candidate.max_lot
+        or session.max_concurrent_positions != candidate.max_concurrent_positions
+        or session.bootstrap_authorized is not True
+        or session.process_launch_authorized is not True
+        or session.live_allowed is not True
+        or session.execution_authorized is not False
+        or session.broker_mutation_authorized is not False
+        or session.safe_to_demo_auto_order is not False
+        or session.order_capability != "GATED_PRESENT"
+    ):
+        raise ProductionBootstrapError("LIVE_RUNTIME_LAUNCH_BINDING_MISMATCH")
+
+    direct_fields = (
+        "account_alias_sha256",
+        "broker_legal_name",
+        "server",
+        "environment",
+        "account_currency",
+        "session_calendar_sha256",
+        "symbol_map",
+        "journal_sha256",
+        "broker_spec_sha256",
+        "commit_sha",
+        "champion_archive_sha256",
+        "champion_package_identity_sha256",
+        "champion_training_snapshot_sha256",
+        "champion_git_tree",
+        "champion_runtime_binding_sha256",
+        "manual_demo_custodian_trust_sha256",
+        "news_guard_provider_id",
+        "news_guard_key_id",
+        "news_guard_ruleset_sha256",
+        "news_guard_blackout_window_sha256",
+        "supervisor_key_id",
+        "supervisor_key_fingerprint_sha256",
+        "supervisor_checkpoint_key_id",
+        "supervisor_checkpoint_key_fingerprint_sha256",
+        "credential_session_key_id",
+        "credential_session_key_fingerprint_sha256",
+        "journal_provisioning_key_id",
+        "journal_provisioning_key_fingerprint_sha256",
+        "worm_audit_key_id",
+        "worm_audit_key_fingerprint_sha256",
+        "risk_ledger_id",
+        "risk_ledger_key_id",
+        "risk_ledger_key_fingerprint_sha256",
+        "journal_checkpoint_key_id",
+        "journal_checkpoint_key_fingerprint_sha256",
+        "news_guard_key_fingerprint_sha256",
+        "permit_secret_fingerprint_sha256",
+        "dependency_lock_sha256",
+        "installed_environment_sha256",
+        "mt5_site_packages_sha256",
+        "mt5_site_packages_tree_sha256",
+        "mt5_distribution_record_sha256",
+        "mt5_module_file_sha256",
+        "mt5_module_relative_path_sha256",
+        "mt5_distribution_version",
+        "mt5_wheel_sha256",
+        "usd_account_currency_symbols",
+        "mode",
+        "magic_number",
+        "deviation_points",
+        "max_tick_age_seconds",
+        "intent_ttl_seconds",
+        "live_allowed",
+        "safe_to_demo_auto_order",
+        "order_capability",
+    )
+    if any(
+        getattr(config, name) != getattr(candidate, name)
+        for name in direct_fields
+    ):
+        raise ProductionBootstrapError("LIVE_RUNTIME_CANDIDATE_CONFIG_MISMATCH")
+    if (
+        str(config.journal_database) != candidate.journal_database
+        or str(config.supervisor_database) != candidate.supervisor_database
+        or str(config.dependency_lock_file) != candidate.dependency_lock_file
+        or config.config_sha256 != candidate.content_sha256
+        or config.stage_binding_sha256 != candidate.live_stage_binding_sha256
+        or config.expected_manual_approver_id is not None
+        or config.expected_manual_approval_key_id is not None
+        or config.manual_approval_key_fingerprint_sha256 is not None
+        or config.demo_auto_session_binding_sha256 is not None
+        or config.demo_auto_session_ledger_id is not None
+        or config.demo_auto_session_custody_key_id is not None
+        or config.demo_auto_session_custody_key_fingerprint_sha256 is not None
+        or len(config.symbol_map) != 1
+        or config.symbol_map[0][0] != "XAUUSD"
+    ):
+        raise ProductionBootstrapError("LIVE_RUNTIME_CANDIDATE_CONFIG_MISMATCH")
+    checked_at = session.activated_at_utc if now is None else require_utc(
+        "trusted live launch clock",
+        now,
+    )
+    try:
+        session.assert_current(now=checked_at)
+    except LiveCanaryRuntimeLaunchSessionError as exc:
+        raise ProductionBootstrapError(exc.reason_code) from exc
+
+
 def _validate_bindings(
     config: ProductionRuntimeConfig,
     ports: ProductionRuntimePorts,
+    *,
+    live_candidate: object | None = None,
+    live_launch_session: object | None = None,
 ) -> None:
     if type(config) is not ProductionRuntimeConfig:
         raise TypeError("config must be exact ProductionRuntimeConfig")
     if type(ports) is not ProductionRuntimePorts:
         raise TypeError("ports must be exact ProductionRuntimePorts")
     stage = ports.stage_binding
-    if (
-        stage.binding_sha256 != config.stage_binding_sha256
-        or stage.account_alias_sha256 != config.account_alias_sha256
-        or stage.server != config.server
-        or stage.environment != config.environment
-        or stage.journal_sha256 != config.journal_sha256
-        or stage.commit_sha != config.commit_sha
-        or stage.config_sha256 != config.config_sha256
-        or stage.champion_archive_sha256
-        != config.champion_archive_sha256
-        or stage.champion_package_identity_sha256
-        != config.champion_package_identity_sha256
-        or stage.champion_training_snapshot_sha256
-        != config.champion_training_snapshot_sha256
-        or stage.champion_git_tree != config.champion_git_tree
-        or stage.champion_runtime_binding_sha256
-        != config.champion_runtime_binding_sha256
-        or stage.dependency_lock_sha256 != config.dependency_lock_sha256
-        or stage.session_calendar_sha256 != config.session_calendar_sha256
-        or stage.broker_spec_sha256 != config.broker_spec_sha256
-        or stage.manual_demo_custodian_trust_sha256
-        != config.manual_demo_custodian_trust_sha256
-        or stage.symbol not in dict(config.symbol_map)
-    ):
-        raise ProductionBootstrapError("STAGE_BINDING_MISMATCH")
+    if config.mode == "LIVE":
+        if stage is not None:
+            raise ProductionBootstrapError("LIVE_STAGE_AUTHORIZATION_FORBIDDEN")
+        _require_live_runtime_authority(
+            config,
+            live_candidate=live_candidate,
+            live_launch_session=live_launch_session,
+        )
+    else:
+        if type(stage) is not StageBinding:
+            raise ProductionBootstrapError("STAGE_BINDING_NOT_EXACT")
+        if (
+            stage.binding_sha256 != config.stage_binding_sha256
+            or stage.account_alias_sha256 != config.account_alias_sha256
+            or stage.server != config.server
+            or stage.environment != config.environment
+            or stage.journal_sha256 != config.journal_sha256
+            or stage.commit_sha != config.commit_sha
+            or stage.config_sha256 != config.config_sha256
+            or stage.champion_archive_sha256
+            != config.champion_archive_sha256
+            or stage.champion_package_identity_sha256
+            != config.champion_package_identity_sha256
+            or stage.champion_training_snapshot_sha256
+            != config.champion_training_snapshot_sha256
+            or stage.champion_git_tree != config.champion_git_tree
+            or stage.champion_runtime_binding_sha256
+            != config.champion_runtime_binding_sha256
+            or stage.dependency_lock_sha256 != config.dependency_lock_sha256
+            or stage.session_calendar_sha256 != config.session_calendar_sha256
+            or stage.broker_spec_sha256 != config.broker_spec_sha256
+            or stage.manual_demo_custodian_trust_sha256
+            != config.manual_demo_custodian_trust_sha256
+            or stage.symbol not in dict(config.symbol_map)
+        ):
+            raise ProductionBootstrapError("STAGE_BINDING_MISMATCH")
     risk_binding = getattr(ports.risk_ledger, "binding", None)
     if type(risk_binding) is not RiskLedgerBinding:
         raise ProductionBootstrapError("RISK_LEDGER_BINDING_MISSING")
@@ -1198,10 +1359,18 @@ def _verify_mt5_module_against_config(
 def validate_production_bootstrap_contract(
     config: ProductionRuntimeConfig,
     ports: ProductionRuntimePorts,
+    *,
+    live_candidate: object | None = None,
+    live_launch_session: object | None = None,
 ) -> ProductionBootstrapContractReport:
     """Pure static validation: no provider, filesystem, credential, or broker call."""
 
-    _validate_bindings(config, ports)
+    _validate_bindings(
+        config,
+        ports,
+        live_candidate=live_candidate,
+        live_launch_session=live_launch_session,
+    )
     blockers = [
         "EXTERNAL_CREDENTIAL_SESSION_RECEIPT_REQUIRED",
         "EXTERNAL_DECISION_DATA_PROVIDER_REQUIRED",
@@ -1216,7 +1385,6 @@ def validate_production_bootstrap_contract(
         "EXTERNAL_RISK_CHECKPOINT_CAS_EXPORTER_REQUIRED",
         "EXTERNAL_RUNTIME_FACT_PROVIDER_REQUIRED",
         "EXTERNAL_SIGNED_NEWS_RECEIPT_REQUIRED",
-        "EXTERNAL_STAGE_AUTHORIZATION_REQUIRED",
         "EXTERNAL_SUPERVISOR_CHECKPOINT_REQUIRED",
         "EXTERNAL_TRUSTED_CLOCK_PROVIDER_REQUIRED",
         "EXTERNAL_WORM_AUDIT_RECEIPT_REQUIRED",
@@ -1224,17 +1392,27 @@ def validate_production_bootstrap_contract(
     if config.mode == "DEMO":
         blockers.extend(
             (
+                "EXTERNAL_STAGE_AUTHORIZATION_REQUIRED",
                 "EXTERNAL_EXECUTION_CYCLE_PROVIDER_REQUIRED",
                 "EXTERNAL_MANUAL_APPROVAL_PROVIDER_REQUIRED",
+            )
+        )
+    elif config.mode == "DEMO_AUTO":
+        blockers.extend(
+            (
+                "EXTERNAL_STAGE_AUTHORIZATION_REQUIRED",
+                "DEMO_AUTO_REVIEWED_POLICY_RELEASE_REQUIRED",
+                "DEMO_AUTO_ONE_USE_IPC_REQUIRED",
+                "DEMO_AUTO_CURRENT_SESSION_LEASE_REQUIRED",
+                "DEMO_AUTO_FRESH_PERMIT_PROMOTION_ARM_REQUIRED",
             )
         )
     else:
         blockers.extend(
             (
-                "DEMO_AUTO_REVIEWED_POLICY_RELEASE_REQUIRED",
-                "DEMO_AUTO_ONE_USE_IPC_REQUIRED",
-                "DEMO_AUTO_CURRENT_SESSION_LEASE_REQUIRED",
-                "DEMO_AUTO_FRESH_PERMIT_PROMOTION_ARM_REQUIRED",
+                "LIVE_EXECUTION_PATH_NOT_IMPLEMENTED",
+                "LIVE_PER_ORDER_AUTHORIZATION_REQUIRED",
+                "LIVE_SIGNED_PROMOTION_EVIDENCE_REQUIRED",
             )
         )
     return ProductionBootstrapContractReport(
@@ -1495,6 +1673,8 @@ class ProductionRuntimeComposition:
         coordinator: ExecutionCoordinator,
         runtime_service: LiveRuntimeService,
         supervisor: RuntimeSupervisor,
+        live_candidate: object | None = None,
+        live_launch_session: object | None = None,
     ) -> None:
         exact = (
             type(journal) is ExecutionJournal,
@@ -1512,6 +1692,13 @@ class ProductionRuntimeComposition:
         self.coordinator = coordinator
         self.runtime_service = runtime_service
         self.supervisor = supervisor
+        self.live_candidate = live_candidate
+        self.live_launch_session = live_launch_session
+        _require_live_runtime_authority(
+            config,
+            live_candidate=live_candidate,
+            live_launch_session=live_launch_session,
+        )
         self._initialized = False
         self._started = False
         self._abort_initiated = False
@@ -1522,6 +1709,17 @@ class ProductionRuntimeComposition:
             return require_utc("trusted bootstrap clock", self.ports.clock_provider())
         except Exception as exc:
             raise ProductionBootstrapError("TRUSTED_CLOCK_PROVIDER_FAILED") from exc
+
+    def _require_live_launch_session_current(self) -> None:
+        config = getattr(self, "config", None)
+        if type(config) is not ProductionRuntimeConfig or config.mode != "LIVE":
+            return
+        _require_live_runtime_authority(
+            config,
+            live_candidate=self.live_candidate,
+            live_launch_session=self.live_launch_session,
+            now=self._trusted_now(),
+        )
 
     def _external_receipt(
         self,
@@ -1547,6 +1745,7 @@ class ProductionRuntimeComposition:
     def verify_external_evidence(self) -> VerifiedCredentialSession:
         """Resolve every external proof without initializing the broker session."""
 
+        self._require_live_launch_session_current()
         try:
             mt5_attestation = _verify_mt5_module_against_config(
                 self.config,
@@ -1558,13 +1757,16 @@ class ProductionRuntimeComposition:
             raise ProductionBootstrapError(
                 "MT5_MODULE_ATTESTATION_VERIFICATION_FAILED"
             ) from exc
+        self._require_live_launch_session_current()
         credential = self._credential_session()
+        self._require_live_launch_session_current()
         provisioning = self._external_receipt(
             "JOURNAL_PROVISIONING",
             self.ports.journal_provisioning_provider,
         )
         if provisioning.evidence_sha256 != self.journal.journal_sha256:
             raise ProductionBootstrapError("JOURNAL_PROVISIONING_BINDING_MISMATCH")
+        self._require_live_launch_session_current()
         source = self.ports.risk_source_provider()
         if type(source) is not RiskSourceReceipt:
             raise ProductionBootstrapError("RISK_SOURCE_RECEIPT_NOT_SEALED")
@@ -1573,6 +1775,7 @@ class ProductionRuntimeComposition:
         now = self._trusted_now()
         if not source.observed_at_utc <= now <= source.valid_until_utc:
             raise ProductionBootstrapError("RISK_SOURCE_RECEIPT_STALE")
+        self._require_live_launch_session_current()
         risk = self.ports.risk_checkpoint_provider()
         if type(risk) is not RiskStateReceipt:
             raise ProductionBootstrapError("RISK_CHECKPOINT_NOT_SEALED")
@@ -1595,6 +1798,7 @@ class ProductionRuntimeComposition:
         ):
             raise ProductionBootstrapError("RISK_CHECKPOINT_VERIFICATION_FAILED")
         _require_risk_source_checkpoint_binding(source, risk)
+        self._require_live_launch_session_current()
         journal_checkpoint = self.ports.journal_checkpoint_provider()
         external_journal = self.ports.external_journal_checkpoint_provider()
         if (
@@ -1609,6 +1813,7 @@ class ProductionRuntimeComposition:
             checkpoint=journal_checkpoint,
             prior_checkpoint=external_journal,
         )
+        self._require_live_launch_session_current()
         supervisor_checkpoint = self.ports.supervisor_checkpoint_provider()
         if type(supervisor_checkpoint) is not RuntimeSupervisorCheckpoint:
             raise ProductionBootstrapError("SUPERVISOR_CHECKPOINT_NOT_SEALED")
@@ -1632,19 +1837,23 @@ class ProductionRuntimeComposition:
             or supervisor_checkpoint.issued_at_utc > now
         ):
             raise ProductionBootstrapError("SUPERVISOR_CHECKPOINT_BINDING_MISMATCH")
+        self._require_live_launch_session_current()
         news = _verify_news_against_config(
             config=self.config,
             ports=self.ports,
             receipt=self.ports.news_guard_provider(),
         )
-        stage = self.ports.stage_authorization_ports_provider()
-        if type(stage) is not RuntimeStageAuthorizationPorts:
-            raise ProductionBootstrapError("STAGE_AUTHORIZATION_PORTS_NOT_SEALED")
-        if (
-            stage.expected_binding != self.ports.stage_binding
-            or stage.authorization.request.binding != self.ports.stage_binding
-        ):
-            raise ProductionBootstrapError("STAGE_AUTHORIZATION_BINDING_MISMATCH")
+        stage: RuntimeStageAuthorizationPorts | None = None
+        if self.config.mode != "LIVE":
+            stage = self.ports.stage_authorization_ports_provider()
+            if type(stage) is not RuntimeStageAuthorizationPorts:
+                raise ProductionBootstrapError("STAGE_AUTHORIZATION_PORTS_NOT_SEALED")
+            if (
+                stage.expected_binding != self.ports.stage_binding
+                or stage.authorization.request.binding != self.ports.stage_binding
+            ):
+                raise ProductionBootstrapError("STAGE_AUTHORIZATION_BINDING_MISMATCH")
+        self._require_live_launch_session_current()
         published_risk = self.ports.risk_checkpoint_provider()
         if (
             type(published_risk) is not RiskStateReceipt
@@ -1652,6 +1861,29 @@ class ProductionRuntimeComposition:
         ):
             raise ProductionBootstrapError(
                 "RISK_CHECKPOINT_CHANGED_DURING_ATTESTATION"
+            )
+        self._require_live_launch_session_current()
+        if self.config.mode == "LIVE":
+            if not is_live_canary_runtime_launch_session(
+                self.live_launch_session
+            ):
+                raise ProductionBootstrapError(
+                    "LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED"
+                )
+            stage_binding_sha256 = self.config.stage_binding_sha256
+            stage_authorization_sha256 = self.live_launch_session.content_sha256
+            stage_external_checkpoint_sha256 = (
+                self.live_launch_session.checkpoint_sha256
+            )
+        else:
+            if type(stage) is not RuntimeStageAuthorizationPorts:
+                raise ProductionBootstrapError(
+                    "STAGE_AUTHORIZATION_PORTS_NOT_SEALED"
+                )
+            stage_binding_sha256 = stage.expected_binding.binding_sha256
+            stage_authorization_sha256 = stage.authorization.content_sha256
+            stage_external_checkpoint_sha256 = (
+                stage.external_replay_checkpoint.content_sha256
             )
         worm_root = worm_audit_evidence_sha256(
             bootstrap_binding_sha256=self.config.safe_binding_sha256,
@@ -1663,11 +1895,9 @@ class ProductionRuntimeComposition:
             risk_source_receipt_sha256=source.content_sha256,
             supervisor_checkpoint_sha256=supervisor_checkpoint.content_sha256,
             news_guard_receipt_sha256=news.content_sha256,
-            stage_binding_sha256=stage.expected_binding.binding_sha256,
-            stage_authorization_sha256=stage.authorization.content_sha256,
-            stage_external_checkpoint_sha256=(
-                stage.external_replay_checkpoint.content_sha256
-            ),
+            stage_binding_sha256=stage_binding_sha256,
+            stage_authorization_sha256=stage_authorization_sha256,
+            stage_external_checkpoint_sha256=stage_external_checkpoint_sha256,
             mt5_module_attestation_sha256=mt5_attestation.content_sha256,
         )
         require_worm_audit_root(
@@ -1680,9 +1910,11 @@ class ProductionRuntimeComposition:
         if self._initialized:
             raise ProductionBootstrapError("COMPOSITION_ALREADY_INITIALIZED")
         try:
+            self._require_live_launch_session_current()
             mt5_attestation = self.adapter.load_and_attest_module()
             _verify_mt5_module_against_config(self.config, mt5_attestation)
             credential = self.verify_external_evidence()
+            self._require_live_launch_session_current()
             self.adapter.initialize(**dict(credential.initialize_kwargs))
             self.verify_external_evidence()
         except Exception:
@@ -1693,7 +1925,9 @@ class ProductionRuntimeComposition:
     def start(self, *, owner_id: str, lease_seconds: int = 30):
         if not self._initialized:
             raise ProductionBootstrapError("COMPOSITION_NOT_INITIALIZED")
+        self._require_live_launch_session_current()
         self.verify_external_evidence()
+        self._require_live_launch_session_current()
         receipt = self.supervisor.start(owner_id=owner_id, lease_seconds=lease_seconds)
         with self._lifecycle_lock:
             self._started = True
@@ -1739,8 +1973,11 @@ class ProductionRuntimeComposition:
         if not self._initialized or not self._started:
             raise ProductionBootstrapError("COMPOSITION_NOT_STARTED")
         try:
+            self._require_live_launch_session_current()
             self.verify_external_evidence()
+            self._require_live_launch_session_current()
             receipt = self.supervisor.run_cycle()
+            self._require_live_launch_session_current()
             self.verify_external_evidence()
             return receipt
         except Exception as exc:
@@ -1766,9 +2003,10 @@ class ProductionRuntimeComposition:
                     "SUPERVISOR_SHUTDOWN_RECEIPT_NOT_SEALED"
                 )
             self._started = False
-            # Stopping advances the checkpoint.  Never report a clean stop
-            # until off-host evidence attests the resulting high-water mark.
-            self.verify_external_evidence()
+            # DEMO retains its final off-host evidence attestation.  LIVE
+            # cleanup must remain available after central relock or expiry.
+            if self.config.mode != "LIVE":
+                self.verify_external_evidence()
             return receipt
         except Exception as exc:
             try:
@@ -1805,24 +2043,61 @@ class ProductionRuntimeComposition:
 class ProductionRuntimeBootstrap:
     """Side-effect-free descriptor; ``materialize`` is the explicit I/O boundary."""
 
-    def __init__(self, config: ProductionRuntimeConfig, ports: ProductionRuntimePorts):
+    def __init__(
+        self,
+        config: ProductionRuntimeConfig,
+        ports: ProductionRuntimePorts,
+        *,
+        live_candidate: object | None = None,
+        live_launch_session: object | None = None,
+    ) -> None:
         self.config = config
         self.ports = ports
-        self.contract_report = validate_production_bootstrap_contract(config, ports)
+        self.live_candidate = live_candidate
+        self.live_launch_session = live_launch_session
+        self.contract_report = validate_production_bootstrap_contract(
+            config,
+            ports,
+            live_candidate=live_candidate,
+            live_launch_session=live_launch_session,
+        )
+
+    def _require_live_launch_session_current(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> None:
+        if self.config.mode != "LIVE":
+            return
+        checked_at = now
+        if checked_at is None:
+            checked_at = require_utc(
+                "trusted bootstrap clock",
+                self.ports.clock_provider(),
+            )
+        _require_live_runtime_authority(
+            self.config,
+            live_candidate=self.live_candidate,
+            live_launch_session=self.live_launch_session,
+            now=checked_at,
+        )
 
     def materialize(self) -> ProductionRuntimeComposition:
         now = require_utc("trusted bootstrap clock", self.ports.clock_provider())
+        self._require_live_launch_session_current(now=now)
         credential = _verify_credential_against_config(
             config=self.config,
             ports=self.ports,
             session=self.ports.credential_session_provider(),
             now=now,
         )
+        self._require_live_launch_session_current()
         journal_path = self.config.journal_database
         _preflight_preprovisioned_journal(
             journal_path,
             self.config.journal_sha256,
         )
+        self._require_live_launch_session_current()
         provisioning = _verify_external_receipt_against_config(
             config=self.config,
             ports=self.ports,
@@ -1832,11 +2107,15 @@ class ProductionRuntimeBootstrap:
         )
         if provisioning.evidence_sha256 != self.config.journal_sha256:
             raise ProductionBootstrapError("JOURNAL_PROVISIONING_BINDING_MISMATCH")
-        stage_ports = self.ports.stage_authorization_ports_provider()
-        if type(stage_ports) is not RuntimeStageAuthorizationPorts:
-            raise ProductionBootstrapError("STAGE_AUTHORIZATION_PORTS_NOT_SEALED")
-        if stage_ports.expected_binding != self.ports.stage_binding:
-            raise ProductionBootstrapError("STAGE_AUTHORIZATION_BINDING_MISMATCH")
+        self._require_live_launch_session_current()
+        stage_ports: RuntimeStageAuthorizationPorts | None = None
+        if self.config.mode != "LIVE":
+            stage_ports = self.ports.stage_authorization_ports_provider()
+            if type(stage_ports) is not RuntimeStageAuthorizationPorts:
+                raise ProductionBootstrapError("STAGE_AUTHORIZATION_PORTS_NOT_SEALED")
+            if stage_ports.expected_binding != self.ports.stage_binding:
+                raise ProductionBootstrapError("STAGE_AUTHORIZATION_BINDING_MISMATCH")
+        self._require_live_launch_session_current()
         _verify_configured_key_fingerprint(
             provider=self.ports.supervisor_key_provider,
             key_id=self.config.supervisor_key_id,
@@ -1845,6 +2124,7 @@ class ProductionRuntimeBootstrap:
             ),
             label="SUPERVISOR",
         )
+        self._require_live_launch_session_current()
         _verify_configured_key_fingerprint(
             provider=self.ports.supervisor_checkpoint_key_provider,
             key_id=self.config.supervisor_checkpoint_key_id,
@@ -1853,6 +2133,7 @@ class ProductionRuntimeBootstrap:
             ),
             label="SUPERVISOR_CHECKPOINT",
         )
+        self._require_live_launch_session_current()
         _verify_configured_key_fingerprint(
             provider=self.ports.risk_ledger_key_provider,
             key_id=self.config.risk_ledger_key_id,
@@ -1861,6 +2142,7 @@ class ProductionRuntimeBootstrap:
             ),
             label="RISK_LEDGER",
         )
+        self._require_live_launch_session_current()
         _verify_configured_key_fingerprint(
             provider=self.ports.journal_checkpoint_key_provider,
             key_id=self.config.journal_checkpoint_key_id,
@@ -1869,6 +2151,7 @@ class ProductionRuntimeBootstrap:
             ),
             label="JOURNAL_CHECKPOINT",
         )
+        self._require_live_launch_session_current()
         _verify_configured_key_fingerprint(
             provider=self.ports.news_guard_key_provider,
             key_id=self.config.news_guard_key_id,
@@ -1877,6 +2160,7 @@ class ProductionRuntimeBootstrap:
             ),
             label="NEWS_GUARD",
         )
+        self._require_live_launch_session_current()
         _verify_configured_key_fingerprint(
             provider=lambda _key_id: self.ports.permit_secret_provider(),
             key_id="permit-secret",
@@ -1886,11 +2170,15 @@ class ProductionRuntimeBootstrap:
             label="PERMIT",
         )
         if self.config.expected_manual_approval_key_id is not None:
-            assert self.config.manual_approval_key_fingerprint_sha256 is not None
+            if self.config.manual_approval_key_fingerprint_sha256 is None:
+                raise ProductionBootstrapError(
+                    "MANUAL_APPROVAL_KEY_FINGERPRINT_REQUIRED"
+                )
             if self.ports.manual_approval_key_provider is None:
                 raise ProductionBootstrapError(
                     "MANUAL_APPROVAL_KEY_PROVIDER_REQUIRED"
                 )
+            self._require_live_launch_session_current()
             _verify_configured_key_fingerprint(
                 provider=self.ports.manual_approval_key_provider,
                 key_id=self.config.expected_manual_approval_key_id,
@@ -1899,6 +2187,7 @@ class ProductionRuntimeBootstrap:
                 ),
                 label="MANUAL_APPROVAL",
             )
+        self._require_live_launch_session_current()
         journal = ExecutionJournal(
             self.config.journal_database,
             clock_provider=self.ports.clock_provider,
@@ -1922,6 +2211,7 @@ class ProductionRuntimeBootstrap:
                     "DEMO_AUTO_DISPATCH_STARTUP_RECOVERY_FAILED"
                 ) from exc
         try:
+            self._require_live_launch_session_current()
             mt5_installation = _verify_mt5_installation_against_config(
                 self.config,
                 verify_mt5_installed_environment(
@@ -2019,7 +2309,11 @@ class ProductionRuntimeBootstrap:
             commit_sha=self.config.commit_sha,
             config_sha256=self.config.config_sha256,
             mode=self.config.mode,
-            stage_binding_sha256=self.config.stage_binding_sha256,
+            stage_binding_sha256=(
+                None
+                if self.config.mode == "LIVE"
+                else self.config.stage_binding_sha256
+            ),
             news_guard_trust_sha256=runtime_news_guard_trust_sha256(
                 provider_id=self.config.news_guard_provider_id,
                 key_id=self.config.news_guard_key_id,
@@ -2123,6 +2417,7 @@ class ProductionRuntimeBootstrap:
             label="SUPERVISOR_CHECKPOINT",
         )
 
+        self._require_live_launch_session_current()
         supervisor = RuntimeSupervisor(
             self.config.supervisor_database,
             binding=supervisor_binding,
@@ -2198,7 +2493,9 @@ class ProductionRuntimeBootstrap:
             clock_provider=self.ports.clock_provider,
             allow_legacy_shadow_news_guard=False,
             stage_authorization_ports=stage_ports,
+            live_launch_session=self.live_launch_session,
         )
+        self._require_live_launch_session_current()
         return ProductionRuntimeComposition(
             config=self.config,
             ports=self.ports,
@@ -2207,6 +2504,8 @@ class ProductionRuntimeBootstrap:
             coordinator=coordinator,
             runtime_service=runtime_service,
             supervisor=supervisor,
+            live_candidate=self.live_candidate,
+            live_launch_session=self.live_launch_session,
         )
 
 

@@ -17,6 +17,10 @@ from typing import Callable
 import execution_policy
 
 from .contracts import CanonicalContract, canonical_sha256, canonicalize
+from .live_canary_runtime_authority import (
+    _REGISTRATION_SEAL,
+    _register_live_canary_runtime_candidate_type,
+)
 from .live_canary_activation import (
     LIVE_CANARY_MAX_CONCURRENT_POSITIONS,
     LIVE_CANARY_MAX_LOT,
@@ -528,6 +532,12 @@ class LiveCanaryRuntimeCandidate(CanonicalContract):
                 self.permit_secret_fingerprint_sha256,
             )
         )
+
+
+_register_live_canary_runtime_candidate_type(
+    LiveCanaryRuntimeCandidate,
+    _seal=_REGISTRATION_SEAL,
+)
 
 
 @dataclass(frozen=True, slots=True)
