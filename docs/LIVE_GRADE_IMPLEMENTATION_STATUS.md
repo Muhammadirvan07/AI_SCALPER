@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-28 menjalankan **1.684 test** tanpa
+Validasi lokal terakhir pada 2026-07-28 menjalankan **1.687 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
 PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
 juga lulus 21 unit test frontend, 24 test backend, 14 browser E2E, lint,
@@ -577,6 +577,10 @@ BTCUSD = shadow-only
     pair, installation receipt, dan installed task XML ke acceptance ZIP
     create-exclusive. Verifier menolak pre-boundary/non-advanced evidence,
     transcript drift, scheduler failure, archive drift, dan custody overclaim.
+    Create-exclusive publication memakai no-follow `lstat`; output regular,
+    directory, valid symlink, atau dangling symlink yang sudah ada ditolak
+    tanpa mutasi, dan cleanup dibatasi ke exact file identity yang dibuat oleh
+    invocation berjalan.
     Actual scheduled proof serta off-host Object Lock/WORM acknowledgement
     tetap belum ada.
     Loop broker-tick diagnostic non-promotional juga sudah tersedia.

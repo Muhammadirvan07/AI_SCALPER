@@ -5,18 +5,24 @@ DEMO-AUTO BLOCKED / LIVE DO NOT SHIP**
 
 ## Outcome
 
-Source dashboard operasional kini dilacak, diuji, dan dipublikasikan pada
-branch `agent/live-grade-phase3`. Dua commit implementasi yang menjadi baseline
-audit adalah:
+Source dashboard operasional dan boundary custody V6 kini dilacak, diuji, dan
+dipublikasikan pada branch `agent/live-grade-phase3`. Commit implementasi yang
+menjadi baseline audit incremental ini adalah:
 
 - `22e2616a16666ee9caef3e2f5d8172ba194051f1` — landing operasional
   executive yang fail-closed;
 - `d5495260d3a47a4ce7759f044ff7299a79c1970a` — validasi evidence runtime
-  dan klasifikasi status negatif yang diperketat.
+  dan klasifikasi status negatif yang diperketat;
+- `0c5e2ad83b89b48d1b25a31f636c69487357586b` — signed V6 WORM custody
+  request/receipt boundary;
+- `e367d5e35b9cb84ff87be1d43390b98bad15c2a1` — create-exclusive output
+  preservation terhadap dangling symlink dan cleanup race.
 
-Tree implementasi yang diaudit adalah
-`cac76d219a613a946b15d962a304108ba1a4096d`. Kedua commit sudah berada di
-`origin/agent/live-grade-phase3`.
+Tree implementasi remediation yang diaudit adalah
+`b6294aacf229ae5c5628d21720fa592c187217fd`. Commit documentation final dan
+exact toolkit source identity diterbitkan setelah audit ini; build manifest
+tetap menjadi sumber pin final. Commit sampai `0c5e2ad` sudah berada di origin,
+sedangkan `e367d5e` adalah remediation yang lulus gate sebelum push final.
 
 ## Perbaikan yang selesai
 
@@ -46,17 +52,21 @@ Tree implementasi yang diaudit adalah
 - Assessment membedakan signed custodian attestation yang tervalidasi dari
   inspeksi API storage langsung. Tidak ada private key, credential, MT5,
   Task Scheduler mutation, order, promotion, atau live authority di toolkit.
+- Seluruh output toolkit/custody sekarang diperiksa dengan `lstat` no-follow.
+  File, folder, symlink valid, dan dangling symlink yang sudah ada ditolak
+  tanpa mutasi; cleanup hanya boleh menghapus regular file exact yang dibuat
+  oleh invocation berjalan.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.684 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.684 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.687 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.687 PASS, 3 skip, exit 0 |
 | Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |
-| Phillip V5/V6 scheduler + post-run/custody cluster | 60 PASS, 2 skip per normal/optimized mode |
-| Off-host delivery consumers + post-run/custody cluster | 91 PASS per normal/optimized mode |
+| V6 packaging + post-run/custody focused cluster | 31 PASS per normal/optimized mode |
+| Phillip V5/V6 scheduler + post-run/custody cluster | 63 PASS, 2 skip per normal/optimized mode |
 | Frontend unit tests | 21 PASS |
 | Dashboard backend tests | 24 PASS |
 | Browser E2E | 14 PASS |

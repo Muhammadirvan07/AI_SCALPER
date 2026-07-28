@@ -30,9 +30,12 @@ Audit mencakup Python/MetaTrader5 core, FastAPI dashboard API read-only, React
 serta deterministic atomic five-role packaging. Source implementation yang
 diaudit:
 
-- commit `d5495260d3a47a4ce7759f044ff7299a79c1970a`;
-- tree `cac76d219a613a946b15d962a304108ba1a4096d`;
+- remediation commit `e367d5e35b9cb84ff87be1d43390b98bad15c2a1`;
+- remediation tree `b6294aacf229ae5c5628d21720fa592c187217fd`;
 - branch `agent/live-grade-phase3`.
+
+Commit documentation final dan exact toolkit source identity diambil dari
+clean Git setelah laporan ini; manifest build tetap menjadi pin release final.
 
 Runtime atau broker tidak dimutasi selama audit lokal.
 
@@ -41,7 +44,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.684 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.687 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, explicit loopback CORS, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | npm audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
@@ -53,12 +56,12 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1684 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with optimization enabled | `Ran 1684 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1687 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1687 tests ... OK (skipped=3)`, exit 0 |
 | Atomic-suite + one-ZIP transfer feature tests | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer tests | 62 PASS per normal/optimized mode |
-| Phillip V5/V6 scheduler + post-run/custody tests | 60 PASS, 2 skip per normal/optimized mode |
-| Off-host delivery consumer + post-run/custody tests | 91 PASS per normal/optimized mode |
+| V6 packaging + post-run/custody focused tests | 31 PASS per normal/optimized mode |
+| Phillip V5/V6 scheduler + post-run/custody tests | 63 PASS, 2 skip per normal/optimized mode |
 | Frontend unit suite | 21 PASS |
 | Dashboard backend suite | 24 PASS |
 | Browser E2E suite | 14 PASS |
@@ -116,6 +119,12 @@ readiness false.
    drift, invalid signatures, malformed nested ZIPs, and output collisions.
    Success records signed-attestation acceptance while truthfully retaining
    `direct_storage_api_inspection_performed=false` and every trading lock.
+7. Create-exclusive publication previously used `Path.exists()` followed by
+   unconditional exception cleanup. A dangling symlink therefore bypassed the
+   pre-check and was deleted after `O_EXCL` rejected it. Output inspection now
+   uses no-follow `lstat`; cleanup is gated by the exact device/inode identity
+   created by the current invocation. Builder, request, and assessment
+   regressions prove the pre-existing symlink remains unchanged.
 
 ## Findings that remain external or manual
 
@@ -142,8 +151,9 @@ readiness false.
 
 ## Decision
 
-Source commit `d5495260d3a47a4ce7759f044ff7299a79c1970a` is accepted as a
-local release-candidate baseline. The project remains
+Remediation commit `e367d5e35b9cb84ff87be1d43390b98bad15c2a1` is accepted as
+the current local code baseline; final documentation/toolkit provenance is
+derived from the subsequent clean Git head. The project remains
 **NOT_READY / DO NOT SHIP**. No artifact, dashboard state, local test,
 provider packet, or scheduled-task receipt may set
 `safe_to_demo_auto_order=true` or `live_allowed=true` before every applicable
