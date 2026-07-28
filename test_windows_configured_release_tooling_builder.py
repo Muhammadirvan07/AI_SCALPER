@@ -143,6 +143,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "validate_windows_execution_configured_candidate.py",
             "validate_windows_status_monitor_configured_candidate.py",
             "validate_windows_status_monitor_provider_pack.py",
+            "verify_windows_base_release_suite.py",
         }
         self.assertTrue(required.issubset(APPROVED_SOURCE_PATHS))
         sources = {
@@ -151,7 +152,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
         }
         _validate_tooling_source_security(sources)
 
-    def test_extracted_decision_provider_pack_clis_bootstrap_in_isolation(
+    def test_extracted_configured_tooling_clis_bootstrap_in_isolation(
         self,
     ):
         with tempfile.TemporaryDirectory() as raw:
@@ -210,6 +211,10 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
                 (
                     "validate_windows_status_monitor_configured_candidate.py",
                     "--candidate-root",
+                ),
+                (
+                    "verify_windows_base_release_suite.py",
+                    "--expected-suite-identity-sha256",
                 ),
             ):
                 with self.subTest(script=script):

@@ -34,8 +34,10 @@ Tree implementasi yang diaudit adalah
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.639 PASS, 3 skip, exit 0 |
-| Full Python regression with `PYTHONOPTIMIZE=2` | 1.639 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.644 PASS, 3 skip, exit 0 |
+| Full Python regression with `PYTHONOPTIMIZE=2` | 1.644 PASS, 3 skip, exit 0 |
+| Atomic-suite verifier feature cluster | 40 PASS per normal/optimized mode |
+| Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |
 | Frontend unit tests | 21 PASS |
 | Dashboard backend tests | 24 PASS |
 | Browser E2E | 14 PASS |
@@ -67,6 +69,28 @@ Suite tetap menyatakan `DISABLED_AT_SUITE_BOUNDARY` dan
 `production_execution_ready=false`. Build lokal ini membuktikan
 reproducibility source; ia tidak menggantikan exact Windows build atau
 external provider acceptance.
+
+## Atomic-suite transfer verification
+
+`verify_windows_base_release_suite.py` sekarang menyediakan public read-only
+boundary yang sebelumnya hanya tersedia sebagai library. Success memerlukan
+exact suite identity, full Git commit, dan full Git tree yang dipin dari
+channel independen. CLI merekonstruksi kelima ZIP, kelima sidecar, embedded
+manifest, source inventory, ZIP determinism, safety, dan source identity.
+
+CLI diuji terhadap dua suite byte-identical dari commit `6ec5dd3`:
+
+- suite identity:
+  `d3b14cea9469e973e1f0b26b5e61a5ccbc7ea08581fa7aefb6b972e5abbc1a8e`;
+- suite manifest SHA-256:
+  `030a195d63b78090606e4f71a5752e1622e9990e87bdb8c7a5b24db286a6022d`.
+
+Mismatch pin, tamper, invalid format, symlink/reparse, atau partial file set
+gagal dengan stable reason code tanpa partial success report. CLI juga masuk
+ke configured-release operator tooling dan bootstrap di bawah `python -I -S`.
+Karena perubahan ini menambah source dan mengubah tooling allowlist, exact
+Windows suite untuk tahap berikutnya wajib dibangun ulang dari commit final;
+identity `d3b14...` hanya baseline verifikasi sebelum perubahan verifier.
 
 ## Safety state
 

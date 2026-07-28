@@ -57,45 +57,32 @@ menimpa release yang sudah dipakai sebagai evidence.
 
 ## Verifikasi operator
 
+Gunakan tiga nilai yang dipin dari build receipt atau channel audit
+independen. Jangan menurunkan expected value dari `BASE_RELEASE_SUITE.json`
+yang sedang diverifikasi.
+
 ```powershell
-$suite = Get-Content `
-  "$suiteRoot\BASE_RELEASE_SUITE.json" `
-  -Raw | ConvertFrom-Json
+$expectedSuiteIdentity = "<PINNED_SUITE_IDENTITY_SHA256>"
+$expectedCommit = "<PINNED_FULL_GIT_COMMIT>"
+$expectedTree = "<PINNED_FULL_GIT_TREE>"
 
-$suite | Select-Object `
-  release_profile,
-  suite_identity_sha256,
-  git_commit,
-  git_tree
+python -I -S -B .\verify_windows_base_release_suite.py `
+  --suite-root $suiteRoot `
+  --expected-suite-identity-sha256 $expectedSuiteIdentity `
+  --expected-git-commit $expectedCommit `
+  --expected-git-tree $expectedTree
 
-$suite.safety | Format-List
-
-$suite.roles |
-  Select-Object `
-    role,
-    release_profile,
-    archive_path,
-    archive_sha256,
-    release_identity_sha256,
-    order_capability,
-    production_execution_ready |
-  Format-Table -AutoSize
-
-$suite.roles | ForEach-Object {
-  $observed = (
-    Get-FileHash `
-      "$suiteRoot\$($_.archive_path)" `
-      -Algorithm SHA256
-  ).Hash.ToLowerInvariant()
-
-  [pscustomobject]@{
-    Role = $_.role
-    Expected = $_.archive_sha256
-    Observed = $observed
-    Match = ($observed -eq $_.archive_sha256)
-  }
-} | Format-Table -AutoSize
+if ($LASTEXITCODE -ne 0) {
+  throw "Atomic base-release suite verification failed."
+}
 ```
+
+CLI yang sama tersedia di `configured-release-tooling-v1.zip`. Ia
+stable-read dan merekonstruksi manifest suite, lima archive, lima sidecar,
+embedded manifest, source inventory, ZIP determinism, safety state, serta
+source identity. Mismatch pin, tamper, symlink/reparse, file ekstra/hilang,
+atau non-canonical bytes ditolak dengan
+`BASE_RELEASE_SUITE_VERIFICATION_REJECTED: <STABLE_REASON>`.
 
 Expected safety state:
 

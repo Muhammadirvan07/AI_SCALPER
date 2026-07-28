@@ -202,6 +202,13 @@ campuran, manifest non-canonical, byte/hash mismatch, serta safety lock yang
 berubah. Ia tidak memiliki opsi provider, credential, task, MT5, activation,
 permit, atau order.
 
+Setelah build atau transfer, jalankan
+`verify_windows_base_release_suite.py` dengan exact suite identity, full Git
+commit, dan full Git tree yang dipin secara independen. Verifier ini tersedia
+di source checkout dan di configured-release operator tooling. Ia memverifikasi
+seluruh 11 file serta merekonstruksi setiap archive; loop hash manual tidak
+lagi cukup untuk candidate baru.
+
 Builder role-specific:
 
 ```powershell

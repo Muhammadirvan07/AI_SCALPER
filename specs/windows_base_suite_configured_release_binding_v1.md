@@ -87,6 +87,10 @@ activation, demo-auto authority, or broker capability.
   documented for demo-auto MUST use the suite-bound CLI and admission.
 - FR-15: Public failures MUST use stable reason codes and MUST NOT leak
   credentials, private evidence, or internal tracebacks.
+- FR-16: A public read-only CLI MUST verify one existing suite against an
+  independently pinned suite identity, full Git commit, and full Git tree.
+  It MUST reject invalid or mismatched pins before emitting a success report,
+  and it MUST be included in configured-release operator tooling.
 
 ## Non-Functional Requirements
 
@@ -112,6 +116,8 @@ When the verifier reads it
 Then all five fixed artifacts and sidecars are revalidated
 And the returned sealed report binds their exact hashes, identities, commit,
 tree, safety, effects, and suite identity.
+And the public CLI emits success only when the verified identity, commit, and
+tree match three independently supplied pins.
 
 ### AC-2: Suite-bound configured release (FR-6, FR-7, FR-8)
 
@@ -184,6 +190,8 @@ Then behavior is identical and all pre-existing unrelated tests pass.
 - EC-10: Suite identity matches but one configured role/hash does not → reject.
 - EC-11: A legacy configured release has no suite binding → verification may
   report it as legacy, but pre-manual admission rejects it.
+- EC-12: An external suite-identity, commit, or tree pin is malformed or does
+  not match the verified suite → the CLI rejects without a partial report.
 
 ## API Contracts
 
@@ -234,6 +242,12 @@ def assess_windows_pre_manual_configured_release_admission(
 CLI additions:
 
 ```text
+python -I -S -B verify_windows_base_release_suite.py \
+  --suite-root <exact-suite-root> \
+  --expected-suite-identity-sha256 <externally-pinned-sha256> \
+  --expected-git-commit <externally-pinned-full-commit> \
+  --expected-git-tree <externally-pinned-full-tree>
+
 python -B build_windows_configured_service_release.py \
   --base-release-suite-root <exact-suite-root> \
   --base-release <suite-role.zip> \

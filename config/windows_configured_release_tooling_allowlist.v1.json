@@ -51,6 +51,7 @@
     "validate_windows_execution_provider_pack.py",
     "validate_windows_status_monitor_configured_candidate.py",
     "validate_windows_status_monitor_provider_pack.py",
+    "verify_windows_base_release_suite.py",
     "verify_windows_configured_service_release.py"
   ]
 }

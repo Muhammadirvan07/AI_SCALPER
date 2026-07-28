@@ -38,7 +38,7 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.639 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.644 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, explicit loopback CORS, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | npm audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
@@ -50,8 +50,10 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1639 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with `PYTHONOPTIMIZE=2` | `Ran 1639 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1644 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with `PYTHONOPTIMIZE=2` | `Ran 1644 tests ... OK (skipped=3)`, exit 0 |
+| Atomic-suite verifier feature tests | 40 PASS per normal/optimized mode |
+| Atomic-suite verifier consumer tests | 62 PASS per normal/optimized mode |
 | Frontend unit suite | 21 PASS |
 | Dashboard backend suite | 24 PASS |
 | Browser E2E suite | 14 PASS |
@@ -87,7 +89,12 @@ readiness false.
    validated before rendering.
 3. Current status documentation still treated dashboard directories as
    untracked and used an obsolete regression count. The active status and
-   progress evidence now reflect tracked commits and the 1.639-test baseline.
+   progress evidence now reflect tracked commits and the current regression
+   baseline.
+4. Suite transfer verification previously depended on a manual archive-hash
+   loop even though the normative spec defined a public stable rejection
+   family. A bundled read-only CLI now verifies all 11 files and requires
+   independently pinned suite identity, commit, and tree.
 
 ## Findings that remain external or manual
 

@@ -103,6 +103,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "validate_windows_decision_configured_candidate.py",
         "validate_windows_execution_configured_candidate.py",
         "validate_windows_status_monitor_configured_candidate.py",
+        "verify_windows_base_release_suite.py",
     }
 )
 READINESS_BLOCKERS = (
