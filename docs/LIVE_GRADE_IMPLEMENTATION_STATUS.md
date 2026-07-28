@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-28 menjalankan **1.723 test** tanpa
+Validasi lokal terakhir pada 2026-07-28 menjalankan **1.762 test** tanpa
 kegagalan dalam mode normal maupun optimized pada development Mac; tiga test
 PowerShell-dependent dilewati pada masing-masing mode. Dashboard read-only
 juga lulus 21 unit test frontend, 45 test backend, 14 browser E2E, lint,
@@ -23,7 +23,7 @@ dari exact Windows release.
 Fresh audit 2026-07-28 juga menutup drift dependency dashboard: manifest kini
 mem-pin FastAPI 0.140.7, Starlette 1.3.1, pytest 9.0.3,
 python-dotenv 1.2.2, dan httpx2 2.9.1. Exact requirements audit serta npm audit
-melaporkan nol vulnerability yang diketahui; `pip check`, 26 backend tests,
+melaporkan nol vulnerability yang diketahui; `pip check`, 45 backend tests,
 dan 14 browser E2E lulus. Ini tetap bukti source/development, bukan approval
 deployment publik atau trading.
 
@@ -126,7 +126,7 @@ File sementara exclusive-write/replace serta marker transaksi
 pengganti tidak pernah dihapus.
 Helper extraction XM/FINEX juga memakai sibling staging dan no-replace
 directory move sebelum verifikasi ulang destination. Full regression normal
-dan optimized sama-sama lulus 1.723 test dengan tiga platform skip. Kontrak ini
+dan optimized sama-sama lulus 1.762 test dengan tiga platform skip. Kontrak ini
 hanya memperkuat artifact custody dan tidak mengubah `order_capability`,
 `live_allowed`, demo-auto, promotion, atau broker authority.
 
@@ -268,6 +268,13 @@ hanya memperkuat artifact custody dan tidak mengubah `order_capability`,
   cutoff, commit, tree, serta canonical runtime binding. Verifier memerlukan
   enam external pin dan tetap menyatakan quality/promotion/live false. Builder
   dan training data tidak masuk configured-release operator tooling.
+- Configured-release operator tooling kini juga membawa CLI registry/custody
+  stdlib-only. CLI membangun deterministic two-member champion request,
+  memverifikasi tujuh pin independen, serta memverifikasi canonical
+  policy-pinned RSA custodian receipt menjadi assessment deny-only. Ia tidak
+  melakukan upload, credential/private-key access, direct storage API
+  inspection, MT5 initialization, Task Scheduler mutation, atau broker effect;
+  custody eksternal aktual dan model-quality evidence tetap belum ada.
 - Kill switch tetap latched setelah restart. Reset membutuhkan tepat dua
   approver berbeda, dua key ID serta secret berbeda, dua signature HMAC, exact
   journal identity, exact latch timestamp, reviewed-reason hash, expiry, dan
@@ -525,10 +532,12 @@ BTCUSD = shadow-only
    independent clock monitoring, dan off-host time attestation belum dipasang.
 6. Signed-news verifier sudah ada, tetapi production provider, independent key
    custody, feed SLA, replay archive, dan failure evidence belum tersedia.
-7. Model-binding code dan portable frozen-artifact tooling tidak membuktikan
-   kualitas model. Exact-HEAD champion ZIP harus dibangun dari snapshot yang
-   direview, lalu offline validation receipt serta independent production
-   registry/custody masih harus dibuat dan diaudit.
+7. Model-binding code, portable frozen artifact, dan local registry
+   request/receipt verifier tidak membuktikan kualitas model. Exact-HEAD
+   champion ZIP harus dibangun dari snapshot yang direview; independently
+   pinned policy, external immutable upload/version, signed custodian receipt,
+   restore proof, dan offline validation receipt masih harus dibuat dan
+   diaudit.
 8. Logical paired commit dan fail-closed crash state sudah diterapkan lokal,
    tetapi ini bukan satu atomic filesystem transaction lintas seluruh file.
    Repeated paired-export, forced-crash recovery, NTFS durability, dan lock
@@ -760,9 +769,11 @@ eksternal belum terpenuhi.
    monitoring, replay archive, stale-feed drill, dan documented failover yang
    tetap fail-closed.
 6. Bangun dan verifikasi exact-HEAD frozen champion ZIP dengan enam pin
-   independen; register artifact/hash di custody eksternal, buktikan offline
-   champion/challenger evaluation, dan pastikan challenger tidak memiliki
-   credential maupun execution path.
+   independen; buat serta verifikasi deterministic registry request dengan pin
+   ketujuh; register exact bytes di custody eksternal; verifikasi receipt
+   custodian terhadap policy RSA yang dipin independen; buktikan restore serta
+   offline champion/challenger evaluation; dan pastikan challenger tidak
+   memiliki credential maupun execution path.
 7. Provision dua identitas approver reset yang benar-benar independen beserta
    secret custody; lakukan drill latch/restart/stale/mismatch/replay dan simpan
    audit receipt.

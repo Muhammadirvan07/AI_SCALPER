@@ -103,13 +103,21 @@ commit dibuat.
   commit/tree, serta canonical `ModelArtifactManifest`. Verifier Windows
   membutuhkan archive/model/snapshot/config/commit/tree pin dan tidak dapat
   mengklaim quality, promotion, order, atau live readiness.
+- Gap berikutnya pada lineage adalah handoff registry yang sebelumnya hanya
+  berupa aksi eksternal tanpa format request/receipt lokal. Tooling operator
+  kini membuat deterministic two-member champion-custody request, memverifikasi
+  request terhadap tujuh pin independen, serta memverifikasi canonical
+  policy-pinned RSA custodian receipt menjadi assessment deny-only. Tooling
+  tidak mengunggah, membaca credential/private key, menginspeksi storage API,
+  mengakses MT5, atau memberikan quality/promotion/order/live authority.
 
 ## Bukti otomatis
 
 | Gate | Result |
 |---|---|
-| Full Python regression | 1.745 PASS, 3 skip, exit 0 |
-| Full Python regression with optimization enabled | 1.745 PASS, 3 skip, exit 0 |
+| Full Python regression | 1.762 PASS, 3 skip, exit 0 |
+| Full Python regression with optimization enabled | 1.762 PASS, 3 skip, exit 0 |
+| Rule-core artifact + registry/custody + configured-tooling focused cluster | 36 PASS per normal/optimized mode |
 | Create-exclusive publisher focused cluster | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature cluster | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer cluster | 62 PASS per normal/optimized mode |
@@ -200,11 +208,23 @@ explicit post-cutoff UTC registration time, reviewed output name, dan output
 baru di luar repository. Independent verifier tersedia di configured-release
 operator tooling dan bootstrap di bawah `python -I -S -B`.
 
-Ini menutup gap lineage lokal, bukan quality gate. Exact artifact untuk commit
-final harus dibangun dua kali setelah commit, diverifikasi terhadap enam pin,
-dan baru kemudian diserahkan ke registry/custody eksternal. Offline
-champion/challenger evaluation, OOS dan broker-forward thresholds, risk
-feasibility, manual demo, demo-auto soak, serta live approval tetap pending.
+Kontrak custody lanjutan berada di
+`specs/rule_core_champion_registry_custody_v1.md` dengan runbook
+`docs/RULE_CORE_CHAMPION_REGISTRY_CUSTODY.md`. CLI portable
+`manage_rule_core_champion_registry.py` berada hanya di configured-release
+operator tooling. Request deterministik mengikat exact champion dan seluruh
+pin; receipt verifier mengikat independently pinned RSA policy, immutable
+destination/version/retention, dan signature custodian. Assessment success
+tetap menyatakan direct storage API inspection tidak dilakukan dan seluruh
+trading lock false.
+
+Ini menutup format dan verifier handoff lineage lokal, bukan aksi custody atau
+quality gate. Exact artifact untuk commit final harus dibangun dua kali setelah
+commit, diverifikasi terhadap enam pin, lalu request diserahkan ke custodian
+eksternal yang benar-benar independen. Policy pin, upload/version immutable,
+signed receipt, restore proof, offline champion/challenger evaluation, OOS dan
+broker-forward thresholds, risk feasibility, manual demo, demo-auto soak, serta
+live approval tetap pending.
 
 ## Phillip Commodity V6.3 post-run handoff
 

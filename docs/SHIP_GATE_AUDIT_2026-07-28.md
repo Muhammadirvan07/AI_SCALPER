@@ -14,6 +14,7 @@ V6_3_POSTRUN_ACCEPTANCE_TOOLKIT = PASS_LOCALLY
 V6_3_SCHEDULED_TRIGGER_PROVENANCE = PASS_LOCALLY_PENDING_REAL_EVENT
 V6_3_WORM_CUSTODY_REQUEST_AND_RECEIPT_BOUNDARY = PASS_LOCALLY
 RULE_CORE_CHAMPION_LINEAGE = PASS_LOCALLY_EXACT_HEAD_BUILD_PENDING
+RULE_CORE_CHAMPION_REGISTRY_CUSTODY = PASS_LOCALLY_EXTERNAL_ACTION_PENDING
 FIRST_AUTOMATIC_SCHEDULED_PROOF = PENDING_2026_07_30_0645_JST
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
@@ -47,21 +48,22 @@ Runtime atau broker tidak dimutasi selama audit lokal.
 | Category | Status | Evidence |
 |---|---|---|
 | Source integrity | PASS | clean checkout, reviewed commit/tree, pushed branch |
-| Correctness | PASS_LOCAL | Python normal dan optimized 1.745 PASS per mode; dashboard unit/backend/E2E PASS |
+| Correctness | PASS_LOCAL | Python normal dan optimized 1.762 PASS per mode; dashboard unit/backend/E2E PASS |
 | Application security | PASS_LOCAL | GET-only API, pre-bind loopback enforcement, canonical loopback CORS/WebSocket origin allowlist, no unsafe eval or HTML injection, fail-closed payload guards |
 | Dependencies | PASS_LOCAL | fresh npm, Python development, dan dashboard requirements audit 0; exact Windows lock/install manifest/SBOM verifier PASS |
 | Data integrity | PASS_LOCAL | parameterized values; dynamic SQL identifiers terbatas ke constants atau allowlisted schema inventories |
 | Reliability and observability | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | structured logs, health endpoint, signed journals; off-host alert/WORM proof masih eksternal |
 | Deployment and operations | INCOMPLETE_EXTERNAL | exact Windows services, ACL, key custody, RSA launcher, backup/restore, and conformance evidence belum lengkap |
-| Model lineage | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | deterministic frozen source/config/snapshot artifact dan six-pin verifier tersedia; exact-HEAD build, external registry, dan quality evidence masih pending |
+| Model lineage | PASS_LOCAL_WITH_EXTERNAL_ACTIONS | deterministic frozen source/config/snapshot artifact, six-pin verifier, deterministic registry request, dan policy-pinned RSA receipt verifier tersedia; exact-HEAD rebuild, custody eksternal aktual, dan quality evidence masih pending |
 | Trading safety | DO_NOT_SHIP | safety lock false, manual-demo belum dimulai, soak dan live approval belum ada |
 
 ## Automated evidence
 
 | Check | Result |
 |---|---|
-| Full Python regression | `Ran 1745 tests ... OK (skipped=3)`, exit 0 |
-| Full regression with optimization enabled | `Ran 1745 tests ... OK (skipped=3)`, exit 0 |
+| Full Python regression | `Ran 1762 tests ... OK (skipped=3)`, exit 0 |
+| Full regression with optimization enabled | `Ran 1762 tests ... OK (skipped=3)`, exit 0 |
+| Rule-core artifact + registry/custody + configured-tooling focused tests | 36 PASS per normal/optimized mode |
 | Create-exclusive publisher focused tests | 238 PASS per normal/optimized mode |
 | Atomic-suite + one-ZIP transfer feature tests | 52 PASS per normal/optimized mode |
 | Atomic-suite verifier consumer tests | 62 PASS per normal/optimized mode |
@@ -186,7 +188,7 @@ readiness false.
     tests prove an injected target is not overwritten and a replacement
     staging root is preserved. Temporary-file cleanup and paired-transaction
     pending-marker clear now also require their exact creation identities;
-    replacement files survive. Both full 1,745-test modes remain green.
+    replacement files survive. Both full 1,762-test modes remain green.
 14. The diagnostic runner computed a rule-core hash but no portable artifact
     froze the bytes behind that identity together with config, snapshot,
     cutoff, and Git provenance. A deterministic deny-only ZIP contract now
@@ -195,6 +197,17 @@ readiness false.
     rejects canonical ZIP/JSON/config/snapshot/source drift, and cannot assert
     quality, promotion, order capability, or live readiness. The builder and
     snapshot remain outside the Windows operator-tooling bundle.
+15. The champion lineage previously stopped at a generic instruction to use an
+    external registry. A deterministic two-member custody request now binds the
+    exact champion bytes, six artifact pins, destination, request time, and
+    minimum immutable retention. A separate verifier requires a seventh outer
+    request pin plus an independently pinned canonical RSA policy and signed
+    custodian receipt. It rejects ZIP metadata/inventory drift, duplicate or
+    noncanonical JSON, key/policy/destination/version/content/size/time drift,
+    signature tampering, symlink/reparse inputs, and output collisions. Success
+    records signed-attestation acceptance but explicitly records no direct
+    storage-API inspection and leaves quality, OOS, promotion, demo-auto,
+    order, and live state disabled.
 
 ## Findings that remain external or manual
 
@@ -212,9 +225,11 @@ readiness false.
 4. Public dashboard exposure is not approved. Any non-loopback deployment
    requires TLS, authentication, CSP/security headers, network policy, and an
    external deployment review.
-5. Exact-HEAD champion artifact publication, independent registry/custody,
-   offline champion/challenger validation, and statistical/OOS evidence remain
-   external. Local artifact integrity is not a model-quality claim.
+5. Exact-HEAD champion artifact rebuild and the local registry request/receipt
+   contract are available, but independent policy approval, actual immutable
+   upload/version, signed external receipt, restore proof, offline
+   champion/challenger validation, and statistical/OOS evidence remain
+   external. Local artifact or request integrity is not a model-quality claim.
 6. Nine signed pre-manual observations and exact configured-release admission
    are absent.
 7. Ten controlled manual-demo lifecycle reviews are absent.

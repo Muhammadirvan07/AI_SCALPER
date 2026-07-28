@@ -79,3 +79,9 @@ This artifact does not replace offline champion/challenger evaluation, OOS
 evidence, broker-forward evidence, minimum-lot risk feasibility, manual-demo
 lifecycle review, demo-auto soak, production registry custody, or live-canary
 approval.
+
+The deterministic request and policy-pinned RSA receipt boundary for the next
+custody step is documented in
+[`RULE_CORE_CHAMPION_REGISTRY_CUSTODY.md`](RULE_CORE_CHAMPION_REGISTRY_CUSTODY.md).
+That tooling prepares and verifies a handoff; it does not perform external
+registration or prove model quality.

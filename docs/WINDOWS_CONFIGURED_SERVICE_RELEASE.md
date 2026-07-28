@@ -42,6 +42,10 @@ Repository menyediakan:
   dari exact atomic five-role suite dengan exact overlay;
 - `verify_windows_configured_service_release.py`: verifier offline yang
   memerlukan pin configured identity dan base identity;
+- `verify_rule_core_champion_artifact.py` serta
+  `manage_rule_core_champion_registry.py`: verifier six-pin champion dan
+  deny-only registry request/RSA receipt boundary; keduanya stdlib-only,
+  tidak mengunggah, dan tidak mempunyai credential atau private-key access;
 - `live_runtime/configured_service_release.py`: builder/verifier fail-closed;
 - `live_runtime/windows_base_release_suite.py`: verifier read-only untuk
   manifest, lima ZIP, dan lima sidecar atomic suite;
@@ -57,7 +61,11 @@ tersebut sebagai aturan penolakan dan tidak memiliki executable broker call.
 Provider conformance reviewer juga tidak mengimpor provider, membaca
 credential, memverifikasi artifact bytes, atau memberi activation authority.
 Input assembler memiliki batas yang sama dan tidak menghasilkan evidence atau
-signature acceptance.
+signature acceptance. Registry CLI hanya dapat menerima signed custodian
+attestation terhadap policy hash yang dipin independen; ia tidak melakukan
+direct storage API inspection dan tidak memberi model-quality atau trading
+authority. Runbook berada di
+[`RULE_CORE_CHAMPION_REGISTRY_CUSTODY.md`](RULE_CORE_CHAMPION_REGISTRY_CUSTODY.md).
 
 ## Overlay non-secret
 
