@@ -27,6 +27,10 @@ def _bootstrap_release_root() -> Path:
         root / "live_runtime/windows_execution_provider_pack_generator.py",
         root / "live_runtime/windows_execution_source_bound_candidate.py",
         root
+        / "live_runtime/windows_live_canary_execution_configured_candidate.py",
+        root
+        / "live_runtime/windows_live_canary_execution_source_bound_candidate.py",
+        root
         / "live_runtime/windows_external_status_monitor_factory_template.py",
         root / "live_runtime/windows_provider_conformance_review.py",
         root / "live_runtime/windows_service_factory_template.py",
@@ -77,6 +81,10 @@ from live_runtime.windows_execution_source_bound_candidate import (
     WindowsExecutionSourceBoundCandidateError,
     verify_windows_execution_source_bound_candidate,
 )
+from live_runtime.windows_live_canary_execution_source_bound_candidate import (
+    WindowsLiveCanaryExecutionSourceBoundCandidateError,
+    verify_windows_live_canary_execution_source_bound_candidate,
+)
 
 
 def trusted_utc_now() -> datetime:
@@ -99,9 +107,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--execution-source-bound-candidate")
+    parser.add_argument("--live-execution-source-bound-candidate")
     parser.add_argument("--base-suite-root")
     parser.add_argument("--execution-base-release")
     parser.add_argument("--expected-bound-archive-sha256")
+    parser.add_argument("--expected-live-bound-archive-sha256")
+    parser.add_argument("--expected-source-bound-archive-sha256")
     parser.add_argument("--expected-source-archive-sha256")
     parser.add_argument("--expected-champion-archive-sha256")
     parser.add_argument("--expected-model-artifact-sha256")
@@ -116,11 +127,9 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     try:
         args = _parser().parse_args(argv)
-        source_argument_names = (
-            "execution_source_bound_candidate",
+        common_source_argument_names = (
             "base_suite_root",
             "execution_base_release",
-            "expected_bound_archive_sha256",
             "expected_source_archive_sha256",
             "expected_champion_archive_sha256",
             "expected_model_artifact_sha256",
@@ -130,51 +139,156 @@ def main(argv: Sequence[str] | None = None) -> int:
             "expected_git_tree",
             "expected_suite_identity_sha256",
         )
-        source_arguments = {
-            name: getattr(args, name) for name in source_argument_names
-        }
-        supplied_source_count = sum(
-            value is not None for value in source_arguments.values()
+        v3_source_argument_names = (
+            "execution_source_bound_candidate",
+            "expected_bound_archive_sha256",
         )
-        if supplied_source_count not in {0, len(source_arguments)}:
+        v4_source_argument_names = (
+            "live_execution_source_bound_candidate",
+            "expected_live_bound_archive_sha256",
+            "expected_source_bound_archive_sha256",
+        )
+        common_source_arguments = {
+            name: getattr(args, name)
+            for name in common_source_argument_names
+        }
+        v3_source_arguments = {
+            name: getattr(args, name) for name in v3_source_argument_names
+        }
+        v4_source_arguments = {
+            name: getattr(args, name) for name in v4_source_argument_names
+        }
+        common_source_count = sum(
+            value is not None
+            for value in common_source_arguments.values()
+        )
+        v3_source_count = sum(
+            value is not None for value in v3_source_arguments.values()
+        )
+        v4_source_count = sum(
+            value is not None for value in v4_source_arguments.values()
+        )
+        if v3_source_count and v4_source_count:
+            raise WindowsProviderConformanceError(
+                "EXECUTION_SOURCE_ARGUMENTS_MIXED"
+            )
+        source_version: int | None = None
+        if v3_source_count:
+            if (
+                v3_source_count != len(v3_source_arguments)
+                or common_source_count != len(common_source_arguments)
+            ):
+                raise WindowsProviderConformanceError(
+                    "EXECUTION_SOURCE_ARGUMENTS_INCOMPLETE"
+                )
+            source_version = 3
+        elif v4_source_count:
+            if (
+                v4_source_count != len(v4_source_arguments)
+                or common_source_count != len(common_source_arguments)
+            ):
+                raise WindowsProviderConformanceError(
+                    "EXECUTION_SOURCE_ARGUMENTS_INCOMPLETE"
+                )
+            source_version = 4
+        elif common_source_count:
             raise WindowsProviderConformanceError(
                 "EXECUTION_SOURCE_ARGUMENTS_INCOMPLETE"
             )
         verification = None
-        if supplied_source_count:
+        live_verification = None
+        if source_version == 3:
             verification = verify_windows_execution_source_bound_candidate(
-                source_arguments["execution_source_bound_candidate"],
-                base_suite_root=source_arguments["base_suite_root"],
-                execution_base_release=source_arguments[
+                v3_source_arguments["execution_source_bound_candidate"],
+                base_suite_root=common_source_arguments["base_suite_root"],
+                execution_base_release=common_source_arguments[
                     "execution_base_release"
                 ],
-                expected_bound_archive_sha256=source_arguments[
+                expected_bound_archive_sha256=v3_source_arguments[
                     "expected_bound_archive_sha256"
                 ],
-                expected_source_archive_sha256=source_arguments[
+                expected_source_archive_sha256=common_source_arguments[
                     "expected_source_archive_sha256"
                 ],
-                expected_champion_archive_sha256=source_arguments[
+                expected_champion_archive_sha256=common_source_arguments[
                     "expected_champion_archive_sha256"
                 ],
-                expected_model_artifact_sha256=source_arguments[
+                expected_model_artifact_sha256=common_source_arguments[
                     "expected_model_artifact_sha256"
                 ],
-                expected_training_snapshot_sha256=source_arguments[
+                expected_training_snapshot_sha256=common_source_arguments[
                     "expected_training_snapshot_sha256"
                 ],
-                expected_config_sha256=source_arguments[
+                expected_config_sha256=common_source_arguments[
                     "expected_config_sha256"
                 ],
-                expected_git_commit=source_arguments[
+                expected_git_commit=common_source_arguments[
                     "expected_git_commit"
                 ],
-                expected_git_tree=source_arguments[
+                expected_git_tree=common_source_arguments[
                     "expected_git_tree"
                 ],
-                expected_suite_identity_sha256=source_arguments[
+                expected_suite_identity_sha256=common_source_arguments[
                     "expected_suite_identity_sha256"
                 ],
+            )
+        elif source_version == 4:
+            live_verification = (
+                verify_windows_live_canary_execution_source_bound_candidate(
+                    v4_source_arguments[
+                        "live_execution_source_bound_candidate"
+                    ],
+                    base_suite_root=common_source_arguments[
+                        "base_suite_root"
+                    ],
+                    execution_base_release=common_source_arguments[
+                        "execution_base_release"
+                    ],
+                    expected_live_bound_archive_sha256=(
+                        v4_source_arguments[
+                            "expected_live_bound_archive_sha256"
+                        ]
+                    ),
+                    expected_source_bound_archive_sha256=(
+                        v4_source_arguments[
+                            "expected_source_bound_archive_sha256"
+                        ]
+                    ),
+                    expected_source_archive_sha256=(
+                        common_source_arguments[
+                            "expected_source_archive_sha256"
+                        ]
+                    ),
+                    expected_champion_archive_sha256=(
+                        common_source_arguments[
+                            "expected_champion_archive_sha256"
+                        ]
+                    ),
+                    expected_model_artifact_sha256=(
+                        common_source_arguments[
+                            "expected_model_artifact_sha256"
+                        ]
+                    ),
+                    expected_training_snapshot_sha256=(
+                        common_source_arguments[
+                            "expected_training_snapshot_sha256"
+                        ]
+                    ),
+                    expected_config_sha256=common_source_arguments[
+                        "expected_config_sha256"
+                    ],
+                    expected_git_commit=common_source_arguments[
+                        "expected_git_commit"
+                    ],
+                    expected_git_tree=common_source_arguments[
+                        "expected_git_tree"
+                    ],
+                    expected_suite_identity_sha256=(
+                        common_source_arguments[
+                            "expected_suite_identity_sha256"
+                        ]
+                    ),
+                )
             )
         review = (
             prepare_windows_three_service_provider_conformance_review_file(
@@ -182,10 +296,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.output,
                 clock_provider=trusted_utc_now,
                 execution_source_bound_verification=verification,
+                live_execution_source_bound_verification=(
+                    live_verification
+                ),
             )
         )
     except (
         WindowsExecutionSourceBoundCandidateError,
+        WindowsLiveCanaryExecutionSourceBoundCandidateError,
         WindowsProviderConformanceError,
         OSError,
         TypeError,
@@ -197,6 +315,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 exc,
                 (
                     WindowsExecutionSourceBoundCandidateError,
+                    WindowsLiveCanaryExecutionSourceBoundCandidateError,
                     WindowsProviderConformanceError,
                 ),
             )

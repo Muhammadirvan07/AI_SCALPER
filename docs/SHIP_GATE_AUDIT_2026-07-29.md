@@ -14,6 +14,7 @@ WINDOWS_LIVE_PROVIDER_MATERIALIZATION = PASS_LOCALLY_BROKERLESS_LOCKED
 WINDOWS_LIVE_PROVIDER_PACK = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_CONFIGURED_CANDIDATE = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_SOURCE_BOUND_CANDIDATE = PASS_LOCALLY_DENY_ONLY
+WINDOWS_LIVE_PROVIDER_CONFORMANCE_V4 = PASS_LOCALLY_DENY_ONLY
 DEPENDENCY_OR_FRONTEND_HOST_INSTALL = NOT_CHANGED
 WINDOWS_EXTERNAL_ACCEPTANCE = INCOMPLETE
 DEMO_AUTO_SOAK = NOT_READY
@@ -64,6 +65,10 @@ Reviewed source:
   isolated operator CLIs;
 - `test_live_runtime_windows_live_canary_execution_source_bound_candidate.py`;
 - `specs/windows_live_canary_execution_source_bound_candidate_v1.md`;
+- additive three-service provider-conformance v4 input/review implementation
+  and their two isolated operator CLIs;
+- `test_live_runtime_windows_provider_conformance_v4.py`;
+- `specs/windows_three_service_provider_conformance_v4.md`;
 - mode-aware symbol-boundary inventory in
   `test_execution_policy_mode_aware.py`;
 - verifier-seal hardening in `live_canary_prebootstrap_admission.py` and
@@ -77,12 +82,12 @@ this boundary. Runtime or broker state was not accessed or mutated.
 
 | Category | Status | Evidence |
 |---|---|---|
-| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; the launch session and one-second per-order capability validate exact candidate/session/intent/evidence bindings; the Windows LIVE materializer requires 12 purpose-bound references and never serializes credential material; the ten-pin source-bound verifier rebuilds both packaged inputs without provider or credential effects; authority is rechecked around each external callback and through the immediate pre-send boundary |
+| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; the launch session and one-second per-order capability validate exact candidate/session/intent/evidence bindings; the Windows LIVE materializer requires 12 purpose-bound references and never serializes credential material; the ten-pin source-bound verifier rebuilds both packaged inputs without provider or credential effects; v4 derives 49 LIVE binding hashes from exact seven-field mappings and keeps every authority false; authority is rechecked around each external callback and through the immediate pre-send boundary |
 | Database | PASS_LOCAL | Exact SQLite DDL/trigger inventory, WAL, FULL sync, integrity check, HMAC chain, unique replay and authorization-consumption fields, atomic `BEGIN IMMEDIATE`, path identity, and signed off-host checkpoint verification |
-| Code quality | PASS_LOCAL | Spec-first implementation, LIVE pack, configured-candidate, and source-bound specs at 100/100, 1,894-test normal/optimized regression, Ruff/Python compile success, valid JSON, and no scoped changed-file whitespace errors |
+| Code quality | PASS_LOCAL | Spec-first implementation, LIVE pack, configured-candidate, source-bound, and provider-conformance v4 specs at 100/100, 1,900-test normal/optimized regression, Python compile success, valid JSON, and no scoped changed-file whitespace errors; Ruff was unavailable in the active development environment for this additive pass |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
-| Deployment | INCOMPLETE_EXTERNAL | Sealed prebootstrap, portable WORM/CAS verification, launch session, per-order runtime chain, brokerless 49-port Windows LIVE materializer, deterministic four-file pack tooling, exact 15-file configured-candidate tooling, and 17-member source-bound tooling exist locally, but the checked-in central lock is false and no exact target-host pack/configured/source-bound candidate, actual Windows callbacks, provider conformance, real WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, or backup/restore evidence has been accepted |
+| Deployment | INCOMPLETE_EXTERNAL | Sealed prebootstrap, portable WORM/CAS verification, launch session, per-order runtime chain, brokerless 49-port Windows LIVE materializer, deterministic four-file pack tooling, exact 15-file configured-candidate tooling, 17-member source-bound tooling, and 68-record provider-conformance v4 tooling exist locally, but the checked-in central lock is false and no exact target-host pack/configured/source-bound/v4 candidate, actual Windows callbacks, accepted provider review, real WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, or backup/restore evidence has been accepted |
 | Frontend | OUTSIDE_CHANGE_SCOPE / BLOCKED | No frontend source was changed by this milestone. Windows still lacks verified Node.js LTS; the running old API and uncommitted new frontend use different API/WebSocket prefixes, and the latest refactor test run is not green |
 | Observability | PASS_BOUNDARY / EXTERNAL_PENDING | Canonical reason codes, pre-dispatch records, execution result bindings, and replay checkpoints exist; external uptime/alert/custody and first real canary evidence are not present |
 
@@ -112,6 +117,9 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Focused LIVE configured-candidate tests | 8 PASS normal; 8 PASS optimized |
 | Windows LIVE source-bound spec validator (`--strict`) | 100/100; no findings |
 | Focused LIVE source-bound tests | 6 PASS normal; 6 PASS optimized |
+| Windows provider-conformance v4 spec validator (`--strict`) | 100/100; no findings |
+| Focused provider-conformance v4 tests | 6 PASS normal; 6 PASS optimized |
+| Provider-conformance v1-v4 compatibility cluster | 60 PASS normal; 60 PASS optimized |
 | LIVE source-bound/tooling regression cluster | 39 PASS normal; 39 PASS optimized |
 | LIVE pack/materializer/release-builder cluster | 67 PASS normal; 67 PASS optimized |
 | Combined Windows Execution provider/policy tests | 44 PASS normal; 44 PASS optimized |
@@ -120,9 +128,9 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage regression | 81 PASS in both normal and optimized modes |
-| Full Python regression | 1,894 tests OK, 3 platform skips |
-| Full Python optimized regression | 1,894 tests OK, 6 skips |
-| Static quality checks | Ruff, Python compile, JSON/spec validation, and scoped `git diff --check` PASS |
+| Full Python regression | 1,900 tests OK, 3 platform skips |
+| Full Python optimized regression | 1,900 tests OK, 6 skips |
+| Static quality checks | Python compile, dependency lock, v4 spec validation, and scoped `git diff --check` PASS; Ruff unavailable in the active environment |
 | Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` and `SAFE_TO_DEMO_AUTO_ORDER` remain false; focused tests use fake MT5 only; no credential, network, Windows task, real MT5 initialization, or broker effect occurred |
 
 The generic repository scanner reported `DO_NOT_SHIP` with ten critical
@@ -221,6 +229,12 @@ changed-source findings.
     reconstructs both inputs from packaged bytes, and closes source,
     bootstrap, suite, Execution role, commit/tree, and configured-release
     identity without importing providers or granting runtime authority.
+16. The three-service conformance boundary previously stopped at the 46-port
+    DEMO Execution template. Additive v4 now requires the sealed ten-pin LIVE
+    result, validates the exact 49-port template, derives each binding from all
+    seven canonical fields, and reconstructs exactly 68 fresh records across
+    Decision, Execution, and Status Monitor. V1-v3 remain compatible and every
+    v4 authority flag remains false.
 
 ## Blocking facts
 
@@ -233,8 +247,9 @@ changed-source findings.
   external custody evidence.
 - The brokerless Windows LIVE materialization primitive, deterministic
   provider-pack tooling, suite-bound configured-candidate tooling, and
-  ten-pin source-bound tooling exist locally, but no exact pack, configured
-  candidate, or LIVE source-bound archive has yet been built and accepted on
+  ten-pin source-bound plus v4 conformance tooling exist locally, but no exact
+  pack, configured candidate, LIVE source-bound archive, 68-record packet,
+  owner signature, or runtime attestation has yet been built and accepted on
   the target Windows commit/suite. No concrete reviewed Windows callbacks or
   external conformance receipt exists. Canonical
   Windows factory-template v1 remains DEMO-only and cannot be relabeled as

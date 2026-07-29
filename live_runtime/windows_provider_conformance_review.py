@@ -31,6 +31,14 @@ from .windows_execution_source_bound_candidate import (
     WindowsExecutionSourceBoundCandidateVerification,
     is_windows_execution_source_bound_candidate_verification,
 )
+from .windows_live_canary_execution_configured_candidate import (
+    LiveExecutionConfiguredCandidateError,
+    validate_windows_live_canary_execution_factory_template,
+)
+from .windows_live_canary_execution_source_bound_candidate import (
+    WindowsLiveCanaryExecutionSourceBoundCandidateVerification,
+    is_windows_live_canary_execution_source_bound_candidate_verification,
+)
 from .windows_service_factory_template import (
     RELEASE_PROFILE as EXECUTION_RELEASE_PROFILE,
     WindowsFactoryTemplateError,
@@ -47,6 +55,9 @@ INPUT_SCHEMA_VERSION_V2 = (
 INPUT_SCHEMA_VERSION_V3 = (
     "windows-three-service-provider-conformance-input-v3"
 )
+INPUT_SCHEMA_VERSION_V4 = (
+    "windows-three-service-provider-conformance-input-v4"
+)
 REVIEW_SCHEMA_VERSION_V1 = (
     "windows-three-service-provider-conformance-review-v1"
 )
@@ -55,6 +66,9 @@ REVIEW_SCHEMA_VERSION_V2 = (
 )
 REVIEW_SCHEMA_VERSION_V3 = (
     "windows-three-service-provider-conformance-review-v3"
+)
+REVIEW_SCHEMA_VERSION_V4 = (
+    "windows-three-service-provider-conformance-review-v4"
 )
 # Backward-compatible aliases for existing v1 callers.
 INPUT_SCHEMA_VERSION = INPUT_SCHEMA_VERSION_V1
@@ -109,6 +123,16 @@ _INPUT_FIELDS_V3 = frozenset(
         "operations_plan_sha256",
         "operations_review_bundle_sha256",
         "execution_source_binding",
+        "services",
+    }
+)
+_INPUT_FIELDS_V4 = frozenset(
+    {
+        "schema_version",
+        "review_id",
+        "operations_plan_sha256",
+        "operations_review_bundle_sha256",
+        "live_execution_source_binding",
         "services",
     }
 )
@@ -197,6 +221,81 @@ _EXECUTION_SOURCE_BINDING_ATTRIBUTES = (
     ("git_commit", "git_commit"),
     ("git_tree", "git_tree"),
 )
+_LIVE_EXECUTION_SOURCE_BINDING_FIELDS = frozenset(
+    {
+        "live_bound_archive_sha256",
+        "live_binding_identity_sha256",
+        "source_bound_archive_sha256",
+        "source_bound_binding_identity_sha256",
+        "source_archive_sha256",
+        "bootstrap_binding_sha256",
+        "candidate_id",
+        "candidate_content_sha256",
+        "production_config_sha256",
+        "provider_pack_identity_sha256",
+        "provider_configuration_sha256",
+        "live_provider_contract_set_sha256",
+        "configured_release_identity_sha256",
+        "configured_archive_sha256",
+        "execution_factory_template_sha256",
+        "task_definition_sha256",
+        "suite_identity_sha256",
+        "execution_base_archive_sha256",
+        "execution_base_release_identity_sha256",
+        "git_commit",
+        "git_tree",
+        "provider_count",
+        "credential_reference_count",
+        "runtime_mode",
+    }
+)
+_LIVE_EXECUTION_SOURCE_BINDING_ATTRIBUTES = (
+    ("live_bound_archive_sha256", "archive_sha256"),
+    ("live_binding_identity_sha256", "binding_identity_sha256"),
+    ("source_bound_archive_sha256", "source_bound_archive_sha256"),
+    (
+        "source_bound_binding_identity_sha256",
+        "source_bound_binding_identity_sha256",
+    ),
+    ("source_archive_sha256", "source_archive_sha256"),
+    ("bootstrap_binding_sha256", "bootstrap_binding_sha256"),
+    ("candidate_id", "candidate_id"),
+    ("candidate_content_sha256", "candidate_content_sha256"),
+    ("production_config_sha256", "production_config_sha256"),
+    ("provider_pack_identity_sha256", "provider_pack_identity_sha256"),
+    (
+        "provider_configuration_sha256",
+        "provider_configuration_sha256",
+    ),
+    (
+        "live_provider_contract_set_sha256",
+        "live_provider_contract_set_sha256",
+    ),
+    (
+        "configured_release_identity_sha256",
+        "configured_release_identity_sha256",
+    ),
+    ("configured_archive_sha256", "configured_archive_sha256"),
+    (
+        "execution_factory_template_sha256",
+        "execution_factory_template_sha256",
+    ),
+    ("task_definition_sha256", "task_definition_sha256"),
+    ("suite_identity_sha256", "suite_identity_sha256"),
+    (
+        "execution_base_archive_sha256",
+        "execution_base_archive_sha256",
+    ),
+    (
+        "execution_base_release_identity_sha256",
+        "execution_base_release_identity_sha256",
+    ),
+    ("git_commit", "git_commit"),
+    ("git_tree", "git_tree"),
+    ("provider_count", "provider_count"),
+    ("credential_reference_count", "credential_reference_count"),
+    ("runtime_mode", "runtime_mode"),
+)
 _SERVICE_INPUT_FIELDS = frozenset(
     {
         "service_role",
@@ -284,6 +383,9 @@ _REVIEW_FIELDS_V2 = frozenset(
 )
 _REVIEW_FIELDS_V3 = frozenset(
     {*_REVIEW_FIELDS_V2, "execution_source_binding"}
+)
+_REVIEW_FIELDS_V4 = frozenset(
+    {*_REVIEW_FIELDS_V2, "live_execution_source_binding"}
 )
 
 
@@ -422,6 +524,75 @@ def execution_source_binding_from_verification(
     return normalized
 
 
+def live_execution_source_binding_from_verification(
+    verification: object,
+) -> dict[str, object]:
+    """Project one sealed LIVE result into the exact v4 binding."""
+
+    if not (
+        is_windows_live_canary_execution_source_bound_candidate_verification(
+            verification
+        )
+    ):
+        raise WindowsProviderConformanceError(
+            "LIVE_EXECUTION_SOURCE_BOUND_VERIFICATION_REQUIRED"
+        )
+    verified = cast(
+        WindowsLiveCanaryExecutionSourceBoundCandidateVerification,
+        verification,
+    )
+    if (
+        verified.provider_accepted is not False
+        or verified.production_execution_ready is not False
+        or verified.promotion_eligible is not False
+        or verified.safe_to_demo_auto_order is not False
+        or verified.live_allowed is not False
+        or verified.order_capability != ORDER_CAPABILITY
+        or verified.provider_count != 49
+        or verified.credential_reference_count != 12
+        or verified.runtime_mode != "LIVE"
+    ):
+        raise WindowsProviderConformanceError(
+            "LIVE_EXECUTION_SOURCE_BOUND_SAFETY_INVALID"
+        )
+    result: dict[str, object] = {
+        field_name: getattr(verified, attribute_name)
+        for field_name, attribute_name in (
+            _LIVE_EXECUTION_SOURCE_BINDING_ATTRIBUTES
+        )
+    }
+    normalized = _mapping(
+        result,
+        _LIVE_EXECUTION_SOURCE_BINDING_FIELDS,
+        "LIVE_EXECUTION_SOURCE_BINDING_INVALID",
+    )
+    for name in _LIVE_EXECUTION_SOURCE_BINDING_FIELDS - {
+        "candidate_id",
+        "credential_reference_count",
+        "git_commit",
+        "git_tree",
+        "provider_count",
+        "runtime_mode",
+    }:
+        normalized[name] = _hash(normalized[name])
+    normalized["candidate_id"] = _identifier(normalized["candidate_id"])
+    normalized["git_commit"] = _git_hash(normalized["git_commit"])
+    normalized["git_tree"] = _git_hash(normalized["git_tree"])
+    if (
+        type(normalized["provider_count"]) is not int
+        or normalized["provider_count"] != 49
+        or type(normalized["credential_reference_count"]) is not int
+        or normalized["credential_reference_count"] != 12
+        or normalized["runtime_mode"] != "LIVE"
+        or normalized["production_config_sha256"]
+        != normalized["source_archive_sha256"]
+    ):
+        raise WindowsProviderConformanceError(
+            "LIVE_EXECUTION_SOURCE_BINDING_INVALID"
+        )
+    return normalized
+
+
 def _utc_text(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat(
         timespec="microseconds"
@@ -523,6 +694,8 @@ def _normalized_execution_service(
     *,
     expected_runtime_mode: str = "DEMO_AUTO",
 ) -> tuple[str, dict[str, object], list[dict[str, object]]]:
+    if expected_runtime_mode == "LIVE":
+        return _normalized_live_execution_service(service)
     identity = _hash(service["configured_release_identity_sha256"])
     raw_template = service["factory_template"]
     if not isinstance(raw_template, Mapping):
@@ -572,6 +745,78 @@ def _normalized_execution_service(
         }
         for item in providers
     ]
+    return EXECUTION_RELEASE_PROFILE, normalized_template, expected
+
+
+def _normalized_live_execution_service(
+    service: Mapping[str, object],
+) -> tuple[str, dict[str, object], list[dict[str, object]]]:
+    identity = _hash(service["configured_release_identity_sha256"])
+    raw_template = service["factory_template"]
+    if not isinstance(raw_template, Mapping):
+        raise WindowsProviderConformanceError(
+            "EXECUTION_FACTORY_TEMPLATE_INVALID"
+        )
+    if raw_template.get("expected_release_identity_sha256") != identity:
+        raise WindowsProviderConformanceError(
+            "TEMPLATE_RELEASE_IDENTITY_MISMATCH"
+        )
+    if raw_template.get("runtime_mode") != "LIVE":
+        raise WindowsProviderConformanceError(
+            "EXECUTION_RUNTIME_MODE_INVALID"
+        )
+    template_bytes = _canonical_bytes(raw_template) + b"\n"
+    try:
+        template = validate_windows_live_canary_execution_factory_template(
+            template_bytes
+        )
+    except (TypeError, ValueError, LiveExecutionConfiguredCandidateError) as exc:
+        raise WindowsProviderConformanceError(
+            "EXECUTION_FACTORY_TEMPLATE_INVALID"
+        ) from exc
+    if template.expected_release_identity_sha256 != identity:
+        raise WindowsProviderConformanceError(
+            "TEMPLATE_RELEASE_IDENTITY_MISMATCH"
+        )
+    normalized_template = cast(
+        dict[str, object],
+        json.loads(template_bytes),
+    )
+    expected: list[dict[str, object]] = []
+    for item in template.provider_bindings:
+        exact_binding = {
+            "configuration_sha256": item.configuration_sha256,
+            "contract_sha256": item.contract_sha256,
+            "credential_reference_id": item.credential_reference_id,
+            "implementation_sha256": item.implementation_sha256,
+            "port_name": item.port_name,
+            "provider_id": item.provider_id,
+            "provider_kind": item.provider_kind,
+        }
+        expected.append(
+            {
+                "provider_role": item.port_name,
+                "provider_contract_sha256": item.contract_sha256,
+                "implementation_sha256": item.implementation_sha256,
+                "configuration_sha256": item.configuration_sha256,
+                "provider_binding_sha256": canonical_sha256(
+                    exact_binding
+                ),
+                "custody_mode": None,
+                "provider_kind": item.provider_kind,
+                "credential_reference_id": (
+                    item.credential_reference_id
+                ),
+            }
+        )
+    if (
+        len(expected) != 49
+        or template.provider_count != 49
+        or template.credential_reference_count != 12
+    ):
+        raise WindowsProviderConformanceError(
+            "EXECUTION_FACTORY_TEMPLATE_INVALID"
+        )
     return EXECUTION_RELEASE_PROFILE, normalized_template, expected
 
 
@@ -843,6 +1088,7 @@ class WindowsThreeServiceProviderConformanceReview:
     provider_count: int
     checked_at_utc: datetime
     execution_source_binding: Mapping[str, object] | None = None
+    live_execution_source_binding: Mapping[str, object] | None = None
     status: str = PROVIDER_REVIEW_STATUS
     readiness_blockers: tuple[str, ...] = READINESS_BLOCKERS
     external_signature_required: bool = True
@@ -871,7 +1117,10 @@ class WindowsThreeServiceProviderConformanceReview:
             if not isinstance(
                 self.configured_release_admission_sha256,
                 str,
-            ) or self.execution_source_binding is not None:
+            ) or (
+                self.execution_source_binding is not None
+                or self.live_execution_source_binding is not None
+            ):
                 raise ValueError(
                     "v1 provider review requires legacy admission hash"
                 )
@@ -879,6 +1128,7 @@ class WindowsThreeServiceProviderConformanceReview:
             if (
                 self.configured_release_admission_sha256 is not None
                 or self.execution_source_binding is not None
+                or self.live_execution_source_binding is not None
             ):
                 raise ValueError(
                     "v2 provider review cannot carry admission hash"
@@ -887,9 +1137,22 @@ class WindowsThreeServiceProviderConformanceReview:
             if (
                 self.configured_release_admission_sha256 is not None
                 or not isinstance(self.execution_source_binding, Mapping)
+                or self.live_execution_source_binding is not None
             ):
                 raise ValueError(
                     "v3 provider review requires source binding"
+                )
+        elif self.schema_version == REVIEW_SCHEMA_VERSION_V4:
+            if (
+                self.configured_release_admission_sha256 is not None
+                or self.execution_source_binding is not None
+                or not isinstance(
+                    self.live_execution_source_binding,
+                    Mapping,
+                )
+            ):
+                raise ValueError(
+                    "v4 provider review requires LIVE source binding"
                 )
         else:
             raise ValueError("provider conformance review schema drift")
@@ -942,6 +1205,10 @@ class WindowsThreeServiceProviderConformanceReview:
             result["execution_source_binding"] = json.loads(
                 _canonical_bytes(self.execution_source_binding)
             )
+        elif self.schema_version == REVIEW_SCHEMA_VERSION_V4:
+            result["live_execution_source_binding"] = json.loads(
+                _canonical_bytes(self.live_execution_source_binding)
+            )
         return result
 
     @property
@@ -961,6 +1228,7 @@ def _build_review(
     checked_at: datetime,
     freshness_time: datetime,
     execution_source_bound_verification: object = None,
+    live_execution_source_bound_verification: object = None,
 ) -> WindowsThreeServiceProviderConformanceReview:
     if not isinstance(payload, Mapping):
         raise WindowsProviderConformanceError("INPUT_SCHEMA_INVALID")
@@ -969,6 +1237,10 @@ def _build_review(
         if execution_source_bound_verification is not None:
             raise WindowsProviderConformanceError(
                 "EXECUTION_SOURCE_BOUND_VERSION_MISMATCH"
+            )
+        if live_execution_source_bound_verification is not None:
+            raise WindowsProviderConformanceError(
+                "LIVE_EXECUTION_SOURCE_BOUND_VERSION_MISMATCH"
             )
         root = _mapping(
             payload,
@@ -980,10 +1252,15 @@ def _build_review(
             root["configured_release_admission_sha256"]
         )
         execution_source_binding: dict[str, object] | None = None
+        live_execution_source_binding: dict[str, object] | None = None
     elif schema_version == INPUT_SCHEMA_VERSION_V2:
         if execution_source_bound_verification is not None:
             raise WindowsProviderConformanceError(
                 "EXECUTION_SOURCE_BOUND_VERSION_MISMATCH"
+            )
+        if live_execution_source_bound_verification is not None:
+            raise WindowsProviderConformanceError(
+                "LIVE_EXECUTION_SOURCE_BOUND_VERSION_MISMATCH"
             )
         root = _mapping(
             payload,
@@ -993,7 +1270,12 @@ def _build_review(
         review_schema_version = REVIEW_SCHEMA_VERSION_V2
         configured_release_admission_sha256 = None
         execution_source_binding = None
+        live_execution_source_binding = None
     elif schema_version == INPUT_SCHEMA_VERSION_V3:
+        if live_execution_source_bound_verification is not None:
+            raise WindowsProviderConformanceError(
+                "LIVE_EXECUTION_SOURCE_BOUND_VERSION_MISMATCH"
+            )
         root = _mapping(
             payload,
             _INPUT_FIELDS_V3,
@@ -1014,6 +1296,35 @@ def _build_review(
                 "EXECUTION_SOURCE_BINDING_MISMATCH"
             )
         execution_source_binding = expected_binding
+        live_execution_source_binding = None
+    elif schema_version == INPUT_SCHEMA_VERSION_V4:
+        if execution_source_bound_verification is not None:
+            raise WindowsProviderConformanceError(
+                "EXECUTION_SOURCE_BOUND_VERSION_MISMATCH"
+            )
+        root = _mapping(
+            payload,
+            _INPUT_FIELDS_V4,
+            "INPUT_SCHEMA_INVALID",
+        )
+        review_schema_version = REVIEW_SCHEMA_VERSION_V4
+        configured_release_admission_sha256 = None
+        execution_source_binding = None
+        expected_live_binding = (
+            live_execution_source_binding_from_verification(
+                live_execution_source_bound_verification
+            )
+        )
+        supplied_live_binding = _mapping(
+            root["live_execution_source_binding"],
+            _LIVE_EXECUTION_SOURCE_BINDING_FIELDS,
+            "LIVE_EXECUTION_SOURCE_BINDING_INVALID",
+        )
+        if supplied_live_binding != expected_live_binding:
+            raise WindowsProviderConformanceError(
+                "LIVE_EXECUTION_SOURCE_BINDING_MISMATCH"
+            )
+        live_execution_source_binding = expected_live_binding
     else:
         raise WindowsProviderConformanceError("INPUT_SCHEMA_INVALID")
     review_id = _identifier(root["review_id"])
@@ -1052,9 +1363,13 @@ def _build_review(
                     item,
                     trusted_now=freshness_time,
                     expected_execution_runtime_mode=(
-                        "DEMO"
-                        if schema_version == INPUT_SCHEMA_VERSION_V3
-                        else "DEMO_AUTO"
+                        "LIVE"
+                        if schema_version == INPUT_SCHEMA_VERSION_V4
+                        else (
+                            "DEMO"
+                            if schema_version == INPUT_SCHEMA_VERSION_V3
+                            else "DEMO_AUTO"
+                        )
                     ),
                 )
                 for item in services_raw
@@ -1109,6 +1424,64 @@ def _build_review(
             raise WindowsProviderConformanceError(
                 "EXECUTION_SOURCE_TEMPLATE_MISMATCH"
             )
+    elif schema_version == INPUT_SCHEMA_VERSION_V4:
+        if live_execution_source_binding is None:
+            raise WindowsProviderConformanceError(
+                "LIVE_EXECUTION_SOURCE_BOUND_VERIFICATION_REQUIRED"
+            )
+        execution = next(
+            item
+            for item in services
+            if item["service_role"] == "EXECUTION"
+        )
+        template = execution["factory_template"]
+        if not isinstance(template, Mapping):
+            raise WindowsProviderConformanceError(
+                "LIVE_EXECUTION_SOURCE_TEMPLATE_MISMATCH"
+            )
+        exact_template_sha256 = hashlib.sha256(
+            _canonical_bytes(template) + b"\n"
+        ).hexdigest()
+        if (
+            execution["configured_release_identity_sha256"]
+            != live_execution_source_binding[
+                "configured_release_identity_sha256"
+            ]
+            or exact_template_sha256
+            != live_execution_source_binding[
+                "execution_factory_template_sha256"
+            ]
+            or template.get("expected_release_identity_sha256")
+            != live_execution_source_binding[
+                "configured_release_identity_sha256"
+            ]
+            or template.get("production_config_sha256")
+            != live_execution_source_binding["production_config_sha256"]
+            or template.get("bootstrap_binding_sha256")
+            != live_execution_source_binding["bootstrap_binding_sha256"]
+            or template.get("provider_configuration_sha256")
+            != live_execution_source_binding[
+                "provider_configuration_sha256"
+            ]
+            or template.get("live_provider_contract_set_sha256")
+            != live_execution_source_binding[
+                "live_provider_contract_set_sha256"
+            ]
+            or not isinstance(template.get("task_scheduler"), Mapping)
+            or template["task_scheduler"].get("task_definition_sha256")
+            != live_execution_source_binding["task_definition_sha256"]
+            or len(template.get("provider_bindings", ()))
+            != live_execution_source_binding["provider_count"]
+            or len(template.get("credential_manager_references", ()))
+            != live_execution_source_binding[
+                "credential_reference_count"
+            ]
+            or template.get("runtime_mode")
+            != live_execution_source_binding["runtime_mode"]
+        ):
+            raise WindowsProviderConformanceError(
+                "LIVE_EXECUTION_SOURCE_TEMPLATE_MISMATCH"
+            )
     release_set = [
         {
             "service_role": item["service_role"],
@@ -1127,6 +1500,14 @@ def _build_review(
         }
         for item in services
     ]
+    provider_count = sum(
+        int(item["provider_count"]) for item in services
+    )
+    expected_provider_count = (
+        68 if schema_version == INPUT_SCHEMA_VERSION_V4 else 65
+    )
+    if provider_count != expected_provider_count:
+        raise WindowsProviderConformanceError("PROVIDER_COUNT_INVALID")
     return WindowsThreeServiceProviderConformanceReview(
         review_id=review_id,
         operations_plan_sha256=_hash(
@@ -1141,11 +1522,10 @@ def _build_review(
         services=services,
         configured_release_set_sha256=canonical_sha256(release_set),
         provider_evidence_set_sha256=canonical_sha256(evidence_set),
-        provider_count=sum(
-            int(item["provider_count"]) for item in services
-        ),
+        provider_count=provider_count,
         checked_at_utc=checked_at,
         execution_source_binding=execution_source_binding,
+        live_execution_source_binding=live_execution_source_binding,
         schema_version=review_schema_version,
         _seal=_REVIEW_SEAL,
     )
@@ -1156,6 +1536,7 @@ def prepare_windows_three_service_provider_conformance_review(
     *,
     clock_provider: Callable[[], datetime],
     execution_source_bound_verification: object = None,
+    live_execution_source_bound_verification: object = None,
 ) -> WindowsThreeServiceProviderConformanceReview:
     """Prepare one non-authoritative provider conformance review packet."""
 
@@ -1168,6 +1549,9 @@ def prepare_windows_three_service_provider_conformance_review(
         freshness_time=started_at,
         execution_source_bound_verification=(
             execution_source_bound_verification
+        ),
+        live_execution_source_bound_verification=(
+            live_execution_source_bound_verification
         ),
     )
     if len(_canonical_bytes(review.to_canonical_dict())) > (
@@ -1183,6 +1567,7 @@ def verify_windows_three_service_provider_conformance_review(
     *,
     clock_provider: Callable[[], datetime],
     execution_source_bound_verification: object = None,
+    live_execution_source_bound_verification: object = None,
 ) -> WindowsThreeServiceProviderConformanceReview:
     """Reconstruct a complete packet rather than trusting its outer hash."""
 
@@ -1213,6 +1598,13 @@ def verify_windows_three_service_provider_conformance_review(
             "REVIEW_SCHEMA_INVALID",
         )
         input_schema_version = INPUT_SCHEMA_VERSION_V3
+    elif review_schema_version == REVIEW_SCHEMA_VERSION_V4:
+        review = _mapping(
+            payload,
+            _REVIEW_FIELDS_V4,
+            "REVIEW_SCHEMA_INVALID",
+        )
+        input_schema_version = INPUT_SCHEMA_VERSION_V4
     else:
         raise WindowsProviderConformanceError("REVIEW_SCHEMA_INVALID")
     supplied_hash = _hash(review["content_sha256"])
@@ -1270,12 +1662,19 @@ def verify_windows_three_service_provider_conformance_review(
         reconstructed_input["execution_source_binding"] = review[
             "execution_source_binding"
         ]
+    elif input_schema_version == INPUT_SCHEMA_VERSION_V4:
+        reconstructed_input["live_execution_source_binding"] = review[
+            "live_execution_source_binding"
+        ]
     expected = _build_review(
         reconstructed_input,
         checked_at=checked_at,
         freshness_time=started_at,
         execution_source_bound_verification=(
             execution_source_bound_verification
+        ),
+        live_execution_source_bound_verification=(
+            live_execution_source_bound_verification
         ),
     )
     if expected.to_canonical_dict() != review:
@@ -1462,6 +1861,7 @@ def prepare_windows_three_service_provider_conformance_review_file(
     *,
     clock_provider: Callable[[], datetime],
     execution_source_bound_verification: object = None,
+    live_execution_source_bound_verification: object = None,
 ) -> WindowsThreeServiceProviderConformanceReview:
     """Stable-read one input and write one create-exclusive canonical packet."""
 
@@ -1472,6 +1872,9 @@ def prepare_windows_three_service_provider_conformance_review_file(
         clock_provider=clock_provider,
         execution_source_bound_verification=(
             execution_source_bound_verification
+        ),
+        live_execution_source_bound_verification=(
+            live_execution_source_bound_verification
         ),
     )
     output = _canonical_bytes(review.to_canonical_dict()) + b"\n"
@@ -1484,6 +1887,7 @@ __all__ = [
     "INPUT_SCHEMA_VERSION_V1",
     "INPUT_SCHEMA_VERSION_V2",
     "INPUT_SCHEMA_VERSION_V3",
+    "INPUT_SCHEMA_VERSION_V4",
     "MAXIMUM_PROVIDER_REVIEW_JSON_BYTES",
     "PROVIDER_REVIEW_STATUS",
     "READINESS_BLOCKERS",
@@ -1491,10 +1895,12 @@ __all__ = [
     "REVIEW_SCHEMA_VERSION_V1",
     "REVIEW_SCHEMA_VERSION_V2",
     "REVIEW_SCHEMA_VERSION_V3",
+    "REVIEW_SCHEMA_VERSION_V4",
     "SERVICE_ROLES",
     "WindowsProviderConformanceError",
     "WindowsThreeServiceProviderConformanceReview",
     "execution_source_binding_from_verification",
+    "live_execution_source_binding_from_verification",
     "prepare_windows_three_service_provider_conformance_review",
     "prepare_windows_three_service_provider_conformance_review_file",
     "provider_binding_targets_from_factory_template",

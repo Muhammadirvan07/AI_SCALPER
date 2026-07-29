@@ -5,8 +5,8 @@
 The project gained a verifier-sealed per-order execution boundary, a separate
 brokerless Windows LIVE provider-materialization boundary, and deterministic
 four-file LIVE provider-pack plus exact 15-file configured-candidate tooling
-plus a 17-member source-ancestry closure for a future first XAUUSD live
-canary.
+plus a 17-member source-ancestry closure and exact 68-record three-service
+provider-conformance v4 boundary for a future first XAUUSD live canary.
 The activation, launch, Windows provider composition,
 supervisor, execution coordinator, durable journal lease, runtime
 authorization, and final MT5 adapter chain are implemented and verified
@@ -26,7 +26,8 @@ WINDOWS_LIVE_PROVIDER_MATERIALIZATION = PASS_LOCALLY_BROKERLESS_LOCKED
 WINDOWS_LIVE_PROVIDER_PACK = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_CONFIGURED_CANDIDATE = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_SOURCE_BOUND_CANDIDATE = PASS_LOCALLY_DENY_ONLY
-WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
+WINDOWS_LIVE_PROVIDER_CONFORMANCE_V4 = PASS_LOCALLY_DENY_ONLY
+WINDOWS_EXTERNAL_PROVIDER_ACCEPTANCE = EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
 DEMO_AUTO_SOAK = NOT_READY
 LIVE_CANARY = NOT_STARTED
@@ -160,11 +161,19 @@ LIVE_TRADING = DO_NOT_SHIP
   Execution role, commit/tree, base/configured release, 49-provider, and
   12-reference identities without importing a provider or accessing runtime
   state.
+- Three-service provider-conformance v4 now consumes only that sealed LIVE
+  verification, validates the exact canonical LIVE template, derives all 49
+  Execution binding hashes from their seven-field mappings, and combines them
+  with seven Decision plus twelve Status Monitor bindings. The exact result is
+  68 fresh evidence records. Preparation and reconstruction remain deny-only,
+  preserve v1-v3 behavior, and grant no provider, credential, activation,
+  central-lock, MT5, broker, or order authority.
 - The source implementation is complete locally, but no target-host pack,
-  configured candidate, or LIVE source-bound archive has yet been built and
-  externally accepted from an exact committed Windows suite. Concrete
-  reviewed Windows callbacks and external conformance/launcher receipts
-  remain the next milestones.
+  configured candidate, LIVE source-bound archive, or v4 conformance packet
+  has yet been built and externally accepted from an exact committed Windows
+  suite. Concrete reviewed Windows callbacks, owner signature, runtime
+  attestation, and external conformance/launcher receipts remain the next
+  milestones.
 
 ## Verification
 
@@ -198,8 +207,8 @@ LIVE_TRADING = DO_NOT_SHIP
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,894 tests OK, 3 platform skips |
-| Full Python regression with `-O` | 1,894 tests OK, 6 skips including optimized-only nested self-tests |
+| Full Python regression | 1,900 tests OK, 3 platform skips |
+| Full Python regression with `-O` | 1,900 tests OK, 6 skips including optimized-only nested self-tests |
 | Python compile, Ruff, JSON/spec validation, and scoped whitespace checks | PASS |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
 | Checked-in central live lock | remains exactly false |
@@ -220,7 +229,8 @@ uptime monitoring remain external work.
    refactor currently targets `/api/v1` and `/api/v1/ws`. Its latest local
    test run is not green (8 passed, 3 failed, 1 cancelled), so it remains
    outside this source commit.
-2. Complete exact Windows provider-conformance v3 and external acceptance for
+2. Complete exact Windows provider-conformance v3 for the DEMO soak path and
+   v4 for the LIVE path, then obtain independent external acceptance for
    Decision, Execution, and Status Monitor.
 3. Run ten reviewed manual-demo lifecycles.
 4. Run the real XM demo-auto soak to at least 30 clean days, 50 reconciled
@@ -231,9 +241,11 @@ uptime monitoring remain external work.
 6. Use the new assemblers and validators to build the actual XM/Windows LIVE
    provider pack and configured candidate from one accepted target-host suite,
    then package it with the independently verified DEMO ancestry using the
-   ten-pin LIVE source-bound boundary. Feed only the externally accepted
-   result and consumed validation through prebootstrap admission; local tests
-   use synthetic values only.
+   ten-pin LIVE source-bound boundary. Assemble the exact 68-record v4 input
+   and review from that sealed result; retain the owner signature and runtime
+   attestation. Feed only the externally accepted result and consumed
+   validation through prebootstrap admission; local tests use synthetic
+   values only.
 7. Provision the real independent WORM readback and atomic CAS/nonce custody,
    retain the predecessor pin through an independent channel, and collect the
    canonical RSA receipts this local boundary expects. From an exact committed
@@ -252,8 +264,8 @@ uptime monitoring remain external work.
 No percentage or passing unit-test count should be interpreted as broker
 authority. The per-order, Windows LIVE materialization, deterministic
 provider-pack, configured-candidate, and LIVE source-bound boundaries now
-exist locally, but until the external evidence, exact target-host pack,
-configured candidate and source-bound archive, central unlock ceremony, and
-first
+exist locally together with provider-conformance v4, but until the external
+evidence, exact target-host pack, configured candidate, source-bound archive,
+68-record accepted review, central unlock ceremony, and first
 reconciled broker canary exist, the truthful state remains
 `LIVE_TRADING = DO_NOT_SHIP`.

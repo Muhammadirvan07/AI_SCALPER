@@ -32,10 +32,12 @@ Repository menyediakan:
   secara create-exclusive, dan menjalankan static safety validation tanpa
   mengimpor provider;
 - `prepare_windows_three_service_provider_conformance_input.py`: menurunkan
-  seluruh 65 binding field dari tiga exact factory template dan merakit compact
-  external evidence menjadi input reviewer tanpa transkripsi manual;
+  seluruh binding field dari tiga exact factory template dan merakit compact
+  external evidence menjadi input reviewer tanpa transkripsi manual; v1-v3
+  memakai 65 binding, sedangkan additive LIVE v4 memakai tepat 68 binding dan
+  sealed ten-pin LIVE source-bound verification;
 - `prepare_windows_three_service_provider_conformance_review.py`: mengikat
-  ketiga exact factory template dan seluruh 65 provider binding ke fresh
+  ketiga exact factory template dan seluruh 65/68 provider binding ke fresh
   external conformance-evidence hashes dalam packet deny-only yang masih
   membutuhkan signature owner independen;
 - `build_windows_configured_service_release.py`: menggabungkan exact base ZIP
@@ -82,6 +84,8 @@ Runbook source-bound candidate berada di
 [`WINDOWS_EXECUTION_SOURCE_BOUND_CANDIDATE.md`](WINDOWS_EXECUTION_SOURCE_BOUND_CANDIDATE.md).
 Runbook additive LIVE source-bound candidate berada di
 [`WINDOWS_LIVE_CANARY_EXECUTION_SOURCE_BOUND_CANDIDATE.md`](WINDOWS_LIVE_CANARY_EXECUTION_SOURCE_BOUND_CANDIDATE.md).
+Runbook additive LIVE provider-conformance v4 berada di
+[`WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V4.md`](WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V4.md).
 
 ## Overlay non-secret
 
@@ -287,6 +291,11 @@ dan
 Jalur tersebut menetapkan `runtime_mode=LIVE` tetapi tetap
 `order_capability=DISABLED`, `live_allowed=false`, dan membutuhkan external
 provider conformance serta seluruh gate berikutnya.
+Setelah exact LIVE source-bound candidate lolos ten-pin verifier, gunakan
+provider-conformance v4 pada
+[`WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V4.md`](WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V4.md).
+V4 memerlukan tepat 68 fresh provider record dan tetap tidak memberi provider
+acceptance atau order authority.
 
 Setelah runtime eksternal tersedia, gunakan
 `run_windows_gated_execution_service.py --materialize-only` sebagai boundary

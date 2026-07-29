@@ -24,14 +24,21 @@ from .windows_execution_source_bound_candidate import (
     WindowsExecutionSourceBoundCandidateVerification,
     verify_windows_execution_source_bound_candidate,
 )
+from .windows_live_canary_execution_source_bound_candidate import (
+    WindowsLiveCanaryExecutionSourceBoundCandidateError,
+    WindowsLiveCanaryExecutionSourceBoundCandidateVerification,
+    verify_windows_live_canary_execution_source_bound_candidate,
+)
 from .windows_provider_conformance_review import (
     INPUT_SCHEMA_VERSION,
     INPUT_SCHEMA_VERSION_V2,
     INPUT_SCHEMA_VERSION_V3,
+    INPUT_SCHEMA_VERSION_V4,
     MAXIMUM_PROVIDER_REVIEW_JSON_BYTES,
     SERVICE_ROLES,
     WindowsProviderConformanceError,
     execution_source_binding_from_verification,
+    live_execution_source_binding_from_verification,
     prepare_windows_three_service_provider_conformance_review,
     provider_binding_targets_from_factory_template,
 )
@@ -46,6 +53,7 @@ ASSEMBLY_STATUS = (
 ORDER_CAPABILITY = "DISABLED"
 MAX_LOT = 0.01
 EXPECTED_PROVIDER_COUNT = 65
+EXPECTED_PROVIDER_COUNT_V4 = 68
 MAXIMUM_INPUT_FILE_BYTES = MAXIMUM_PROVIDER_REVIEW_JSON_BYTES
 MAXIMUM_AGGREGATE_INPUT_BYTES = 4 * MAXIMUM_INPUT_FILE_BYTES
 
@@ -480,6 +488,37 @@ def assemble_windows_three_service_provider_conformance_input_v3(
     )
 
 
+def assemble_windows_three_service_provider_conformance_input_v4(
+    *,
+    review_id: str,
+    operations_plan_sha256: str,
+    operations_review_bundle_sha256: str,
+    factory_templates: Mapping[str, Mapping[str, object]],
+    evidence_manifest: Mapping[str, object],
+    live_execution_source_bound_verification: (
+        WindowsLiveCanaryExecutionSourceBoundCandidateVerification
+    ),
+    clock_provider: Callable[[], datetime],
+) -> WindowsProviderConformanceInputAssembly:
+    """Derive one v4 input from a sealed LIVE source-bound result."""
+
+    return _assemble_windows_three_service_provider_conformance_input(
+        review_id=review_id,
+        operations_plan_sha256=operations_plan_sha256,
+        operations_review_bundle_sha256=(
+            operations_review_bundle_sha256
+        ),
+        configured_release_admission_sha256=None,
+        factory_templates=factory_templates,
+        evidence_manifest=evidence_manifest,
+        live_execution_source_bound_verification=(
+            live_execution_source_bound_verification
+        ),
+        clock_provider=clock_provider,
+        input_schema_version=INPUT_SCHEMA_VERSION_V4,
+    )
+
+
 def _assemble_windows_three_service_provider_conformance_input(
     *,
     review_id: str,
@@ -489,6 +528,7 @@ def _assemble_windows_three_service_provider_conformance_input(
     factory_templates: Mapping[str, Mapping[str, object]],
     evidence_manifest: Mapping[str, object],
     execution_source_bound_verification: object = None,
+    live_execution_source_bound_verification: object = None,
     clock_provider: Callable[[], datetime],
     input_schema_version: str,
 ) -> WindowsProviderConformanceInputAssembly:
@@ -500,6 +540,7 @@ def _assemble_windows_three_service_provider_conformance_input(
         INPUT_SCHEMA_VERSION,
         INPUT_SCHEMA_VERSION_V2,
         INPUT_SCHEMA_VERSION_V3,
+        INPUT_SCHEMA_VERSION_V4,
     }:
         raise WindowsProviderConformanceInputError(
             "INPUT_SCHEMA_INVALID"
@@ -511,7 +552,8 @@ def _assemble_windows_three_service_provider_conformance_input(
         input_schema_version == INPUT_SCHEMA_VERSION_V2
         and configured_release_admission_sha256 is not None
     ) or (
-        input_schema_version == INPUT_SCHEMA_VERSION_V3
+        input_schema_version
+        in {INPUT_SCHEMA_VERSION_V3, INPUT_SCHEMA_VERSION_V4}
         and configured_release_admission_sha256 is not None
     ):
         raise WindowsProviderConformanceInputError(
@@ -519,7 +561,12 @@ def _assemble_windows_three_service_provider_conformance_input(
         )
     started_at = _trusted_now(clock_provider)
     execution_source_binding: dict[str, object] | None = None
+    live_execution_source_binding: dict[str, object] | None = None
     if input_schema_version == INPUT_SCHEMA_VERSION_V3:
+        if live_execution_source_bound_verification is not None:
+            raise WindowsProviderConformanceInputError(
+                "LIVE_EXECUTION_SOURCE_BOUND_VERSION_MISMATCH"
+            )
         try:
             execution_source_binding = (
                 execution_source_binding_from_verification(
@@ -528,16 +575,38 @@ def _assemble_windows_three_service_provider_conformance_input(
             )
         except WindowsProviderConformanceError as exc:
             raise _translate_review_error(exc) from exc
-    elif execution_source_bound_verification is not None:
+    elif input_schema_version == INPUT_SCHEMA_VERSION_V4:
+        if execution_source_bound_verification is not None:
+            raise WindowsProviderConformanceInputError(
+                "EXECUTION_SOURCE_BOUND_VERSION_MISMATCH"
+            )
+        try:
+            live_execution_source_binding = (
+                live_execution_source_binding_from_verification(
+                    live_execution_source_bound_verification
+                )
+            )
+        except WindowsProviderConformanceError as exc:
+            raise _translate_review_error(exc) from exc
+    elif (
+        execution_source_bound_verification is not None
+        or live_execution_source_bound_verification is not None
+    ):
         raise WindowsProviderConformanceInputError(
-            "EXECUTION_SOURCE_BOUND_VERSION_MISMATCH"
+            "LIVE_EXECUTION_SOURCE_BOUND_VERSION_MISMATCH"
+            if live_execution_source_bound_verification is not None
+            else "EXECUTION_SOURCE_BOUND_VERSION_MISMATCH"
         )
     targets = _normalize_templates(
         factory_templates,
         expected_execution_runtime_mode=(
-            "DEMO"
-            if input_schema_version == INPUT_SCHEMA_VERSION_V3
-            else "DEMO_AUTO"
+            "LIVE"
+            if input_schema_version == INPUT_SCHEMA_VERSION_V4
+            else (
+                "DEMO"
+                if input_schema_version == INPUT_SCHEMA_VERSION_V3
+                else "DEMO_AUTO"
+            )
         ),
     )
     evidence_set_id, evidence = _evidence_by_service(
@@ -564,6 +633,10 @@ def _assemble_windows_three_service_provider_conformance_input(
         )
     elif input_schema_version == INPUT_SCHEMA_VERSION_V3:
         candidate["execution_source_binding"] = execution_source_binding
+    elif input_schema_version == INPUT_SCHEMA_VERSION_V4:
+        candidate["live_execution_source_binding"] = (
+            live_execution_source_binding
+        )
     try:
         review = (
             prepare_windows_three_service_provider_conformance_review(
@@ -572,11 +645,19 @@ def _assemble_windows_three_service_provider_conformance_input(
                 execution_source_bound_verification=(
                     execution_source_bound_verification
                 ),
+                live_execution_source_bound_verification=(
+                    live_execution_source_bound_verification
+                ),
             )
         )
     except WindowsProviderConformanceError as exc:
         raise _translate_review_error(exc) from exc
-    if review.provider_count != EXPECTED_PROVIDER_COUNT:
+    expected_provider_count = (
+        EXPECTED_PROVIDER_COUNT_V4
+        if input_schema_version == INPUT_SCHEMA_VERSION_V4
+        else EXPECTED_PROVIDER_COUNT
+    )
+    if review.provider_count != expected_provider_count:
         raise WindowsProviderConformanceInputError(
             "PROVIDER_COUNT_INVALID"
         )
@@ -606,6 +687,10 @@ def _assemble_windows_three_service_provider_conformance_input(
     elif input_schema_version == INPUT_SCHEMA_VERSION_V3:
         canonical_input["execution_source_binding"] = (
             review.execution_source_binding
+        )
+    elif input_schema_version == INPUT_SCHEMA_VERSION_V4:
+        canonical_input["live_execution_source_binding"] = (
+            review.live_execution_source_binding
         )
     output = _canonical_output(canonical_input)
     completed_at = _trusted_now(clock_provider)
@@ -977,6 +1062,89 @@ def assemble_windows_three_service_provider_conformance_input_file_v3(
     )
 
 
+def assemble_windows_three_service_provider_conformance_input_file_v4(
+    *,
+    decision_factory_template_path: str | Path,
+    execution_factory_template_path: str | Path,
+    status_monitor_factory_template_path: str | Path,
+    evidence_manifest_path: str | Path,
+    live_execution_source_bound_candidate_path: str | Path,
+    base_suite_root: str | Path,
+    execution_base_release: str | Path,
+    expected_live_bound_archive_sha256: str,
+    expected_source_bound_archive_sha256: str,
+    expected_source_archive_sha256: str,
+    expected_champion_archive_sha256: str,
+    expected_model_artifact_sha256: str,
+    expected_training_snapshot_sha256: str,
+    expected_config_sha256: str,
+    expected_git_commit: str,
+    expected_git_tree: str,
+    expected_suite_identity_sha256: str,
+    output_path: str | Path,
+    review_id: str,
+    operations_plan_sha256: str,
+    operations_review_bundle_sha256: str,
+    clock_provider: Callable[[], datetime],
+) -> WindowsProviderConformanceInputAssembly:
+    """Verify ten LIVE source pins, then publish one exact v4 input."""
+
+    try:
+        verification = (
+            verify_windows_live_canary_execution_source_bound_candidate(
+                live_execution_source_bound_candidate_path,
+                base_suite_root=base_suite_root,
+                execution_base_release=execution_base_release,
+                expected_live_bound_archive_sha256=(
+                    expected_live_bound_archive_sha256
+                ),
+                expected_source_bound_archive_sha256=(
+                    expected_source_bound_archive_sha256
+                ),
+                expected_source_archive_sha256=(
+                    expected_source_archive_sha256
+                ),
+                expected_champion_archive_sha256=(
+                    expected_champion_archive_sha256
+                ),
+                expected_model_artifact_sha256=(
+                    expected_model_artifact_sha256
+                ),
+                expected_training_snapshot_sha256=(
+                    expected_training_snapshot_sha256
+                ),
+                expected_config_sha256=expected_config_sha256,
+                expected_git_commit=expected_git_commit,
+                expected_git_tree=expected_git_tree,
+                expected_suite_identity_sha256=(
+                    expected_suite_identity_sha256
+                ),
+            )
+        )
+    except WindowsLiveCanaryExecutionSourceBoundCandidateError as exc:
+        raise WindowsProviderConformanceInputError(
+            exc.reason_code
+        ) from exc
+    return _assemble_windows_three_service_provider_conformance_input_file(
+        decision_factory_template_path=decision_factory_template_path,
+        execution_factory_template_path=execution_factory_template_path,
+        status_monitor_factory_template_path=(
+            status_monitor_factory_template_path
+        ),
+        evidence_manifest_path=evidence_manifest_path,
+        output_path=output_path,
+        review_id=review_id,
+        operations_plan_sha256=operations_plan_sha256,
+        operations_review_bundle_sha256=(
+            operations_review_bundle_sha256
+        ),
+        configured_release_admission_sha256=None,
+        live_execution_source_bound_verification=verification,
+        clock_provider=clock_provider,
+        input_schema_version=INPUT_SCHEMA_VERSION_V4,
+    )
+
+
 def _assemble_windows_three_service_provider_conformance_input_file(
     *,
     decision_factory_template_path: str | Path,
@@ -989,6 +1157,7 @@ def _assemble_windows_three_service_provider_conformance_input_file(
     operations_review_bundle_sha256: str,
     configured_release_admission_sha256: str | None,
     execution_source_bound_verification: object = None,
+    live_execution_source_bound_verification: object = None,
     clock_provider: Callable[[], datetime],
     input_schema_version: str,
 ) -> WindowsProviderConformanceInputAssembly:
@@ -1042,6 +1211,9 @@ def _assemble_windows_three_service_provider_conformance_input_file(
         execution_source_bound_verification=(
             execution_source_bound_verification
         ),
+        live_execution_source_bound_verification=(
+            live_execution_source_bound_verification
+        ),
         clock_provider=clock_provider,
         input_schema_version=input_schema_version,
     )
@@ -1053,6 +1225,7 @@ __all__ = [
     "ASSEMBLY_STATUS",
     "EVIDENCE_MANIFEST_SCHEMA_VERSION",
     "EXPECTED_PROVIDER_COUNT",
+    "EXPECTED_PROVIDER_COUNT_V4",
     "MAXIMUM_AGGREGATE_INPUT_BYTES",
     "MAXIMUM_INPUT_FILE_BYTES",
     "WindowsProviderConformanceInputAssembly",
@@ -1061,6 +1234,8 @@ __all__ = [
     "assemble_windows_three_service_provider_conformance_input_file",
     "assemble_windows_three_service_provider_conformance_input_file_v2",
     "assemble_windows_three_service_provider_conformance_input_file_v3",
+    "assemble_windows_three_service_provider_conformance_input_file_v4",
     "assemble_windows_three_service_provider_conformance_input_v2",
     "assemble_windows_three_service_provider_conformance_input_v3",
+    "assemble_windows_three_service_provider_conformance_input_v4",
 ]

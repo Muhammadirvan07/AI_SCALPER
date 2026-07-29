@@ -33,6 +33,10 @@ def _bootstrap_release_root() -> Path:
             package / "windows_execution_provider_pack_generator.py",
             package / "windows_execution_source_bound_candidate.py",
             package
+            / "windows_live_canary_execution_configured_candidate.py",
+            package
+            / "windows_live_canary_execution_source_bound_candidate.py",
+            package
             / "windows_external_status_monitor_factory_template.py",
             package / "windows_service_factory_template.py",
         )
@@ -80,6 +84,7 @@ from live_runtime.windows_provider_conformance_input import (
     assemble_windows_three_service_provider_conformance_input_file,
     assemble_windows_three_service_provider_conformance_input_file_v2,
     assemble_windows_three_service_provider_conformance_input_file_v3,
+    assemble_windows_three_service_provider_conformance_input_file_v4,
 )
 
 
@@ -106,7 +111,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--execution-factory-template",
         required=True,
-        help="Exact DEMO_AUTO execution configured factory-template JSON.",
+        help="Exact version-matching Execution factory-template JSON.",
     )
     parser.add_argument(
         "--status-monitor-factory-template",
@@ -141,9 +146,12 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--execution-source-bound-candidate")
+    parser.add_argument("--live-execution-source-bound-candidate")
     parser.add_argument("--base-suite-root")
     parser.add_argument("--execution-base-release")
     parser.add_argument("--expected-bound-archive-sha256")
+    parser.add_argument("--expected-live-bound-archive-sha256")
+    parser.add_argument("--expected-source-bound-archive-sha256")
     parser.add_argument("--expected-source-archive-sha256")
     parser.add_argument("--expected-champion-archive-sha256")
     parser.add_argument("--expected-model-artifact-sha256")
@@ -163,11 +171,9 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     try:
         args = _parser().parse_args(argv)
-        source_argument_names = (
-            "execution_source_bound_candidate",
+        common_source_argument_names = (
             "base_suite_root",
             "execution_base_release",
-            "expected_bound_archive_sha256",
             "expected_source_archive_sha256",
             "expected_champion_archive_sha256",
             "expected_model_artifact_sha256",
@@ -177,18 +183,64 @@ def main(argv: list[str] | None = None) -> int:
             "expected_git_tree",
             "expected_suite_identity_sha256",
         )
-        source_arguments = {
-            name: getattr(args, name) for name in source_argument_names
-        }
-        supplied_source_count = sum(
-            value is not None for value in source_arguments.values()
+        v3_source_argument_names = (
+            "execution_source_bound_candidate",
+            "expected_bound_archive_sha256",
         )
-        if supplied_source_count not in {0, len(source_arguments)}:
+        v4_source_argument_names = (
+            "live_execution_source_bound_candidate",
+            "expected_live_bound_archive_sha256",
+            "expected_source_bound_archive_sha256",
+        )
+        common_source_arguments = {
+            name: getattr(args, name)
+            for name in common_source_argument_names
+        }
+        v3_source_arguments = {
+            name: getattr(args, name) for name in v3_source_argument_names
+        }
+        v4_source_arguments = {
+            name: getattr(args, name) for name in v4_source_argument_names
+        }
+        common_source_count = sum(
+            value is not None
+            for value in common_source_arguments.values()
+        )
+        v3_source_count = sum(
+            value is not None for value in v3_source_arguments.values()
+        )
+        v4_source_count = sum(
+            value is not None for value in v4_source_arguments.values()
+        )
+        if v3_source_count and v4_source_count:
+            raise WindowsProviderConformanceInputError(
+                "EXECUTION_SOURCE_ARGUMENTS_MIXED"
+            )
+        source_version: int | None = None
+        if v3_source_count:
+            if (
+                v3_source_count != len(v3_source_arguments)
+                or common_source_count != len(common_source_arguments)
+            ):
+                raise WindowsProviderConformanceInputError(
+                    "EXECUTION_SOURCE_ARGUMENTS_INCOMPLETE"
+                )
+            source_version = 3
+        elif v4_source_count:
+            if (
+                v4_source_count != len(v4_source_arguments)
+                or common_source_count != len(common_source_arguments)
+            ):
+                raise WindowsProviderConformanceInputError(
+                    "EXECUTION_SOURCE_ARGUMENTS_INCOMPLETE"
+                )
+            source_version = 4
+        elif common_source_count:
             raise WindowsProviderConformanceInputError(
                 "EXECUTION_SOURCE_ARGUMENTS_INCOMPLETE"
             )
         if (
-            supplied_source_count
+            source_version is not None
             and args.configured_release_admission_sha256 is not None
         ):
             raise WindowsProviderConformanceInputError(
@@ -213,46 +265,75 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "clock_provider": lambda: datetime.now(timezone.utc),
         }
-        if supplied_source_count:
+        artifact_common = {
+            "base_suite_root": common_source_arguments[
+                "base_suite_root"
+            ],
+            "execution_base_release": common_source_arguments[
+                "execution_base_release"
+            ],
+            "expected_source_archive_sha256": common_source_arguments[
+                "expected_source_archive_sha256"
+            ],
+            "expected_champion_archive_sha256": common_source_arguments[
+                "expected_champion_archive_sha256"
+            ],
+            "expected_model_artifact_sha256": common_source_arguments[
+                "expected_model_artifact_sha256"
+            ],
+            "expected_training_snapshot_sha256": (
+                common_source_arguments[
+                    "expected_training_snapshot_sha256"
+                ]
+            ),
+            "expected_config_sha256": common_source_arguments[
+                "expected_config_sha256"
+            ],
+            "expected_git_commit": common_source_arguments[
+                "expected_git_commit"
+            ],
+            "expected_git_tree": common_source_arguments[
+                "expected_git_tree"
+            ],
+            "expected_suite_identity_sha256": common_source_arguments[
+                "expected_suite_identity_sha256"
+            ],
+        }
+        if source_version == 3:
             result = (
                 assemble_windows_three_service_provider_conformance_input_file_v3(
                     **common,
                     execution_source_bound_candidate_path=(
-                        source_arguments[
+                        v3_source_arguments[
                             "execution_source_bound_candidate"
                         ]
                     ),
-                    base_suite_root=source_arguments["base_suite_root"],
-                    execution_base_release=source_arguments[
-                        "execution_base_release"
-                    ],
-                    expected_bound_archive_sha256=source_arguments[
+                    expected_bound_archive_sha256=v3_source_arguments[
                         "expected_bound_archive_sha256"
                     ],
-                    expected_source_archive_sha256=source_arguments[
-                        "expected_source_archive_sha256"
-                    ],
-                    expected_champion_archive_sha256=source_arguments[
-                        "expected_champion_archive_sha256"
-                    ],
-                    expected_model_artifact_sha256=source_arguments[
-                        "expected_model_artifact_sha256"
-                    ],
-                    expected_training_snapshot_sha256=source_arguments[
-                        "expected_training_snapshot_sha256"
-                    ],
-                    expected_config_sha256=source_arguments[
-                        "expected_config_sha256"
-                    ],
-                    expected_git_commit=source_arguments[
-                        "expected_git_commit"
-                    ],
-                    expected_git_tree=source_arguments[
-                        "expected_git_tree"
-                    ],
-                    expected_suite_identity_sha256=source_arguments[
-                        "expected_suite_identity_sha256"
-                    ],
+                    **artifact_common,
+                )
+            )
+        elif source_version == 4:
+            result = (
+                assemble_windows_three_service_provider_conformance_input_file_v4(
+                    **common,
+                    live_execution_source_bound_candidate_path=(
+                        v4_source_arguments[
+                            "live_execution_source_bound_candidate"
+                        ]
+                    ),
+                    expected_live_bound_archive_sha256=(
+                        v4_source_arguments[
+                            "expected_live_bound_archive_sha256"
+                        ]
+                    ),
+                    expected_source_bound_archive_sha256=(
+                        v4_source_arguments[
+                            "expected_source_bound_archive_sha256"
+                        ]
+                    ),
+                    **artifact_common,
                 )
             )
         elif args.configured_release_admission_sha256 is None:

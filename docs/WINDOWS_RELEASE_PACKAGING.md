@@ -144,6 +144,10 @@ masuk ke service release mana pun. Builder/verifier LIVE source-bound yang
 mengemas exact DEMO ancestry bersama 15-file LIVE candidate juga hanya berada
 di bundle operator ini. Runbook lengkapnya ada di
 `docs/WINDOWS_LIVE_CANARY_EXECUTION_SOURCE_BOUND_CANDIDATE.md`.
+Bundle operator yang sama membawa provider-conformance v4 assembler/reviewer.
+Jalur ini memerlukan exact sealed ten-pin LIVE source-bound result dan 68
+fresh provider records; runbook-nya ada di
+`docs/WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V4.md`.
 Seluruhnya deny-only dan tidak boleh dijalankan oleh production service
 account.
 
