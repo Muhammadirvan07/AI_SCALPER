@@ -64,14 +64,19 @@ all imported origins before returning.
 
 ## Provider-bound v2 consumer closure
 
-The base release now contains the exact deny-only LIVE runtime candidate and
-provider-bound LIVE launch-session v2 consumer classes required by production
-bootstrap. The candidate document loader requires an independent SHA-256 pin,
-closed canonical fields, duplicate-key rejection, exact round trip, and a
-1 MiB limit. It does not contain the
+The base release now contains the exact deny-only LIVE runtime candidate,
+provider-bound LIVE launch-session v2 class, and signed one-use handoff
+consumer required by production bootstrap. The candidate document loader
+requires an independent SHA-256 pin, closed canonical fields, duplicate-key
+rejection, exact round trip, and a 1 MiB limit. The handoff consumer requires
+independently pinned canonical policy/handoff bytes, distinct RSA handoff and
+replay authorities, exact release/host/environment/service/task bindings, a
+fresh 32-byte challenge, and a challenge-bound signed receipt from an external
+atomic replay ledger. It does not contain the
 operator-side admission, custody, acceptance, source-bound, conformance, or
-activation assemblers. The release manifest binds the critical seven-file
-consumer closure, while the complete service allowlist contains 58 files.
+activation assemblers or either private key. The release manifest binds the
+critical eight-file consumer closure, while the complete service allowlist
+contains 59 files.
 
 After extracting an exact release, validate this closure without importing a
 provider or contacting MT5:
@@ -83,10 +88,11 @@ python -I -S -B `
 
 Expected output includes
 `WINDOWS_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_READY`,
-`Live allowed: false`, `Production execution ready: false`, and
+`Schemas: 6`, `Live allowed: false`, `Production execution ready: false`, and
 `Broker mutation: NOT_PERFORMED`. This proves only that the service can consume
-an externally assembled exact v2 session. It does not create that session,
-open the central policy, or authorize an order.
+an externally signed and atomically consumed exact v2 session. It does not
+operate the signer/replay ledger, create authentic evidence, open the central
+policy, or authorize an order.
 
 ## Bounded service failure semantics
 

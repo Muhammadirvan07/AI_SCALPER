@@ -51,9 +51,19 @@ release, sementara prebootstrap operator mere-ekspor kelas yang sama. Strict
 canonical loader memerlukan external SHA-256 pin, closed 91-field payload,
 single-LF UTF-8 JSON, duplicate-key rejection, exact round trip, dan batas
 1 MiB. Candidate yang berhasil dimuat tetap tidak memiliki launch-session,
-execution, activation, atau order authority. Closure bertambah dari enam
-menjadi tujuh file dan allowlist Execution menjadi 58 file; signed session
-handoff dan concrete runtime provider tetap belum tersedia.
+execution, activation, atau order authority.
+
+Execution kini juga memiliki consumer signed provider-bound session handoff.
+Policy publik mem-pin dua authority RSA terpisah untuk handoff dan external
+atomic replay ledger. Setiap load membuat challenge acak 32-byte baru, meminta
+receipt konsumsi satu-kali yang terikat exact challenge, lalu baru
+merekonstruksi kelas session v2 yang sudah tersegel. Seluruh release/host/
+environment/service/task/candidate/session pin dan tiga trusted-clock boundary
+diverifikasi; central LIVE lock diperiksa sebelum dan sesudah setiap fase yang
+membawa authority. Session hasilnya tetap launch-only, bukan izin order.
+Closure bertambah menjadi delapan file dan allowlist Execution menjadi 59
+file. Authentic external policy/handoff/receipt, replay-ledger service, dan
+concrete runtime provider tetap belum tersedia.
 
 Audit TDD menemukan lalu menutup dua defect yang tidak terlihat pada happy
 path: registry path dengan komponen `..` sebelumnya dinormalisasi dan diterima,
@@ -77,6 +87,7 @@ DASHBOARD_WINDOWS_ACCEPTANCE = NOT_SUPPLIED
 WINDOWS_NODEJS = USER_REPORTED_INSTALLED_NOT_YET_ATTESTED
 WINDOWS_LIVE_EXTERNAL_RUNTIME_HOOK_LEASE = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_CANDIDATE_CONSUMER = PASS_LOCALLY_DENY_ONLY
+WINDOWS_LIVE_RUNTIME_SESSION_HANDOFF_CONSUMER = PASS_LOCALLY_DENY_ONLY
 CONCRETE_LIVE_RUNTIME_PROVIDERS = NOT_SUPPLIED
 REAL_30_DAY_50_FILL_20_XAU_COHORT = ABSENT
 REAL_LIVE_PROMOTION_AND_NINE_GATES = ABSENT
@@ -104,10 +115,11 @@ Commodity menemukan dan menutup empat kelas ambiguity/race:
 Focused V6.3 post-run gate sebelumnya lulus 41/41 normal dan 41/41 optimized.
 Setelah semantic WORM bridge ditambahkan, focused bridge/gate/activation/
 consumption/release cluster lulus 69/69 normal dan 69/69 optimized dengan dua
-intentional optimized skip. Full serial repository gate terbaru lulus 2.362
-test dan 1.319 subtest normal dengan tiga platform skip, serta 2.350 test dan
-1.319 subtest di bawah `-O` dengan 15 platform/optimized skip. Tiga helper CLI
-diagnostik lama juga tidak lagi salah dikoleksi sebagai pytest fixture.
+intentional optimized skip. Full serial repository gate pada milestone
+tersebut lulus 2.362 test dan 1.319 subtest normal dengan tiga platform skip,
+serta 2.350 test dan 1.319 subtest di bawah `-O` dengan 15
+platform/optimized skip. Tiga helper CLI diagnostik lama juga tidak lagi salah
+dikoleksi sebagai pytest fixture.
 Execution release clean-commit telah dibangun dua kali secara independen dan
 ZIP/sidecar manifest terbukti byte-identical; extracted isolated closure probe
 juga lulus dengan seluruh effect `NOT_PERFORMED`. Hasil scheduled proof Windows
@@ -202,6 +214,15 @@ dan custody WORM aktual belum diterima untuk verifikasi.
   subtests passed optimized dengan 15 skip. Tidak ada failure.
 - Candidate-consumer spec: 100/100 Grade A, 0 error, 0 warning; focused ruff,
   mypy, compilation, whitespace, dan Windows dependency-lock gates passed.
+- Runtime-session handoff spec: 100/100 Grade A, 0 error, 0 warning. Focused
+  handoff/isolated-closure/release tests pass identically in normal and
+  optimized modes; focused ruff and import-skipping mypy pass.
+- Full serial repository regression setelah runtime-session handoff: 2.128
+  tests passed normal dengan tiga platform skip; 2.128 tests passed under
+  `-O` dengan 15 intentional platform/optimized skip. Keduanya dijalankan
+  memakai exact project interpreter `.venv/bin/python`; run awal dengan
+  Homebrew Python tanpa `pandas`/`numpy` dibuang sebagai invalid environment
+  evidence, bukan product regression.
 
 ## Remaining external work
 

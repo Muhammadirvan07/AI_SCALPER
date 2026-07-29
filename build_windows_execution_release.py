@@ -141,6 +141,7 @@ REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE = frozenset(
     {
         "execution_policy.py",
         "live_runtime/contracts.py",
+        "live_runtime/live_canary_provider_bound_runtime_session_handoff.py",
         "live_runtime/live_canary_provider_bound_runtime_session.py",
         "live_runtime/live_canary_runtime_authority.py",
         "live_runtime/live_canary_runtime_candidate.py",

@@ -15,6 +15,7 @@ DASHBOARD_DEPENDENCIES = PASS_LOCAL_ZERO_KNOWN_VULNERABILITIES
 DASHBOARD_WINDOWS_RUNTIME = NOT_ACCEPTED
 WINDOWS_LIVE_EXTERNAL_RUNTIME_HOOK_LEASE = PASS_LOCAL_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_CANDIDATE_CONSUMER = PASS_LOCAL_DENY_ONLY
+WINDOWS_LIVE_RUNTIME_SESSION_HANDOFF_CONSUMER = PASS_LOCAL_DENY_ONLY
 CONCRETE_LIVE_RUNTIME_PROVIDER = NOT_ACCEPTED
 WINDOWS_EXTERNAL_EVIDENCE = INCOMPLETE
 CENTRAL_LIVE_LOCK = FALSE
@@ -65,6 +66,15 @@ launch, MT5 initialization, atau order broker.
   108 tests, lima intentional skip, dan 134 subtests optimized. Full serial
   post-extraction gates passed 2.368/2.356 tests and 1.340 subtests in normal/
   optimized modes without failure.
+- Runtime-session handoff spec scored 100/100 Grade A without warning. The
+  focused handoff, isolated closure, Execution builder, and atomic-suite tests
+  pass in normal and optimized modes; scoped ruff and import-skipping mypy
+  report no issue.
+- Post-handoff full serial regression passed 2.128 tests with three expected
+  platform skips in normal mode and 2.128 tests with 15 expected
+  platform/optimized skips under `-O`. Both authoritative runs used
+  `.venv/bin/python`; an earlier Homebrew-Python run without `pandas`/`numpy`
+  was rejected as invalid environment evidence.
 
 ## Security and correctness findings closed
 
@@ -135,6 +145,13 @@ launch, MT5 initialization, atau order broker.
     canonical document schema, dan independent SHA-256 pin; operator module
     mere-ekspor exact class yang sama. Closure tetap deny-only dan tidak
     membentuk provider-bound session atau order authority.
+20. Exact provider-bound session sebelumnya tidak dapat dipindahkan dari
+    operator producer ke extracted Execution tanpa kehilangan seal; signed
+    document sederhana juga dapat direplay selama TTL. Consumer baru mem-pin
+    distinct handoff/replay RSA authorities, exact release/host/environment/
+    service/task bindings, dan fresh 32-byte challenge. Hanya signed atomic
+    consumption receipt yang terikat challenge saat ini dapat merekonstruksi
+    exact sealed session; hasil tetap launch-only dan central lock tetap false.
 
 ## Automated category result
 
@@ -148,7 +165,7 @@ launch, MT5 initialization, atau order broker.
 | Frontend | PASS_LOCAL / WINDOWS_PENDING | 29 unit, lint/build/bundle, and 30 desktop/mobile E2E pass; GET/WebSocket-only boundary; exact Windows launch not accepted |
 | Observability | PASS_LOCAL / EXTERNAL_PENDING | Stable public reason codes and canonical receipts; external WORM/CAS/log custody not yet proven |
 | Broker/live effects | PASS_DENY_ONLY | No process/socket/requests/MetaTrader5/order call; live and activation remain false |
-| LIVE runtime composition | PASS_LOCAL / EXTERNAL_PENDING | Exact candidate consumer, hash-pinned document loader, exact-hash runtime hook, and one-use lease pass locally; signed session handoff, concrete 40-provider module, target-host hash pin, acceptance, credentials, and runtime state are absent |
+| LIVE runtime composition | PASS_LOCAL / EXTERNAL_PENDING | Exact candidate and signed-session-handoff consumers, fresh-challenge replay receipt verification, hash-pinned runtime hook, and one-use lease pass locally; authentic handoff/replay service, concrete 40-provider module, target-host hash pin, acceptance, credentials, and runtime state are absent |
 
 ## Manual/external blockers
 

@@ -40,7 +40,7 @@ class WindowsLiveCanaryProviderBoundRuntimeClosureTests(unittest.TestCase):
             "WINDOWS_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_READY",
             report["status"],
         )
-        self.assertEqual(2, report["schema_count"])
+        self.assertEqual(6, report["schema_count"])
         self.assertEqual(4, report["directory_adapter_schema_count"])
         self.assertFalse(report["live_allowed"])
         self.assertFalse(report["safe_to_demo_auto_order"])
@@ -97,6 +97,7 @@ class WindowsLiveCanaryProviderBoundRuntimeClosureTests(unittest.TestCase):
                         "Directory adapter schemas: 4",
                         completed.stdout,
                     )
+                    self.assertIn("Schemas: 6", completed.stdout)
                     self.assertIn(
                         "Production execution ready: false",
                         completed.stdout,
