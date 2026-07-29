@@ -1,8 +1,8 @@
 import { AlertTriangle, DatabaseZap, LoaderCircle, RefreshCw, WifiOff } from 'lucide-react'
-import type { DataStatus } from '../../types/dashboard'
+import type { TerminalPanelState } from '../../types/terminal'
 
 interface PanelStateProps {
-  state: Extract<DataStatus, 'loading' | 'empty' | 'disconnected' | 'partial' | 'error'>
+  state: Extract<TerminalPanelState, 'loading' | 'empty' | 'disconnected' | 'partial' | 'error'>
   title?: string
   message?: string
   onRetry?: () => void
@@ -62,7 +62,7 @@ export function PanelState({
       </span>
       <p className="font-semibold text-slate-200">{title ?? content.title}</p>
       <p className="mt-1 max-w-md text-sm leading-6 text-slate-400">{message ?? content.message}</p>
-      {onRetry && state === 'error' ? (
+      {onRetry && state !== 'loading' ? (
         <button type="button" onClick={onRetry} className="button-secondary mt-4">
           <RefreshCw aria-hidden="true" className="size-4" />
           Coba ulang cuplikan

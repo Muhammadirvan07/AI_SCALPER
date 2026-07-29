@@ -1,6 +1,5 @@
 import { LockKeyhole } from 'lucide-react'
 import type { TerminalTone } from '../../../types/terminal'
-import { formatStatusLabel } from '../../../utils/statusHelpers'
 
 interface TerminalStatusBadgeProps {
   label: string
@@ -16,7 +15,7 @@ export function TerminalStatusBadge({
   const protectedStatus = ['LOCKED', 'BLOCKED', 'OUT OF SCOPE'].some((status) =>
     label.includes(status),
   )
-  const displayLabel = formatStatusLabel(label)
+  const displayLabel = label || 'UNKNOWN'
 
   return (
     <span

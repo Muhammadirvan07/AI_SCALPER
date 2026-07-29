@@ -9,6 +9,10 @@ OPAQUE_WORM_GATE_INPUT = REJECTED
 LIVE_CANARY_ACTIVATION_CONSUMPTION = PASS_LOCALLY_DENY_ONLY
 ATOMIC_REPLAY_PREDECESSOR = PASS
 WINDOWS_RELEASE_BOUNDARY = PASS_FOCUSED
+DASHBOARD_BROWSER_MUTATION_SURFACE = REMOVED
+DASHBOARD_NETWORK_BOUNDARY = LOOPBACK_ONLY_PASS_LOCAL
+DASHBOARD_DEPENDENCIES = PASS_LOCAL_ZERO_KNOWN_VULNERABILITIES
+DASHBOARD_WINDOWS_RUNTIME = NOT_ACCEPTED
 WINDOWS_EXTERNAL_EVIDENCE = INCOMPLETE
 CENTRAL_LIVE_LOCK = FALSE
 LIVE_TRADING = DO_NOT SHIP
@@ -23,8 +27,8 @@ launch, MT5 initialization, atau order broker.
 
 - Python 3.12 runtime/contracts, SQLite HMAC replay registry, Windows
   Credential Manager adapter, and deterministic Windows ZIP builder.
-- React/Vite frontend dan FastAPI backend terdeteksi tetapi merupakan dirty
-  user-owned worktree di luar staging milestone ini.
+- React/Vite/TypeScript frontend dan FastAPI/Pydantic backend granular kini
+  termasuk audit source lokal; target deployment tetap loopback-only.
 - Scope audit: Phillip V6 semantic WORM bridge, gate receipt/set, activation
   replay core, consumption contracts/CLI, Windows operator allowlist,
   spec/runbook, focused/full normal and optimized tests.
@@ -42,6 +46,9 @@ launch, MT5 initialization, atau order broker.
 - Windows dependency lock/SBOM/install-manifest/MetaTrader5 wheel pins passed.
 - Python compilation, scoped whitespace, strict JSON loaders, release
   isolation, and static forbidden-effect audit passed.
+- Dashboard backend: 202 tests, ruff, mypy, and pip-audit passed. Frontend: 29
+  unit tests, ESLint, production build, bundle budget, npm audit, dan 30
+  Playwright desktop/mobile tests passed tanpa retry.
 
 ## Security and correctness findings closed
 
@@ -79,17 +86,32 @@ launch, MT5 initialization, atau order broker.
     generik. Exact V6 custody semantics kini direkonstruksi pada receipt,
     receipt-set, activation, dan consumption boundaries dengan external policy
     pin; wrong pin/opaque file gagal sebelum output atau replay event.
+12. Dashboard granular sebelumnya memublikasikan allowlisted POST commands tanpa
+    authentication/CSRF. Seluruh route/service browser command dan client POST
+    kini dihapus; OpenAPI hanya berisi GET dan WebSocket berada di luar schema.
+13. `APP_HOST`, CORS origin, dan trusted host sebelumnya dapat diperluas ke
+    LAN/public melalui environment. Konfigurasi sekarang menolak semua host
+    non-loopback, wildcard, credential-bearing origin, path, query, dan fragment.
+14. Response backend sebelumnya tidak memiliki CSP. API sekarang memakai
+    `default-src 'none'`; dokumentasi FastAPI mendapat allowlist CDN sempit,
+    anti-frame, no-store, no-referrer, nosniff, dan Permissions-Policy.
+15. Manifest dashboard sebelumnya mem-pin tiga dependency dengan advisori.
+    `python-dotenv`/`pytest` dinaikkan dan `orjson` yang tidak digunakan dihapus;
+    fresh pip-audit/npm audit melaporkan nol kerentanan yang diketahui.
+16. Probe E2E sebelumnya dapat melihat UI berita sebelum refresh awal selesai.
+    Readiness kini tetap 503 sampai scheduler menyelesaikan attempt pertama;
+    rerun Playwright lulus 30/30 tanpa flaky retry.
 
 ## Automated category result
 
 | Category | Result | Evidence |
 |---|---|---|
-| Security | PASS_LOCAL / EXTERNAL_PENDING | No hardcoded secret or raw credential input; Credential Manager only; constant-time fingerprints; exact-type/sealed contracts; central lock unchanged |
+| Security | PASS_LOCAL / EXTERNAL_PENDING | No hardcoded secret/raw credential input; browser API has no mutation method; loopback-only host/origin policy and CSP pass; Credential Manager only; central lock unchanged |
 | Database | PASS_LOCAL | Parameterized SQLite insert, `BEGIN IMMEDIATE`, WAL/FULL sync, immutable triggers, HMAC chain, exact DDL/integrity, atomic predecessor guard |
 | Code quality | PASS_WITH_JUSTIFIED_COMPLEXITY | Spec 100/100; full normal/optimized regression green; explicit policy-pin parameters remain intentional to avoid hidden ambient authority |
-| Dependencies | PASS | Existing pinned Windows lock, SBOM, manifest, and MT5 wheel verified; no new dependency |
-| Deployment | EXTERNAL_PENDING | Deterministic clean-commit artifact not yet rebuilt; Windows ACL/host/key/custody ceremony absent |
-| Frontend | OUT_OF_SCOPE_DIRTY_USER_WORKTREE | Not staged or modified by this milestone |
+| Dependencies | PASS_LOCAL | Existing pinned Windows lock/SBOM/manifest/MT5 wheel verified; backend pip-audit and frontend npm audit report zero known vulnerabilities |
+| Deployment | EXTERNAL_PENDING | Dashboard Windows service/process-manager, ACL, backup/restore, external error monitoring, exact launch receipt, and live custody ceremony absent |
+| Frontend | PASS_LOCAL / WINDOWS_PENDING | 29 unit, lint/build/bundle, and 30 desktop/mobile E2E pass; GET/WebSocket-only boundary; exact Windows launch not accepted |
 | Observability | PASS_LOCAL / EXTERNAL_PENDING | Stable public reason codes and canonical receipts; external WORM/CAS/log custody not yet proven |
 | Broker/live effects | PASS_DENY_ONLY | No process/socket/requests/MetaTrader5/order call; live and activation remain false |
 

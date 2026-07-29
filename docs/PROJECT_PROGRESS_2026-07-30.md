@@ -18,6 +18,22 @@ ulang seluruh evidence dan authorization, mengonsumsi authorization secara
 atomik, menerbitkan successor checkpoint, serta mendukung independent verify
 dan deterministic recovery setelah post-commit publication failure.
 
+Dashboard granular React/Vite dan FastAPI juga kini masuk satu milestone source
+yang dapat direproduksi. Browser boundary diubah menjadi GET/WebSocket-only:
+seluruh route `/api/v1/commands*`, service command, dan client POST dihapus.
+Refresh UI hanya memuat ulang snapshot REST, sedangkan sinkronisasi provider
+tetap dimiliki scheduler backend. `APP_HOST`, CORS origin, dan trusted host
+wajib loopback; CSP/Permissions-Policy aktif; readiness menunggu refresh berita
+pertama agar cold start tidak menghasilkan state balapan.
+
+Manifest backend mengganti `python-dotenv` ke 1.2.2, `pytest` ke 9.0.3, serta
+menghapus `orjson` yang tidak digunakan. Fresh dependency audit melaporkan nol
+kerentanan yang diketahui untuk manifest Python dan npm. Dashboard gate lulus
+202 backend tests, ruff, mypy, 29 frontend unit tests, ESLint, TypeScript/build,
+bundle budget, serta 30/30 Playwright desktop/mobile tanpa retry. Bukti ini
+hanya berlaku pada development Mac; laporan pemasangan Node.js di Windows belum
+disertai exact version/build/launch receipt.
+
 Audit TDD menemukan lalu menutup dua defect yang tidak terlihat pada happy
 path: registry path dengan komponen `..` sebelumnya dinormalisasi dan diterima,
 serta dua authorization berbeda dapat melewati predecessor yang sama sebelum
@@ -34,6 +50,9 @@ EXTERNAL_WORM_CUSTODY_RECEIPT = NOT_SUPPLIED
 LIVE_CANARY_ACTIVATION_CONSUMPTION_OPERATOR = PASS_LOCALLY_DENY_ONLY
 ATOMIC_STALE_PREDECESSOR_GUARD = PASS
 WINDOWS_OPERATOR_RELEASE_ISOLATION = PASS_FOCUSED
+DASHBOARD_GET_WEBSOCKET_ONLY = PASS_LOCAL
+DASHBOARD_DEPENDENCY_AUDIT = PASS_LOCAL_ZERO_KNOWN_VULNERABILITIES
+DASHBOARD_WINDOWS_ACCEPTANCE = NOT_SUPPLIED
 REAL_30_DAY_50_FILL_20_XAU_COHORT = ABSENT
 REAL_LIVE_PROMOTION_AND_NINE_GATES = ABSENT
 REAL_THREE_PERSON_APPROVAL_CEREMONY = NOT_PERFORMED
@@ -122,6 +141,9 @@ diterima untuk verifikasi.
   MetaTrader5 wheel identity: passed.
 - Python compilation, scoped whitespace, JSON allowlist closure, constant-time
   authority comparison, output-race recovery, and no-effect AST checks passed.
+- Dashboard backend: 202/202 tests, ruff, and mypy passed; frontend: 29/29 unit
+  tests, lint, production build, bundle budget, npm audit, and 30/30 clean
+  desktop/mobile E2E passed. OpenAPI contains no state-changing method.
 - A deliberately parallel full-suite run exposed shared test-resource
   interference in three legacy executor tests; all three passed in isolated
   normal/optimized reruns and both authoritative serial full suites passed.

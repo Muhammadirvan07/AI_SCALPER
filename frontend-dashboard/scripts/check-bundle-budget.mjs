@@ -27,7 +27,9 @@ const check = (label, file, maximum) => {
 }
 
 const entry = files.find((file) => /^index-[^.]+\.js$/.test(file))
-const chartVendor = files.find((file) => /^AreaChart-[^.]+\.js$/.test(file))
+const chartVendor = files
+  .filter((file) => /^(?:chart-vendor|AreaChart|CategoricalChart|ComposedChart)-[^.]+\.js$/.test(file))
+  .sort((left, right) => (sizes.get(right) ?? 0) - (sizes.get(left) ?? 0))[0]
 const stylesheet = files.find((file) => /^index-[^.]+\.css$/.test(file))
 check('entry_js', entry, budgets.entry_js_max)
 check('chart_vendor', chartVendor, budgets.chart_vendor_max)

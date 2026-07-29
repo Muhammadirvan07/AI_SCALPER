@@ -1,49 +1,3 @@
-import type { GuardStatus, SignalStatus, Tone } from '../types/dashboard'
-
-const positiveValues = new Set([
-  'ENABLED',
-  'ACTIVE',
-  'PRIMARY',
-  'OPEN',
-  'FRESH',
-  'BUY',
-  'PAPER_OPEN',
-  'PAPER_CLOSED',
-  'HEALTHY',
-])
-
-const warningValues = new Set([
-  'WATCH',
-  'WAIT',
-  'WEEKEND',
-  'ELEVATED',
-  'STALE',
-  'TIMEOUT',
-  'DEGRADED',
-])
-
-const negativeValues = new Set([
-  'LOCKED',
-  'DISABLED',
-  'BLOCKED',
-  'RESTRICTED',
-  'REJECTED',
-  'HIGH',
-  'OFFLINE',
-])
-
-export const getStatusTone = (status: string): Tone => {
-  if (positiveValues.has(status)) return 'positive'
-  if (warningValues.has(status)) return 'warning'
-  if (negativeValues.has(status)) return 'negative'
-  if (status === 'SELL') return 'negative'
-  return 'neutral'
-}
-
-export const isProtectedStatus = (status: GuardStatus | SignalStatus | string) =>
-  ['LOCKED', 'TERKUNCI', 'DISABLED', 'NONAKTIF', 'BLOCKED', 'DIBLOKIR', 'RESTRICTED', 'DIBATASI']
-    .some((token) => status.includes(token))
-
 const statusLabels: Record<string, string> = {
   ACTIVE: 'AKTIF',
   ALLOWED: 'DIIZINKAN',
@@ -95,10 +49,7 @@ const statusLabels: Record<string, string> = {
   'WEEKEND PRIMARY': 'UTAMA AKHIR PEKAN',
 }
 
-export const formatStatusLabel = (status: string) => statusLabels[status] ?? status
-
-export const getFreshnessLabel = (seconds: number) => {
-  if (seconds <= 60) return 'SEGAR'
-  if (seconds <= 300) return 'TERTUNDA'
-  return 'KEDALUWARSA'
+export const formatStatusLabel = (status: string | null | undefined) => {
+  if (!status) return 'Tidak tersedia'
+  return statusLabels[status] ?? status.replaceAll('_', ' ')
 }

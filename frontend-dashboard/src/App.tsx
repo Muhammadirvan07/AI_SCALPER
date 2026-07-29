@@ -1,9 +1,10 @@
-import { lazy, Suspense, useCallback } from 'react'
+import { lazy, Suspense } from 'react'
 import { ReconnectNotice } from './components/common/ReconnectNotice'
+import { SafetyBanner } from './components/domain/SafetyBanner'
+import { AppShell } from './components/layout/AppShell'
 import { ScrollToTop } from './components/layout/ScrollToTop'
-import { QuantHeader } from './components/terminal/QuantHeader'
-import { TerminalFooter } from './components/terminal/TerminalFooter'
 import { Panel } from './components/ui/Panel'
+import { PanelErrorBoundary } from './components/ui/PanelErrorBoundary'
 import { PanelState } from './components/ui/PanelState'
 import { useRealtimeDashboard } from './hooks/useRealtimeDashboard'
 import { useLocation } from './routing/routerContext'
@@ -23,11 +24,35 @@ const MarketsPage = lazy(() =>
 const NewsPage = lazy(() =>
   import('./pages/NewsPage').then((module) => ({ default: module.NewsPage })),
 )
+const EconomicCalendarPage = lazy(() =>
+  import('./pages/EconomicCalendarPage').then((module) => ({ default: module.EconomicCalendarPage })),
+)
 const SignalsPage = lazy(() =>
   import('./pages/SignalsPage').then((module) => ({ default: module.SignalsPage })),
 )
 const SystemHealthPage = lazy(() =>
   import('./pages/SystemHealthPage').then((module) => ({ default: module.SystemHealthPage })),
+)
+const PaperOrdersPage = lazy(() =>
+  import('./pages/PaperOrdersPage').then((module) => ({ default: module.PaperOrdersPage })),
+)
+const PerformancePage = lazy(() =>
+  import('./pages/PerformancePage').then((module) => ({ default: module.PerformancePage })),
+)
+const StrategyPage = lazy(() =>
+  import('./pages/StrategyPage').then((module) => ({ default: module.StrategyPage })),
+)
+const AIDiagnosticsPage = lazy(() =>
+  import('./pages/AIDiagnosticsPage').then((module) => ({ default: module.AIDiagnosticsPage })),
+)
+const RiskManagementPage = lazy(() =>
+  import('./pages/RiskManagementPage').then((module) => ({ default: module.RiskManagementPage })),
+)
+const SystemLogsPage = lazy(() =>
+  import('./pages/SystemLogsPage').then((module) => ({ default: module.SystemLogsPage })),
+)
+const SettingsPage = lazy(() =>
+  import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })),
 )
 const NotFoundPage = lazy(() =>
   import('./pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })),
@@ -47,71 +72,42 @@ function RouteLoadingState() {
 
 function App() {
   const realtime = useRealtimeDashboard()
-  const refreshDashboard = realtime.refresh
   const { pathname } = useLocation()
-  const data = realtime.dashboard
-  const staticSnapshot = realtime.dashboard
-  const handleRefresh = useCallback(() => {
-    void refreshDashboard()
-  }, [refreshDashboard])
-  const pageProps = {
-    data,
-    staticSnapshot,
-    status: realtime.dataStatus,
-    error: realtime.error,
-    lastSuccessfulUpdate: realtime.lastSuccessfulUpdate,
-    onRefresh: handleRefresh,
-  }
   const routeContent = (() => {
-    if (pathname === '/') {
-      return (
-        <LandingPage
-          snapshot={realtime.apiSnapshot}
-          connection={realtime.connection}
-          status={realtime.dataStatus}
-          error={realtime.error}
-          lastSuccessfulUpdate={realtime.lastSuccessfulUpdate}
-          onRefresh={handleRefresh}
-        />
-      )
-    }
-    if (pathname === '/overview') {
-      return (
-        <QuantTerminalPage
-          data={realtime.terminal}
-          state={realtime.panelState}
-          error={realtime.error}
-          isPaused={realtime.isPaused}
-          onRetry={handleRefresh}
-        />
-      )
-    }
-    if (pathname === '/analytics') return <AnalyticsPage {...pageProps} />
-    if (pathname === '/markets') return <MarketsPage {...pageProps} />
-    if (pathname === '/news') return <NewsPage {...pageProps} />
-    if (pathname === '/signals') return <SignalsPage {...pageProps} />
-    if (pathname === '/system-health') return <SystemHealthPage {...pageProps} />
+    if (pathname === '/') return <LandingPage />
+    if (pathname === '/overview') return <QuantTerminalPage />
+    if (pathname === '/analytics') return <AnalyticsPage />
+    if (pathname === '/markets') return <MarketsPage />
+    if (pathname === '/news') return <NewsPage />
+    if (pathname === '/economic-calendar') return <EconomicCalendarPage />
+    if (pathname === '/signals') return <SignalsPage />
+    if (pathname === '/system-health') return <SystemHealthPage />
+    if (pathname === '/paper-orders') return <PaperOrdersPage />
+    if (pathname === '/performance') return <PerformancePage />
+    if (pathname === '/strategy') return <StrategyPage />
+    if (pathname === '/ai-diagnostics') return <AIDiagnosticsPage />
+    if (pathname === '/risk-management') return <RiskManagementPage />
+    if (pathname === '/system-logs') return <SystemLogsPage />
+    if (pathname === '/settings') return <SettingsPage />
     return <NotFoundPage />
   })()
 
   return (
-    <div className="quant-app overflow-x-hidden">
+    <AppShell
+      pathname={pathname}
+      overview={realtime.resources.overview.data}
+      connection={realtime.connection}
+      onRefresh={realtime.refreshAll}
+    >
       <ScrollToTop />
-      <QuantHeader
-        data={realtime.terminal}
-        state={realtime.panelState}
-        isPaused={realtime.isPaused}
-        onTogglePause={realtime.togglePause}
-        connection={realtime.connection}
-      />
       <ReconnectNotice connection={realtime.connection} />
+      <SafetyBanner />
 
       <Suspense fallback={<RouteLoadingState />}>
-        {routeContent}
+        <PanelErrorBoundary key={pathname}>{routeContent}</PanelErrorBoundary>
       </Suspense>
 
-      <TerminalFooter data={realtime.terminal} connection={realtime.connection} />
-    </div>
+    </AppShell>
   )
 }
 

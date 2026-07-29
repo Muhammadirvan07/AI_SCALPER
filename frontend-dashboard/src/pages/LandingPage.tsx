@@ -1,91 +1,16 @@
-import { AlertTriangle, LoaderCircle } from 'lucide-react'
-import { BrokerReadinessSection } from '../components/landing/BrokerReadinessSection'
-import { DocumentationLinksSection } from '../components/landing/DocumentationLinksSection'
-import { NextActionSection } from '../components/landing/NextActionSection'
-import { OperationalActivitySection } from '../components/landing/OperationalActivitySection'
-import { OperationalLandingHero } from '../components/landing/OperationalLandingHero'
-import { OperationalStatusSection } from '../components/landing/OperationalStatusSection'
-import { PerformanceSummarySection } from '../components/landing/PerformanceSummarySection'
-import { ProjectProgressSection } from '../components/landing/ProjectProgressSection'
-import { SafetyBoundarySection } from '../components/landing/SafetyBoundarySection'
-import { DataStatusBanner } from '../components/dashboard/DataStatusBanner'
-import type { DataStatus } from '../types/dashboard'
-import type {
-  DashboardApiSnapshot,
-  RealtimeConnectionInfo,
-} from '../types/dashboardApi'
+import { ArrowRight, ShieldCheck } from 'lucide-react'
+import { ActivityPanel } from '../components/domain/ActivityPanel'
+import { NextEconomicRiskSummary } from '../components/domain/EconomicCalendarDiagnosticPanel'
+import { DomainKpiGrid, OverviewHeader } from '../components/domain/OverviewPanels'
+import { QualityPanel } from '../components/domain/QualityPanel'
+import { RiskPanel } from '../components/domain/RiskPanel'
 
-interface LandingPageProps {
-  snapshot: DashboardApiSnapshot | null
-  connection: RealtimeConnectionInfo
-  status: DataStatus
-  error: string | null
-  lastSuccessfulUpdate: string | null
-  onRefresh: () => void
-}
-
-export function LandingPage({
-  snapshot,
-  connection,
-  status,
-  error,
-  lastSuccessfulUpdate,
-  onRefresh,
-}: LandingPageProps) {
-  const mockDevelopment = connection.sourceMode === 'MOCK FALLBACK'
-  const pending = !snapshot && status === 'loading'
-
+export function LandingPage() {
   return (
-    <main id="main-content" className="future-landing ops-landing">
-      <OperationalLandingHero snapshot={snapshot} sourceMode={connection.sourceMode} />
-
-      <div className="page-container ops-landing__body">
-        <DataStatusBanner
-          status={status}
-          error={error}
-          lastSuccessfulUpdate={lastSuccessfulUpdate}
-          onRefresh={onRefresh}
-        />
-
-        {!snapshot ? (
-          <div
-            className={`ops-fail-closed ${pending ? 'is-loading' : 'is-blocked'}`}
-            role={pending ? 'status' : 'alert'}
-          >
-            {pending ? (
-              <LoaderCircle aria-hidden="true" className="size-5 motion-safe:animate-spin" />
-            ) : (
-              <AlertTriangle aria-hidden="true" className="size-5" />
-            )}
-            <div>
-              <strong>
-                {pending ? 'Memvalidasi snapshot operasional' : 'Data observasi belum tersedia'}
-              </strong>
-              <p>
-                {mockDevelopment
-                  ? 'MOCK DEVELOPMENT — BUKAN DATA AKTUAL. Nilai mock tidak digunakan untuk status operasional landing.'
-                  : 'Data tidak diganti dengan mock. Seluruh nilai operasional ditandai tidak terverifikasi dan live order tetap terkunci.'}
-              </p>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="ops-landing__priority-grid">
-          <OperationalStatusSection snapshot={snapshot} connection={connection} />
-          <SafetyBoundarySection snapshot={snapshot} />
-        </div>
-
-        <ProjectProgressSection snapshot={snapshot} />
-        <BrokerReadinessSection brokers={snapshot?.broker_readiness ?? []} />
-        <PerformanceSummarySection snapshot={snapshot} />
-
-        <div className="ops-landing__secondary-grid">
-          <OperationalActivitySection snapshot={snapshot} connection={connection} />
-          <NextActionSection snapshot={snapshot} sourceMode={connection.sourceMode} />
-        </div>
-
-        <DocumentationLinksSection />
-      </div>
+    <main id="main-content" className="quant-terminal domain-landing">
+      <div className="qt-container qt-command-overview-wrap"><OverviewHeader /><DomainKpiGrid /><NextEconomicRiskSummary /></div>
+      <div className="qt-container domain-landing__intro"><div><span><ShieldCheck aria-hidden="true" /> Production API gateway connected</span><h2>Trading intelligence without execution ambiguity.</h2><p>Semua nilai berasal dari endpoint domain backend. Data stale tetap terlihat sebagai stale dan field yang hilang tidak diganti angka buatan.</p></div><a href="/overview" className="button-primary">Open command center <ArrowRight aria-hidden="true" /></a></div>
+      <div className="qt-container qt-dashboard-grid"><RiskPanel /><QualityPanel /><ActivityPanel /></div>
     </main>
   )
 }

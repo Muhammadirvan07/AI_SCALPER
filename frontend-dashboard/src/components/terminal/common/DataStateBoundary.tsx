@@ -51,6 +51,12 @@ export function DataStateBoundary({
           <Icon aria-hidden="true" className="size-3.5" />
           <strong>{title}</strong>
           <span>{message}</span>
+          {onRetry ? (
+            <button type="button" className="qt-button qt-button--secondary" onClick={onRetry}>
+              <RefreshCw aria-hidden="true" className="size-3.5" />
+              Refresh
+            </button>
+          ) : null}
         </div>
         {children}
       </>
@@ -65,7 +71,7 @@ export function DataStateBoundary({
       />
       <strong>{title}</strong>
       <span>{message}</span>
-      {state === 'error' && onRetry ? (
+      {state !== 'loading' && onRetry ? (
         <button type="button" className="qt-button qt-button--secondary" onClick={onRetry}>
           <RefreshCw aria-hidden="true" className="size-3.5" />
           Coba lagi

@@ -7,10 +7,27 @@ import { AppErrorBoundary } from './components/ui/AppErrorBoundary'
 import './index.css'
 import './styles/terminal.css'
 import './styles/futuristic.css'
+import './styles/app-shell.css'
+import './styles/domain-dashboard.css'
 
 const hashRoute = window.location.hash.replace(/^#\/?/, '')
 if (
-  ['overview', 'analytics', 'markets', 'news', 'signals', 'system-health'].includes(
+  [
+    'overview',
+    'analytics',
+    'markets',
+    'news',
+    'economic-calendar',
+    'signals',
+    'paper-orders',
+    'performance',
+    'strategy',
+    'ai-diagnostics',
+    'risk-management',
+    'system-logs',
+    'system-health',
+    'settings',
+  ].includes(
     hashRoute,
   )
 ) {

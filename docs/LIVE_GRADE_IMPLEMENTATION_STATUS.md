@@ -5,14 +5,12 @@ Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 Validasi penuh terbaru pada 2026-07-30 menjalankan **2.100 test** tanpa
 kegagalan dalam mode normal dan optimized pada development Mac; tiga test
 platform-dependent dilewati pada mode normal dan 15 pada mode optimized.
-Baseline dashboard read-only yang sudah dilacak sebelumnya lulus 21 unit test
-frontend, 50 test backend, 14 browser E2E, lint, TypeScript, production build,
-dan bundle verification. Refactor dashboard lokal yang masih uncommitted tidak
-termasuk milestone ini, tetapi audit terbarunya lulus 16 unit test, lint,
-TypeScript production build, bundle budget, npm audit dengan nol vulnerability,
-dan 24 browser E2E desktop/mobile terhadap backend granular. Itu adalah
-software regression evidence pada Mac, bukan Windows host acceptance,
-broker-forward evidence, atau izin trading.
+Dashboard granular read-only pada milestone aktif lulus 202 backend tests,
+ruff, mypy, pip-audit, 29 frontend unit tests, lint, TypeScript production
+build, bundle budget, npm audit, serta 30 browser E2E desktop/mobile tanpa
+retry. Browser API hanya memublikasikan GET/WebSocket, host/origin dipaksa
+loopback, dan CSP aktif. Itu adalah software regression evidence pada Mac,
+bukan Windows host acceptance, broker-forward evidence, atau izin trading.
 
 Audit aktif dan baseline release-candidate dicatat di
 [SHIP_GATE_AUDIT_2026-07-30.md](SHIP_GATE_AUDIT_2026-07-30.md) serta

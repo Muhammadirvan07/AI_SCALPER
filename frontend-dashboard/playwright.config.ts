@@ -8,7 +8,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: 'http://127.0.0.1:5173',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
@@ -25,16 +25,16 @@ export default defineConfig({
   webServer: [
     {
       command:
-        '.venv-dashboard/bin/uvicorn dashboard_api.app.main:app --host 127.0.0.1 --port 8000',
-      cwd: '..',
-      url: 'http://127.0.0.1:8000/api/health',
+        '../.venv-dashboard/bin/python run_backend.py',
+      cwd: '../backend',
+      url: 'http://127.0.0.1:8000/api/v1/health/ready',
       reuseExistingServer: true,
       timeout: 30_000,
     },
     {
-      command: 'npm run preview -- --host 127.0.0.1 --port 4173',
+      command: 'npm run dev -- --host 127.0.0.1 --port 5173',
       cwd: '.',
-      url: 'http://127.0.0.1:4173/overview',
+      url: 'http://127.0.0.1:5173/overview',
       reuseExistingServer: true,
       timeout: 30_000,
     },

@@ -1,0 +1,17 @@
+{
+  "articles": [
+    {
+      "id": "provider-article-id",
+      "provider": "file",
+      "source": "Trusted source name",
+      "title": "Example schema only — never loaded as production data",
+      "summary": null,
+      "url": "https://example.org/source-article",
+      "published_at": "2026-07-29T00:00:00Z",
+      "language": "en",
+      "categories": ["GENERAL"],
+      "symbols": [],
+      "currencies": []
+    }
+  ]
+}
