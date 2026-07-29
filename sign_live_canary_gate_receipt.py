@@ -41,6 +41,7 @@ def _eligibility_or_source(args, store, now):
     if args.domain == "LEGAL_COMPLIANCE":
         if (
             args.evidence is not None
+            or args.worm_custody_policy_sha256 is not None
             or args.candidate is None
             or args.eligibility_review is None
             or args.regulatory_observation is None
@@ -59,7 +60,7 @@ def _eligibility_or_source(args, store, now):
             key_provider=store.load,
             now=now,
         )
-        return None, eligibility
+        return None, eligibility, None
     if any(
         value is not None
         for value in (
@@ -72,7 +73,14 @@ def _eligibility_or_source(args, store, now):
             "LIVE_CANARY_GATE_SOURCE_INVALID: non-legal gate requires only "
             "--evidence"
         )
-    return _rooted(args.evidence), None
+    if (args.domain == "WORM_CUSTODY") != (
+        args.worm_custody_policy_sha256 is not None
+    ):
+        raise LiveCanaryGateReceiptArtifactError(
+            "LIVE_CANARY_GATE_WORM_SOURCE_INVALID: custody policy pin is "
+            "required only for WORM_CUSTODY"
+        )
+    return _rooted(args.evidence), None, args.worm_custody_policy_sha256
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -87,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--issuer-id", required=True)
     parser.add_argument("--expires-at-utc", required=True)
     parser.add_argument("--evidence", type=Path)
+    parser.add_argument("--worm-custody-policy-sha256")
     parser.add_argument("--candidate")
     parser.add_argument("--eligibility-review", type=Path)
     parser.add_argument("--regulatory-observation", type=Path)
@@ -110,7 +119,9 @@ def main(argv: list[str] | None = None) -> int:
         binding = load_live_canary_binding(_rooted(args.binding))
         policy = load_live_canary_trust_policy(_rooted(args.trust_policy))
         store = WindowsEvidenceKeyStore()
-        evidence_path, eligibility = _eligibility_or_source(args, store, now)
+        evidence_path, eligibility, worm_policy_sha256 = _eligibility_or_source(
+            args, store, now
+        )
         receipt = issue_live_canary_gate_receipt_artifact(
             binding,
             policy,
@@ -122,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
             issuer_id=args.issuer_id,
             key_provider=store.load,
             clock_provider=lambda: now,
+            worm_custody_policy_sha256=worm_policy_sha256,
         )
         destination = write_live_canary_gate_artifact_exclusive(
             _rooted(args.output), receipt.to_canonical_dict()

@@ -64,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--eligibility-review", type=Path, required=True)
     parser.add_argument("--regulatory-observation", type=Path, required=True)
     parser.add_argument("--required-until-utc", required=True)
+    parser.add_argument("--worm-custody-policy-sha256", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--candidate-config",
@@ -127,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
             assembled_at=now,
             required_until=required_until,
             clock_provider=lambda: now,
+            worm_custody_policy_sha256=args.worm_custody_policy_sha256,
         )
         destination = write_live_canary_gate_artifact_exclusive(
             _rooted(args.output), payload

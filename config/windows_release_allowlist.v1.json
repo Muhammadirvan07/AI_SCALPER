@@ -85,6 +85,7 @@
     "live_runtime/mt5_preflight.py",
     "live_runtime/model_governance.py",
     "live_runtime/permit.py",
+    "live_runtime/phillip_v6_live_canary_worm_gate.py",
     "live_runtime/phillip_dual_shadow.py",
     "live_runtime/mt5_readonly.py",
     "live_runtime/realtime_diagnostic.py",
@@ -111,6 +112,7 @@
     "prepare_broker_registration_review.py",
     "prepare_broker_registration_activation_review.py",
     "prepare_live_canary_broker_eligibility_review.py",
+    "prepare_phillip_v6_live_canary_worm_gate_evidence.py",
     "prepare_manual_demo_activation_kit.py",
     "prepare_prewindow_calendar_review.py",
     "prepare_windows_dual_release_demo_soak_operations.py",
@@ -171,10 +173,12 @@
     "verify_live_canary_gate_receipt.py",
     "verify_live_canary_gate_receipt_set.py",
     "verify_live_canary_human_approval.py",
+    "verify_phillip_v6_live_canary_worm_gate_evidence.py",
     "verify_windows_dependency_lock.py",
     "verify_windows_manual_demo_entry_review.py",
     "verify_windows_pre_manual_configured_release_admission.py",
     "verify_windows_vulnerability_audit.py",
-    "validate_windows_gated_execution_service.py"
+    "validate_windows_gated_execution_service.py",
+    "windows_operator/phillip_commodity_v6_postrun_acceptance.py"
   ]
 }

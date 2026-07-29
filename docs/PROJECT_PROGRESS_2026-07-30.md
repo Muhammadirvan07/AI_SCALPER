@@ -2,6 +2,15 @@
 
 ## Outcome
 
+Gap semantik pada gate `WORM_CUSTODY` LIVE-canary kini ditutup secara source
+lokal. Gate tidak lagi menerima file opaque hanya karena hash-nya cocok.
+Builder baru membungkus exact Phillip V6 custody request, externally pinned
+policy, signed receipt, dan byte-identical reconstructed assessment ke dalam
+ZIP deterministik. Issuance receipt, receipt-set assembly/verification,
+activation request, authorization consumption, verification, dan recovery
+semuanya memerlukan policy SHA-256 dari kanal independen serta merevalidasi
+retention dan tanda tangan custody sebelum key/replay mutation berikutnya.
+
 Windows operator bridge untuk konsumsi satu-kali authorization LIVE-canary kini
 lengkap secara source lokal dan tetap deny-only. Workflow membentuk exact
 target-host replay profile, membuat genesis registry/checkpoint, memverifikasi
@@ -19,6 +28,9 @@ consumer tidak dapat meninggalkan orphan event.
 
 ```text
 LOCAL_SOURCE_GATE = PASS
+PHILLIP_V6_SEMANTIC_WORM_GATE_BRIDGE = PASS_LOCALLY_DENY_ONLY
+OPAQUE_WORM_GATE_EVIDENCE = REJECTED
+EXTERNAL_WORM_CUSTODY_RECEIPT = NOT_SUPPLIED
 LIVE_CANARY_ACTIVATION_CONSUMPTION_OPERATOR = PASS_LOCALLY_DENY_ONLY
 ATOMIC_STALE_PREDECESSOR_GUARD = PASS
 WINDOWS_OPERATOR_RELEASE_ISOLATION = PASS_FOCUSED
@@ -45,14 +57,26 @@ Commodity menemukan dan menutup empat kelas ambiguity/race:
 - kegagalan verifikasi pascapublikasi membersihkan hanya exact output identity
   milik invocation, tanpa menghapus replacement milik proses lain.
 
-Focused gate lulus 41/41 normal dan 41/41 optimized. Full serial repository
-gate lulus 2.087 test normal dengan tiga platform skip serta 2.087 test di
-bawah `-O` dengan empat belas platform/optimized skip. Paket clean-commit belum
-dibangun ulang pada saat catatan ini; scheduled proof Windows dan custody WORM
-aktual tetap belum ada.
+Focused V6.3 post-run gate sebelumnya lulus 41/41 normal dan 41/41 optimized.
+Setelah semantic WORM bridge ditambahkan, focused bridge/gate/activation/
+consumption/release cluster lulus 69/69 normal dan 69/69 optimized dengan dua
+intentional optimized skip. Full serial repository gate terbaru lulus 2.100
+test normal dengan tiga platform skip serta 2.100 test di bawah `-O` dengan 15
+platform/optimized skip. Paket clean-commit belum dibangun ulang pada saat
+catatan ini; hasil scheduled proof Windows dan custody WORM aktual belum
+diterima untuk verifikasi.
 
 ## Implemented
 
+- Exact five-member semantic WORM bridge menyimpan custody assessment, policy,
+  receipt, request ZIP, dan manifest canonical dengan deterministic ZIP
+  metadata, bounded member sizes, duplicate/trailing-byte rejection, serta
+  create-exclusive publication.
+- Setiap WORM boundary merekonstruksi assessment melalui exact V6 verifier,
+  mengecek RSA receipt, Object Lock `COMPLIANCE`, versioning/WORM, external
+  policy pin, retain-until, source commit/tree, dan outer archive SHA-256.
+- Salah policy pin dan opaque evidence ditolak sebelum receipt/activation
+  output; salah pin pada consumption juga tidak meninggalkan replay event.
 - Canonical replay profile mengikat binding, trust policy, registry ID,
   absolute-path hash, registry authority, dan policy-pinned checkpoint
   authority.
@@ -82,12 +106,18 @@ aktual tetap belum ada.
 
 ## Verified so far
 
+- Semantic WORM bridge spec: 100/100, Grade A, 0 error, 0 warning; satu
+  informational TypeScript-N/A finding.
+- Focused bridge/gate/activation/consumption/release cluster: 69 tests passed
+  normal; 69 passed dengan dua intentional optimized nested-run skip di bawah
+  `-O`.
 - Consumption operator spec: 100/100, Grade A, 0 error, 0 warning.
-- Focused activation/consumption/release cluster: 43 tests passed in normal
-  mode; 42 passed plus one intentional optimized nested-run skip under `-O`.
-- Full serial repository regression: 2,081 tests passed in normal mode with
-  three platform skips; 2,081 passed under `-O` with fourteen intentional
-  platform/optimized skips.
+- Prior focused activation/consumption/release cluster: 43 tests normal dan 42
+  plus one intentional optimized nested-run skip; seluruhnya tercakup dalam
+  focused cluster terbaru di atas.
+- Full serial repository regression: 2.100 tests passed in normal mode dengan
+  tiga platform skip; 2.100 passed under `-O` dengan 15 intentional
+  platform/optimized skip.
 - Windows dependency lock, install manifest, dependency SBOM, and pinned
   MetaTrader5 wheel identity: passed.
 - Python compilation, scoped whitespace, JSON allowlist closure, constant-time
@@ -98,8 +128,10 @@ aktual tetap belum ada.
 
 ## Remaining external work
 
-Source completion is not production evidence. Windows still requires authentic
-cohort/promotion/gate/approval/authorization inputs, independently provisioned
+Source completion is not production evidence. Scheduled V6.3 Windows proof
+dan independent custody result belum disuplai pada audit ini. Windows masih
+memerlukan artefak cohort/promotion/gate/approval/authorization autentik,
+independently provisioned
 Credential Manager authorities, exact target-host registry initialization,
 off-host checkpoint/WORM/CAS custody, provider-bound prebootstrap acceptance,
 central policy ceremony, bounded first canary, broker acknowledgement,

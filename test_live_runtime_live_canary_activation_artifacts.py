@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
 import time
@@ -28,11 +28,25 @@ from live_runtime.live_canary_activation_artifacts import (
 from live_runtime.live_canary_gate_contracts import LIVE_CANARY_GATE_DOMAINS
 from live_runtime.live_canary_gate_receipt_artifacts import (
     assemble_live_canary_gate_receipt_set,
+    issue_live_canary_gate_receipt_artifact,
     write_live_canary_gate_artifact_exclusive,
 )
 from live_runtime.secure_files import write_json_exclusive
-from test_live_runtime_demo_auto_soak_cohort import NOW
+import test_live_runtime_demo_auto_soak_cohort as soak_fixture_module
 import test_live_runtime_live_canary_activation as activation_fixture
+import test_live_runtime_phillip_v6_live_canary_worm_gate as worm_fixture
+
+
+NOW = datetime(2026, 7, 30, 0, 0, tzinfo=timezone.utc)
+
+
+class _ShiftedSoakFixture(soak_fixture_module.Fixture):
+    def __init__(self) -> None:
+        super().__init__(assessed_at=NOW)
+
+    def aggregate(self, **overrides):
+        overrides.setdefault("now", NOW)
+        return super().aggregate(**overrides)
 
 
 class LiveCanaryActivationArtifactTests(unittest.TestCase):
@@ -40,6 +54,16 @@ class LiveCanaryActivationArtifactTests(unittest.TestCase):
         self.root = tempfile.TemporaryDirectory()
         self.addCleanup(self.root.cleanup)
         self.base = Path(self.root.name)
+        now_patch = mock.patch.object(activation_fixture, "NOW", NOW)
+        soak_patch = mock.patch.object(
+            activation_fixture,
+            "SoakFixture",
+            _ShiftedSoakFixture,
+        )
+        now_patch.start()
+        soak_patch.start()
+        self.addCleanup(now_patch.stop)
+        self.addCleanup(soak_patch.stop)
         self.core = activation_fixture.LiveCanaryActivationTests(
             methodName="test_ac1_exact_eligible_request_is_canonical_and_deny_only"
         )
@@ -63,19 +87,48 @@ class LiveCanaryActivationArtifactTests(unittest.TestCase):
         )
         self.evidence_paths = {}
         for domain in sorted(LIVE_CANARY_GATE_DOMAINS - {"LEGAL_COMPLIANCE"}):
+            if domain == "WORM_CUSTODY":
+                fixture = worm_fixture.PhillipV6LiveCanaryWormGateTests(
+                    "test_ac1_deterministic_bridge_round_trips"
+                )
+                fixture.setUp()
+                self.addCleanup(fixture.doCleanups)
+                path, _result = fixture._build("activation-gate-source.zip")
+                self.worm_policy_sha256 = fixture.policy_sha256
+                self.evidence_paths[domain] = path
+                continue
             path = self.base / f"{domain.lower()}-evidence.bin"
             path.write_bytes(f"external-gate:{domain}".encode("utf-8"))
             self.evidence_paths[domain] = path
+        receipts = tuple(
+            issue_live_canary_gate_receipt_artifact(
+                self.core.binding,
+                self.core.policy,
+                domain="WORM_CUSTODY",
+                evidence_path=self.evidence_paths["WORM_CUSTODY"],
+                eligibility_evidence=None,
+                issued_at=NOW,
+                expires_at=NOW + timedelta(minutes=4),
+                issuer_id="issuer:worm-custody",
+                key_provider=self.core._gate_key,
+                clock_provider=lambda: NOW,
+                worm_custody_policy_sha256=self.worm_policy_sha256,
+            )
+            if receipt.domain == "WORM_CUSTODY"
+            else receipt
+            for receipt in self.core.gate_receipts
+        )
         gate_set = assemble_live_canary_gate_receipt_set(
             self.core.binding,
             self.core.policy,
-            receipts=self.core.gate_receipts,
+            receipts=receipts,
             evidence_paths_by_domain=self.evidence_paths,
             eligibility_evidence=self.core.eligibility,
             key_provider=self.core._gate_key,
             assembled_at=NOW,
             required_until=NOW + timedelta(minutes=3),
             clock_provider=lambda: NOW,
+            worm_custody_policy_sha256=self.worm_policy_sha256,
         )
         self.gate_set_path = self.base / "gate-set.json"
         write_live_canary_gate_artifact_exclusive(self.gate_set_path, gate_set)
@@ -99,6 +152,7 @@ class LiveCanaryActivationArtifactTests(unittest.TestCase):
             gate_receipt_set_path=self.gate_set_path,
             gate_evidence_paths_by_domain=self.evidence_paths,
             gate_key_provider=self.core._gate_key,
+            worm_custody_policy_sha256=self.worm_policy_sha256,
             expires_at=NOW + timedelta(minutes=3),
             nonce="activation-operator-request-nonce-v1",
             clock_provider=lambda: NOW,
@@ -117,6 +171,7 @@ class LiveCanaryActivationArtifactTests(unittest.TestCase):
             "gate_receipt_set_path": self.gate_set_path,
             "gate_evidence_paths_by_domain": self.evidence_paths,
             "gate_key_provider": self.core._gate_key,
+            "worm_custody_policy_sha256": self.worm_policy_sha256,
             "clock_provider": lambda: NOW,
         }
 
@@ -204,6 +259,17 @@ class LiveCanaryActivationArtifactTests(unittest.TestCase):
                 loaded,
                 trust_policy=self.core.policy,
                 **self._request_inputs(),
+            )
+
+    def test_ac3_request_reverification_rejects_wrong_worm_policy_pin(self) -> None:
+        request = self._request()
+        inputs = self._request_inputs()
+        inputs["worm_custody_policy_sha256"] = "f" * 64
+        with self.assertRaises(LiveCanaryActivationArtifactError):
+            verify_live_canary_activation_request_artifact(
+                request,
+                trust_policy=self.core.policy,
+                **inputs,
             )
 
     def test_ac4_role_bound_approval_round_trip_and_tamper_denial(self) -> None:

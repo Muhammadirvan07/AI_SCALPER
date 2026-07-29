@@ -31,6 +31,10 @@ from .live_canary_gate_contracts import (
 from .live_canary_broker_eligibility import (
     LiveCanaryBrokerEligibilityEvidence,
 )
+from .phillip_v6_live_canary_worm_gate import (
+    PhillipV6LiveCanaryWormGateError,
+    verify_phillip_v6_live_canary_worm_gate_evidence,
+)
 from .secure_files import write_json_exclusive
 
 
@@ -40,7 +44,7 @@ LIVE_CANARY_GATE_RECEIPT_SET_SCHEMA_VERSION = (
 )
 _MEBIBYTE = 1024 * 1024
 MAX_GATE_JSON_BYTES = 4 * _MEBIBYTE
-MAX_GATE_EVIDENCE_BYTES = 32 * _MEBIBYTE
+MAX_GATE_EVIDENCE_BYTES = 48 * _MEBIBYTE
 _WINDOWS_REPARSE_ATTRIBUTE = 0x400
 _CANONICAL_UTC_RE = re.compile(
     r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z$"
@@ -552,11 +556,12 @@ def _source_hash(
     *,
     evidence_path: str | Path | None,
     eligibility_evidence: LiveCanaryBrokerEligibilityEvidence | None,
+    worm_custody_policy_sha256: str | None,
     required_from: datetime,
     required_until: datetime,
 ) -> tuple[str, tuple[int, int] | None]:
     if domain == "LEGAL_COMPLIANCE":
-        if evidence_path is not None:
+        if evidence_path is not None or worm_custody_policy_sha256 is not None:
             raise _error(
                 "LIVE_CANARY_GATE_LEGAL_SOURCE_INVALID",
                 "LEGAL_COMPLIANCE cannot use an arbitrary evidence file",
@@ -575,12 +580,43 @@ def _source_hash(
             "LIVE_CANARY_GATE_SOURCE_INVALID",
             "non-legal gate requires exactly one evidence file",
         )
+    if domain == "WORM_CUSTODY":
+        if worm_custody_policy_sha256 is None:
+            raise _error(
+                "LIVE_CANARY_GATE_WORM_SOURCE_INVALID",
+                "WORM_CUSTODY requires an independent custody policy pin",
+            )
+        try:
+            semantic = verify_phillip_v6_live_canary_worm_gate_evidence(
+                Path(evidence_path),
+                expected_policy_sha256=worm_custody_policy_sha256,
+                observed_at=required_from,
+                required_until=required_until,
+            )
+        except PhillipV6LiveCanaryWormGateError as exc:
+            raise _error(
+                "LIVE_CANARY_GATE_WORM_SOURCE_INVALID",
+                "WORM_CUSTODY semantic evidence verification failed",
+            ) from exc
+    elif worm_custody_policy_sha256 is not None:
+        raise _error(
+            "LIVE_CANARY_GATE_SOURCE_INVALID",
+            "custody policy pin is valid only for WORM_CUSTODY",
+        )
     data, identity = _regular_file_bytes(
         evidence_path,
         maximum_bytes=MAX_GATE_EVIDENCE_BYTES,
         label=f"{domain} evidence",
     )
-    return hashlib.sha256(data).hexdigest(), identity
+    observed_sha256 = hashlib.sha256(data).hexdigest()
+    if domain == "WORM_CUSTODY" and not hmac.compare_digest(
+        observed_sha256, str(semantic["archive_sha256"])
+    ):
+        raise _error(
+            "LIVE_CANARY_GATE_INPUT_CHANGED",
+            "WORM_CUSTODY source changed across semantic inspection",
+        )
+    return observed_sha256, identity
 
 
 def issue_live_canary_gate_receipt_artifact(
@@ -595,6 +631,7 @@ def issue_live_canary_gate_receipt_artifact(
     issuer_id: str,
     key_provider: Callable[[str], str | bytes],
     clock_provider: Callable[[], datetime],
+    worm_custody_policy_sha256: str | None = None,
 ) -> LiveCanaryGateReceipt:
     """Issue one source-bound, policy-pinned deny-only gate receipt."""
 
@@ -613,6 +650,7 @@ def issue_live_canary_gate_receipt_artifact(
         binding,
         evidence_path=evidence_path,
         eligibility_evidence=eligibility_evidence,
+        worm_custody_policy_sha256=worm_custody_policy_sha256,
         required_from=trusted_now,
         required_until=expires,
     )
@@ -722,6 +760,7 @@ def verify_live_canary_gate_receipt_artifact(
     now: datetime,
     required_until: datetime,
     clock_provider: Callable[[], datetime],
+    worm_custody_policy_sha256: str | None = None,
 ) -> LiveCanaryGateReceipt:
     """Independently verify one receipt and its exact source."""
 
@@ -742,6 +781,7 @@ def verify_live_canary_gate_receipt_artifact(
         binding,
         evidence_path=evidence_path,
         eligibility_evidence=eligibility_evidence,
+        worm_custody_policy_sha256=worm_custody_policy_sha256,
         required_from=trusted_now,
         required_until=receipt.expires_at,
     )
@@ -809,6 +849,10 @@ def _receipt_inventory(
 
 def _source_inventory(
     values: Mapping[str, str | Path],
+    *,
+    worm_custody_policy_sha256: str,
+    observed_at: datetime | None,
+    required_until: datetime,
 ) -> dict[str, tuple[str, tuple[int, int]]]:
     if type(values) is not dict or frozenset(values) != _NON_LEGAL_DOMAINS:
         raise _error(
@@ -818,12 +862,34 @@ def _source_inventory(
     snapshots: dict[str, tuple[str, tuple[int, int]]] = {}
     for domain in sorted(values):
         _domain(domain)
+        semantic: Mapping[str, object] | None = None
+        if domain == "WORM_CUSTODY":
+            try:
+                semantic = verify_phillip_v6_live_canary_worm_gate_evidence(
+                    Path(values[domain]),
+                    expected_policy_sha256=worm_custody_policy_sha256,
+                    observed_at=observed_at,
+                    required_until=required_until,
+                )
+            except PhillipV6LiveCanaryWormGateError as exc:
+                raise _error(
+                    "LIVE_CANARY_GATE_WORM_SOURCE_INVALID",
+                    "WORM_CUSTODY semantic evidence verification failed",
+                ) from exc
         data, identity = _regular_file_bytes(
             values[domain],
             maximum_bytes=MAX_GATE_EVIDENCE_BYTES,
             label=f"{domain} evidence",
         )
-        snapshots[domain] = hashlib.sha256(data).hexdigest(), identity
+        observed_sha256 = hashlib.sha256(data).hexdigest()
+        if semantic is not None and not hmac.compare_digest(
+            observed_sha256, str(semantic["archive_sha256"])
+        ):
+            raise _error(
+                "LIVE_CANARY_GATE_INPUT_CHANGED",
+                "WORM_CUSTODY source changed across semantic inspection",
+            )
+        snapshots[domain] = observed_sha256, identity
     if len({item[1] for item in snapshots.values()}) != len(snapshots):
         raise _error(
             "LIVE_CANARY_GATE_SET_SOURCE_REUSED",
@@ -904,6 +970,7 @@ def assemble_live_canary_gate_receipt_set(
     assembled_at: datetime,
     required_until: datetime,
     clock_provider: Callable[[], datetime],
+    worm_custody_policy_sha256: str,
 ) -> dict[str, object]:
     """Verify and assemble exactly nine receipts into one portable set."""
 
@@ -922,7 +989,15 @@ def assemble_live_canary_gate_receipt_set(
             "receipt-set required_until precedes assembly",
         )
     ordered = _receipt_inventory(receipts)
-    snapshots = _source_inventory(evidence_paths_by_domain)
+    worm_receipt = next(
+        receipt for receipt in ordered if receipt.domain == "WORM_CUSTODY"
+    )
+    snapshots = _source_inventory(
+        evidence_paths_by_domain,
+        worm_custody_policy_sha256=worm_custody_policy_sha256,
+        observed_at=trusted_now,
+        required_until=worm_receipt.expires_at,
+    )
     verified = _verify_set_members(
         binding,
         trust_policy,
@@ -1096,6 +1171,7 @@ def verify_live_canary_gate_receipt_set(
     now: datetime,
     required_until: datetime,
     clock_provider: Callable[[], datetime],
+    worm_custody_policy_sha256: str,
 ) -> tuple[LiveCanaryGateReceipt, ...]:
     """Independently verify one persisted nine-domain receipt set."""
 
@@ -1112,7 +1188,15 @@ def verify_live_canary_gate_receipt_set(
         required_until=required_until,
         clock_provider=clock_provider,
     )
-    snapshots = _source_inventory(evidence_paths_by_domain)
+    worm_receipt = next(
+        receipt for receipt in receipts if receipt.domain == "WORM_CUSTODY"
+    )
+    snapshots = _source_inventory(
+        evidence_paths_by_domain,
+        worm_custody_policy_sha256=worm_custody_policy_sha256,
+        observed_at=trusted_now,
+        required_until=worm_receipt.expires_at,
+    )
     verified = _verify_set_members(
         binding,
         trust_policy,

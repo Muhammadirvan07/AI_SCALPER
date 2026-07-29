@@ -22,6 +22,10 @@ mengisi server, account, reviewer, key, hash, atau evidence dengan tebakan.
 - Delapan source gate non-legal harus berupa delapan file berbeda.
   `LEGAL_COMPLIANCE` tidak diberikan sebagai file; hash-nya diturunkan dari
   broker-eligibility evidence yang diverifikasi ulang.
+- Source `WORM_CUSTODY` harus berupa semantic Phillip V6 bridge ZIP dari
+  `LIVE_CANARY_GATE_RECEIPT_OPERATOR.md`, bukan file evidence generik. Exact
+  policy SHA-256 dari kanal independen wajib diberikan lagi saat request
+  di-assemble maupun diverifikasi.
 - Key cohort, promotion, eligibility, sembilan gate, tiga approval, dan
   deployment harus sudah ada di Windows Credential Manager dengan exact key ID
   dan fingerprint yang dipin trust policy. Tool ini tidak membuat atau
@@ -37,6 +41,10 @@ Jalankan PowerShell dari root operator yang diekstrak. Ganti seluruh nilai
 ```powershell
 $operatorRoot = "C:\AI_SCALPER_PRIVATE\live-canary-activation-operator"
 Set-Location $operatorRoot
+$python = "C:\AI_SCALPER\.venv\Scripts\python.exe"
+if (-not (Test-Path $python -PathType Leaf)) {
+  throw "Exact AI_SCALPER Python tidak ditemukan: $python"
+}
 
 $inputRoot = "C:\AI_SCALPER_PRIVATE\live-canary-activation-input"
 $outputRoot = Join-Path `
@@ -56,6 +64,8 @@ $promotion = "$inputRoot\REQUIRED_live-promotion-receipt.json"
 $eligibilityReview = "$inputRoot\REQUIRED_broker-eligibility-review.json"
 $regulatoryObservation = "$inputRoot\REQUIRED_regulatory-observation.json"
 $gateSet = "$inputRoot\REQUIRED_nine-domain-gate-set.json"
+$wormPolicySha256 = Read-Host `
+  "Exact WORM custody policy SHA-256 dari kanal independen"
 
 $gateEvidence = [ordered]@{
   BACKUP_RESTORE = "$inputRoot\REQUIRED_backup-restore.evidence"
@@ -65,7 +75,8 @@ $gateEvidence = [ordered]@{
   SECURITY = "$inputRoot\REQUIRED_security.evidence"
   SINGLE_ACCOUNT_SCOPE = "$inputRoot\REQUIRED_single-account-scope.evidence"
   WINDOWS_HOST = "$inputRoot\REQUIRED_windows-host.evidence"
-  WORM_CUSTODY = "$inputRoot\REQUIRED_worm-custody.evidence"
+  WORM_CUSTODY = `
+    "$inputRoot\REQUIRED_phillip-v6-live-canary-worm-gate-evidence.zip"
 }
 
 $required = @(
@@ -99,21 +110,22 @@ $requestSources = @(
   "--candidate", "REQUIRED_EXACT_CANDIDATE_ID",
   "--eligibility-review", $eligibilityReview,
   "--regulatory-observation", $regulatoryObservation,
-  "--gate-receipt-set", $gateSet
+  "--gate-receipt-set", $gateSet,
+  "--worm-custody-policy-sha256", $wormPolicySha256
 )
 
 foreach ($entry in $gateEvidence.GetEnumerator()) {
   $requestSources += @("--gate-evidence", "$($entry.Key)=$($entry.Value)")
 }
 
-python -I -S -B .\assemble_live_canary_activation_request.py `
+& $python -B .\assemble_live_canary_activation_request.py `
   @requestSources `
   --expires-at-utc $expiresAtUtc `
   --nonce $nonce `
   --output $request
 if ($LASTEXITCODE -ne 0) { throw "Request assembly gagal." }
 
-python -I -S -B .\verify_live_canary_activation_request.py `
+& $python -B .\verify_live_canary_activation_request.py `
   --request $request `
   @requestSources
 if ($LASTEXITCODE -ne 0) { throw "Request verification gagal." }
@@ -140,7 +152,7 @@ foreach ($entry in $reviewers.GetEnumerator()) {
   $role = $entry.Key
   $approval = Join-Path $outputRoot "$($role.ToLowerInvariant())-approval.json"
 
-  python -I -S -B .\sign_live_canary_human_approval.py `
+  & $python -B .\sign_live_canary_human_approval.py `
     --request $request `
     --trust-policy $policy `
     --role $role `
@@ -148,7 +160,7 @@ foreach ($entry in $reviewers.GetEnumerator()) {
     --output $approval
   if ($LASTEXITCODE -ne 0) { throw "Approval $role gagal." }
 
-  python -I -S -B .\verify_live_canary_human_approval.py `
+  & $python -B .\verify_live_canary_human_approval.py `
     --request $request `
     --trust-policy $policy `
     --approval $approval `
@@ -168,14 +180,14 @@ foreach ($entry in $approvalPaths.GetEnumerator()) {
   $approvalArgs += @("--approval", "$($entry.Key)=$($entry.Value)")
 }
 
-python -I -S -B .\assemble_live_canary_activation_authorization.py `
+& $python -B .\assemble_live_canary_activation_authorization.py `
   --request $request `
   --trust-policy $policy `
   @approvalArgs `
   --output $authorization
 if ($LASTEXITCODE -ne 0) { throw "Authorization assembly gagal." }
 
-python -I -S -B .\verify_live_canary_activation_authorization.py `
+& $python -B .\verify_live_canary_activation_authorization.py `
   --authorization $authorization `
   --request $request `
   --trust-policy $policy `

@@ -9,7 +9,8 @@
 **Reviewers:** project owner, security boundary, ship-gate
 
 **Related specs:** `live_canary_activation_evidence_v1.md`,
-`live_canary_broker_eligibility_review_v1.md`
+`live_canary_broker_eligibility_review_v1.md`,
+`phillip_v6_live_canary_worm_gate_bridge_v1.md`
 
 ## Context
 
@@ -25,6 +26,13 @@ an arbitrary file hash.
 This feature adds that offline operator bridge. It does not build an activation
 request, change the central policy, load MT5, access a broker account, or grant
 execution. Every result remains deny-only.
+
+The later Phillip V6 semantic bridge spec tightens FR-4 for the
+`WORM_CUSTODY` domain: hashing the exact file remains mandatory, but the file
+is accepted only after its custody request, externally pinned policy, signed
+receipt, assessment reconstruction, retention, and deterministic ZIP
+inventory all verify. This additive constraint does not change any V1
+canonical receipt or receipt-set schema.
 
 ## Functional Requirements
 

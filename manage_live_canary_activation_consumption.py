@@ -163,6 +163,7 @@ def _load_verified_consumption_sources(
         now=verification_time,
         required_until=verified_authorization.request.expires_at,
         clock_provider=lambda: verification_time,
+        worm_custody_policy_sha256=sources.worm_custody_policy_sha256,
     )
     return verified_authorization, sources, gate_receipts
 

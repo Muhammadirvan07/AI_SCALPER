@@ -20,6 +20,9 @@ yang direview secara terpisah.
 - Selesaikan workflow di
   `LIVE_CANARY_ACTIVATION_OPERATOR.md` dengan evidence autentik dan
   authorization yang masih current.
+- Pin SHA-256 policy WORM dari kanal independen harus dipertahankan; semua
+  operasi consume, verify, dan recover merekonstruksi ulang semantic Phillip
+  V6 custody bridge sebelum mengakses replay event.
 - Registry key dan policy-pinned replay-checkpoint key sudah diprovision secara
   terpisah di Windows Credential Manager. Tool ini tidak membuat, menerima,
   atau mengekspor raw secret.
@@ -37,6 +40,10 @@ Jalankan PowerShell dari root operator release yang sudah diverifikasi.
 ```powershell
 $operatorRoot = "C:\AI_SCALPER_PRIVATE\live-canary-activation-operator"
 Set-Location $operatorRoot
+$python = "C:\AI_SCALPER\.venv\Scripts\python.exe"
+if (-not (Test-Path $python -PathType Leaf)) {
+  throw "Exact AI_SCALPER Python tidak ditemukan: $python"
+}
 
 $inputRoot = "C:\AI_SCALPER_PRIVATE\live-canary-activation-input"
 $outputRoot = Join-Path `
@@ -57,6 +64,8 @@ $eligibilityReview = "$inputRoot\REQUIRED_broker-eligibility-review.json"
 $regulatoryObservation = "$inputRoot\REQUIRED_regulatory-observation.json"
 $gateSet = "$inputRoot\REQUIRED_nine-domain-gate-set.json"
 $authorization = "$inputRoot\REQUIRED_live-canary-activation-authorization.json"
+$wormPolicySha256 = Read-Host `
+  "Exact WORM custody policy SHA-256 dari kanal independen"
 
 $registryPath = "C:\AI_SCALPER_PRIVATE\live-canary-replay\registry-v1.sqlite3"
 $profile = "$outputRoot\replay-registry-profile.json"
@@ -71,7 +80,8 @@ $gateEvidence = [ordered]@{
   SECURITY = "$inputRoot\REQUIRED_security.evidence"
   SINGLE_ACCOUNT_SCOPE = "$inputRoot\REQUIRED_single-account-scope.evidence"
   WINDOWS_HOST = "$inputRoot\REQUIRED_windows-host.evidence"
-  WORM_CUSTODY = "$inputRoot\REQUIRED_worm-custody.evidence"
+  WORM_CUSTODY = `
+    "$inputRoot\REQUIRED_phillip-v6-live-canary-worm-gate-evidence.zip"
 }
 ```
 
@@ -89,7 +99,8 @@ $sourceArgs = @(
   "--candidate", "REQUIRED_EXACT_CANDIDATE_ID",
   "--eligibility-review", $eligibilityReview,
   "--regulatory-observation", $regulatoryObservation,
-  "--gate-receipt-set", $gateSet
+  "--gate-receipt-set", $gateSet,
+  "--worm-custody-policy-sha256", $wormPolicySha256
 )
 
 foreach ($entry in $gateEvidence.GetEnumerator()) {
@@ -102,7 +113,7 @@ foreach ($entry in $gateEvidence.GetEnumerator()) {
 `REQUIRED_*` di bawah harus berasal dari custody/policy review, bukan tebakan.
 
 ```powershell
-$profileOutput = @(& python -I -S -B `
+$profileOutput = @(& $python -B `
   .\manage_live_canary_activation_consumption.py `
   prepare-profile `
   --binding $binding `
@@ -139,7 +150,7 @@ if ($profileSha -notmatch '^[0-9a-f]{64}$') {
 Registry path dan initialization receipt harus sama-sama belum ada.
 
 ```powershell
-python -I -S -B .\manage_live_canary_activation_consumption.py `
+& $python -B .\manage_live_canary_activation_consumption.py `
   initialize `
   --profile $profile `
   --expected-profile-sha256 $profileSha `
@@ -164,7 +175,7 @@ kedaluwarsa. Predecessor pertama adalah initialization receipt; consumption
 berikutnya memakai exact receipt terakhir.
 
 ```powershell
-python -I -S -B .\manage_live_canary_activation_consumption.py `
+& $python -B .\manage_live_canary_activation_consumption.py `
   consume `
   --profile $profile `
   --expected-profile-sha256 $profileSha `
@@ -190,7 +201,7 @@ HMAC-authenticated. Event yang bertanggal lebih baru dari trusted clock tetap
 ditolak.
 
 ```powershell
-python -I -S -B .\manage_live_canary_activation_consumption.py `
+& $python -B .\manage_live_canary_activation_consumption.py `
   verify `
   --profile $profile `
   --expected-profile-sha256 $profileSha `
@@ -211,7 +222,7 @@ harus path baru yang belum ada.
 ```powershell
 $recovered = "$outputRoot\live-canary-activation-consumption-recovered.json"
 
-python -I -S -B .\manage_live_canary_activation_consumption.py `
+& $python -B .\manage_live_canary_activation_consumption.py `
   recover `
   --profile $profile `
   --expected-profile-sha256 $profileSha `

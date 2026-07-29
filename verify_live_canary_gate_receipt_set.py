@@ -55,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--eligibility-review", type=Path, required=True)
     parser.add_argument("--regulatory-observation", type=Path, required=True)
     parser.add_argument("--required-until-utc", required=True)
+    parser.add_argument("--worm-custody-policy-sha256", required=True)
     parser.add_argument(
         "--candidate-config",
         type=Path,
@@ -101,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
             now=now,
             required_until=required_until,
             clock_provider=lambda: now,
+            worm_custody_policy_sha256=args.worm_custody_policy_sha256,
         )
     except (
         EvidenceCredentialError,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import io
 import json
 from pathlib import Path
@@ -19,8 +19,11 @@ from live_runtime.live_canary_gate_receipt_artifacts import (
     issue_live_canary_gate_receipt_artifact,
     write_live_canary_gate_artifact_exclusive,
 )
-from test_live_runtime_demo_auto_soak_cohort import NOW
 import test_live_runtime_live_canary_activation as activation_fixture
+import test_live_runtime_phillip_v6_live_canary_worm_gate as worm_fixture
+
+
+NOW = datetime(2026, 7, 30, 0, 0, tzinfo=timezone.utc)
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -59,6 +62,8 @@ class LiveCanaryGateReceiptCliTests(unittest.TestCase):
         self.policy_path = self.root / "policy.json"
         _write_json(self.binding_path, self.binding.to_canonical_dict())
         _write_json(self.policy_path, self.policy.to_canonical_dict())
+        self.worm_policy_sha256: str | None = None
+        self.worm_evidence_path: Path | None = None
 
     def _key(self, key_id: str) -> bytes:
         for domain, expected in self.gate_key_ids.items():
@@ -67,6 +72,18 @@ class LiveCanaryGateReceiptCliTests(unittest.TestCase):
         raise KeyError(key_id)
 
     def _evidence(self, domain: str) -> Path:
+        if domain == "WORM_CUSTODY":
+            if self.worm_evidence_path is None:
+                fixture = worm_fixture.PhillipV6LiveCanaryWormGateTests(
+                    "test_ac1_deterministic_bridge_round_trips"
+                )
+                fixture.setUp()
+                self.addCleanup(fixture.doCleanups)
+                self.worm_evidence_path, _result = fixture._build(
+                    "cli-gate-source.zip"
+                )
+                self.worm_policy_sha256 = fixture.policy_sha256
+            return self.worm_evidence_path
         path = self.root / f"{domain.lower()}-evidence.json"
         _write_json(path, {"domain": domain, "review": "APPROVED"})
         return path
@@ -198,6 +215,11 @@ class LiveCanaryGateReceiptCliTests(unittest.TestCase):
                 issuer_id=f"issuer:{domain.lower()}",
                 key_provider=self._key,
                 clock_provider=lambda: NOW,
+                worm_custody_policy_sha256=(
+                    self.worm_policy_sha256
+                    if domain == "WORM_CUSTODY"
+                    else None
+                ),
             )
             path = self.root / f"{domain.lower()}-receipt.json"
             write_live_canary_gate_artifact_exclusive(
@@ -219,6 +241,8 @@ class LiveCanaryGateReceiptCliTests(unittest.TestCase):
             str(self.root / "observation.json"),
             "--required-until-utc",
             _utc_text(NOW + timedelta(hours=1)),
+            "--worm-custody-policy-sha256",
+            str(self.worm_policy_sha256),
             "--output",
             str(output_path),
         ]
@@ -247,6 +271,8 @@ class LiveCanaryGateReceiptCliTests(unittest.TestCase):
             str(self.root / "observation.json"),
             "--required-until-utc",
             _utc_text(NOW + timedelta(hours=1)),
+            "--worm-custody-policy-sha256",
+            str(self.worm_policy_sha256),
         ]
         for domain, path in evidence.items():
             verify_argv.extend(("--evidence", f"{domain}={path}"))

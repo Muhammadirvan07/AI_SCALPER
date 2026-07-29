@@ -323,3 +323,38 @@ terikat ke exact acceptance bytes. Ia secara eksplisit menyatakan
 `direct_storage_api_inspection_performed=false`; verifier lokal tidak
 menyamakan verifikasi tanda tangan dengan akses langsung ke API cloud. Hasil
 ini tetap tidak memberi authority untuk demo-auto, promotion, atau live order.
+
+## Bentuk semantic evidence untuk gate LIVE-canary
+
+Assessment JSON tidak boleh langsung dipakai sebagai `WORM_CUSTODY` evidence.
+Gabungkan empat source autentik menjadi ZIP bridge yang dapat direkonstruksi
+ulang pada setiap boundary. Output harus baru dan policy hash tetap berasal
+dari kanal independen.
+
+```powershell
+$wormGateEvidence = (
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-v6-custody-assessments\" +
+  "phillip-v6-live-canary-worm-gate-evidence-" +
+  [DateTimeOffset]::UtcNow.ToString("yyyyMMddTHHmmssfffZ") +
+  ".zip"
+)
+
+& "C:\AI_SCALPER\.venv\Scripts\python.exe" -B `
+  .\prepare_phillip_v6_live_canary_worm_gate_evidence.py `
+  --custody-request $custodyRequest `
+  --expected-custody-request-sha256 $custodyRequestSHA256 `
+  --expected-toolkit-source-commit $expectedCommit `
+  --expected-toolkit-source-tree $expectedTree `
+  --policy $policy `
+  --expected-policy-sha256 $expectedPolicySHA256 `
+  --receipt $receipt `
+  --assessment $assessment `
+  --output $wormGateEvidence
+if ($LASTEXITCODE -ne 0) {
+  throw "Semantic WORM gate evidence gagal."
+}
+```
+
+Paket tersebut masih deny-only. Ia baru dapat dipakai oleh runbook
+`LIVE_CANARY_GATE_RECEIPT_OPERATOR.md`, yang kembali memerlukan exact policy
+SHA-256 dan tidak membuka central lock atau authority order.

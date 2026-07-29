@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import subprocess
@@ -27,9 +27,12 @@ from live_runtime.live_canary_gate_receipt_artifacts import (
     verify_live_canary_gate_receipt_set,
     write_live_canary_gate_artifact_exclusive,
 )
-from test_live_runtime_demo_auto_soak_cohort import NOW
 import test_live_runtime_live_canary_activation as activation_fixture
+import test_live_runtime_phillip_v6_live_canary_worm_gate as worm_fixture
 import live_runtime.live_canary_activation as activation_core
+
+
+NOW = datetime(2026, 7, 30, 0, 0, tzinfo=timezone.utc)
 
 
 class _BindingSubclass:  # sentinel for duck-type rejection
@@ -62,6 +65,8 @@ class LiveCanaryGateReceiptArtifactTests(unittest.TestCase):
 
         self.binding_path = self.root / "binding.json"
         self.policy_path = self.root / "policy.json"
+        self.worm_policy_sha256: str | None = None
+        self.worm_evidence_path: Path | None = None
         _write_json(self.binding_path, self.binding.to_canonical_dict())
         _write_json(self.policy_path, self.policy.to_canonical_dict())
 
@@ -72,6 +77,19 @@ class LiveCanaryGateReceiptArtifactTests(unittest.TestCase):
         raise KeyError(key_id)
 
     def _evidence(self, domain: str, *, label: str | None = None) -> Path:
+        if domain == "WORM_CUSTODY":
+            if label is not None:
+                raise ValueError("WORM fixture does not support arbitrary labels")
+            if self.worm_evidence_path is None:
+                fixture = worm_fixture.PhillipV6LiveCanaryWormGateTests(
+                    "test_ac1_deterministic_bridge_round_trips"
+                )
+                fixture.setUp()
+                self.addCleanup(fixture.doCleanups)
+                path, _result = fixture._build("gate-source.zip")
+                self.worm_evidence_path = path
+                self.worm_policy_sha256 = fixture.policy_sha256
+            return self.worm_evidence_path
         path = self.root / f"{domain.lower()}-{label or 'evidence'}.json"
         _write_json(
             path,
@@ -102,6 +120,9 @@ class LiveCanaryGateReceiptArtifactTests(unittest.TestCase):
             issuer_id=f"issuer:{domain.lower()}",
             key_provider=self._key,
             clock_provider=lambda: NOW,
+            worm_custody_policy_sha256=(
+                self.worm_policy_sha256 if domain == "WORM_CUSTODY" else None
+            ),
         )
 
     def _all_receipts(self):
@@ -215,6 +236,28 @@ class LiveCanaryGateReceiptArtifactTests(unittest.TestCase):
                 "LEGAL_COMPLIANCE",
                 evidence_path=self._evidence("LEGAL_COMPLIANCE"),
             )
+
+    def test_ac3_worm_gate_rejects_opaque_file_or_wrong_policy_pin(self):
+        opaque = self.root / "opaque-worm-evidence.json"
+        _write_json(opaque, {"domain": "WORM_CUSTODY", "review": "APPROVED"})
+        with self.assertRaises(LiveCanaryGateReceiptArtifactError):
+            self._issue("WORM_CUSTODY", evidence_path=opaque)
+
+        evidence = self._evidence("WORM_CUSTODY")
+        with self.assertRaises(LiveCanaryGateReceiptArtifactError):
+            issue_live_canary_gate_receipt_artifact(
+                self.binding,
+                self.policy,
+                domain="WORM_CUSTODY",
+                evidence_path=evidence,
+                eligibility_evidence=None,
+                issued_at=NOW,
+                expires_at=NOW + timedelta(days=1),
+                issuer_id="issuer:worm-custody",
+                key_provider=self._key,
+                clock_provider=lambda: NOW,
+                worm_custody_policy_sha256="f" * 64,
+            )
         with self.assertRaises(LiveCanaryGateReceiptArtifactError):
             self._issue(
                 "LEGAL_COMPLIANCE",
@@ -260,6 +303,7 @@ class LiveCanaryGateReceiptArtifactTests(unittest.TestCase):
             assembled_at=NOW,
             required_until=NOW + timedelta(hours=1),
             clock_provider=lambda: NOW,
+            worm_custody_policy_sha256=self.worm_policy_sha256,
         )
         self.assertEqual("live-canary-gate-receipt-set-v1", payload["schema_version"])
         self.assertEqual(9, len(payload["receipts"]))
@@ -282,6 +326,7 @@ class LiveCanaryGateReceiptArtifactTests(unittest.TestCase):
             now=NOW,
             required_until=NOW + timedelta(hours=1),
             clock_provider=lambda: NOW,
+            worm_custody_policy_sha256=self.worm_policy_sha256,
         )
         self.assertEqual(
             tuple(sorted(LIVE_CANARY_GATE_DOMAINS)),
@@ -301,6 +346,7 @@ class LiveCanaryGateReceiptArtifactTests(unittest.TestCase):
                 assembled_at=NOW,
                 required_until=NOW + timedelta(hours=1),
                 clock_provider=lambda: NOW,
+                worm_custody_policy_sha256=self.worm_policy_sha256,
             )
 
         domain_a, domain_b = sorted(sources)[:2]
@@ -316,6 +362,7 @@ class LiveCanaryGateReceiptArtifactTests(unittest.TestCase):
                 assembled_at=NOW,
                 required_until=NOW + timedelta(hours=1),
                 clock_provider=lambda: NOW,
+                worm_custody_policy_sha256=self.worm_policy_sha256,
             )
 
     def test_ac6_set_mutation_and_expiry_fail_closed(self):
@@ -330,6 +377,7 @@ class LiveCanaryGateReceiptArtifactTests(unittest.TestCase):
             assembled_at=NOW,
             required_until=NOW + timedelta(hours=1),
             clock_provider=lambda: NOW,
+            worm_custody_policy_sha256=self.worm_policy_sha256,
         )
         payload["binding_sha256"] = "f" * 64
         path = self.root / "mutated-set.json"
@@ -345,6 +393,7 @@ class LiveCanaryGateReceiptArtifactTests(unittest.TestCase):
                 now=NOW,
                 required_until=NOW + timedelta(hours=1),
                 clock_provider=lambda: NOW,
+                worm_custody_policy_sha256=self.worm_policy_sha256,
             )
 
     def test_ac7_exact_types_and_clock_are_enforced(self):

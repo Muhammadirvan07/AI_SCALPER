@@ -64,6 +64,7 @@ class LiveCanaryRequestSourceInputs:
     broker_eligibility_evidence: LiveCanaryBrokerEligibilityEvidence
     gate_receipt_set_path: Path
     gate_evidence_paths_by_domain: dict[str, Path]
+    worm_custody_policy_sha256: str
 
     def verification_kwargs(
         self,
@@ -82,6 +83,7 @@ class LiveCanaryRequestSourceInputs:
             "broker_eligibility_evidence": self.broker_eligibility_evidence,
             "gate_receipt_set_path": self.gate_receipt_set_path,
             "gate_evidence_paths_by_domain": self.gate_evidence_paths_by_domain,
+            "worm_custody_policy_sha256": self.worm_custody_policy_sha256,
             "gate_key_provider": key_provider,
             "clock_provider": clock_provider,
         }
@@ -102,6 +104,7 @@ def add_request_source_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--eligibility-review", type=Path, required=True)
     parser.add_argument("--regulatory-observation", type=Path, required=True)
     parser.add_argument("--gate-receipt-set", type=Path, required=True)
+    parser.add_argument("--worm-custody-policy-sha256", required=True)
     parser.add_argument(
         "--gate-evidence",
         action="append",
@@ -155,6 +158,7 @@ def load_request_source_inputs(
         binding=binding,
         trust_policy=trust_policy,
         evidence_paths_by_domain=evidence_paths,
+        worm_custody_policy_sha256=args.worm_custody_policy_sha256,
     )
     eligibility = load_verified_eligibility_evidence(
         repo_root=repo_root,
@@ -176,6 +180,7 @@ def load_request_source_inputs(
         broker_eligibility_evidence=eligibility,
         gate_receipt_set_path=gate_receipt_set_path,
         gate_evidence_paths_by_domain=evidence_paths,
+        worm_custody_policy_sha256=args.worm_custody_policy_sha256,
     )
 
 

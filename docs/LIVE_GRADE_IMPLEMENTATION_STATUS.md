@@ -2,10 +2,9 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi penuh terbaru pada 2026-07-30 menjalankan **2.058 test** tanpa
+Validasi penuh terbaru pada 2026-07-30 menjalankan **2.100 test** tanpa
 kegagalan dalam mode normal dan optimized pada development Mac; tiga test
-platform-dependent dilewati pada mode normal dan empat belas pada mode
-optimized.
+platform-dependent dilewati pada mode normal dan 15 pada mode optimized.
 Baseline dashboard read-only yang sudah dilacak sebelumnya lulus 21 unit test
 frontend, 50 test backend, 14 browser E2E, lint, TypeScript, production build,
 dan bundle verification. Refactor dashboard lokal yang masih uncommitted tidak
@@ -58,6 +57,17 @@ Kontrak gate minimal dipisahkan dari activation composition agar operator ZIP
 tidak menarik dependency runtime/MT5. Tooling hanya masuk shadow deployment
 operator release dan semua output tetap deny-only; sembilan review nyata,
 binding/policy approved, serta key terpisah belum tersedia pada Windows.
+
+Boundary `WORM_CUSTODY` kini diperketat oleh semantic Phillip V6 bridge.
+Assessment, policy, signed receipt, dan custody-request ZIP disimpan dalam satu
+archive deterministik lalu direkonstruksi ulang pada receipt, receipt-set,
+activation request, dan replay-consumption boundaries. Exact external policy
+SHA-256, RSA receipt, Object Lock `COMPLIANCE`, versioning, WORM retention,
+source commit/tree, serta byte identity semuanya harus cocok; arbitrary file
+atau pin salah gagal sebelum output/key/replay event. Builder/verifier hanya
+masuk operator release dan tetap melaporkan live/order disabled. Scheduled
+Windows proof dan independent custody artefak aktual belum diterima, sehingga
+perubahan source ini bukan izin live trading.
 
 Workflow deny-only LIVE-canary activation V1 kini juga tersedia di source
 operator. Enam CLI membuat dan memverifikasi request, tiga approval manusia,

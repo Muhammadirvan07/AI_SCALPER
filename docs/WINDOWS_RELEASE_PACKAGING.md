@@ -66,6 +66,11 @@ serta order capability disabled.
 Bundle operator juga membawa workflow deny-only LIVE-canary activation V1:
 request, tiga approval manusia, dan deployment authorization dapat dibuat lalu
 diverifikasi secara canonical dari exact gate/evidence yang sudah diterima.
+Khusus `WORM_CUSTODY`, operator release memuat semantic Phillip V6 bridge
+builder/verifier dan exact post-run custody verifier. Gate issuance, set,
+activation request, serta one-use consumption semuanya memerlukan policy
+SHA-256 dari kanal independen dan merekonstruksi assessment; file opaque tidak
+lagi dapat memenuhi domain tersebut.
 Tooling ini tidak mengonsumsi replay, tidak mengubah central unlock, tidak
 membuka MT5, dan tidak mengirim order. Ia tidak masuk Decision, Execution,
 Shadow, Status Monitor, maupun configured service release. Runbook lengkap ada

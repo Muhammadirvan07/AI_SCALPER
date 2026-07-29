@@ -426,6 +426,7 @@ def preflight_live_canary_activation_gate_inputs(
     binding: LiveCanaryBinding,
     trust_policy: LiveCanaryTrustPolicy,
     evidence_paths_by_domain: Mapping[str, str | Path],
+    worm_custody_policy_sha256: str,
 ) -> None:
     """Validate all gate file structures before any credential lookup."""
 
@@ -443,8 +444,16 @@ def preflight_live_canary_activation_gate_inputs(
         )
         _validate_set_header(payload, binding, trust_policy)
         _verify_set_content_hash(payload)
-        _receipts_from_set_payload(payload)
-        _source_inventory(dict(evidence_paths_by_domain))
+        receipts = _receipts_from_set_payload(payload)
+        worm_receipt = next(
+            receipt for receipt in receipts if receipt.domain == "WORM_CUSTODY"
+        )
+        _source_inventory(
+            dict(evidence_paths_by_domain),
+            worm_custody_policy_sha256=worm_custody_policy_sha256,
+            observed_at=None,
+            required_until=worm_receipt.expires_at,
+        )
     except LiveCanaryGateReceiptArtifactError as exc:
         raise _error(
             "LIVE_CANARY_ACTIVATION_GATE_SOURCE_INVALID",
@@ -462,6 +471,7 @@ def _gate_receipts(
     key_provider: Callable[[str], str | bytes],
     now: datetime,
     required_until: datetime,
+    worm_custody_policy_sha256: str,
 ) -> tuple[LiveCanaryGateReceipt, ...]:
     if frozenset(evidence_paths_by_domain) != _NON_LEGAL_DOMAINS:
         raise _error(
@@ -479,6 +489,7 @@ def _gate_receipts(
             now=now,
             required_until=required_until,
             clock_provider=lambda: now,
+            worm_custody_policy_sha256=worm_custody_policy_sha256,
         )
     except Exception as exc:
         raise _error(
@@ -501,6 +512,7 @@ def assemble_live_canary_activation_request_artifact(
     gate_receipt_set_path: str | Path,
     gate_evidence_paths_by_domain: Mapping[str, str | Path],
     gate_key_provider: Callable[[str], str | bytes],
+    worm_custody_policy_sha256: str,
     expires_at: datetime,
     nonce: str,
     clock_provider: Callable[[], datetime],
@@ -517,6 +529,7 @@ def assemble_live_canary_activation_request_artifact(
         key_provider=gate_key_provider,
         now=issued,
         required_until=expires_at,
+        worm_custody_policy_sha256=worm_custody_policy_sha256,
     )
     try:
         return build_live_canary_activation_request(
@@ -558,6 +571,7 @@ def verify_live_canary_activation_request_artifact(
     gate_receipt_set_path: str | Path,
     gate_evidence_paths_by_domain: Mapping[str, str | Path],
     gate_key_provider: Callable[[str], str | bytes],
+    worm_custody_policy_sha256: str,
     clock_provider: Callable[[], datetime],
 ) -> LiveCanaryActivationRequest:
     """Rebuild one persisted request without consuming any capability."""
@@ -584,6 +598,7 @@ def verify_live_canary_activation_request_artifact(
         key_provider=gate_key_provider,
         now=checked,
         required_until=request.expires_at,
+        worm_custody_policy_sha256=worm_custody_policy_sha256,
     )
     try:
         rebuilt = _build_live_canary_activation_request_at(

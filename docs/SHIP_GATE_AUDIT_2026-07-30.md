@@ -4,6 +4,8 @@
 
 ```text
 SOURCE_IMPLEMENTATION = PASS_LOCAL
+PHILLIP_V6_SEMANTIC_WORM_GATE = PASS_LOCALLY_DENY_ONLY
+OPAQUE_WORM_GATE_INPUT = REJECTED
 LIVE_CANARY_ACTIVATION_CONSUMPTION = PASS_LOCALLY_DENY_ONLY
 ATOMIC_REPLAY_PREDECESSOR = PASS
 WINDOWS_RELEASE_BOUNDARY = PASS_FOCUSED
@@ -23,20 +25,20 @@ launch, MT5 initialization, atau order broker.
   Credential Manager adapter, and deterministic Windows ZIP builder.
 - React/Vite frontend dan FastAPI backend terdeteksi tetapi merupakan dirty
   user-owned worktree di luar staging milestone ini.
-- Scope audit: activation replay core, consumption contracts/CLI, Windows
-  operator allowlist, spec/runbook, focused/full normal and optimized tests.
+- Scope audit: Phillip V6 semantic WORM bridge, gate receipt/set, activation
+  replay core, consumption contracts/CLI, Windows operator allowlist,
+  spec/runbook, focused/full normal and optimized tests.
 
 ## Validation evidence
 
 - Spec validator: 100/100 Grade A, no error/warning.
-- Focused gate: 43 tests passed normal; optimized 42 passed and one expected
-  skip.
-- Full serial normal regression: 2,081 passed, three expected platform skips.
-- Full serial optimized regression: 2,081 passed, fourteen expected
+- Focused semantic WORM/gate/activation/consumption/release cluster: 69 tests
+  passed normal; 69 passed optimized dengan dua expected nested-run skips.
+- Full serial normal regression: 2.100 passed, tiga expected platform skips.
+- Full serial optimized regression: 2.100 passed, 15 expected
   platform/optimized skips.
-- Post-run V6.3 focused gate setelah hardening: 41 passed normal dan 41 passed
-  optimized. Full serial repository gate terbaru: 2,087 passed normal dengan
-  tiga platform skip dan 2,087 passed optimized dengan empat belas skip.
+- Prior post-run V6.3 focused hardening gate: 41 passed normal dan 41 passed
+  optimized; hasil tersebut tercakup oleh full regression terbaru di atas.
 - Windows dependency lock/SBOM/install-manifest/MetaTrader5 wheel pins passed.
 - Python compilation, scoped whitespace, strict JSON loaders, release
   isolation, and static forbidden-effect audit passed.
@@ -73,6 +75,10 @@ launch, MT5 initialization, atau order broker.
 10. Post-write verification failure could leave an invalid acceptance archive,
     while naive cleanup risked deleting a replacement. Cleanup is now bound to
     the exact created file identity for acceptance and custody outputs.
+11. `WORM_CUSTODY` gate sebelumnya menerima arbitrary bytes seperti domain
+    generik. Exact V6 custody semantics kini direkonstruksi pada receipt,
+    receipt-set, activation, dan consumption boundaries dengan external policy
+    pin; wrong pin/opaque file gagal sebelum output atau replay event.
 
 ## Automated category result
 
@@ -80,7 +86,7 @@ launch, MT5 initialization, atau order broker.
 |---|---|---|
 | Security | PASS_LOCAL / EXTERNAL_PENDING | No hardcoded secret or raw credential input; Credential Manager only; constant-time fingerprints; exact-type/sealed contracts; central lock unchanged |
 | Database | PASS_LOCAL | Parameterized SQLite insert, `BEGIN IMMEDIATE`, WAL/FULL sync, immutable triggers, HMAC chain, exact DDL/integrity, atomic predecessor guard |
-| Code quality | PASS_WITH_JUSTIFIED_COMPLEXITY | Analyzer flags large contract module and explicit high-arity evidence APIs; parameters remain intentional to avoid hidden ambient authority |
+| Code quality | PASS_WITH_JUSTIFIED_COMPLEXITY | Spec 100/100; full normal/optimized regression green; explicit policy-pin parameters remain intentional to avoid hidden ambient authority |
 | Dependencies | PASS | Existing pinned Windows lock, SBOM, manifest, and MT5 wheel verified; no new dependency |
 | Deployment | EXTERNAL_PENDING | Deterministic clean-commit artifact not yet rebuilt; Windows ACL/host/key/custody ceremony absent |
 | Frontend | OUT_OF_SCOPE_DIRTY_USER_WORKTREE | Not staged or modified by this milestone |
@@ -94,6 +100,8 @@ launch, MT5 initialization, atau order broker.
   activation ceremony are absent.
 - Exact Windows registry/checkpoint Credential Manager authorities and ACL
   evidence are absent.
+- Scheduled V6.3 Windows proof dan independent semantic WORM custody receipt
+  belum disuplai untuk verifikasi audit ini.
 - Target-host provider-bound admission, independent WORM/CAS custody/readback,
   and registered launch-session capability are absent.
 - Central LIVE unlock ceremony has not occurred.

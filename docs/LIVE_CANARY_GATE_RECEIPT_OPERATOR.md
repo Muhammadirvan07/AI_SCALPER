@@ -20,6 +20,10 @@ mengirim order. Semua output tetap `Live allowed: false` dan
   Windows Credential Manager dan fingerprint setiap key harus persis cocok.
 - Delapan domain non-legal memerlukan delapan file evidence berbeda, dari
   owner/reviewer sebenarnya, dengan path dan byte hash yang berbeda.
+- `WORM_CUSTODY` bukan lagi file opaque. Domain ini hanya menerima ZIP bridge
+  Phillip V6 yang assessment-nya dapat direkonstruksi byte-identical dari
+  exact custody request, policy, dan receipt. SHA-256 policy harus diperoleh
+  melalui kanal independen dan dipin ulang pada setiap tahap berikutnya.
 - `LEGAL_COMPLIANCE` hanya menerima assembled broker-eligibility review yang
   masih valid dan exact regulatory observation asalnya. File legal generik
   sengaja ditolak.
@@ -54,6 +58,45 @@ $requiredUntil = [DateTimeOffset]::UtcNow.AddHours(4).ToString(
   "yyyy-MM-ddTHH:mm:ss.ffffffZ"
 )
 
+$custodyRequest = Read-Host "Path exact Phillip V6 custody-request ZIP"
+$custodyRequestSha256 = Read-Host "Exact custody-request SHA-256"
+$toolkitSourceCommit = Read-Host "Exact toolkit source commit"
+$toolkitSourceTree = Read-Host "Exact toolkit source tree"
+$wormPolicy = Read-Host "Path canonical custodian policy JSON"
+$wormPolicySha256 = Read-Host "Policy SHA-256 dari kanal independen"
+$wormReceipt = Read-Host "Path canonical signed custodian receipt JSON"
+$wormAssessment = Read-Host "Path verified Phillip V6 custody assessment JSON"
+$wormGateEvidence = Join-Path $gateRoot `
+  "phillip-v6-live-canary-worm-gate-evidence.zip"
+
+& $python -B `
+  .\prepare_phillip_v6_live_canary_worm_gate_evidence.py `
+  --custody-request $custodyRequest `
+  --expected-custody-request-sha256 $custodyRequestSha256 `
+  --expected-toolkit-source-commit $toolkitSourceCommit `
+  --expected-toolkit-source-tree $toolkitSourceTree `
+  --policy $wormPolicy `
+  --expected-policy-sha256 $wormPolicySha256 `
+  --receipt $wormReceipt `
+  --assessment $wormAssessment `
+  --output $wormGateEvidence
+if ($LASTEXITCODE -ne 0) {
+  throw "Semantic WORM gate evidence gagal; safety lock tetap aktif."
+}
+
+$observedAtUtc = [DateTimeOffset]::UtcNow.ToString(
+  "yyyy-MM-ddTHH:mm:ss.ffffffZ"
+)
+& $python -B `
+  .\verify_phillip_v6_live_canary_worm_gate_evidence.py `
+  --archive $wormGateEvidence `
+  --expected-policy-sha256 $wormPolicySha256 `
+  --observed-at-utc $observedAtUtc `
+  --required-until-utc $requiredUntil
+if ($LASTEXITCODE -ne 0) {
+  throw "Independent WORM gate verification gagal."
+}
+
 $evidence = [ordered]@{
   BACKUP_RESTORE = Read-Host "Path signed backup/restore evidence"
   FAILURE_DRILL = Read-Host "Path signed failure-drill evidence"
@@ -62,7 +105,7 @@ $evidence = [ordered]@{
   SECURITY = Read-Host "Path signed security evidence"
   SINGLE_ACCOUNT_SCOPE = Read-Host "Path signed single-account-scope evidence"
   WINDOWS_HOST = Read-Host "Path signed Windows-host evidence"
-  WORM_CUSTODY = Read-Host "Path signed WORM-custody evidence"
+  WORM_CUSTODY = $wormGateEvidence
 }
 
 $receipt = @{}
@@ -84,6 +127,12 @@ Satu operator tidak boleh mengaku sebagai sembilan authority independen.
 ```powershell
 foreach ($domain in $evidence.Keys) {
   $issuerId = Read-Host "Masukkan exact issuer ID untuk $domain"
+  $wormArgs = @()
+  if ($domain -eq "WORM_CUSTODY") {
+    $wormArgs = @(
+      "--worm-custody-policy-sha256", $wormPolicySha256
+    )
+  }
 
   & $python -B .\sign_live_canary_gate_receipt.py `
     --domain $domain `
@@ -92,6 +141,7 @@ foreach ($domain in $evidence.Keys) {
     --issuer-id $issuerId `
     --expires-at-utc $expiresAt `
     --evidence $evidence[$domain] `
+    @wormArgs `
     --output $receipt[$domain]
 
   if ($LASTEXITCODE -ne 0) {
@@ -125,13 +175,21 @@ if ($LASTEXITCODE -ne 0) {
 
 ```powershell
 foreach ($domain in $evidence.Keys) {
+  $wormArgs = @()
+  if ($domain -eq "WORM_CUSTODY") {
+    $wormArgs = @(
+      "--worm-custody-policy-sha256", $wormPolicySha256
+    )
+  }
+
   & $python -B .\verify_live_canary_gate_receipt.py `
     --domain $domain `
     --binding $binding `
     --trust-policy $policy `
     --receipt $receipt[$domain] `
     --required-until-utc $requiredUntil `
-    --evidence $evidence[$domain]
+    --evidence $evidence[$domain] `
+    @wormArgs
 
   if ($LASTEXITCODE -ne 0) {
     throw "Verification $domain gagal."
@@ -163,6 +221,7 @@ $assembleArgs = @(
   "--candidate", $candidate,
   "--eligibility-review", $eligibilityReview,
   "--regulatory-observation", $regulatoryObservation,
+  "--worm-custody-policy-sha256", $wormPolicySha256,
   "--required-until-utc", $requiredUntil,
   "--output", $receiptSet
 )
@@ -183,6 +242,7 @@ $verifyArgs = @(
   "--candidate", $candidate,
   "--eligibility-review", $eligibilityReview,
   "--regulatory-observation", $regulatoryObservation,
+  "--worm-custody-policy-sha256", $wormPolicySha256,
   "--required-until-utc", $requiredUntil
 )
 foreach ($domain in $evidence.Keys) {
