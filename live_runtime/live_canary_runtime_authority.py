@@ -1,11 +1,12 @@
 """Lightweight exact-type registry for LIVE runtime launch authority.
 
 The Windows execution release imports this module without importing the much
-larger activation, soak, custody, or asymmetric-verification graph.  The
-producer modules register their exact concrete classes once when they are
-loaded.  Consumers can then verify an already-created candidate/session by
-identity and the private session seal without opening a factory or authority
-path in the execution bundle.
+larger activation, soak, custody, or asymmetric-verification graph. Candidate
+and legacy-session producers register their concrete types; the minimal
+provider-bound consumer contract registers its v2 type directly. Consumers
+can then verify an already-created candidate/session by identity and the
+private session seal without opening a factory or assembly path in the
+execution bundle.
 """
 
 from __future__ import annotations
@@ -82,7 +83,7 @@ def _register_live_canary_provider_bound_runtime_launch_session_type(
         _seal is not _REGISTRATION_SEAL
         or type(value) is not type
         or value.__module__
-        != "live_runtime.live_canary_provider_bound_runtime_launch_session"
+        != "live_runtime.live_canary_provider_bound_runtime_session"
         or value.__name__
         != "LiveCanaryProviderBoundRuntimeLaunchSession"
     ):

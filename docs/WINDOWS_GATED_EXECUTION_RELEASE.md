@@ -62,6 +62,29 @@ release except for the exact reviewed loader/validator forms. Factory load and
 invocation also guard import hooks, compare the module registry, and re-attest
 all imported origins before returning.
 
+## Provider-bound v2 consumer closure
+
+The base release now contains the exact provider-bound LIVE launch-session v2
+consumer class required by production bootstrap. It does not contain the
+operator-side admission, custody, acceptance, source-bound, conformance, or
+activation assemblers. The release manifest binds the critical six-file
+consumer closure, while the complete service allowlist contains 55 files.
+
+After extracting an exact release, validate this closure without importing a
+provider or contacting MT5:
+
+```powershell
+python -I -S -B `
+  .\verify_windows_live_canary_provider_bound_runtime_closure.py
+```
+
+Expected output includes
+`WINDOWS_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_READY`,
+`Live allowed: false`, `Production execution ready: false`, and
+`Broker mutation: NOT_PERFORMED`. This proves only that the service can consume
+an externally assembled exact v2 session. It does not create that session,
+open the central policy, or authorize an order.
+
 ## Bounded service failure semantics
 
 The service runs each broker cycle on a bounded daemon worker so off-host

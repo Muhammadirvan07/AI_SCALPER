@@ -11,6 +11,7 @@ LIVE_CANARY_PORTABLE_CUSTODY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_RUNTIME_LAUNCH_SESSION = PASS_LOCALLY_CENTRAL_LOCKED
 LIVE_CANARY_PROVIDER_BOUND_CUSTODY_V2 = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PROVIDER_BOUND_LAUNCH_SESSION_V2 = PASS_LOCALLY_CENTRAL_LOCKED
+WINDOWS_EXECUTION_PROVIDER_BOUND_V2_CONSUMER = PASS_LOCALLY_LOCKED
 LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_PER_ORDER_GATED
 LIVE_CANARY_PER_ORDER_EXECUTION = PASS_LOCALLY_FAKE_MT5_ONE_SEND
 WINDOWS_LIVE_PROVIDER_MATERIALIZATION = PASS_LOCALLY_BROKERLESS_LOCKED
@@ -51,6 +52,10 @@ Reviewed source:
 - `live_runtime/live_canary_provider_bound_portable_custody.py`;
 - `test_live_runtime_live_canary_provider_bound_portable_custody.py`;
 - `live_runtime/live_canary_provider_bound_runtime_launch_session.py`;
+- minimal Execution consumer contract in
+  `live_runtime/live_canary_provider_bound_runtime_session.py`, its authority
+  registry binding, deterministic release closure manifest, and isolated
+  allowlist-only probe;
 - `test_live_runtime_live_canary_provider_bound_runtime_launch_session.py`;
 - `specs/live_canary_provider_bound_portable_custody_v2.md`;
 - `live_runtime/live_canary_runtime_authority.py`;
@@ -100,10 +105,10 @@ this boundary. Runtime or broker state was not accessed or mutated.
 |---|---|---|
 | Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; provider-bound custody v2 requires a separately domain-signed exact WORM readback, rejects provider/custody authority reuse, and carries the provider/host/environment/release/task/launcher closure; launch-session v2 composes the unchanged signed v1 CAS path, clamps validity to the earliest provider/custody/capability expiry, and makes every production consumer reject legacy-only v1 sessions; the one-second per-order capability still validates exact candidate/session/intent/evidence bindings; authority is rechecked around each external callback and through the immediate pre-send boundary |
 | Database | PASS_LOCAL | Exact SQLite DDL/trigger inventory, WAL, FULL sync, integrity check, HMAC chain, unique replay and authorization-consumption fields, atomic `BEGIN IMMEDIATE`, path identity, and signed off-host checkpoint verification |
-| Code quality | PASS_LOCAL | Spec-first implementation, including provider-bound custody/launch v2 at 100/100, 1,955-test normal/optimized regression, Python compile success, dependency-lock validation, and no scoped changed-file whitespace errors; Ruff was unavailable in the active development environment for this additive pass |
+| Code quality | PASS_LOCAL | Spec-first implementation, including provider-bound custody/launch v2 and the minimal Execution consumer closure at 100/100, 1,959-test normal/optimized regression, Python compile success, dependency-lock validation, and no scoped changed-file whitespace errors; Ruff was unavailable in the active development environment for this additive pass |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
-| Deployment | INCOMPLETE_EXTERNAL | Sealed legacy and provider-bound prebootstrap, provider-bound WORM custody/launch v2, per-order runtime chain, brokerless 49-port Windows LIVE materializer, deterministic four-file pack tooling, exact 15-file configured-candidate tooling, 17-member source-bound tooling, 68-record provider-conformance v4 tooling, and non-executable two-authority acceptance tooling exist locally, but the checked-in central lock is false and no exact target-host pack/configured/source-bound/v4 candidate, actual Windows callbacks, real owner/runtime signatures and evidence files, real provider-bound result, WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, or backup/restore evidence has been accepted |
+| Deployment | INCOMPLETE_EXTERNAL | Sealed legacy and provider-bound prebootstrap, provider-bound WORM custody/launch v2, the self-contained 55-file Execution base allowlist with a minimal v2 consumer contract, per-order runtime chain, brokerless 49-port Windows LIVE materializer, deterministic four-file pack tooling, exact 15-file configured-candidate tooling, 17-member source-bound tooling, 68-record provider-conformance v4 tooling, and non-executable two-authority acceptance tooling exist locally, but the checked-in central lock is false and no exact target-host pack/configured/source-bound/v4 candidate, actual Windows callbacks, real owner/runtime signatures and evidence files, real provider-bound result, WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, or backup/restore evidence has been accepted |
 | Frontend | OUTSIDE_CHANGE_SCOPE / WINDOWS_PENDING | No frontend source was changed by this milestone. The uncommitted granular pair passes 16 unit tests, lint, production build, bundle budget, npm audit with zero vulnerabilities, and 24 desktop/mobile E2E locally. Windows still lacks verified Node.js 24 LTS and an accepted matching frontend/backend launch |
 | Observability | PASS_BOUNDARY / EXTERNAL_PENDING | Canonical reason codes, pre-dispatch records, execution result bindings, and replay checkpoints exist; external uptime/alert/custody and first real canary evidence are not present |
 
@@ -143,6 +148,9 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Provider-bound custody/launch v2 spec validator (`--strict`) | 100/100; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused provider-bound custody tests | 6 PASS normal; 6 PASS optimized with one intentional nested-suite skip |
 | Focused provider-bound launch-session tests | 6 PASS normal; 6 PASS optimized with one intentional nested-suite skip |
+| Windows Execution provider-bound consumer-closure spec validator (`--strict`) | 100/100; 0 errors/warnings and one informational TypeScript-N/A note |
+| Focused consumer closure/Execution/launch integration | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
+| Cross-artifact service/tooling separation regression | 274 PASS |
 | Provider-bound launch/downstream regression | 165 PASS normal; 165 PASS optimized with seven intentional skips |
 | Provider-conformance v1-v4 compatibility cluster | 60 PASS normal; 60 PASS optimized |
 | LIVE source-bound/tooling regression cluster | 39 PASS normal; 39 PASS optimized |
@@ -153,8 +161,8 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage regression | 81 PASS in both normal and optimized modes |
-| Full Python regression | 1,955 tests OK, 3 platform skips |
-| Full Python optimized regression | 1,955 tests OK, 12 skips |
+| Full Python regression | 1,959 tests OK, 3 platform skips |
+| Full Python optimized regression | 1,959 tests OK, 12 skips |
 | Uncommitted dashboard audit | 16 unit tests, lint, production build, bundle budget, npm audit, and 24 desktop/mobile E2E PASS locally |
 | Static quality checks | Python compile, dependency lock, external-acceptance spec validation, and scoped `git diff --check` PASS; Ruff unavailable in the active environment |
 | Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` and `SAFE_TO_DEMO_AUTO_ORDER` remain false; focused tests use fake MT5 only; no credential, network, Windows task, real MT5 initialization, or broker effect occurred |
@@ -276,6 +284,14 @@ changed-source findings.
     clamp expiry, and require an exact v2 session in production bootstrap,
     supervisor, per-order authorization, and Windows materialization. V1
     canonical contracts remain verifiable but cannot satisfy the new predicate.
+19. The deterministic Execution ZIP could import its consumers but did not own
+    the exact provider-bound v2 session class; importing the producer graph
+    would have pulled privileged candidate and conformance tooling into the
+    service release. The class now lives in a minimal consumer module shared by
+    producer and runtime, registers on bootstrap import, and is exercised from
+    an allowlist-only extracted root. All operator-only modules remain outside
+    every service allowlist, and the release manifest binds the critical
+    six-file consumer closure while keeping readiness false.
 
 ## Blocking facts
 

@@ -131,6 +131,22 @@ REQUIRED_LIVE_EXECUTION_PROVIDER_FOUNDATION = (
 REQUIRED_WINDOWS_PROVIDER_PRIMITIVES = (
     "live_runtime/windows_provider_primitives.py"
 )
+REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_PROBE = (
+    "verify_windows_live_canary_provider_bound_runtime_closure.py"
+)
+REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE = frozenset(
+    {
+        "execution_policy.py",
+        "live_runtime/contracts.py",
+        "live_runtime/live_canary_provider_bound_runtime_session.py",
+        "live_runtime/live_canary_runtime_authority.py",
+        "live_runtime/production_bootstrap.py",
+        "live_runtime/windows_live_canary_execution_provider.py",
+    }
+)
+LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_SCHEMA = (
+    "windows-execution-live-canary-provider-bound-runtime-closure-v1"
+)
 REQUIRED_CONFIG = "config/windows_execution_service_allowlist.v1.json"
 REQUIRED_DEPENDENCY_FILES = {
     "pylock.windows-cp312.toml",
@@ -1129,6 +1145,8 @@ def load_execution_allowlist(path: Path) -> dict[str, Any]:
         REQUIRED_EXECUTION_PROVIDER_FOUNDATION,
         REQUIRED_LIVE_EXECUTION_PROVIDER_FOUNDATION,
         REQUIRED_WINDOWS_PROVIDER_PRIMITIVES,
+        REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_PROBE,
+        *REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE,
         REQUIRED_CONFIG,
         *REQUIRED_DEPENDENCY_FILES,
     }
@@ -1137,7 +1155,8 @@ def load_execution_allowlist(path: Path) -> dict[str, Any]:
             "execution allowlist is missing bootstrap, adapter, MT5 attestation, "
             "DEMO_AUTO IPC/risk-intent/session/soak projection/cohort foundations, "
             "readiness gate catalog, signed release-trust foundation, static factory template, "
-            "Execution provider foundation, Windows provider primitives, validator, or embedded config"
+            "Execution provider foundation, Windows provider primitives, "
+            "provider-bound LIVE consumer closure/probe, validator, or embedded config"
         )
     result = dict(payload)
     result["files"] = normalized
@@ -1319,6 +1338,46 @@ def _read_execution_sources(
     return result, expected
 
 
+def live_canary_provider_bound_runtime_closure_manifest(
+    sources: Mapping[str, bytes],
+) -> dict[str, object]:
+    """Bind the exact packaged provider-bound v2 consumer closure."""
+
+    missing = (
+        REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE - set(sources)
+    )
+    if missing:
+        raise ReleaseBuildError(
+            "provider-bound LIVE consumer closure source is missing"
+        )
+    records = [
+        {
+            "path": path_text,
+            "size_bytes": len(sources[path_text]),
+            "sha256": _sha256(sources[path_text]),
+        }
+        for path_text in sorted(
+            REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE
+        )
+    ]
+    identity_payload: dict[str, Any] = {
+        "schema_version": (
+            LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_SCHEMA
+        ),
+        "files": records,
+        "file_count": len(records),
+        "live_allowed": False,
+        "order_capability": "DISABLED",
+        "production_execution_ready": False,
+    }
+    return {
+        **identity_payload,
+        "closure_identity_sha256": _sha256(
+            _canonical_json(identity_payload)
+        ),
+    }
+
+
 def build_execution_release(
     root: Path,
     allowlist_path: Path,
@@ -1349,6 +1408,9 @@ def build_execution_release(
         raise ReleaseBuildError("execution allowlist must include itself")
     sources, primitive_inventory = _read_execution_sources(
         root, allowlist["files"], tracked, commit=commit
+    )
+    provider_bound_runtime_closure = (
+        live_canary_provider_bound_runtime_closure_manifest(sources)
     )
     allowlist["_raw_sha256"] = _sha256(sources[allowlist_relative])
     dependency_lock_summary = _validate_dependency_lock_set(sources)
@@ -1412,6 +1474,9 @@ def build_execution_release(
             "foundation": "BROKERLESS_DECISION_PRODUCER_PRESENT",
             "external_data_configuration": "REQUIRED",
         },
+        "live_canary_provider_bound_runtime_closure": (
+            provider_bound_runtime_closure
+        ),
         "foundation_status": {
             "demo_auto_ipc_consumer": (
                 "PRESENT_NON_EXECUTABLE_EXTERNAL_CONFIGURATION_REQUIRED"
@@ -1448,6 +1513,10 @@ def build_execution_release(
             "windows_service_factory_template": (
                 "PRESENT_STATIC_NON_MATERIALIZING_EXTERNAL_PROVIDER_"
                 "CONFIGURATION_REQUIRED"
+            ),
+            "live_canary_provider_bound_runtime": (
+                "PRESENT_SELF_CONTAINED_V2_CONSUMER_CLOSURE_"
+                "EXTERNAL_ASSEMBLY_WORM_CAS_AND_CENTRAL_UNLOCK_REQUIRED"
             ),
         },
         "source_files": [

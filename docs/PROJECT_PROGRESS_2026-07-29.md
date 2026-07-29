@@ -12,6 +12,12 @@ a future first XAUUSD live canary. A new provider-bound WORM custody and
 launch-session v2 boundary now closes that accepted provider evidence into the
 runtime path while forcing legacy-only v1 sessions to fail at every production
 consumer.
+The deterministic Windows Execution release now also contains a minimal,
+self-contained provider-bound v2 consumer contract and an isolated release
+probe. The authority class was extracted from operator-side activation without
+duplicating its type or seal. Candidate assemblers, source-bound verifiers,
+provider review/acceptance, admission/custody assembly, and launch activation
+remain outside the service release.
 The activation, launch, Windows provider composition,
 supervisor, execution coordinator, durable journal lease, runtime
 authorization, and final MT5 adapter chain are implemented and verified
@@ -28,6 +34,7 @@ LIVE_CANARY_PORTABLE_CUSTODY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_RUNTIME_LAUNCH_SESSION = PASS_LOCALLY_CENTRAL_LOCKED
 LIVE_CANARY_PROVIDER_BOUND_CUSTODY_V2 = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PROVIDER_BOUND_LAUNCH_SESSION_V2 = PASS_LOCALLY_CENTRAL_LOCKED
+WINDOWS_EXECUTION_PROVIDER_BOUND_V2_CONSUMER = PASS_LOCALLY_LOCKED
 LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_PER_ORDER_GATED
 LIVE_CANARY_PER_ORDER_EXECUTION = PASS_LOCALLY_FAKE_MT5_ONE_SEND
 WINDOWS_LIVE_PROVIDER_MATERIALIZATION = PASS_LOCALLY_BROKERLESS_LOCKED
@@ -211,6 +218,14 @@ LIVE_TRADING = DO_NOT_SHIP
   session; a valid v1 session, subclass, forged object, or duck type is
   rejected. The v2 session remains launch-only and cannot authorize execution
   or broker mutation.
+- Execution packaging now owns only the six-file critical consumer closure:
+  central policy, canonical contracts, lightweight authority registry, the
+  exact v2 session contract, production bootstrap, and LIVE provider
+  materializer. An allowlist-only extracted-root probe imports that closure
+  under normal and optimized isolated Python, confirms the central policy is
+  locked, and rejects an unsealed forged session. The producer module
+  re-exports the same class. All operator-only assembly/conformance modules
+  remain excluded from service allowlists.
 - The source implementation is complete locally through provider-bound
   custody and launch composition, but no target-host pack,
   configured candidate, LIVE source-bound archive, or v4 conformance packet
@@ -253,6 +268,9 @@ LIVE_TRADING = DO_NOT_SHIP
 | Provider-bound custody/launch spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused provider-bound custody suite | 6 PASS normal; 6 PASS optimized with one intentional nested-suite skip |
 | Focused provider-bound launch-session suite | 6 PASS normal; 6 PASS optimized with one intentional nested-suite skip |
+| Windows Execution provider-bound consumer-closure spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
+| Focused consumer closure/Execution/launch integration | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
+| Cross-artifact service/tooling separation regression | 274 PASS |
 | Provider-bound launch/downstream regression | 165 PASS normal; 165 PASS optimized with seven intentional skips |
 | LIVE source-bound/tooling regression cluster | 39 PASS normal; 39 PASS optimized |
 | LIVE pack/materializer/release-builder cluster | 67 PASS normal; 67 PASS optimized |
@@ -262,8 +280,8 @@ LIVE_TRADING = DO_NOT_SHIP
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,955 tests OK, 3 platform skips |
-| Full Python regression with `-O` | 1,955 tests OK, 12 skips including optimized-only nested self-tests |
+| Full Python regression | 1,959 tests OK, 3 platform skips |
+| Full Python regression with `-O` | 1,959 tests OK, 12 skips including optimized-only nested self-tests |
 | Uncommitted dashboard refactor audit | 16 unit PASS; lint, production build, bundle budget, and npm audit PASS; 24 desktop/mobile browser E2E PASS |
 | Python compile, dependency lock, JSON/spec validation, and scoped whitespace checks | PASS; Ruff unavailable in the active environment for this additive pass |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
@@ -301,7 +319,10 @@ uptime monitoring remain external work.
    and review from that sealed result; retain the owner signature and runtime
    attestation. Feed the exact raw acceptance inputs and consumed validation
    through the provider-bound prebootstrap assessment; do not replay a prior
-   acceptance JSON or hash. Local tests use synthetic values only.
+   acceptance JSON or hash. Rebuild the 55-file Execution base release from
+   the resulting exact committed tree and run its isolated provider-bound v2
+   consumer probe before assembling downstream candidates. Local tests use
+   synthetic values only.
 7. Provision the real independent WORM readback and atomic CAS/nonce custody,
    retain the predecessor pin through an independent channel, and collect the
    canonical RSA receipts this local boundary expects. From an exact committed

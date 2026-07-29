@@ -41,6 +41,7 @@
     "live_runtime/journal.py",
     "live_runtime/journal_integrity.py",
     "live_runtime/live_canary_order_authorization.py",
+    "live_runtime/live_canary_provider_bound_runtime_session.py",
     "live_runtime/live_canary_runtime_authority.py",
     "live_runtime/live_grade_gate_catalog.py",
     "live_runtime/manual_demo_tracker.py",
@@ -74,6 +75,7 @@
     "requirements-live-windows.txt",
     "requirements-windows-cp312.lock.txt",
     "run_windows_gated_execution_service.py",
-    "validate_windows_gated_execution_service.py"
+    "validate_windows_gated_execution_service.py",
+    "verify_windows_live_canary_provider_bound_runtime_closure.py"
   ]
 }

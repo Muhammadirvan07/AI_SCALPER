@@ -36,12 +36,15 @@ Max lot: 0.01
 1. Gunakan clean checkout pada exact commit yang sudah direview.
 2. Bangun dan verifikasi atomic five-role base suite dari commit tersebut.
 3. Gunakan `execution-base-v1.zip` yang berada di suite yang sama.
-4. Buat canonical secret-free input sesuai
+4. Ekstrak salinan verifikasi Execution base dan jalankan
+   `verify_windows_live_canary_provider_bound_runtime_closure.py` memakai
+   `python -I -S -B`; hasil harus READY tetapi tetap locked.
+5. Buat canonical secret-free input sesuai
    `specs/windows_live_canary_execution_provider_pack_v1.md`.
-5. Jangan menaruh password, login, token, private key, permit, atau arm flag di
+6. Jangan menaruh password, login, token, private key, permit, atau arm flag di
    input. Hanya referensi Credential Manager dan fingerprint non-secret yang
    boleh masuk.
-6. Gunakan destination baru. Tooling menolak overwrite, symlink/reparse,
+7. Gunakan destination baru. Tooling menolak overwrite, symlink/reparse,
    file tambahan, dan output yang berubah.
 
 ## Generate dan validate

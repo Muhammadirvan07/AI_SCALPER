@@ -14,7 +14,10 @@ import zipfile
 import build_windows_execution_release as execution_release_builder
 from build_windows_execution_release import (
     DEFAULT_ALLOWLIST,
+    LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_SCHEMA,
     READINESS_BLOCKERS,
+    REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE,
+    REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_PROBE,
     REQUIRED_SAFETY,
     REQUIRED_USAGE_POLICY,
     ReleaseBuildError,
@@ -22,6 +25,7 @@ from build_windows_execution_release import (
     _read_execution_sources,
     _validate_dependency_lock_set,
     build_execution_release,
+    live_canary_provider_bound_runtime_closure_manifest,
     load_execution_allowlist,
 )
 from live_runtime.signed_release_trust import (
@@ -164,6 +168,17 @@ class WindowsExecutionReleaseBuilderTests(unittest.TestCase):
             "PRODUCTION_EXECUTION_READY = False\n",
             encoding="utf-8",
         )
+        for relative in sorted(
+            REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE
+        ):
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists():
+                path.write_text("VALUE = 1\n", encoding="utf-8")
+        (root / REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_PROBE).write_text(
+            "VALUE = 1\n",
+            encoding="utf-8",
+        )
         (root / "validate_windows_gated_execution_service.py").write_text(
             validator_source, encoding="utf-8"
         )
@@ -215,6 +230,11 @@ version = "1.0"
             "requirements-windows-cp312.lock.txt",
             "validate_windows_gated_execution_service.py",
         ]
+        files = sorted(
+            set(files)
+            | set(REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE)
+            | {REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_PROBE}
+        )
         if include_helper:
             files.append("helper.py")
         for relative, source in (extra_files or {}).items():
@@ -277,13 +297,51 @@ version = "1.0"
                         "requirements-live-windows.txt",
                         "requirements-windows-cp312.lock.txt",
                         "validate_windows_gated_execution_service.py",
+                    }
+                    | set(
+                        REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE
+                    )
+                    | {
+                        REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_PROBE
                     },
                     set(archive.namelist()),
                 )
                 manifest = json.loads(archive.read(MANIFEST_MEMBER))
+                closure_sources = {
+                    path: archive.read(path)
+                    for path in (
+                        REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE
+                    )
+                }
             self.assertEqual(REQUIRED_SAFETY, manifest["safety"])
             self.assertEqual(REQUIRED_USAGE_POLICY, manifest["usage_policy"])
             self.assertFalse(manifest["production_execution_ready"])
+            closure = manifest[
+                "live_canary_provider_bound_runtime_closure"
+            ]
+            self.assertEqual(
+                LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_SCHEMA,
+                closure["schema_version"],
+            )
+            self.assertEqual(
+                len(REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE),
+                closure["file_count"],
+            )
+            self.assertEqual(
+                sorted(
+                    REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE
+                ),
+                [item["path"] for item in closure["files"]],
+            )
+            self.assertFalse(closure["live_allowed"])
+            self.assertFalse(closure["production_execution_ready"])
+            self.assertEqual("DISABLED", closure["order_capability"])
+            self.assertEqual(
+                live_canary_provider_bound_runtime_closure_manifest(
+                    closure_sources
+                ),
+                closure,
+            )
             self.assertEqual(list(READINESS_BLOCKERS), manifest["readiness_blockers"])
             self.assertEqual(
                 sorted(READINESS_BLOCKERS),
@@ -725,6 +783,15 @@ def hidden_sender(self, name):
             "live_runtime/windows_live_canary_execution_provider.py",
             allowlist["files"],
         )
+        self.assertTrue(
+            REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE.issubset(
+                allowlist["files"]
+            )
+        )
+        self.assertIn(
+            REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_PROBE,
+            allowlist["files"],
+        )
         self.assertNotIn(
             "live_runtime/brokerless_decision_producer.py",
             allowlist["files"],
@@ -733,9 +800,41 @@ def hidden_sender(self, name):
             ["order_check", "order_send"],
             [item["primitive"] for item in inventory],
         )
+        closure = live_canary_provider_bound_runtime_closure_manifest(
+            sources
+        )
+        self.assertEqual(
+            len(REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE),
+            closure["file_count"],
+        )
+        self.assertFalse(closure["production_execution_ready"])
         dependency_summary = _validate_dependency_lock_set(sources)
         self.assertEqual(5, dependency_summary["direct_requirement_count"])
         self.assertEqual(14, dependency_summary["resolved_package_count"])
+
+    def test_provider_bound_consumer_closure_identity_is_byte_derived(self):
+        sources = {
+            path: f"{path}\n".encode("utf-8")
+            for path in REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE
+        }
+        baseline = live_canary_provider_bound_runtime_closure_manifest(sources)
+        changed_sources = dict(sources)
+        changed_path = min(changed_sources)
+        changed_sources[changed_path] += b"changed\n"
+        changed = live_canary_provider_bound_runtime_closure_manifest(
+            changed_sources
+        )
+        self.assertNotEqual(
+            baseline["closure_identity_sha256"],
+            changed["closure_identity_sha256"],
+        )
+        missing = dict(sources)
+        missing.pop(changed_path)
+        with self.assertRaisesRegex(
+            ReleaseBuildError,
+            "consumer closure source is missing",
+        ):
+            live_canary_provider_bound_runtime_closure_manifest(missing)
 
     def test_validator_is_deny_by_default_and_never_claims_readiness(self):
         report = validate_gated_execution_ports()

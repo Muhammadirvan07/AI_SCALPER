@@ -43,8 +43,10 @@ from .journal_integrity import (
 )
 from .live_canary_runtime_authority import (
     LiveCanaryRuntimeLaunchSessionError,
-    is_live_canary_provider_bound_runtime_launch_session,
     is_live_canary_runtime_candidate,
+)
+from .live_canary_provider_bound_runtime_session import (
+    is_live_canary_provider_bound_runtime_launch_session,
 )
 from .live_canary_order_authorization import (
     LiveCanaryOrderAuthorization,
