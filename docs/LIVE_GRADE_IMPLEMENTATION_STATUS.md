@@ -164,9 +164,15 @@ menyusun provider secara terurut, memvalidasi heartbeat, dan mengembalikan
 `WindowsServiceFactoryResult` tersegel dengan `mt5_module=None`. Ia tidak
 mengimpor/menginisialisasi MT5, tidak memasang task, tidak mengirim jaringan,
 dan tidak menyentuh broker. Dengan central lock checked-in tetap false,
-materialisasi production juga tetap tertolak. Deterministic provider ZIP,
+materialisasi production juga tetap tertolak. Tooling deterministic provider
+pack kini menghasilkan dan memvalidasi tepat empat file secret-free yang
+terikat exact atomic-suite/Execution-base, 49 provider, 12 credential
+reference, implementation hash, dan configuration hash. Tooling tidak
+mengimpor provider, membaca credential, membuka SQLite, memulai process,
+menginisialisasi MT5, mengakses network, memasang task, atau menyentuh broker.
+Actual target-host pack belum dibangun dari commit Windows yang diterima;
 suite-bound configured candidate, concrete Windows providers, source-bound
-release, dan external conformance receipt belum dibuat pada milestone ini.
+release, dan external conformance receipt masih belum ada.
 
 Dashboard operasional sekarang merupakan source yang dilacak dan telah
 dipublikasikan sebagai boundary read-only terpisah. FastAPI hanya menyediakan

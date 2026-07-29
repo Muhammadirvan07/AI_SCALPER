@@ -65,6 +65,7 @@
     "live_runtime/soak_tracker.py",
     "live_runtime/stage_authorization.py",
     "live_runtime/windows_execution_provider_pack.py",
+    "live_runtime/windows_live_canary_execution_provider.py",
     "live_runtime/windows_execution_production_config_source.py",
     "live_runtime/windows_provider_primitives.py",
     "live_runtime/windows_service_entrypoint.py",

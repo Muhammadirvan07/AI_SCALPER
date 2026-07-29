@@ -14,13 +14,12 @@ import ast
 import json
 from pathlib import Path, PurePosixPath
 import re
-import stat
 import sys
 from typing import Any, Iterable, Mapping
 
 from build_windows_release import (
     ALLOWLIST_FIELDS,
-    MANIFEST_MEMBER,
+    MANIFEST_MEMBER,  # noqa: F401 - stable public re-export for tooling tests
     MAX_SOURCE_FILE_BYTES,
     MAX_TOTAL_SOURCE_BYTES,
     ReleaseBuildError,
@@ -104,12 +103,14 @@ APPROVED_SOURCE_PATHS = frozenset(
         "prepare_windows_configured_overlay_candidate.py",
         "prepare_windows_decision_provider_pack.py",
         "prepare_windows_execution_provider_pack.py",
+        "prepare_windows_live_canary_execution_provider_pack.py",
         "prepare_windows_execution_production_config_source.py",
         "prepare_windows_execution_source_bound_candidate.py",
         "prepare_windows_status_monitor_provider_pack.py",
         "verify_windows_configured_service_release.py",
         "validate_windows_decision_provider_pack.py",
         "validate_windows_execution_provider_pack.py",
+        "validate_windows_live_canary_execution_provider_pack.py",
         "validate_windows_status_monitor_provider_pack.py",
         "validate_windows_decision_configured_candidate.py",
         "validate_windows_execution_configured_candidate.py",

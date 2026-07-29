@@ -150,6 +150,15 @@ class WindowsExecutionReleaseBuilderTests(unittest.TestCase):
             "PRODUCTION_EXECUTION_READY = False\n",
             encoding="utf-8",
         )
+        (
+            root
+            / "live_runtime"
+            / "windows_live_canary_execution_provider.py"
+        ).write_text(
+            "ORDER_CAPABILITY = 'DISABLED'\n"
+            "PRODUCTION_EXECUTION_READY = False\n",
+            encoding="utf-8",
+        )
         (root / "live_runtime" / "windows_provider_primitives.py").write_text(
             "ORDER_CAPABILITY = 'DISABLED'\n"
             "PRODUCTION_EXECUTION_READY = False\n",
@@ -198,6 +207,7 @@ version = "1.0"
             "live_runtime/signed_release_trust.py",
             "live_runtime/soak_tracker.py",
             "live_runtime/windows_execution_provider_pack.py",
+            "live_runtime/windows_live_canary_execution_provider.py",
             "live_runtime/windows_provider_primitives.py",
             "live_runtime/windows_service_factory_template.py",
             "pylock.windows-cp312.toml",
@@ -260,6 +270,7 @@ version = "1.0"
                         "live_runtime/signed_release_trust.py",
                         "live_runtime/soak_tracker.py",
                         "live_runtime/windows_execution_provider_pack.py",
+                        "live_runtime/windows_live_canary_execution_provider.py",
                         "live_runtime/windows_provider_primitives.py",
                         "live_runtime/windows_service_factory_template.py",
                         "pylock.windows-cp312.toml",
@@ -708,6 +719,10 @@ def hidden_sender(self, name):
         )
         self.assertIn(
             "live_runtime/live_grade_gate_catalog.py",
+            allowlist["files"],
+        )
+        self.assertIn(
+            "live_runtime/windows_live_canary_execution_provider.py",
             allowlist["files"],
         )
         self.assertNotIn(

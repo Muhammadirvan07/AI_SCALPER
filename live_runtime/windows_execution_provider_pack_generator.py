@@ -28,7 +28,10 @@ from .windows_base_release_suite import (
     suite_binding_for_base_archive,
     verify_base_release_suite,
 )
-from .windows_service_factory_template import provider_contracts
+from .windows_service_factory_template import (
+    ExternalProviderContract,
+    provider_contracts,
+)
 
 
 PACK_INPUT_SCHEMA = "windows-execution-provider-pack-input-v1"
@@ -36,10 +39,21 @@ PACK_VALIDATION_SCHEMA = (
     "windows-execution-provider-pack-validation-v1"
 )
 PACK_STATUS = "EXTERNAL_PROVIDER_ACCEPTANCE_REQUIRED"
+LIVE_PACK_INPUT_SCHEMA = (
+    "windows-live-canary-execution-provider-pack-input-v1"
+)
+LIVE_PACK_VALIDATION_SCHEMA = (
+    "windows-live-canary-execution-provider-pack-validation-v1"
+)
+LIVE_PACK_STATUS = "EXTERNAL_LIVE_PROVIDER_ACCEPTANCE_REQUIRED"
 EXECUTION_PROFILE = "WINDOWS_GATED_EXECUTION_SERVICE_V1"
 FOUNDATION_PATHS = (
     "live_runtime/windows_execution_provider_pack.py",
     "live_runtime/windows_provider_primitives.py",
+)
+LIVE_FOUNDATION_PATHS = (
+    "live_runtime/windows_live_canary_execution_provider.py",
+    *FOUNDATION_PATHS,
 )
 GENERATED_PATHS = (
     "config/windows_service_config.json",
@@ -59,6 +73,9 @@ PRODUCTION_EXECUTION_READY = False
 EXECUTION_CREDENTIAL_TARGET_PREFIX = (
     "AI_SCALPER/WINDOWS_SERVICE/EXECUTION"
 )
+LIVE_EXECUTION_CREDENTIAL_TARGET_PREFIX = (
+    "AI_SCALPER/WINDOWS_SERVICE/LIVE_EXECUTION"
+)
 
 _CONTRACTS = provider_contracts()
 EXECUTION_PROVIDER_ROLES = tuple(
@@ -69,6 +86,108 @@ EXECUTION_CREDENTIAL_PURPOSES = tuple(
     for item in _CONTRACTS
     if item.credential_purpose is not None
 )
+
+
+def _live_contracts() -> tuple[ExternalProviderContract, ...]:
+    result: list[ExternalProviderContract] = []
+    for contract in _CONTRACTS:
+        if contract.port_name == "credential_session_provider":
+            result.append(
+                ExternalProviderContract(
+                    port_name=contract.port_name,
+                    provider_kind=contract.provider_kind,
+                    call_contract=contract.call_contract,
+                    required=contract.required,
+                    credential_purpose="MT5_LIVE_SESSION",
+                )
+            )
+        elif contract.port_name == "stage_binding":
+            result.append(
+                ExternalProviderContract(
+                    port_name=contract.port_name,
+                    provider_kind=contract.provider_kind,
+                    call_contract="None",
+                    required=False,
+                    credential_purpose=None,
+                )
+            )
+        elif contract.port_name == "promotion_evidence_key_provider":
+            result.append(
+                ExternalProviderContract(
+                    port_name=contract.port_name,
+                    provider_kind=contract.provider_kind,
+                    call_contract="Callable[[str], str|bytes]",
+                    required=True,
+                    credential_purpose=contract.credential_purpose,
+                )
+            )
+        else:
+            result.append(contract)
+    result.extend(
+        (
+            ExternalProviderContract(
+                port_name="live_prepared_order_provider",
+                provider_kind="CALLABLE",
+                call_contract=(
+                    "Callable[[RuntimeSupervisorDecision],"
+                    "LiveCanaryPreparedOrder]"
+                ),
+                required=True,
+                credential_purpose=None,
+            ),
+            ExternalProviderContract(
+                port_name="live_order_authorization_provider",
+                provider_kind="CALLABLE",
+                call_contract="Callable[...,LiveCanaryOrderAuthorization]",
+                required=True,
+                credential_purpose=None,
+            ),
+            ExternalProviderContract(
+                port_name="live_execution_cycle_provider",
+                provider_kind="CALLABLE",
+                call_contract=(
+                    "Callable[...,RuntimeLiveCanaryExecutionResult]"
+                ),
+                required=True,
+                credential_purpose=None,
+            ),
+        )
+    )
+    return tuple(result)
+
+
+_LIVE_CONTRACTS = _live_contracts()
+LIVE_EXECUTION_PROVIDER_ROLES = tuple(
+    item.port_name for item in _LIVE_CONTRACTS
+)
+LIVE_EXECUTION_CREDENTIAL_PURPOSES = tuple(
+    item.credential_purpose
+    for item in _LIVE_CONTRACTS
+    if item.credential_purpose is not None
+)
+_LIVE_FORBIDDEN_PROVIDER_PORTS = frozenset(
+    {
+        "stage_binding",
+        "manual_approval_key_provider",
+        "demo_auto_ipc_input_provider",
+        "demo_auto_session_lease_provider",
+        "demo_auto_session_store",
+        "demo_auto_permit_validation_provider",
+        "demo_auto_promotion_validation_provider",
+        "demo_auto_environment_arm_provider",
+        "demo_auto_execution_cycle_provider",
+    }
+)
+if (
+    len(_LIVE_CONTRACTS) != 49
+    or len(LIVE_EXECUTION_CREDENTIAL_PURPOSES) != 12
+    or sum(item.required for item in _LIVE_CONTRACTS) != 40
+    or {
+        item.port_name for item in _LIVE_CONTRACTS if not item.required
+    }
+    != _LIVE_FORBIDDEN_PROVIDER_PORTS
+):
+    raise RuntimeError("Windows LIVE provider-pack contract invariant drift")
 
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -194,6 +313,12 @@ _PROVIDER_IMPORTS = frozenset(
     {
         "json",
         "live_runtime.windows_execution_provider_pack",
+    }
+)
+_LIVE_PROVIDER_IMPORTS = frozenset(
+    {
+        "json",
+        "live_runtime.windows_live_canary_execution_provider",
     }
 )
 _RESULT_SEAL = object()
@@ -340,6 +465,93 @@ class WindowsExecutionProviderPackValidation:
         ):
             raise ValueError(
                 "execution provider pack validation safety drift"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class WindowsLiveCanaryExecutionProviderPackValidation:
+    """Pure-data receipt for one exact, deny-only LIVE provider pack."""
+
+    output_root: str
+    pack_id: str
+    pack_identity_sha256: str
+    base_suite_identity_sha256: str
+    execution_base_release_identity_sha256: str
+    provider_configuration_sha256: str
+    service_config_file_sha256: str
+    file_sha256: tuple[tuple[str, str], ...]
+    provider_count: int
+    credential_reference_count: int
+    status: str = LIVE_PACK_STATUS
+    provider_accepted: bool = False
+    provider_materialized: bool = False
+    credential_access_performed: bool = False
+    sqlite_open_performed: bool = False
+    provider_request_performed: bool = False
+    runtime_process_started: bool = False
+    mt5_initialized: bool = False
+    network_access_performed: bool = False
+    task_installation_performed: bool = False
+    broker_mutation_performed: bool = False
+    production_execution_ready: bool = False
+    order_capability: str = ORDER_CAPABILITY
+    live_allowed: bool = LIVE_ALLOWED
+    safe_to_demo_auto_order: bool = SAFE_TO_DEMO_AUTO_ORDER
+    max_lot: float = MAX_LOT
+    promotion_eligible: bool = PROMOTION_ELIGIBLE
+    schema_version: str = LIVE_PACK_VALIDATION_SCHEMA
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _RESULT_SEAL:
+            raise TypeError(
+                "LIVE execution provider pack validation requires seal"
+            )
+        hashes = (
+            self.pack_identity_sha256,
+            self.base_suite_identity_sha256,
+            self.execution_base_release_identity_sha256,
+            self.provider_configuration_sha256,
+            self.service_config_file_sha256,
+        )
+        if (
+            type(self.output_root) is not str
+            or not self.output_root
+            or _ID.fullmatch(self.pack_id) is None
+            or any(
+                _HASH.fullmatch(value) is None or value == "0" * 64
+                for value in hashes
+            )
+            or tuple(path for path, _value in self.file_sha256)
+            != GENERATED_PATHS
+            or any(
+                _HASH.fullmatch(value) is None
+                for _path, value in self.file_sha256
+            )
+            or self.provider_count != len(LIVE_EXECUTION_PROVIDER_ROLES)
+            or self.credential_reference_count
+            != len(LIVE_EXECUTION_CREDENTIAL_PURPOSES)
+            or self.status != LIVE_PACK_STATUS
+            or self.provider_accepted is not False
+            or self.provider_materialized is not False
+            or self.credential_access_performed is not False
+            or self.sqlite_open_performed is not False
+            or self.provider_request_performed is not False
+            or self.runtime_process_started is not False
+            or self.mt5_initialized is not False
+            or self.network_access_performed is not False
+            or self.task_installation_performed is not False
+            or self.broker_mutation_performed is not False
+            or self.production_execution_ready is not False
+            or self.order_capability != ORDER_CAPABILITY
+            or self.live_allowed is not False
+            or self.safe_to_demo_auto_order is not False
+            or self.max_lot != MAX_LOT
+            or self.promotion_eligible is not False
+            or self.schema_version != LIVE_PACK_VALIDATION_SCHEMA
+        ):
+            raise ValueError(
+                "LIVE execution provider pack validation safety drift"
             )
 
 
@@ -537,6 +749,7 @@ def _credential_references(
     value: object,
     *,
     target_prefix: str,
+    credential_purposes: tuple[str, ...] = EXECUTION_CREDENTIAL_PURPOSES,
 ) -> tuple[StaticExecutionCredentialReference, ...]:
     if type(value) is not list:
         raise ExecutionProviderPackError(
@@ -592,9 +805,9 @@ def _credential_references(
         )
     result = tuple(references)
     if (
-        len(result) != len(EXECUTION_CREDENTIAL_PURPOSES)
+        len(result) != len(credential_purposes)
         or tuple(item.purpose for item in result)
-        != EXECUTION_CREDENTIAL_PURPOSES
+        != credential_purposes
     ):
         raise ExecutionProviderPackError(
             "EXECUTION_CREDENTIAL_PURPOSE_SET_INVALID"
@@ -622,6 +835,8 @@ def _static_provider_bindings(
     value: object,
     *,
     references: tuple[StaticExecutionCredentialReference, ...],
+    contracts: tuple[ExternalProviderContract, ...] = _CONTRACTS,
+    provider_roles: tuple[str, ...] = EXECUTION_PROVIDER_ROLES,
 ) -> tuple[StaticExecutionProviderBinding, ...]:
     if type(value) is not list:
         raise ExecutionProviderPackError(
@@ -673,9 +888,9 @@ def _static_provider_bindings(
         )
     result = tuple(bindings)
     if (
-        len(result) != len(_CONTRACTS)
+        len(result) != len(contracts)
         or tuple(item.port_name for item in result)
-        != EXECUTION_PROVIDER_ROLES
+        != provider_roles
     ):
         raise ExecutionProviderPackError(
             "EXECUTION_PROVIDER_BINDING_SET_INVALID"
@@ -687,7 +902,7 @@ def _static_provider_bindings(
     references_by_id = {
         item.reference_id: item for item in references
     }
-    for binding, contract in zip(result, _CONTRACTS, strict=True):
+    for binding, contract in zip(result, contracts, strict=True):
         if (
             binding.provider_kind != contract.provider_kind
             or binding.contract_sha256 != contract.contract_sha256
@@ -774,6 +989,88 @@ def static_windows_execution_provider_configuration_from_dict(
             "EXECUTION_PROVIDER_CONFIGURATION_INVALID",
         ),
         credential_target_prefix=EXECUTION_CREDENTIAL_TARGET_PREFIX,
+        credential_references=references,
+        provider_bindings=bindings,
+        clock_binding=clock,
+        clock_attestation_path=_windows_file_path(
+            raw["clock_attestation_path"]
+        ),
+        content_sha256=canonical_sha256(raw),
+    )
+
+
+def static_windows_live_canary_execution_provider_configuration_from_dict(
+    payload: Mapping[str, object],
+) -> StaticWindowsExecutionProviderConfiguration:
+    """Validate one LIVE configuration without importing runtime code."""
+
+    raw = _mapping(
+        payload,
+        _PROVIDER_CONFIGURATION_FIELDS,
+        "LIVE_EXECUTION_PROVIDER_CONFIGURATION_FIELDS_INVALID",
+    )
+    if (
+        raw["schema_version"]
+        != "windows-live-canary-execution-provider-configuration-v1"
+        or raw["runtime_mode"] != "LIVE"
+        or raw["credential_target_prefix"]
+        != LIVE_EXECUTION_CREDENTIAL_TARGET_PREFIX
+        or raw["live_allowed"] is not False
+        or raw["safe_to_demo_auto_order"] is not False
+        or raw["production_execution_ready"] is not False
+        or raw["promotion_eligible"] is not False
+        or raw["order_capability"] != ORDER_CAPABILITY
+        or type(raw["max_lot"]) is not float
+        or raw["max_lot"] != MAX_LOT
+    ):
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_CONFIGURATION_INVALID"
+        )
+    pack_id = _identifier(
+        raw["pack_id"],
+        "LIVE_EXECUTION_PROVIDER_CONFIGURATION_INVALID",
+    )
+    references = _credential_references(
+        raw["credential_references"],
+        target_prefix=LIVE_EXECUTION_CREDENTIAL_TARGET_PREFIX,
+        credential_purposes=LIVE_EXECUTION_CREDENTIAL_PURPOSES,
+    )
+    bindings = _static_provider_bindings(
+        raw["provider_bindings"],
+        references=references,
+        contracts=_LIVE_CONTRACTS,
+        provider_roles=LIVE_EXECUTION_PROVIDER_ROLES,
+    )
+    clock = _clock_binding(raw["clock_binding"])
+    if (
+        clock["authority_key_id"].casefold()
+        in {item.key_id.casefold() for item in references}
+        or clock["authority_key_fingerprint_sha256"]
+        in {item.fingerprint_sha256 for item in references}
+    ):
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_CLOCK_CREDENTIAL_DOMAIN_COLLISION"
+        )
+    return StaticWindowsExecutionProviderConfiguration(
+        pack_id=pack_id,
+        runtime_mode="LIVE",
+        base_suite_identity_sha256=_hash(
+            raw["base_suite_identity_sha256"],
+            "LIVE_EXECUTION_PROVIDER_CONFIGURATION_INVALID",
+        ),
+        execution_base_release_identity_sha256=_hash(
+            raw["execution_base_release_identity_sha256"],
+            "LIVE_EXECUTION_PROVIDER_CONFIGURATION_INVALID",
+        ),
+        production_config_sha256=_hash(
+            raw["production_config_sha256"],
+            "LIVE_EXECUTION_PROVIDER_CONFIGURATION_INVALID",
+        ),
+        service_config_file_sha256=_hash(
+            raw["service_config_file_sha256"],
+            "LIVE_EXECUTION_PROVIDER_CONFIGURATION_INVALID",
+        ),
+        credential_target_prefix=LIVE_EXECUTION_CREDENTIAL_TARGET_PREFIX,
         credential_references=references,
         provider_bindings=bindings,
         clock_binding=clock,
@@ -946,6 +1243,32 @@ def _provider_core(value: object) -> dict[str, Any]:
     return core
 
 
+def _live_provider_core(value: object) -> dict[str, Any]:
+    core = _mapping(
+        value,
+        _PROVIDER_CORE_FIELDS,
+        "LIVE_EXECUTION_PROVIDER_CONFIGURATION_INVALID",
+    )
+    if (
+        core["schema_version"]
+        != "windows-live-canary-execution-provider-configuration-v1"
+        or core["runtime_mode"] != "LIVE"
+        or core["credential_target_prefix"]
+        != LIVE_EXECUTION_CREDENTIAL_TARGET_PREFIX
+        or core["live_allowed"] is not False
+        or core["safe_to_demo_auto_order"] is not False
+        or core["production_execution_ready"] is not False
+        or core["promotion_eligible"] is not False
+        or core["order_capability"] != ORDER_CAPABILITY
+        or type(core["max_lot"]) is not float
+        or core["max_lot"] != MAX_LOT
+    ):
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_CONFIGURATION_INVALID"
+        )
+    return core
+
+
 def _validated_input(value: object) -> dict[str, Any]:
     root = _mapping(
         value,
@@ -966,10 +1289,31 @@ def _validated_input(value: object) -> dict[str, Any]:
     }
 
 
+def _validated_live_input(value: object) -> dict[str, Any]:
+    root = _mapping(
+        value,
+        _INPUT_FIELDS,
+        "LIVE_EXECUTION_PROVIDER_PACK_INPUT_INVALID",
+    )
+    if root["schema_version"] != LIVE_PACK_INPUT_SCHEMA:
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_PACK_INPUT_INVALID"
+        )
+    _reject_sensitive(root)
+    return {
+        "schema_version": LIVE_PACK_INPUT_SCHEMA,
+        "provider_configuration": _live_provider_core(
+            root["provider_configuration"]
+        ),
+        "service_config": _service_config(root["service_config"]),
+    }
+
+
 def _verify_suite_and_foundation(
     *,
     base_suite_root: str | Path,
     execution_base_release: str | Path,
+    foundation_paths: tuple[str, ...] = FOUNDATION_PATHS,
 ) -> tuple[
     VerifiedBaseReleaseSuite,
     VerifiedBaseReleaseSuiteRole,
@@ -1015,7 +1359,7 @@ def _verify_suite_and_foundation(
             io.BytesIO(archive_bytes),
             "r",
         ) as archive:
-            for relative in FOUNDATION_PATHS:
+            for relative in foundation_paths:
                 matches = [
                     item
                     for item in archive.infolist()
@@ -1062,8 +1406,12 @@ def _verify_suite_and_foundation(
 
 def _implementation_hashes(
     foundation_files: Mapping[str, bytes],
+    *,
+    foundation_paths: tuple[str, ...] = FOUNDATION_PATHS,
+    provider_roles: tuple[str, ...] = EXECUTION_PROVIDER_ROLES,
+    schema_version: str = "windows-execution-provider-implementation-v1",
 ) -> dict[str, str]:
-    if set(foundation_files) != set(FOUNDATION_PATHS):
+    if set(foundation_files) != set(foundation_paths):
         raise ExecutionProviderPackError(
             "EXECUTION_PROVIDER_FOUNDATION_MISSING"
         )
@@ -1072,24 +1420,24 @@ def _implementation_hashes(
             "path": path,
             "sha256": _sha256(foundation_files[path]),
         }
-        for path in FOUNDATION_PATHS
+        for path in foundation_paths
     ]
     return {
         role: canonical_sha256(
             {
                 "foundation_files": inventory,
                 "role": role,
-                "schema_version": (
-                    "windows-execution-provider-implementation-v1"
-                ),
+                "schema_version": schema_version,
             }
         )
-        for role in EXECUTION_PROVIDER_ROLES
+        for role in provider_roles
     }
 
 
 def _credential_by_purpose(
     references: object,
+    *,
+    credential_purposes: tuple[str, ...] = EXECUTION_CREDENTIAL_PURPOSES,
 ) -> dict[str, str]:
     if type(references) is not list:
         raise ExecutionProviderPackError(
@@ -1112,7 +1460,7 @@ def _credential_by_purpose(
                 "EXECUTION_CREDENTIAL_REFERENCE_SET_INVALID"
             )
         result[purpose] = reference_id
-    if tuple(result) != EXECUTION_CREDENTIAL_PURPOSES:
+    if tuple(result) != credential_purposes:
         raise ExecutionProviderPackError(
             "EXECUTION_CREDENTIAL_REFERENCE_SET_INVALID"
         )
@@ -1123,22 +1471,37 @@ def _provider_bindings(
     *,
     core: Mapping[str, Any],
     foundation_files: Mapping[str, bytes],
+    contracts: tuple[ExternalProviderContract, ...] = _CONTRACTS,
+    provider_roles: tuple[str, ...] = EXECUTION_PROVIDER_ROLES,
+    credential_purposes: tuple[str, ...] = EXECUTION_CREDENTIAL_PURPOSES,
+    foundation_paths: tuple[str, ...] = FOUNDATION_PATHS,
+    implementation_schema: str = (
+        "windows-execution-provider-implementation-v1"
+    ),
+    role_configuration_schema: str = (
+        "windows-execution-provider-role-config-v1"
+    ),
+    provider_id_prefix: str = "execution-provider",
 ) -> list[dict[str, Any]]:
-    implementations = _implementation_hashes(foundation_files)
+    implementations = _implementation_hashes(
+        foundation_files,
+        foundation_paths=foundation_paths,
+        provider_roles=provider_roles,
+        schema_version=implementation_schema,
+    )
     credentials = _credential_by_purpose(
-        core["credential_references"]
+        core["credential_references"],
+        credential_purposes=credential_purposes,
     )
     result: list[dict[str, Any]] = []
-    for index, contract in enumerate(_CONTRACTS, start=1):
+    for index, contract in enumerate(contracts, start=1):
         result.append(
             {
                 "configuration_sha256": canonical_sha256(
                     {
                         "provider_configuration": core,
                         "role": contract.port_name,
-                        "schema_version": (
-                            "windows-execution-provider-role-config-v1"
-                        ),
+                        "schema_version": role_configuration_schema,
                     }
                 ),
                 "contract_sha256": contract.contract_sha256,
@@ -1151,7 +1514,7 @@ def _provider_bindings(
                     contract.port_name
                 ],
                 "port_name": contract.port_name,
-                "provider_id": f"execution-provider-{index:02d}",
+                "provider_id": f"{provider_id_prefix}-{index:02d}",
                 "provider_kind": contract.provider_kind,
             }
         )
@@ -1270,6 +1633,130 @@ def _generated_files(
     return files, configuration
 
 
+def _live_provider_module_bytes(
+    configuration: Mapping[str, Any],
+) -> bytes:
+    payload = json.dumps(
+        configuration,
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return (
+        '"""Generated non-secret Windows LIVE Execution configuration."""\n'
+        "\n"
+        "import json\n"
+        "\n"
+        "from live_runtime.windows_live_canary_execution_provider import (\n"
+        "    build_windows_live_canary_execution_factory_result,\n"
+        "    windows_live_canary_execution_provider_configuration_from_dict,\n"
+        ")\n"
+        "\n"
+        f"_PROVIDER_CONFIGURATION_JSON = {payload!r}\n"
+        "\n"
+        "\n"
+        "def build_execution_factory(runtime_config, context):\n"
+        "    provider_config = (\n"
+        "        windows_live_canary_execution_provider_configuration_from_dict(\n"
+        "            json.loads(_PROVIDER_CONFIGURATION_JSON)\n"
+        "        )\n"
+        "    )\n"
+        "    return build_windows_live_canary_execution_factory_result(\n"
+        "        runtime_config=runtime_config,\n"
+        "        factory_context=context,\n"
+        "        provider_config=provider_config,\n"
+        "    )\n"
+    ).encode("utf-8")
+
+
+def _live_factory_bytes() -> bytes:
+    return (
+        b'"""Generated sealed LIVE Execution factory; no authority."""\n'
+        b"\n"
+        b"from configured_providers.execution_provider import (\n"
+        b"    build_execution_factory,\n"
+        b")\n"
+        b"\n"
+        b"\n"
+        b"def build(runtime_config, context):\n"
+        b"    return build_execution_factory(runtime_config, context)\n"
+    )
+
+
+def _live_initializer_bytes() -> bytes:
+    return b'"""Closed generated Windows LIVE Execution providers."""\n'
+
+
+def _live_generated_files(
+    *,
+    pack: Mapping[str, Any],
+    suite: VerifiedBaseReleaseSuite,
+    role: VerifiedBaseReleaseSuiteRole,
+    foundation_files: Mapping[str, bytes],
+) -> tuple[dict[str, bytes], dict[str, Any]]:
+    service = dict(pack["service_config"])
+    service_bytes = _canonical_bytes(service, newline=True)
+    core = {
+        **dict(pack["provider_configuration"]),
+        "base_suite_identity_sha256": suite.suite_identity_sha256,
+        "execution_base_release_identity_sha256": (
+            role.release_identity_sha256
+        ),
+        "service_config_file_sha256": _sha256(service_bytes),
+    }
+    bindings = _provider_bindings(
+        core=core,
+        foundation_files=foundation_files,
+        contracts=_LIVE_CONTRACTS,
+        provider_roles=LIVE_EXECUTION_PROVIDER_ROLES,
+        credential_purposes=LIVE_EXECUTION_CREDENTIAL_PURPOSES,
+        foundation_paths=LIVE_FOUNDATION_PATHS,
+        implementation_schema=(
+            "windows-live-canary-execution-provider-implementation-v1"
+        ),
+        role_configuration_schema=(
+            "windows-live-canary-execution-provider-role-config-v1"
+        ),
+        provider_id_prefix="live-execution-provider",
+    )
+    configuration = {**core, "provider_bindings": bindings}
+    try:
+        parsed = (
+            static_windows_live_canary_execution_provider_configuration_from_dict(
+                configuration
+            )
+        )
+    except (ExecutionProviderPackError, TypeError, ValueError) as exc:
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_CONFIGURATION_INVALID"
+        ) from exc
+    if parsed.content_sha256 != canonical_sha256(configuration):
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_CONFIGURATION_HASH_MISMATCH"
+        )
+    files = {
+        "config/windows_service_config.json": service_bytes,
+        "configured_providers/__init__.py": _live_initializer_bytes(),
+        "configured_providers/execution_provider.py": (
+            _live_provider_module_bytes(configuration)
+        ),
+        "reviewed_windows_factory.py": _live_factory_bytes(),
+    }
+    if (
+        tuple(sorted(files)) != GENERATED_PATHS
+        or sum(len(value) for value in files.values()) > MAX_TOTAL_BYTES
+        or any(
+            not value or len(value) > MAX_FILE_BYTES
+            for value in files.values()
+        )
+    ):
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_PACK_OUTPUT_INVALID"
+        )
+    return files, configuration
+
+
 def _imports(source: bytes, reason_code: str) -> frozenset[str]:
     try:
         tree = ast.parse(source.decode("utf-8", errors="strict"))
@@ -1331,6 +1818,14 @@ def extract_windows_execution_provider_configuration(
     source: bytes,
 ) -> dict[str, Any]:
     """Extract generated non-secret configuration without importing code."""
+
+    return _extract_provider_configuration(source)
+
+
+def extract_windows_live_canary_execution_provider_configuration(
+    source: bytes,
+) -> dict[str, Any]:
+    """Extract generated LIVE configuration without importing code."""
 
     return _extract_provider_configuration(source)
 
@@ -1469,6 +1964,70 @@ def _result(
     )
 
 
+def _live_pack_identity(
+    *,
+    pack_id: str,
+    suite_identity_sha256: str,
+    release_identity_sha256: str,
+    files: Mapping[str, bytes],
+) -> str:
+    return canonical_sha256(
+        {
+            "base_suite_identity_sha256": suite_identity_sha256,
+            "execution_base_release_identity_sha256": (
+                release_identity_sha256
+            ),
+            "files": [
+                {
+                    "path": path,
+                    "sha256": _sha256(files[path]),
+                    "size_bytes": len(files[path]),
+                }
+                for path in GENERATED_PATHS
+            ],
+            "pack_id": pack_id,
+            "safety": _SAFETY,
+            "schema_version": (
+                "windows-live-canary-execution-provider-pack-identity-v1"
+            ),
+        }
+    )
+
+
+def _live_result(
+    *,
+    root: Path,
+    config: StaticWindowsExecutionProviderConfiguration,
+    suite: VerifiedBaseReleaseSuite,
+    role: VerifiedBaseReleaseSuiteRole,
+    files: Mapping[str, bytes],
+) -> WindowsLiveCanaryExecutionProviderPackValidation:
+    return WindowsLiveCanaryExecutionProviderPackValidation(
+        output_root=str(root),
+        pack_id=config.pack_id,
+        pack_identity_sha256=_live_pack_identity(
+            pack_id=config.pack_id,
+            suite_identity_sha256=suite.suite_identity_sha256,
+            release_identity_sha256=role.release_identity_sha256,
+            files=files,
+        ),
+        base_suite_identity_sha256=suite.suite_identity_sha256,
+        execution_base_release_identity_sha256=(
+            role.release_identity_sha256
+        ),
+        provider_configuration_sha256=config.content_sha256,
+        service_config_file_sha256=_sha256(
+            files["config/windows_service_config.json"]
+        ),
+        file_sha256=tuple(
+            (path, _sha256(files[path])) for path in GENERATED_PATHS
+        ),
+        provider_count=len(config.provider_bindings),
+        credential_reference_count=len(config.credential_references),
+        _seal=_RESULT_SEAL,
+    )
+
+
 def validate_windows_execution_provider_pack(
     *,
     base_suite_root: str | Path,
@@ -1561,6 +2120,115 @@ def validate_windows_execution_provider_pack(
             "EXECUTION_PROVIDER_BINDING_HASH_MISMATCH"
         )
     return _result(
+        root=root,
+        config=configuration,
+        suite=suite,
+        role=role,
+        files=files,
+    )
+
+
+def validate_windows_live_canary_execution_provider_pack(
+    *,
+    base_suite_root: str | Path,
+    execution_base_release: str | Path,
+    pack_root: str | Path,
+) -> WindowsLiveCanaryExecutionProviderPackValidation:
+    """Validate exact LIVE pack bytes without importing providers."""
+
+    suite, role, foundation = _verify_suite_and_foundation(
+        base_suite_root=base_suite_root,
+        execution_base_release=execution_base_release,
+        foundation_paths=LIVE_FOUNDATION_PATHS,
+    )
+    root = _pack_root(pack_root)
+    files = _pack_files(root)
+    if any(
+        pattern.search(data)
+        for data in files.values()
+        for pattern in _SECRET_PATTERNS
+    ):
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_PACK_SECRET_PATTERN_FORBIDDEN"
+        )
+    if (
+        _imports(
+            files["reviewed_windows_factory.py"],
+            "LIVE_EXECUTION_PROVIDER_FACTORY_INVALID",
+        )
+        != _FACTORY_IMPORTS
+        or _imports(
+            files["configured_providers/execution_provider.py"],
+            "LIVE_EXECUTION_PROVIDER_MODULE_INVALID",
+        )
+        != _LIVE_PROVIDER_IMPORTS
+        or files["configured_providers/__init__.py"]
+        != _live_initializer_bytes()
+        or files["reviewed_windows_factory.py"]
+        != _live_factory_bytes()
+    ):
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_GENERATED_SOURCE_MISMATCH"
+        )
+    configuration_raw = _extract_provider_configuration(
+        files["configured_providers/execution_provider.py"]
+    )
+    try:
+        configuration = (
+            static_windows_live_canary_execution_provider_configuration_from_dict(
+                configuration_raw
+            )
+        )
+    except (ExecutionProviderPackError, TypeError, ValueError) as exc:
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_CONFIGURATION_INVALID"
+        ) from exc
+    if (
+        configuration.base_suite_identity_sha256
+        != suite.suite_identity_sha256
+        or configuration.execution_base_release_identity_sha256
+        != role.release_identity_sha256
+        or files["configured_providers/execution_provider.py"]
+        != _live_provider_module_bytes(configuration_raw)
+    ):
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_BASE_IDENTITY_MISMATCH"
+        )
+    service = _service_config(
+        _strict_json(
+            files["config/windows_service_config.json"],
+            canonical=True,
+        )
+    )
+    if (
+        _sha256(_canonical_bytes(service, newline=True))
+        != configuration.service_config_file_sha256
+    ):
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_SERVICE_CONFIG_MISMATCH"
+        )
+    core = dict(configuration_raw)
+    bindings = core.pop("provider_bindings")
+    expected = _provider_bindings(
+        core=core,
+        foundation_files=foundation,
+        contracts=_LIVE_CONTRACTS,
+        provider_roles=LIVE_EXECUTION_PROVIDER_ROLES,
+        credential_purposes=LIVE_EXECUTION_CREDENTIAL_PURPOSES,
+        foundation_paths=LIVE_FOUNDATION_PATHS,
+        implementation_schema=(
+            "windows-live-canary-execution-provider-implementation-v1"
+        ),
+        role_configuration_schema=(
+            "windows-live-canary-execution-provider-role-config-v1"
+        ),
+        provider_id_prefix="live-execution-provider",
+    )
+    if bindings != expected:
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_BINDING_HASH_MISMATCH"
+        )
+    return _live_result(
         root=root,
         config=configuration,
         suite=suite,
@@ -1776,17 +2444,90 @@ def prepare_windows_execution_provider_pack(
         raise
 
 
+def prepare_windows_live_canary_execution_provider_pack(
+    *,
+    base_suite_root: str | Path,
+    execution_base_release: str | Path,
+    pack_input_path: str | Path,
+    output_root: str | Path,
+) -> WindowsLiveCanaryExecutionProviderPackValidation:
+    """Generate and independently validate one deterministic LIVE pack."""
+
+    suite, role, foundation = _verify_suite_and_foundation(
+        base_suite_root=base_suite_root,
+        execution_base_release=execution_base_release,
+        foundation_paths=LIVE_FOUNDATION_PATHS,
+    )
+    input_bytes = _stable_read(
+        pack_input_path,
+        maximum_bytes=MAX_FILE_BYTES,
+        reason_code="LIVE_EXECUTION_PROVIDER_PACK_INPUT_INVALID",
+    )
+    if any(pattern.search(input_bytes) for pattern in _SECRET_PATTERNS):
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_PACK_SECRET_PATTERN_FORBIDDEN"
+        )
+    pack = _validated_live_input(
+        _strict_json(input_bytes, canonical=True)
+    )
+    files, _configuration = _live_generated_files(
+        pack=pack,
+        suite=suite,
+        role=role,
+        foundation_files=foundation,
+    )
+    if any(
+        pattern.search(data)
+        for data in files.values()
+        for pattern in _SECRET_PATTERNS
+    ):
+        raise ExecutionProviderPackError(
+            "LIVE_EXECUTION_PROVIDER_PACK_SECRET_PATTERN_FORBIDDEN"
+        )
+    root = _safe_new_root(output_root)
+    root_identity: tuple[int, int, int, int] | None = None
+    created_files: list[tuple[Path, tuple[int, ...]]] = []
+    try:
+        root.mkdir(mode=0o700)
+        root_identity = _directory_identity(root.lstat())
+        (root / "config").mkdir(mode=0o700)
+        (root / "configured_providers").mkdir(mode=0o700)
+        for relative in GENERATED_PATHS:
+            target = root / relative
+            created_files.append(
+                (target, _write_exclusive(target, files[relative]))
+            )
+        return validate_windows_live_canary_execution_provider_pack(
+            base_suite_root=base_suite_root,
+            execution_base_release=execution_base_release,
+            pack_root=root,
+        )
+    except Exception:
+        _cleanup(root, root_identity, created_files)
+        raise
+
+
 __all__ = [
     "EXECUTION_CREDENTIAL_PURPOSES",
     "EXECUTION_PROVIDER_ROLES",
     "FOUNDATION_PATHS",
     "GENERATED_PATHS",
+    "LIVE_EXECUTION_CREDENTIAL_PURPOSES",
+    "LIVE_EXECUTION_PROVIDER_ROLES",
+    "LIVE_FOUNDATION_PATHS",
+    "LIVE_PACK_INPUT_SCHEMA",
+    "LIVE_PACK_STATUS",
     "PACK_INPUT_SCHEMA",
     "ExecutionProviderPackError",
     "StaticWindowsExecutionProviderConfiguration",
+    "WindowsLiveCanaryExecutionProviderPackValidation",
     "WindowsExecutionProviderPackValidation",
     "extract_windows_execution_provider_configuration",
+    "extract_windows_live_canary_execution_provider_configuration",
     "prepare_windows_execution_provider_pack",
+    "prepare_windows_live_canary_execution_provider_pack",
     "static_windows_execution_provider_configuration_from_dict",
+    "static_windows_live_canary_execution_provider_configuration_from_dict",
     "validate_windows_execution_provider_pack",
+    "validate_windows_live_canary_execution_provider_pack",
 ]

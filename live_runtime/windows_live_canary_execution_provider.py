@@ -21,28 +21,27 @@ from typing import Any, Callable, Mapping
 
 import execution_policy
 
-from .contracts import CanonicalContract, require_utc
-from .live_canary_activation import LIVE_CANARY_MAX_LOT
-from .offhost_delivery import DeliveryOutbox
-from .production_bootstrap import (
+from live_runtime.contracts import CanonicalContract, require_utc
+from live_runtime.offhost_delivery import DeliveryOutbox
+from live_runtime.production_bootstrap import (
     ProductionBootstrapError,
     ProductionRuntimeBootstrap,
     ProductionRuntimeConfig,
     ProductionRuntimePorts,
     _require_live_runtime_authority,
 )
-from .windows_execution_provider_pack import (
+from live_runtime.windows_execution_provider_pack import (
     ExecutionCredentialReference,
     ExecutionProviderBinding,
     WindowsExecutionHeartbeatTransport,
 )
-from .windows_provider_primitives import WindowsClockBinding
-from .windows_service_entrypoint import (
+from live_runtime.windows_provider_primitives import WindowsClockBinding
+from live_runtime.windows_service_entrypoint import (
     WindowsServiceFactoryContext,
     WindowsServiceFactoryResult,
     seal_windows_service_factory_result,
 )
-from .windows_service_factory_template import (
+from live_runtime.windows_service_factory_template import (
     ExternalProviderContract,
     provider_contracts,
 )
@@ -57,7 +56,7 @@ PROVIDER_VALIDATION_SCHEMA = (
 ORDER_CAPABILITY = "DISABLED"
 LIVE_ALLOWED = False
 SAFE_TO_DEMO_AUTO_ORDER = False
-MAX_LOT = LIVE_CANARY_MAX_LOT
+MAX_LOT = 0.01
 PROMOTION_ELIGIBLE = False
 PRODUCTION_EXECUTION_READY = False
 MAX_CONFIGURATION_BYTES = 4 * 1024 * 1024

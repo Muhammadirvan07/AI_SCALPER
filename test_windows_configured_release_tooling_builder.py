@@ -124,6 +124,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "assemble_windows_status_monitor_configured_candidate.py",
             "prepare_windows_decision_provider_pack.py",
             "prepare_windows_execution_provider_pack.py",
+            "prepare_windows_live_canary_execution_provider_pack.py",
             "prepare_windows_three_service_provider_conformance_input.py",
             "prepare_windows_three_service_provider_conformance_review.py",
             "live_runtime/contracts.py",
@@ -148,6 +149,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "validate_windows_decision_provider_pack.py",
             "validate_windows_decision_configured_candidate.py",
             "validate_windows_execution_provider_pack.py",
+            "validate_windows_live_canary_execution_provider_pack.py",
             "validate_windows_execution_configured_candidate.py",
             "validate_windows_status_monitor_configured_candidate.py",
             "validate_windows_status_monitor_provider_pack.py",
@@ -204,7 +206,15 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
                     "--pack-input",
                 ),
                 (
+                    "prepare_windows_live_canary_execution_provider_pack.py",
+                    "--pack-input",
+                ),
+                (
                     "validate_windows_execution_provider_pack.py",
+                    "--pack-root",
+                ),
+                (
+                    "validate_windows_live_canary_execution_provider_pack.py",
                     "--pack-root",
                 ),
                 (

@@ -125,6 +125,9 @@ REQUIRED_FACTORY_TEMPLATE = "live_runtime/windows_service_factory_template.py"
 REQUIRED_EXECUTION_PROVIDER_FOUNDATION = (
     "live_runtime/windows_execution_provider_pack.py"
 )
+REQUIRED_LIVE_EXECUTION_PROVIDER_FOUNDATION = (
+    "live_runtime/windows_live_canary_execution_provider.py"
+)
 REQUIRED_WINDOWS_PROVIDER_PRIMITIVES = (
     "live_runtime/windows_provider_primitives.py"
 )
@@ -1124,6 +1127,7 @@ def load_execution_allowlist(path: Path) -> dict[str, Any]:
         REQUIRED_ASYMMETRIC_RELEASE_TRUST,
         REQUIRED_FACTORY_TEMPLATE,
         REQUIRED_EXECUTION_PROVIDER_FOUNDATION,
+        REQUIRED_LIVE_EXECUTION_PROVIDER_FOUNDATION,
         REQUIRED_WINDOWS_PROVIDER_PRIMITIVES,
         REQUIRED_CONFIG,
         *REQUIRED_DEPENDENCY_FILES,
