@@ -61,9 +61,17 @@ merekonstruksi kelas session v2 yang sudah tersegel. Seluruh release/host/
 environment/service/task/candidate/session pin dan tiga trusted-clock boundary
 diverifikasi; central LIVE lock diperiksa sebelum dan sesudah setiap fase yang
 membawa authority. Session hasilnya tetap launch-only, bukan izin order.
-Closure bertambah menjadi delapan file dan allowlist Execution menjadi 59
-file. Authentic external policy/handoff/receipt, replay-ledger service, dan
-concrete runtime provider tetap belum tersedia.
+Adapter directory replay-session Windows sekarang menyediakan callback sinkron
+untuk consumer tersebut. Ia menerbitkan exact request canonical melalui
+staging, fsync, dan atomic no-replace publication, lalu hanya mengembalikan
+exact stable receipt bytes dari direktori respons terpisah. Consumer handoff
+tetap satu-satunya authority yang memverifikasi RSA signature, challenge,
+one-use consumption, dan session reconstruction. Constructor/call/recheck
+semuanya terikat central LIVE lock; lock false berhenti sebelum path, clock,
+atau file effect. Closure bertambah menjadi sembilan file dan allowlist
+Execution menjadi 60 file. Authentic external policy/handoff/receipt,
+independently operated replay-ledger service, dan concrete runtime provider
+tetap belum tersedia.
 
 Audit TDD menemukan lalu menutup dua defect yang tidak terlihat pada happy
 path: registry path dengan komponen `..` sebelumnya dinormalisasi dan diterima,
@@ -88,6 +96,7 @@ WINDOWS_NODEJS = USER_REPORTED_INSTALLED_NOT_YET_ATTESTED
 WINDOWS_LIVE_EXTERNAL_RUNTIME_HOOK_LEASE = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_CANDIDATE_CONSUMER = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_SESSION_HANDOFF_CONSUMER = PASS_LOCALLY_DENY_ONLY
+WINDOWS_LIVE_RUNTIME_SESSION_REPLAY_DIRECTORY_ADAPTER = PASS_LOCALLY_DENY_ONLY
 CONCRETE_LIVE_RUNTIME_PROVIDERS = NOT_SUPPLIED
 REAL_30_DAY_50_FILL_20_XAU_COHORT = ABSENT
 REAL_LIVE_PROMOTION_AND_NINE_GATES = ABSENT
@@ -174,6 +183,10 @@ dan custody WORM aktual belum diterima untuk verifikasi.
   hash tetapi tetap berhenti sebelum bootstrap materialization, MT5, runner,
   authorization consumption, atau broker mutation. Checked-in central lock
   tidak diubah.
+- Runtime-session replay directory adapter menolak path relatif/symlink/reparse,
+  root replacement, stale staging, conflicting final bytes, response mutation,
+  timeout, relock, dan concurrent reuse. Ia tidak membawa signer, private key,
+  credential, network/database client, process, MT5, atau broker primitive.
 
 ## Verified so far
 
@@ -223,6 +236,15 @@ dan custody WORM aktual belum diterima untuk verifikasi.
   memakai exact project interpreter `.venv/bin/python`; run awal dengan
   Homebrew Python tanpa `pandas`/`numpy` dibuang sebagai invalid environment
   evidence, bukan product regression.
+- Runtime-session replay directory-adapter spec: 100/100 Grade A, nol finding.
+  Focused adapter/closure/atomic-suite checks lulus 36/36 pada normal dan
+  optimized; Execution-release/base-suite checks tambahan lulus 32/32.
+  Isolated `-I -S` closure probe lulus normal dan optimized dengan seluruh
+  provider, credential, MT5, dan broker effect `NOT_PERFORMED`.
+- Full serial repository regression setelah directory adapter: 2.137 tes lulus
+  normal dengan tiga expected platform skip dan 2.137 tes lulus optimized
+  dengan 15 expected platform/optimized skip. Ruff, focused mypy, compileall,
+  scoped whitespace, dan static Windows dependency-lock validation lulus.
 
 ## Remaining external work
 
@@ -231,7 +253,9 @@ dan independent custody result belum disuplai pada audit ini. Windows masih
 memerlukan artefak cohort/promotion/gate/approval/authorization autentik,
 independently provisioned
 Credential Manager authorities, exact target-host registry initialization,
-off-host checkpoint/WORM/CAS custody, provider-bound prebootstrap acceptance,
+off-host checkpoint/WORM/CAS custody, independently operated signed replay
+ledger serta request/receipt directory ACL/durability, provider-bound
+prebootstrap acceptance,
 central policy ceremony, bounded first canary, broker acknowledgement,
 reconciliation, and rollback evidence.
 

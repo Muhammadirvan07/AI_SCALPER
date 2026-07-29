@@ -16,6 +16,7 @@ DASHBOARD_WINDOWS_RUNTIME = NOT_ACCEPTED
 WINDOWS_LIVE_EXTERNAL_RUNTIME_HOOK_LEASE = PASS_LOCAL_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_CANDIDATE_CONSUMER = PASS_LOCAL_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_SESSION_HANDOFF_CONSUMER = PASS_LOCAL_DENY_ONLY
+WINDOWS_LIVE_RUNTIME_SESSION_REPLAY_DIRECTORY_ADAPTER = PASS_LOCAL_DENY_ONLY
 CONCRETE_LIVE_RUNTIME_PROVIDER = NOT_ACCEPTED
 WINDOWS_EXTERNAL_EVIDENCE = INCOMPLETE
 CENTRAL_LIVE_LOCK = FALSE
@@ -75,6 +76,14 @@ launch, MT5 initialization, atau order broker.
   platform/optimized skips under `-O`. Both authoritative runs used
   `.venv/bin/python`; an earlier Homebrew-Python run without `pandas`/`numpy`
   was rejected as invalid environment evidence.
+- Runtime-session replay directory-adapter spec scored 100/100 Grade A with no
+  finding. Focused adapter/closure/atomic-suite tests passed 36/36 in normal
+  and optimized modes; Execution/base-release tests passed 32/32. The isolated
+  closure probe passed under normal and optimized `-I -S` execution.
+- Post-adapter full serial regression passed 2.137 tests with three expected
+  platform skips in normal mode and 2.137 tests with 15 expected platform/
+  optimized skips under `-O`. Scoped ruff, mypy, compileall, whitespace, and
+  static Windows dependency-lock validation passed.
 
 ## Security and correctness findings closed
 
@@ -152,6 +161,15 @@ launch, MT5 initialization, atau order broker.
     service/task bindings, dan fresh 32-byte challenge. Hanya signed atomic
     consumption receipt yang terikat challenge saat ini dapat merekonstruksi
     exact sealed session; hasil tetap launch-only dan central lock tetap false.
+21. Signed handoff consumer sebelumnya hanya mempunyai abstract synchronous
+    callback, sehingga extracted Windows Execution belum memiliki transport
+    aman ke independently operated replay ledger. Directory adapter baru
+    memvalidasi exact public policy/request bindings, memakai staged+synced
+    atomic no-replace request publication, stable receipt reads, deadline dua
+    detik, instance busy guard, dan central-lock recheck di sekitar setiap
+    effect. RSA/one-use/session authority tetap pada consumer; adapter tidak
+    mempunyai signer, private key, credential, network, database, MT5, process,
+    atau broker capability.
 
 ## Automated category result
 
@@ -165,7 +183,7 @@ launch, MT5 initialization, atau order broker.
 | Frontend | PASS_LOCAL / WINDOWS_PENDING | 29 unit, lint/build/bundle, and 30 desktop/mobile E2E pass; GET/WebSocket-only boundary; exact Windows launch not accepted |
 | Observability | PASS_LOCAL / EXTERNAL_PENDING | Stable public reason codes and canonical receipts; external WORM/CAS/log custody not yet proven |
 | Broker/live effects | PASS_DENY_ONLY | No process/socket/requests/MetaTrader5/order call; live and activation remain false |
-| LIVE runtime composition | PASS_LOCAL / EXTERNAL_PENDING | Exact candidate and signed-session-handoff consumers, fresh-challenge replay receipt verification, hash-pinned runtime hook, and one-use lease pass locally; authentic handoff/replay service, concrete 40-provider module, target-host hash pin, acceptance, credentials, and runtime state are absent |
+| LIVE runtime composition | PASS_LOCAL / EXTERNAL_PENDING | Exact candidate and signed-session-handoff consumers, fail-closed Windows replay-directory transport, fresh-challenge replay receipt verification, hash-pinned runtime hook, and one-use lease pass locally; authentic handoff/replay service, directory ACL/durability evidence, concrete 40-provider module, target-host hash pin, acceptance, credentials, and runtime state are absent |
 
 ## Manual/external blockers
 
@@ -181,6 +199,9 @@ launch, MT5 initialization, atau order broker.
 - Central LIVE unlock ceremony has not occurred.
 - Exact externally reviewed 40-provider Windows runtime module and target-host
   launcher hash pin have not been supplied.
+- Independently operated signed replay-ledger service, exact request/receipt
+  directory ACLs, durability, service identity, and authentic receipt are
+  absent.
 - No real canary order, broker acknowledgement, reconciliation, or rollback
   evidence exists.
 

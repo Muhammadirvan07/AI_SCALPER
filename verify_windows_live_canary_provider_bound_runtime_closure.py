@@ -22,6 +22,7 @@ _REQUIRED_BOOTSTRAP_FILES = (
     "live_runtime/production_bootstrap.py",
     "live_runtime/windows_live_canary_external_cas_directory_adapter.py",
     "live_runtime/windows_live_canary_execution_provider.py",
+    "live_runtime/windows_live_canary_runtime_session_replay_directory_adapter.py",
 )
 
 
@@ -116,6 +117,21 @@ from live_runtime.windows_live_canary_external_cas_directory_adapter import (  #
 from live_runtime.windows_live_canary_execution_provider import (  # noqa: E402
     seal_windows_live_canary_runtime_source,
 )
+from live_runtime.windows_live_canary_runtime_session_replay_directory_adapter import (  # noqa: E402
+    WindowsLiveCanaryRuntimeSessionReplayDirectoryAdapter,
+    WindowsLiveCanaryRuntimeSessionReplayDirectoryAdapterError,
+)
+
+
+class _NoEffectPath:
+    """Path-like sentinel proving the locked adapter never inspects a path."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __fspath__(self) -> str:
+        self.calls += 1
+        raise RuntimeError("path must remain unobserved")
 
 
 def verify_provider_bound_runtime_closure() -> dict[str, object]:
@@ -187,6 +203,8 @@ def verify_provider_bound_runtime_closure() -> dict[str, object]:
         load_live_canary_provider_bound_runtime_session_handoff,
         provider_bound_runtime_session_handoff_signing_message,
         provider_bound_runtime_session_consumption_receipt_signing_message,
+        WindowsLiveCanaryRuntimeSessionReplayDirectoryAdapter,
+        WindowsLiveCanaryRuntimeSessionReplayDirectoryAdapterError,
     )
     if any(not callable(item) for item in callables):
         raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
@@ -316,6 +334,38 @@ def verify_provider_bound_runtime_closure() -> dict[str, object]:
     if replay_calls:
         raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
             "RUNTIME_SESSION_HANDOFF_REPLAY_EFFECT_OBSERVED"
+        )
+
+    request_path = _NoEffectPath()
+    response_path = _NoEffectPath()
+    clock_calls: list[None] = []
+
+    def deny_clock() -> datetime:
+        clock_calls.append(None)
+        raise RuntimeError("clock must remain unobserved")
+
+    try:
+        WindowsLiveCanaryRuntimeSessionReplayDirectoryAdapter(
+            provider_id="isolated-runtime-session-replay-directory",
+            handoff_policy_payload=policy_payload,
+            expected_handoff_policy_sha256=policy_sha256,
+            request_directory=request_path,
+            response_directory=response_path,
+            clock_provider=deny_clock,
+            timeout_seconds=1.0,
+        )
+    except WindowsLiveCanaryRuntimeSessionReplayDirectoryAdapterError as exc:
+        if exc.reason_code != "CENTRAL_LIVE_LOCK_NOT_ENABLED":
+            raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
+                "RUNTIME_SESSION_DIRECTORY_ADAPTER_LOCK_PROBE_DRIFT"
+            ) from exc
+    else:
+        raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
+            "RUNTIME_SESSION_DIRECTORY_ADAPTER_LOCK_BYPASS"
+        )
+    if request_path.calls or response_path.calls or clock_calls:
+        raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
+            "RUNTIME_SESSION_DIRECTORY_ADAPTER_EFFECT_OBSERVED"
         )
     return {
         "status": "WINDOWS_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_READY",

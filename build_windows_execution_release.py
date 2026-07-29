@@ -147,6 +147,7 @@ REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE = frozenset(
         "live_runtime/live_canary_runtime_candidate.py",
         "live_runtime/production_bootstrap.py",
         "live_runtime/windows_live_canary_execution_provider.py",
+        "live_runtime/windows_live_canary_runtime_session_replay_directory_adapter.py",
     }
 )
 LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_SCHEMA = (

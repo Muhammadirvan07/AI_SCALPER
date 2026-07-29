@@ -74,9 +74,14 @@ replay authorities, exact release/host/environment/service/task bindings, a
 fresh 32-byte challenge, and a challenge-bound signed receipt from an external
 atomic replay ledger. It does not contain the
 operator-side admission, custody, acceptance, source-bound, conformance, or
-activation assemblers or either private key. The release manifest binds the
-critical eight-file consumer closure, while the complete service allowlist
-contains 59 files.
+activation assemblers or either private key. The release also includes a
+fail-closed Windows directory transport for that synchronous replay callback.
+It atomically publishes the exact request and returns only stable exact receipt
+bytes; the handoff consumer retains all RSA, fresh-challenge, one-use, and
+session authority. The adapter has no signer, credential, network/database,
+process, MT5, or broker capability. The release manifest binds the critical
+nine-file consumer closure, while the complete service allowlist contains 60
+files.
 
 After extracting an exact release, validate this closure without importing a
 provider or contacting MT5:
@@ -92,7 +97,10 @@ Expected output includes
 `Broker mutation: NOT_PERFORMED`. This proves only that the service can consume
 an externally signed and atomically consumed exact v2 session. It does not
 operate the signer/replay ledger, create authentic evidence, open the central
-policy, or authorize an order.
+policy, or authorize an order. The replay directory adapter is likewise only a
+local client primitive: independently operated replay-ledger service identity,
+request/receipt ACLs and durability, and an authentic signed receipt remain
+external requirements.
 
 ## Bounded service failure semantics
 
