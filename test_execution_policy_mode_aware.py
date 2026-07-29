@@ -122,6 +122,7 @@ class ModeAwareExecutionSymbolPolicyTests(unittest.TestCase):
             "risk.py",
             "runtime_service.py",
             "runtime_supervisor.py",
+            "windows_live_canary_execution_provider.py",
         }
         observed_files = set()
         for path in sorted((ROOT / "live_runtime").glob("*.py")):

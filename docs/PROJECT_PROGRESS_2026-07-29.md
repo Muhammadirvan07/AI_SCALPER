@@ -2,12 +2,14 @@
 
 ## Outcome
 
-The project gained a verifier-sealed per-order execution boundary for a future
-first XAUUSD live canary. The activation, launch, supervisor, execution
-coordinator, durable journal lease, runtime authorization, and final MT5
-adapter chain is implemented and verified locally with a fake MT5 module. The
-checked-in central lock still prevents a launch session or order authority
-from being minted, and no real broker order or broker mutation was performed.
+The project gained a verifier-sealed per-order execution boundary and a
+separate brokerless Windows LIVE provider-materialization boundary for a future
+first XAUUSD live canary. The activation, launch, Windows provider composition,
+supervisor, execution coordinator, durable journal lease, runtime
+authorization, and final MT5 adapter chain are implemented and verified
+locally with fake providers and a fake MT5 module. The checked-in central lock
+still prevents a LIVE Windows factory, launch session, or order authority from
+being materialized, and no real broker order or broker mutation was performed.
 
 ```text
 LOCAL_SOURCE_GATE = PASS
@@ -17,6 +19,7 @@ LIVE_CANARY_PORTABLE_CUSTODY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_RUNTIME_LAUNCH_SESSION = PASS_LOCALLY_CENTRAL_LOCKED
 LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_PER_ORDER_GATED
 LIVE_CANARY_PER_ORDER_EXECUTION = PASS_LOCALLY_FAKE_MT5_ONE_SEND
+WINDOWS_LIVE_PROVIDER_MATERIALIZATION = PASS_LOCALLY_BROKERLESS_LOCKED
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
 DEMO_AUTO_SOAK = NOT_READY
@@ -120,8 +123,20 @@ LIVE_TRADING = DO_NOT_SHIP
   post-consumption crash remains reconciliation-only.
 - Existing SHADOW, DEMO, and DEMO_AUTO flows remain isolated. The canonical
   Windows factory-template v1 remains DEMO-only and deliberately does not
-  materialize the three new LIVE callbacks; a separately reviewed exact
-  Windows LIVE factory/release boundary is still required before deployment.
+  materialize the three new LIVE callbacks.
+- A separate additive Windows LIVE materializer now validates an exact
+  49-port contract: 40 required LIVE providers, nine forbidden cross-mode
+  providers, and 12 purpose-bound Credential Manager references using
+  `MT5_LIVE_SESSION` instead of the DEMO session credential. It accepts only
+  the exact sealed LIVE candidate and launch session, checks the central
+  policy before and after every external callback, keeps `mt5_module=None`,
+  and returns a sealed `WindowsServiceFactoryResult` without importing MT5 or
+  calling a broker. Existing Windows Execution v1 contract bytes remain
+  unchanged.
+- This is the reviewed materialization primitive only. Its deterministic
+  provider ZIP, configured candidate, exact Windows providers, source-bound
+  release, and external conformance/launcher receipts remain a separate next
+  milestone and are not implied by the local materializer.
 
 ## Verification
 
@@ -139,13 +154,16 @@ LIVE_TRADING = DO_NOT_SHIP
 | Focused production-runtime integration | 7 PASS normal; 7 PASS optimized |
 | Per-order LIVE execution spec | 100/100, Grade A; 0 errors, warnings, or informational findings |
 | Focused per-order authorization suite | 8 PASS normal; 8 PASS optimized |
+| Windows LIVE materialization spec | 100/100, Grade A; no errors or warnings |
+| Focused Windows LIVE materialization suite | 16 PASS normal; 16 PASS optimized |
+| Combined Windows Execution provider/policy suite | 44 PASS normal; 44 PASS optimized |
 | Live/Windows execution regression cluster | 196 PASS normal; 196 PASS optimized with three intentional skips |
 | Related bootstrap/supervisor/release regression | 122 PASS normal; 121 PASS plus one intentional optimized skip |
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,856 tests OK, 3 platform skips |
-| Full Python regression with `-O` | 1,856 tests OK, 6 skips including optimized-only nested self-tests |
+| Full Python regression | 1,872 tests OK, 3 platform skips |
+| Full Python regression with `-O` | 1,872 tests OK, 6 skips including optimized-only nested self-tests |
 | Python compile, Ruff, and scoped whitespace checks | PASS |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
 | Checked-in central live lock | remains exactly false |
@@ -179,18 +197,20 @@ uptime monitoring remain external work.
    prebootstrap admission; local tests use synthetic values only.
 7. Provision the real independent WORM readback and atomic CAS/nonce custody,
    retain the predecessor pin through an independent channel, and collect the
-   canonical RSA receipts this local boundary expects. Build and externally
-   review the exact Windows LIVE factory/provider release that supplies the
-   three LIVE callbacks, then run its brokerless materialization and negative
-   tests on the target host. The central lock remains unchanged until that
-   ceremony and all external evidence are accepted.
+   canonical RSA receipts this local boundary expects. Package the new exact
+   49-port Windows LIVE materializer into a deterministic provider release and
+   suite-bound configured candidate, supply the reviewed external callbacks,
+   then run brokerless materialization, negative tests, and independent
+   conformance on the target host. The central lock remains unchanged until
+   that ceremony and all external evidence are accepted.
 8. After independent ship-gate acceptance, use a separate bounded ceremony to
    open the central policy and execute only the first 0.01 XAUUSD canary. The
    first real order, reconciliation receipt, rollback proof, and operator
    observation are still absent.
 
 No percentage or passing unit-test count should be interpreted as broker
-authority. The per-order boundary now exists locally, but until the external
-evidence, exact Windows LIVE provider release, central unlock ceremony, and
-first reconciled broker canary exist, the truthful state remains
+authority. The per-order and Windows LIVE materialization boundaries now exist
+locally, but until the external evidence, exact packaged Windows LIVE provider
+release and configured candidate, central unlock ceremony, and first
+reconciled broker canary exist, the truthful state remains
 `LIVE_TRADING = DO_NOT_SHIP`.
