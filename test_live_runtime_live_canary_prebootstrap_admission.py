@@ -72,8 +72,8 @@ class LiveCanaryPrebootstrapAdmissionTests(unittest.TestCase):
 
         with mock.patch.multiple(
             soak_fixture_module,
-            ACCOUNT=digest("xm-demo-account-alias"),
-            JOURNAL=digest("xm-demo-journal"),
+            ACCOUNT=digest("phillip-demo-account-alias"),
+            JOURNAL=digest("phillip-demo-journal"),
             COMMIT=self.source.git_commit,
             CONFIG=self.source.production_config_sha256,
             MODEL=self.source.champion_model_artifact_sha256,
@@ -81,14 +81,14 @@ class LiveCanaryPrebootstrapAdmissionTests(unittest.TestCase):
             soak = SoakFixture()
             soak.binding = replace(
                 soak.binding,
-                broker_id="xm-global",
-                broker_server="XMGlobal-Demo 7",
-                dependency_lock_sha256=digest("xm-demo-dependency-lock"),
-                runtime_profile_sha256=digest("xm-demo-runtime-profile"),
+                broker_id="phillip-jp",
+                broker_server="PhillipSecuritiesJP-PROD",
+                dependency_lock_sha256=digest("phillip-demo-dependency-lock"),
+                runtime_profile_sha256=digest("phillip-demo-runtime-profile"),
                 release_manifest_sha256=(
                     self.source.configured_release_identity_sha256
                 ),
-                session_calendar_sha256=digest("xm-demo-session-calendar"),
+                session_calendar_sha256=digest("phillip-demo-session-calendar"),
             )
             soak.next_source_sequence = 1
             soak.evidence = [
@@ -156,6 +156,12 @@ class LiveCanaryPrebootstrapAdmissionTests(unittest.TestCase):
                 f"XAUUSD:BREAKOUT:{self.candidate.content_sha256}"
             ),
         )
+        activation.eligibility = replace(
+            activation.eligibility,
+            broker_id=activation.binding.broker_id,
+            broker_legal_name="Phillip Securities Japan, Ltd.",
+            live_server=activation.binding.live_server,
+        )
         activation.promotion = activation._promotion()
         activation.gate_receipts = activation._gate_receipts()
         activation.request = activation._request()
@@ -193,35 +199,35 @@ class LiveCanaryPrebootstrapAdmissionTests(unittest.TestCase):
         activation: activation_fixture_module.LiveCanaryActivationTests,
     ) -> LiveCanaryRuntimeCandidate:
         source = self.source
-        root = r"C:\AI_SCALPER_PRIVATE\xm-live-canary"
+        root = r"C:\AI_SCALPER_PRIVATE\phillip-commodity-live-canary"
         return LiveCanaryRuntimeCandidate(
-            candidate_id="xm-xauusd-live-canary-window-01",
-            broker_id="xm-global",
-            broker_legal_name="Trading Point of Financial Instruments Ltd",
-            server="XMGlobal-Real 42",
-            account_alias_sha256=digest("xm-live-account-alias"),
-            account_currency="USD",
+            candidate_id="phillip-commodity-live-canary-window-01",
+            broker_id="phillip-jp",
+            broker_legal_name="Phillip Securities Japan, Ltd.",
+            server="PhillipSecuritiesJP-LIVE",
+            account_alias_sha256=digest("phillip-live-account-alias"),
+            account_currency="JPY",
             journal_database=root + r"\journal.sqlite3",
             supervisor_database=root + r"\supervisor.sqlite3",
             dependency_lock_file=(
                 r"C:\AI_SCALPER\pylock.windows-cp312.toml"
             ),
-            symbol_map=(("XAUUSD", "GOLD"),),
-            usd_account_currency_symbols=(),
-            journal_sha256=digest("xm-live-journal-prebootstrap"),
+            symbol_map=(("XAUUSD", "XAUUSD.ps01"),),
+            usd_account_currency_symbols=(("USDJPY", "USDJPY.ps01"),),
+            journal_sha256=digest("phillip-live-journal-prebootstrap"),
             commit_sha=source.git_commit,
-            dependency_lock_sha256=digest("xm-live-dependency-lock"),
-            installed_environment_sha256=digest("xm-installed-environment"),
-            mt5_site_packages_sha256=digest("xm-mt5-site-packages"),
-            mt5_site_packages_tree_sha256=digest("xm-mt5-site-tree"),
-            mt5_distribution_record_sha256=digest("xm-mt5-record"),
-            mt5_module_file_sha256=digest("xm-mt5-module"),
-            mt5_module_relative_path_sha256=digest("xm-mt5-relative-path"),
-            runtime_profile_sha256=digest("xm-live-runtime-profile"),
-            release_manifest_sha256=digest("xm-live-release-manifest"),
-            session_calendar_sha256=digest("xm-live-session-calendar"),
-            broker_spec_sha256=digest("xm-live-xauusd-broker-spec"),
-            live_stage_binding_sha256=digest("xm-live-stage-binding"),
+            dependency_lock_sha256=digest("phillip-live-dependency-lock"),
+            installed_environment_sha256=digest("phillip-installed-environment"),
+            mt5_site_packages_sha256=digest("phillip-mt5-site-packages"),
+            mt5_site_packages_tree_sha256=digest("phillip-mt5-site-tree"),
+            mt5_distribution_record_sha256=digest("phillip-mt5-record"),
+            mt5_module_file_sha256=digest("phillip-mt5-module"),
+            mt5_module_relative_path_sha256=digest("phillip-mt5-relative-path"),
+            runtime_profile_sha256=digest("phillip-live-runtime-profile"),
+            release_manifest_sha256=digest("phillip-live-release-manifest"),
+            session_calendar_sha256=digest("phillip-live-session-calendar"),
+            broker_spec_sha256=digest("phillip-live-xauusd-broker-spec"),
+            live_stage_binding_sha256=digest("phillip-live-stage-binding"),
             activation_policy_sha256=activation.policy.policy_sha256,
             model_artifact_sha256=source.champion_model_artifact_sha256,
             champion_archive_sha256=source.champion_archive_sha256,
@@ -277,11 +283,11 @@ class LiveCanaryPrebootstrapAdmissionTests(unittest.TestCase):
             manual_demo_custodian_trust_sha256=digest(
                 "manual-demo-custodian-trust"
             ),
-            news_guard_provider_id="xm-live-news-guard-v1",
+            news_guard_provider_id="phillip-live-news-guard-v1",
             news_guard_key_id="runtime-news-guard-key-v1",
             news_guard_key_fingerprint_sha256=digest("runtime-news-key"),
-            news_guard_ruleset_sha256=digest("xm-news-ruleset"),
-            news_guard_blackout_window_sha256=digest("xm-blackout-window"),
+            news_guard_ruleset_sha256=digest("phillip-news-ruleset"),
+            news_guard_blackout_window_sha256=digest("phillip-blackout-window"),
             supervisor_key_id="runtime-supervisor-key-v1",
             supervisor_key_fingerprint_sha256=digest("runtime-supervisor-key"),
             supervisor_checkpoint_key_id=(
@@ -302,7 +308,7 @@ class LiveCanaryPrebootstrapAdmissionTests(unittest.TestCase):
             ),
             worm_audit_key_id="runtime-worm-audit-key-v1",
             worm_audit_key_fingerprint_sha256=digest("runtime-worm-key"),
-            risk_ledger_id="xm-live-risk-ledger-v1",
+            risk_ledger_id="phillip-live-risk-ledger-v1",
             risk_ledger_key_id="runtime-risk-ledger-key-v1",
             risk_ledger_key_fingerprint_sha256=digest("runtime-risk-key"),
             journal_checkpoint_key_id=(
@@ -331,7 +337,11 @@ class LiveCanaryPrebootstrapAdmissionTests(unittest.TestCase):
         return assess_live_canary_prebootstrap_admission(**values)
 
     def test_ac1_candidate_is_canonical_xau_only_and_deny_only(self):
-        self.assertEqual((("XAUUSD", "GOLD"),), self.candidate.symbol_map)
+        self.assertEqual((("XAUUSD", "XAUUSD.ps01"),), self.candidate.symbol_map)
+        self.assertEqual(
+            (("USDJPY", "USDJPY.ps01"),),
+            self.candidate.usd_account_currency_symbols,
+        )
         self.assertEqual(0.01, self.candidate.max_lot)
         self.assertEqual(1, self.candidate.max_concurrent_positions)
         self.assertFalse(self.candidate.live_allowed)
@@ -382,7 +392,7 @@ class LiveCanaryPrebootstrapAdmissionTests(unittest.TestCase):
 
     def test_ac4_live_candidate_substitution_fails_closed(self):
         for field_name, value in (
-            ("server", "XMGlobal-Real 99"),
+            ("server", "PhillipSecuritiesJP-OTHER"),
             ("journal_sha256", digest("other-live-journal")),
             ("release_manifest_sha256", digest("other-live-release")),
             ("runtime_profile_sha256", digest("other-live-runtime")),

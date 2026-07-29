@@ -19,6 +19,7 @@ from live_runtime.live_canary_activation import (
     LiveCanaryActivationError,
     LiveCanaryActivationIntegrityError,
     LiveCanaryBinding,
+    LiveCanaryBrokerEligibilityEvidence,
     LiveCanaryReplayRegistry,
     LiveCanaryTrustPolicy,
     build_live_canary_activation_request,
@@ -63,7 +64,7 @@ class LiveCanaryActivationTests(unittest.TestCase):
         self.deployment_secret = b"live-deployment-authority-secret-material-v1"
         self.checkpoint_secret = b"live-replay-checkpoint-secret-material-v1"
         self.policy = LiveCanaryTrustPolicy(
-            policy_id="xm-xauusd-live-canary-policy-v1",
+            policy_id="phillip-xauusd-live-canary-policy-v1",
             domain_key_allowlist=tuple(
                 (
                     domain,
@@ -110,16 +111,16 @@ class LiveCanaryActivationTests(unittest.TestCase):
             demo_session_calendar_sha256=demo.session_calendar_sha256,
             demo_broker_spec_set_sha256=demo.broker_spec_set_sha256,
             soak_cohort_binding_sha256=demo.binding_sha256,
-            live_account_alias_sha256=digest("xm-live-account-alias"),
+            live_account_alias_sha256=digest("phillip-live-account-alias"),
             live_server="PhillipSecuritiesJP-LIVE",
-            live_journal_sha256=digest("xm-live-journal"),
+            live_journal_sha256=digest("phillip-live-journal"),
             live_commit_sha="e" * 40,
-            live_config_sha256=digest("xm-live-config"),
-            live_dependency_lock_sha256=digest("xm-live-dependency-lock"),
-            live_broker_spec_sha256=digest("xm-live-xau-spec"),
-            live_session_calendar_sha256=digest("xm-live-calendar"),
-            live_runtime_profile_sha256=digest("xm-live-runtime-profile"),
-            live_release_manifest_sha256=digest("xm-live-release-manifest"),
+            live_config_sha256=digest("phillip-live-config"),
+            live_dependency_lock_sha256=digest("phillip-live-dependency-lock"),
+            live_broker_spec_sha256=digest("phillip-live-xau-spec"),
+            live_session_calendar_sha256=digest("phillip-live-calendar"),
+            live_runtime_profile_sha256=digest("phillip-live-runtime-profile"),
+            live_release_manifest_sha256=digest("phillip-live-release-manifest"),
             model_artifact_sha256=MODEL,
             champion_archive_sha256=digest("champion-archive"),
             champion_package_identity_sha256=digest("champion-package"),
@@ -129,7 +130,21 @@ class LiveCanaryActivationTests(unittest.TestCase):
             acceptance_policy_sha256=self.policy.policy_sha256,
             symbol="XAUUSD",
             strategy="BREAKOUT",
-            lane_id=f"XAUUSD:BREAKOUT:{digest('xm-live-config')}",
+            lane_id=f"XAUUSD:BREAKOUT:{digest('phillip-live-config')}",
+        )
+        self.eligibility = LiveCanaryBrokerEligibilityEvidence(
+            broker_id=self.binding.broker_id,
+            broker_legal_name="Phillip Securities Japan, Ltd.",
+            operating_jurisdiction="JP",
+            registration_authority="JAPAN-FSA",
+            registration_identifier="KANTO-KINSHO-127",
+            live_server=self.binding.live_server,
+            symbol=self.binding.symbol,
+            regulatory_evidence_sha256=digest("phillip-regulatory-evidence"),
+            compliance_approval_sha256=digest("phillip-compliance-approval"),
+            legal_approval_sha256=digest("phillip-legal-approval"),
+            reviewed_at=NOW - timedelta(days=1),
+            expires_at=NOW + timedelta(days=14),
         )
         self.promotion = self._promotion()
         self.gate_receipts = self._gate_receipts()
@@ -196,13 +211,18 @@ class LiveCanaryActivationTests(unittest.TestCase):
         values.update(overrides)
         return PromotionEvidenceReceipt(**values).sign(self.promotion_secret)
 
-    def _gate_receipts(self):
+    def _gate_receipts(self, *, legal_evidence_sha256: str | None = None):
+        legal_hash = legal_evidence_sha256 or self.eligibility.content_sha256
         return tuple(
             issue_live_canary_gate_receipt(
                 self.binding,
                 self.policy,
                 domain=domain,
-                evidence_sha256=digest(f"external-gate:{domain}"),
+                evidence_sha256=(
+                    legal_hash
+                    if domain == "LEGAL_COMPLIANCE"
+                    else digest(f"external-gate:{domain}")
+                ),
                 issued_at=NOW - timedelta(minutes=1),
                 expires_at=NOW + timedelta(minutes=4),
                 issuer_id=f"issuer:{domain.lower()}",
@@ -233,12 +253,13 @@ class LiveCanaryActivationTests(unittest.TestCase):
             "soak_key_provider": self.soak.aggregator_key,
             "promotion_evidence": self.promotion,
             "promotion_key_provider": lambda _key_id: self.promotion_secret,
-            "live_account_alias": "xm-live-account-alias",
+            "live_account_alias": "phillip-live-account-alias",
+            "broker_eligibility_evidence": self.eligibility,
             "gate_receipts": self.gate_receipts,
             "gate_key_provider": self._gate_key,
             "issued_at": NOW,
             "expires_at": NOW + timedelta(minutes=3),
-            "nonce": "xm-live-canary-request-nonce-v1",
+            "nonce": "phillip-live-canary-request-nonce-v1",
             "clock_provider": lambda: NOW,
         }
         values.update(overrides)
@@ -252,8 +273,8 @@ class LiveCanaryActivationTests(unittest.TestCase):
         values: dict[str, object] = {
             "binding": self.binding,
             "trust_policy": self.policy,
-            "registry_id": "xm-live-canary-replay-v1",
-            "key_id": "xm-live-canary-replay-key-v1",
+            "registry_id": "phillip-live-canary-replay-v1",
+            "key_id": "phillip-live-canary-replay-key-v1",
             "key_fingerprint_sha256": hashlib.sha256(
                 self.replay_secret
             ).hexdigest(),
@@ -274,7 +295,8 @@ class LiveCanaryActivationTests(unittest.TestCase):
             "soak_key_provider": self.soak.aggregator_key,
             "promotion_evidence": self.promotion,
             "promotion_key_provider": lambda _key_id: self.promotion_secret,
-            "live_account_alias": "xm-live-account-alias",
+            "live_account_alias": "phillip-live-account-alias",
+            "broker_eligibility_evidence": self.eligibility,
             "gate_receipts": self.gate_receipts,
             "gate_key_provider": self._gate_key,
             "approval_key_provider": self._approval_key,
@@ -293,6 +315,11 @@ class LiveCanaryActivationTests(unittest.TestCase):
             self.soak_receipt.content_sha256,
             request.soak_cohort_receipt_sha256,
         )
+        self.assertEqual(
+            self.eligibility.content_sha256,
+            request.broker_eligibility_evidence_sha256,
+        )
+        self.assertEqual("live-canary-activation-request-v2", request.schema_version)
         self.assertEqual(tuple(sorted(LIVE_CANARY_GATE_DOMAINS)), tuple(
             domain for domain, _receipt_hash in request.gate_receipt_sha256_by_domain
         ))
@@ -553,6 +580,59 @@ class LiveCanaryActivationTests(unittest.TestCase):
                 self.assertTrue(receipt.verify_signature(self._gate_key(receipt.key_id)))
         elapsed = time.perf_counter() - started
         self.assertLess(elapsed / iterations, 0.1)
+
+    def test_ac10_broker_eligibility_identity_scope_and_time_are_exact(self):
+        for changes in (
+            {"broker_id": "other-broker"},
+            {"live_server": "Other-Live-Server"},
+            {
+                "reviewed_at": NOW - timedelta(days=3),
+                "expires_at": NOW - timedelta(days=2),
+            },
+            {
+                "reviewed_at": NOW + timedelta(seconds=1),
+                "expires_at": NOW + timedelta(days=1),
+            },
+        ):
+            with self.subTest(changes=changes), self.assertRaisesRegex(
+                LiveCanaryActivationError,
+                "ELIGIBILITY",
+            ):
+                self._request(
+                    broker_eligibility_evidence=replace(
+                        self.eligibility,
+                        **changes,
+                    )
+                )
+
+    def test_ac10_legal_compliance_gate_must_bind_eligibility_hash(self):
+        mismatched = self._gate_receipts(
+            legal_evidence_sha256=digest("other-eligibility-evidence")
+        )
+        with self.assertRaisesRegex(
+            LiveCanaryActivationBindingError,
+            "ELIGIBILITY_GATE_MISMATCH",
+        ):
+            self._request(gate_receipts=mismatched)
+
+    def test_ac10_ineligible_or_ambiguous_evidence_is_rejected(self):
+        with self.assertRaisesRegex(TypeError, "eligibility"):
+            self._request(broker_eligibility_evidence=None)
+        for changes in (
+            {"registration_status": "UNREGISTERED"},
+            {"registration_status": "registered"},
+            {"eligibility_decision": "DIAGNOSTIC_ONLY"},
+            {"eligibility_decision": "eligible_for_live_canary"},
+            {"operating_jurisdiction": "jp"},
+            {"operating_jurisdiction": "japan"},
+            {
+                "legal_approval_sha256": (
+                    self.eligibility.compliance_approval_sha256
+                )
+            },
+        ):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                replace(self.eligibility, **changes)
 
     def test_edge_contract_and_provider_inputs_fail_closed(self):
         for changes in (

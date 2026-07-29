@@ -57,7 +57,7 @@ from live_runtime.promotion_evidence import (
     validate_promotion_evidence_receipt,
 )
 from live_runtime.reconciliation import ReconciliationResult
-from live_runtime.risk import RiskContext
+from live_runtime.risk import RiskContext, _mint_usd_risk_cap_conversion
 from live_runtime.risk_ledger import (
     AccountRiskSnapshot,
     EntryRiskEvent,
@@ -96,7 +96,7 @@ from test_live_runtime_live_canary_provider_bound_runtime_launch_session import 
 )
 
 
-ACCOUNT_ID = "xm-live-account-alias"
+ACCOUNT_ID = "phillip-live-account-alias"
 EXPECTED_LOGIN = 12345
 PERMIT_SECRET = "live-order-permit-secret-material-at-least-32-bytes"
 PROMOTION_SECRET = "live-order-promotion-secret-at-least-32-bytes"
@@ -167,7 +167,7 @@ class LiveCanaryOrderAuthorizationTests(unittest.TestCase):
                 server=candidate.server,
                 environment="LIVE",
                 symbol="XAUUSD",
-                broker_symbol="GOLD",
+                broker_symbol="XAUUSD.ps01",
                 account_currency=candidate.account_currency,
                 digits=2,
                 point=0.01,
@@ -627,6 +627,18 @@ class LiveCanaryOrderAuthorizationTests(unittest.TestCase):
             data_fresh=True,
             source_aligned=True,
             permit_valid=True,
+            usd_risk_cap_conversion=_mint_usd_risk_cap_conversion(
+                account_id=ACCOUNT_ID,
+                server=candidate.server,
+                account_currency="JPY",
+                account_currency_per_usd=150.0,
+                source="MT5_BID_ASK",
+                broker_symbol="USDJPY.ps01",
+                direction="DIRECT",
+                bid=150.0,
+                ask=150.02,
+                captured_at_utc=self.now,
+            ),
         )
         verified_risk = build_verified_risk_context(
             journal=self.journal,

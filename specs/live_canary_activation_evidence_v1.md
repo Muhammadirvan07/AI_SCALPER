@@ -98,6 +98,16 @@ MT5, or submit an order.
 - FR-16: This validation MAY become an input to a later, separately
   reviewed LIVE composition; it MUST NOT be interpreted as execution authority
   without the central release lock and every runtime control.
+- FR-17: Request construction MUST require one exact
+  `LiveCanaryBrokerEligibilityEvidence` that binds the broker ID, legal name,
+  operating jurisdiction, registration authority and identifier, LIVE server,
+  `XAUUSD`, regulatory source evidence, distinct compliance and legal approval
+  hashes, and a validity window. Its registration status MUST be `REGISTERED`,
+  its decision MUST be `ELIGIBLE_FOR_LIVE_CANARY`, and it MUST remain deny-only.
+- FR-18: The `LEGAL_COMPLIANCE` gate receipt evidence hash MUST equal the
+  canonical eligibility-evidence hash. The activation request MUST record that
+  same hash directly, and any broker/server/symbol, time-window, status,
+  decision, or hash mismatch MUST fail closed.
 
 ## Non-Functional Requirements
 
@@ -121,11 +131,12 @@ MT5, or submit an order.
 
 ## Acceptance Criteria
 
-### AC-1: Exact eligible request (FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-13)
+### AC-1: Exact eligible request (FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-13, FR-17, FR-18)
 
 Given an exact XAUUSD binding, a fresh authenticated cohort receipt meeting all
-three soak thresholds, a valid LIVE promotion validation, and nine trusted gate
-receipts
+three soak thresholds, a valid LIVE promotion validation, one fresh exact
+broker-eligibility object, and nine trusted gate receipts whose
+`LEGAL_COMPLIANCE` receipt binds that object
 When the request builder validates the evidence
 Then it returns one canonical request bound to every exact evidence hash
 And every trading capability field remains disabled.
@@ -197,6 +208,17 @@ When validation is measured and the focused suite runs normally and with `-O`
 Then in-memory validation completes within 100 ms
 And all focused tests pass in both modes.
 
+### AC-10: Broker eligibility binding (FR-17, FR-18, NFR-S1, NFR-S2, NFR-S3)
+
+Given an otherwise valid activation evidence set
+When eligibility evidence is absent, stale, future-dated, expired before the
+request, non-registered, non-eligible, bound to another broker/server/symbol,
+contains reused approval hashes, or differs from the `LEGAL_COMPLIANCE` gate
+evidence hash
+Then request construction fails with a deterministic eligibility error
+And no activation request, replay event, execution authority, or broker effect
+is produced.
+
 ## Edge Cases and Error Scenarios
 
 - EC-1: Non-text/empty identifiers, uppercase/lowercase hash drift, zero
@@ -224,6 +246,10 @@ And all focused tests pass in both modes.
   rewritten checkpoint prefix is rejected as rollback/fork evidence.
 - EC-11: Evidence for EURUSD, multiple accounts, lot above/below 0.01, or
   more than one concurrent position is rejected.
+- EC-12: Eligibility evidence with a malformed jurisdiction, blank legal or
+  registration identity, zero/reused source or approval hashes, a validity
+  window longer than 30 days, or capability fields other than deny-only is
+  rejected during construction.
 
 ## API Contracts
 
@@ -264,6 +290,26 @@ interface LiveCanaryBinding {
   maxConcurrentPositions: 1;
 }
 
+interface LiveCanaryBrokerEligibilityEvidence {
+  brokerId: string;
+  brokerLegalName: string;
+  operatingJurisdiction: string;
+  registrationAuthority: string;
+  registrationIdentifier: string;
+  liveServer: string;
+  symbol: "XAUUSD";
+  regulatoryEvidenceSha256: Sha256;
+  complianceApprovalSha256: Sha256;
+  legalApprovalSha256: Sha256;
+  reviewedAt: UtcDateTime;
+  expiresAt: UtcDateTime;
+  registrationStatus: "REGISTERED";
+  eligibilityDecision: "ELIGIBLE_FOR_LIVE_CANARY";
+  liveAllowed: false;
+  executionAuthorized: false;
+  orderCapability: "DISABLED";
+}
+
 interface LiveCanaryGateReceipt {
   domain: LiveCanaryGateDomain;
   bindingSha256: Sha256;
@@ -293,6 +339,7 @@ interface LiveCanaryTrustPolicy {
 
 interface LiveCanaryActivationRequest {
   binding: LiveCanaryBinding;
+  brokerEligibilityEvidenceSha256: Sha256;
   soakCohortReceiptSha256: Sha256;
   livePromotionValidationSha256: Sha256;
   gateReceiptSha256ByDomain: ReadonlyArray<[LiveCanaryGateDomain, Sha256]>;
@@ -347,6 +394,26 @@ HTTP route. Reserved, non-implemented mapping for a future reviewed adapter:
 
 ## Data Models
 
+### LiveCanaryBrokerEligibilityEvidence
+
+| Field | Type | Constraints |
+|---|---|---|
+| broker_id | text | Exact canonical broker ID matching the live binding |
+| broker_legal_name | text | Non-empty reviewed legal entity name |
+| operating_jurisdiction | text | Exact two-letter uppercase jurisdiction |
+| registration_authority | text | Non-empty canonical authority ID |
+| registration_identifier | text | Non-empty canonical registration ID |
+| live_server | text | Exact server matching the live binding |
+| symbol | text | Exact `XAUUSD` |
+| regulatory_evidence_sha256 | text | Exact non-zero regulatory source hash |
+| compliance_approval_sha256 | text | Exact non-zero independent approval hash |
+| legal_approval_sha256 | text | Exact non-zero independent approval hash |
+| reviewed_at | UTC datetime | Not in the future at request validation |
+| expires_at | UTC datetime | After review, no more than 30 days, covers request |
+| registration_status | text | Exact `REGISTERED` |
+| eligibility_decision | text | Exact `ELIGIBLE_FOR_LIVE_CANARY` |
+| capability fields | constants | Deny-only; never execution authority |
+
 ### LiveCanaryReplayIdentity
 
 | Field | Type | Constraints |
@@ -387,6 +454,10 @@ and presenting it on restart; the module does not perform that I/O itself.
   milestone after this evidence boundary passes.
 - OS-3: Creating or fabricating soak, promotion, gate, approval, custody,
   broker, Windows, legal, or operational evidence.
+- OS-3a: Looking up registration status on the network or hard-coding a
+  mutable regulator list. The trusted `LEGAL_COMPLIANCE` authority supplies
+  and signs the reviewed external evidence; this boundary only verifies exact
+  identity, scope, freshness, and cryptographic binding.
 - OS-4: Accessing broker/MT5 credentials, opening a broker connection, sending
   demo/live orders, or mutating Windows Task Scheduler/services.
 - OS-5: Pair expansion beyond XAUUSD, multiple live accounts, portfolio
