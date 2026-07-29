@@ -30,11 +30,58 @@ sama lain dan dari dua authority diagnostic lama.
 - Reviewer harus benar-benar independen. ID palsu atau ID diagnostic lama tidak
   boleh dipakai.
 
-## 1. Siapkan directory immutable
+## 1. Verifikasi extracted operator release dan siapkan directory immutable
 
 ```powershell
-cd C:\AI_SCALPER
-.\.venv\Scripts\Activate.ps1
+$operatorRoot = Read-Host "Path extracted Windows shadow deployment-tooling release"
+$expectedCommit = Read-Host "Exact pinned 40-character release commit"
+$expectedReleaseIdentity = Read-Host "Exact pinned release identity SHA-256"
+$python = "C:\AI_SCALPER\.venv\Scripts\python.exe"
+
+if (-not (Test-Path $python -PathType Leaf)) {
+  throw "Exact Windows Python environment tidak ditemukan."
+}
+
+$manifestPath = Join-Path $operatorRoot "RELEASE_MANIFEST.json"
+$manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+
+if (
+  $manifest.release_profile -ne "WINDOWS_SHADOW_DEPLOYMENT_TOOLING_V1" -or
+  $manifest.git_commit -ne $expectedCommit -or
+  $manifest.release_identity_sha256 -ne $expectedReleaseIdentity -or
+  $manifest.production_execution_ready -ne $false -or
+  $manifest.safety.live_allowed -ne $false -or
+  $manifest.safety.order_capability -ne "DISABLED"
+) {
+  throw "Operator release identity atau safety boundary tidak cocok."
+}
+
+$failures = @()
+foreach ($file in $manifest.source_files) {
+  $path = Join-Path $operatorRoot $file.path.Replace("/", "\")
+  if (-not (Test-Path $path -PathType Leaf)) {
+    $failures += "MISSING: $($file.path)"
+    continue
+  }
+  $hash = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+  $size = (Get-Item $path).Length
+  if ($hash -ne $file.sha256) { $failures += "HASH: $($file.path)" }
+  if ($size -ne $file.size_bytes) { $failures += "SIZE: $($file.path)" }
+}
+
+if ($failures.Count -gt 0) {
+  $failures
+  throw "Extracted operator release verification gagal."
+}
+
+Set-Location $operatorRoot
+
+& $python -I -S -B .\verify_windows_dependency_lock.py `
+  --require-current-runtime
+
+if ($LASTEXITCODE -ne 0) {
+  throw "Windows dependency lock/current runtime verification gagal."
+}
 
 $candidate = "phillip-commodity"
 $brokerId = "phillip-jp"
@@ -60,7 +107,7 @@ $expiresAt = [DateTimeOffset]::UtcNow.AddDays(14).ToString(
 ## 2. Prepare exact pending body
 
 ```powershell
-python -B .\prepare_live_canary_broker_eligibility_review.py `
+& $python -B .\prepare_live_canary_broker_eligibility_review.py `
   --candidate $candidate `
   --broker-id $brokerId `
   --live-server $liveServer `
@@ -78,13 +125,13 @@ if ($LASTEXITCODE -ne 0) {
 ## 3. Provision dua dedicated key
 
 ```powershell
-python -B .\setup_live_canary_broker_eligibility_review_key.py `
+& $python -B .\setup_live_canary_broker_eligibility_review_key.py `
   --candidate $candidate `
   --role LIVE_CANARY_COMPLIANCE_REVIEW
 
 if ($LASTEXITCODE -ne 0) { throw "Setup compliance key gagal." }
 
-python -B .\setup_live_canary_broker_eligibility_review_key.py `
+& $python -B .\setup_live_canary_broker_eligibility_review_key.py `
   --candidate $candidate `
   --role LIVE_CANARY_LEGAL_REVIEW
 
@@ -101,7 +148,7 @@ if ($complianceReviewer -eq $legalReviewer) {
   throw "Reviewer LIVE compliance dan legal harus berbeda."
 }
 
-python -B .\sign_live_canary_broker_eligibility_review.py `
+& $python -B .\sign_live_canary_broker_eligibility_review.py `
   --candidate $candidate `
   --role LIVE_CANARY_COMPLIANCE_REVIEW `
   --approver-id $complianceReviewer `
@@ -111,7 +158,7 @@ python -B .\sign_live_canary_broker_eligibility_review.py `
 
 if ($LASTEXITCODE -ne 0) { throw "LIVE compliance approval gagal." }
 
-python -B .\sign_live_canary_broker_eligibility_review.py `
+& $python -B .\sign_live_canary_broker_eligibility_review.py `
   --candidate $candidate `
   --role LIVE_CANARY_LEGAL_REVIEW `
   --approver-id $legalReviewer `
@@ -125,7 +172,7 @@ if ($LASTEXITCODE -ne 0) { throw "LIVE legal approval gagal." }
 ## 5. Assemble dan verifikasi ulang
 
 ```powershell
-python -B .\assemble_live_canary_broker_eligibility_review.py `
+& $python -B .\assemble_live_canary_broker_eligibility_review.py `
   --candidate $candidate `
   --review-body $body `
   --regulatory-observation $observation `
@@ -135,7 +182,7 @@ python -B .\assemble_live_canary_broker_eligibility_review.py `
 
 if ($LASTEXITCODE -ne 0) { throw "Assembly eligibility gagal." }
 
-python -B .\verify_live_canary_broker_eligibility_review.py `
+& $python -B .\verify_live_canary_broker_eligibility_review.py `
   --candidate $candidate `
   --review $review `
   --regulatory-observation $observation
