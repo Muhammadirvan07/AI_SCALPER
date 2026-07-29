@@ -129,8 +129,11 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "prepare_windows_three_service_provider_conformance_input.py",
             "prepare_windows_three_service_provider_conformance_review.py",
             "verify_windows_live_provider_conformance_acceptance.py",
+            "manage_live_canary_provider_bound_worm_handoff.py",
+            "execution_policy.py",
             "live_runtime/asymmetric_release_trust.py",
             "live_runtime/contracts.py",
+            "live_runtime/live_canary_provider_bound_worm_handoff.py",
             "live_runtime/model_governance.py",
             "live_runtime/rule_core_champion_registry.py",
             "live_runtime/rule_core_model_artifact.py",
@@ -295,6 +298,10 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
                     "--expected-target-host-identity-sha256",
                 ),
                 (
+                    "manage_live_canary_provider_bound_worm_handoff.py",
+                    "prepare-request",
+                ),
+                (
                     "manage_rule_core_champion_registry.py",
                     "prepare-request",
                 ),
@@ -345,6 +352,8 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "verify_windows_execution_source_bound_candidate.py",
             "prepare_windows_live_canary_execution_source_bound_candidate.py",
             "verify_windows_live_provider_conformance_acceptance.py",
+            "manage_live_canary_provider_bound_worm_handoff.py",
+            "live_runtime/live_canary_provider_bound_worm_handoff.py",
         }
         service_allowlists = (
             "config/windows_decision_service_allowlist.v1.json",

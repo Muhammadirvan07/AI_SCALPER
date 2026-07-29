@@ -18,6 +18,13 @@ probe. The authority class was extracted from operator-side activation without
 duplicating its type or seal. Candidate assemblers, source-bound verifiers,
 provider review/acceptance, admission/custody assembly, and launch activation
 remain outside the service release.
+A deterministic operator-only WORM handoff now bridges the saved
+provider-bound admission to an external custodian. It produces an exact
+four-member request from eight independent closure pins and verifies the
+existing RSA receipt plus exported byte-identical readback into a canonical
+deny-only assessment. It performs no storage API call and deliberately emits
+no runtime custody seal, CAS reservation, nonce, launch, central unlock, or
+broker authority.
 The activation, launch, Windows provider composition,
 supervisor, execution coordinator, durable journal lease, runtime
 authorization, and final MT5 adapter chain are implemented and verified
@@ -35,6 +42,7 @@ LIVE_CANARY_RUNTIME_LAUNCH_SESSION = PASS_LOCALLY_CENTRAL_LOCKED
 LIVE_CANARY_PROVIDER_BOUND_CUSTODY_V2 = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PROVIDER_BOUND_LAUNCH_SESSION_V2 = PASS_LOCALLY_CENTRAL_LOCKED
 WINDOWS_EXECUTION_PROVIDER_BOUND_V2_CONSUMER = PASS_LOCALLY_LOCKED
+LIVE_CANARY_PROVIDER_BOUND_WORM_HANDOFF = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_PER_ORDER_GATED
 LIVE_CANARY_PER_ORDER_EXECUTION = PASS_LOCALLY_FAKE_MT5_ONE_SEND
 WINDOWS_LIVE_PROVIDER_MATERIALIZATION = PASS_LOCALLY_BROKERLESS_LOCKED
@@ -226,6 +234,16 @@ LIVE_TRADING = DO_NOT_SHIP
   locked, and rejects an unsealed forged session. The producer module
   re-exports the same class. All operator-only assembly/conformance modules
   remain excluded from service allowlists.
+- Provider-bound WORM handoff v1 now gives the external custodian one
+  deterministic four-member request containing exact canonical admission,
+  custody policy, provider policy, and self-binding manifest. Preparation and
+  verification require eight independent host/environment/release/task/policy
+  pins, exact authority separation, chronology and retention floors, strict
+  ZIP reconstruction, and create-exclusive publication. Offline assessment
+  accepts only the existing domain-separated RSA receipt and a separately
+  pinned byte-identical exported readback. It explicitly reports that direct
+  storage inspection, runtime custody sealing, CAS, nonce consumption, central
+  unlock, process launch, MT5, and broker mutation were not performed.
 - The source implementation is complete locally through provider-bound
   custody and launch composition, but no target-host pack,
   configured candidate, LIVE source-bound archive, or v4 conformance packet
@@ -270,6 +288,9 @@ LIVE_TRADING = DO_NOT_SHIP
 | Focused provider-bound launch-session suite | 6 PASS normal; 6 PASS optimized with one intentional nested-suite skip |
 | Windows Execution provider-bound consumer-closure spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused consumer closure/Execution/launch integration | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
+| Provider-bound WORM handoff spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
+| Focused provider-bound WORM handoff suite | 8 PASS normal, including isolated normal/optimized CLI request and receipt verification |
+| Configured-release tooling builder after WORM handoff inclusion | 11 PASS; extracted CLI bootstraps under `python -I -S -B` |
 | Cross-artifact service/tooling separation regression | 274 PASS |
 | Provider-bound launch/downstream regression | 165 PASS normal; 165 PASS optimized with seven intentional skips |
 | LIVE source-bound/tooling regression cluster | 39 PASS normal; 39 PASS optimized |
@@ -280,8 +301,8 @@ LIVE_TRADING = DO_NOT_SHIP
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,959 tests OK, 3 platform skips |
-| Full Python regression with `-O` | 1,959 tests OK, 12 skips including optimized-only nested self-tests |
+| Full Python regression | 1,967 tests OK, 3 platform skips |
+| Full Python regression with `-O` | 1,967 tests OK, 12 skips including optimized-only nested self-tests |
 | Uncommitted dashboard refactor audit | 16 unit PASS; lint, production build, bundle budget, and npm audit PASS; 24 desktop/mobile browser E2E PASS |
 | Python compile, dependency lock, JSON/spec validation, and scoped whitespace checks | PASS; Ruff unavailable in the active environment for this additive pass |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
@@ -323,9 +344,14 @@ uptime monitoring remain external work.
    the resulting exact committed tree and run its isolated provider-bound v2
    consumer probe before assembling downstream candidates. Local tests use
    synthetic values only.
-7. Provision the real independent WORM readback and atomic CAS/nonce custody,
-   retain the predecessor pin through an independent channel, and collect the
-   canonical RSA receipts this local boundary expects. From an exact committed
+7. Build the configured operator-tooling ZIP containing
+   `manage_live_canary_provider_bound_worm_handoff.py`, prepare and
+   independently verify its exact four-member request, then provision the real
+   independent WORM upload/readback. Verify the external RSA receipt with the
+   exported byte-identical readback; this offline assessment remains unsealed
+   and deny-only. Separately provision atomic CAS/nonce custody, retain the
+   predecessor pin through an independent channel, and collect the canonical
+   RSA receipts the runtime boundary expects. From an exact committed
    Windows base suite, build and independently validate the new deterministic
    49-port provider pack, then assemble and independently validate its
    suite-bound configured candidate,

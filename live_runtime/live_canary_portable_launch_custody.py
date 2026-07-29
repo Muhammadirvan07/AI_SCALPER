@@ -831,6 +831,31 @@ _ACK_FIELDS = frozenset(
     item.name
     for item in dataclass_fields(LiveCanaryLaunchReservationAcknowledgement)
 )
+_CUSTODY_POLICY_FIELDS = frozenset(
+    item.name for item in dataclass_fields(LiveCanaryPortableCustodyPolicy)
+)
+
+
+def decode_live_canary_portable_custody_policy(
+    payload: bytes,
+) -> LiveCanaryPortableCustodyPolicy:
+    """Decode one exact canonical public custody policy document."""
+
+    raw, text = _strict_json(payload, kind="CUSTODY_POLICY")
+    if set(raw) != _CUSTODY_POLICY_FIELDS:
+        _reject("CUSTODY_POLICY_SCHEMA_INVALID")
+    values = _constructor_values(LiveCanaryPortableCustodyPolicy, raw)
+    try:
+        policy = LiveCanaryPortableCustodyPolicy(**values)
+    except LiveCanaryPortableLaunchCustodyError:
+        raise
+    except (TypeError, ValueError, KeyError) as exc:
+        raise LiveCanaryPortableLaunchCustodyError(
+            "CUSTODY_POLICY_SCHEMA_INVALID"
+        ) from exc
+    if policy.canonical_json() != text:
+        _reject("CUSTODY_POLICY_NOT_CANONICAL")
+    return policy
 
 
 def decode_live_canary_admission_custody_receipt(
@@ -1502,6 +1527,7 @@ __all__ = [
     "admission_custody_signing_message",
     "consume_live_canary_launch_reservation",
     "decode_live_canary_admission_custody_receipt",
+    "decode_live_canary_portable_custody_policy",
     "decode_live_canary_launch_acknowledgement",
     "decode_live_canary_launch_checkpoint",
     "decode_live_canary_launch_proposal",

@@ -2,9 +2,10 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-29 menjalankan **1.911 test** tanpa
+Validasi lokal terakhir pada 2026-07-29 menjalankan **1.967 test** tanpa
 kegagalan dalam mode normal dan optimized pada development Mac; tiga test
-platform-dependent dilewati pada mode normal dan enam pada mode optimized.
+platform-dependent dilewati pada mode normal dan dua belas pada mode
+optimized.
 Baseline dashboard read-only yang sudah dilacak sebelumnya lulus 21 unit test
 frontend, 50 test backend, 14 browser E2E, lint, TypeScript, production build,
 dan bundle verification. Refactor dashboard lokal yang masih uncommitted tidak
@@ -46,6 +47,17 @@ tidak mengimpor generated factory, tidak membuka state, dan tidak memiliki
 broker/order authority. Status output tetap
 `EXTERNAL_PROVIDER_ACCEPTANCE_REQUIRED`; exact Windows build, provider custody,
 ACL, clock, CAS, launcher, task, dan independent conformance belum diterima.
+
+Provider-bound WORM handoff v1 kini juga lengkap secara source lokal dan masuk
+ke configured-release operator tooling. Request builder membuat exact ZIP
+empat member dari admission, custody policy, provider policy, serta manifest
+yang mengikat delapan pin independen. Verifier receipt menerima hanya schema
+v2, domain-separated RSA signature, retention/chronology yang valid, dan
+exported readback yang byte-identical serta dipin independen. Assessment tetap
+offline dan deny-only: tidak ada storage API inspection, runtime seal, CAS,
+nonce, central unlock, process, MT5, atau broker effect. WORM upload/readback
+aktual dan signed external CAS/checkpoint/nonce masih wajib sebelum
+launch-session v2 dapat dibentuk pada runtime.
 
 Decision configured-candidate assembler v1 juga lengkap secara source lokal.
 Ia menjaga original four-file pack immutable, membuat working overlay
@@ -263,6 +275,11 @@ hanya memperkuat artifact custody dan tidak mengubah `order_capability`,
 | 6. XAUUSD live canary | Provider-bound activation, custody, and launch composition implemented locally and locked; canary not started | Exact broker/demo/live/release/champion binding, policy-pinned promotion/gate/human/deployment authorities, three distinct approvals, five-minute trusted-clock window, atomic one-use SQLite registry, exact DDL/trigger verification, dan signed off-host rollback checkpoint tersedia secara source. Prebootstrap v1 menambah complete non-secret LIVE runtime candidate dan exact sealed DEMO Execution source-bound ancestry. Provider-bound prebootstrap v1 selalu mengulang verifikasi acceptance dari raw evidence pada trusted clock, mengikat exact consumed activation ke DEMO/LIVE ancestry, host, installed environment, configured Execution release/task, serta menetapkan expiry paling awal dari owner/runtime/request; hasilnya tetap deny-only. Provider-bound custody v2 kini mewajibkan domain-separated RSA receipt dan byte-identical WORM readback atas exact provider-bound admission, mengikat provider acceptance/policy/review, kedua source projection, host/environment/release/task, launcher policy, service account, activation, provider expiry, serta custody authority yang berbeda dari kedua provider authority. Provider-bound launch-session v2 mengomposisikan custody tersebut dengan protokol signed CAS/checkpoint/nonce v1 tanpa mengubah canonical v1, lalu membatasi expiry ke minimum capability/provider/custody. Production bootstrap, supervisor, per-order authorization, dan Windows LIVE materializer hanya menerima exact registered v2; session v1, subclass, forged object, dan duck type ditolak. Session v2 tetap launch-only, dengan execution dan broker mutation false serta seluruh per-order guard tetap wajib. Deterministic Execution base sekarang membawa minimal six-file v2 consumer closure plus isolated probe dalam allowlist 55 file; producer dan consumer memakai exact class/seal yang sama, sedangkan assembler candidate/source-bound, conformance, acceptance, admission/custody, dan activation tetap operator-only. Per-order v1 menambah `LIVE_CANARY_EXECUTE`, exact prepared order, sealed authority maksimal satu detik, durable pre-dispatch/reservation binding, dan revalidation hingga tepat sebelum MT5 `order_send`; fake-MT5 integration membuktikan satu send dan replay denial. Additive Windows LIVE materializer mengikat 49 port dan 12 purpose-bound credential references tanpa MT5/broker effect; Execution V1 tetap byte-compatible. Deterministic four-file pack, exact 15-file configured candidate, dan 17-member ten-pin source-bound archive tersedia secara source. Provider-conformance v4 mengikat sealed LIVE closure tersebut ke tepat 68 fresh provider record dan tetap `provider_accepted=false`. Additive external acceptance v1 memerlukan dua authority RSA berbeda, independently pinned policy/host, serta tiga exact evidence file; hanya hasil tersegel itu yang boleh menjadi `provider_accepted=true`, dan hasilnya tetap non-executable. Checked-in central policy tetap false, sehingga real authority tidak dapat diterbitkan. Canonical Windows factory v1 tetap DEMO-only. Actual XM demo-auto cohort 30 hari/50 fill/20 XAU, target-host LIVE provider ZIP/configured/source-bound/v4 artifacts, signature owner/runtime serta exact evidence acceptance, real provider-bound result, independent provider-bound WORM/CAS receipts, promotion/gate/approval evidence, central unlock ceremony, first real canary, broker acknowledgement, dan reconciliation evidence belum ada. Lima puluh closed live trades adalah bukti pascacanary untuk ekspansi, bukan syarat membuat order canary pertama. |
 | 7. Pair expansion | Not started | EURUSD, USDJPY, dan AUDUSD harus mengulang seluruh gate per lane; hasil lane lain tidak boleh menutup kegagalan sebuah pair. |
 | 8. Scaling | Out of v1 | Tidak ada auto-scaling lot maupun risk cap. |
+
+Catatan roadmap tahap 6: deterministic provider-bound WORM handoff sekarang
+termasuk dalam foundation lokal. Ia belum mengubah status canary karena WORM
+upload/readback, runtime-sealed custody, CAS/checkpoint/nonce, dan external
+acceptance aktual tetap belum tersedia.
 
 ## Kontrol yang sudah diimplementasikan lokal
 

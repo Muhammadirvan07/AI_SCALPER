@@ -92,6 +92,10 @@ initialization, atau order authority.
 4. Jalankan brokerless materialization dan negative tests pada host target.
 5. Kumpulkan external conformance, launcher, ACL/task, WORM/CAS, rollback, dan
    observability receipts.
+   Gunakan handoff deny-only di
+   `docs/LIVE_CANARY_PROVIDER_BOUND_WORM_HANDOFF.md` setelah exact
+   provider-bound admission tersedia; assessment offline itu belum merupakan
+   runtime custody seal atau CAS authority.
 6. Pertahankan central `LIVE_ALLOWED=false` sampai seluruh ship gate diterima.
 
 Tidak ada langkah pada runbook ini yang mengirim order.
