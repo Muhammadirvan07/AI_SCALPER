@@ -20,6 +20,7 @@ PROVIDER_BOUND_RUNTIME_CLOSURE_PATHS = (
     "live_runtime/contracts.py",
     "live_runtime/live_canary_provider_bound_runtime_session.py",
     "live_runtime/live_canary_runtime_authority.py",
+    "live_runtime/live_canary_runtime_candidate.py",
     "live_runtime/production_bootstrap.py",
     "live_runtime/windows_live_canary_execution_provider.py",
 )
@@ -533,7 +534,7 @@ class WindowsBaseReleaseSuiteBuilderTests(unittest.TestCase):
             list(PROVIDER_BOUND_RUNTIME_CLOSURE_PATHS),
             [item["path"] for item in closure["files"]],
         )
-        self.assertEqual(6, closure["file_count"])
+        self.assertEqual(7, closure["file_count"])
         self.assertFalse(closure["live_allowed"])
         self.assertFalse(closure["production_execution_ready"])
         self.assertEqual("DISABLED", closure["order_capability"])

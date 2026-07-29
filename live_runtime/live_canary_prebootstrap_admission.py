@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import InitVar, dataclass, field, fields as dataclass_fields
 from datetime import datetime
-from pathlib import PurePosixPath, PureWindowsPath
 import math
 import re
 from typing import Callable
@@ -17,9 +16,10 @@ from typing import Callable
 import execution_policy
 
 from .contracts import CanonicalContract, canonical_sha256, canonicalize
-from .live_canary_runtime_authority import (
-    _REGISTRATION_SEAL,
-    _register_live_canary_runtime_candidate_type,
+from .live_canary_runtime_candidate import (
+    LiveCanaryPrebootstrapAdmissionError,
+    LiveCanaryRuntimeCandidate,
+    ORDER_CAPABILITY,
 )
 from .live_canary_activation import (
     LIVE_CANARY_MAX_CONCURRENT_POSITIONS,
@@ -34,19 +34,12 @@ from .windows_execution_source_bound_candidate import (
 )
 
 
-RUNTIME_CANDIDATE_SCHEMA_VERSION = "live-canary-runtime-candidate-v1"
 ADMISSION_SCHEMA_VERSION = "live-canary-prebootstrap-admission-v1"
 ADMISSION_STATUS = "PREBOOTSTRAP_EVIDENCE_COMPLETE_CENTRAL_UNLOCK_REQUIRED"
-ORDER_CAPABILITY = "DISABLED"
-EXPECTED_DISTRIBUTION_VERSION = "5.0.5735"
-EXPECTED_WHEEL_SHA256 = (
-    "f6e8584e48f2c3f5de818f17ee65f0f5adfa1e4af29cd5f4bf3f72b91ff06e10"
-)
 
 _HEX_40 = re.compile(r"^[0-9a-f]{40}$")
 _HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
-_CURRENCY = re.compile(r"^[A-Z]{3}$")
 _REPORT_SEAL = object()
 
 _SOURCE_HASH_BINDINGS = (
@@ -109,21 +102,6 @@ _SOURCE_HASH_BINDINGS = (
 )
 
 
-class LiveCanaryPrebootstrapAdmissionError(RuntimeError):
-    """One prebootstrap invariant failed with a stable public reason code."""
-
-    __slots__ = ("reason_code",)
-
-    def __init__(self, reason_code: object) -> None:
-        normalized = re.sub(
-            r"[^A-Z0-9_]+",
-            "_",
-            str(reason_code or "").strip().upper(),
-        ).strip("_")
-        self.reason_code = normalized or "LIVE_CANARY_PREBOOTSTRAP_INVALID"
-        super().__init__(self.reason_code)
-
-
 def _reject(reason_code: str) -> None:
     raise LiveCanaryPrebootstrapAdmissionError(reason_code)
 
@@ -175,22 +153,6 @@ def _utc(name: str, value: object) -> datetime:
     return value
 
 
-def _absolute_path(name: str, value: object) -> str:
-    normalized = _text(name, value)
-    if not (
-        PurePosixPath(normalized).is_absolute()
-        or PureWindowsPath(normalized).is_absolute()
-    ):
-        _reject(f"{name}_INVALID")
-    return normalized
-
-
-def _basename(value: str) -> str:
-    windows_name = PureWindowsPath(value).name
-    posix_name = PurePosixPath(value).name
-    return windows_name if "\\" in value else posix_name
-
-
 def _fixed_float(name: str, value: object, expected: float) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         _reject(f"{name}_INVALID")
@@ -198,346 +160,6 @@ def _fixed_float(name: str, value: object, expected: float) -> float:
     if not math.isfinite(normalized) or normalized != expected:
         _reject(f"{name}_INVALID")
     return normalized
-
-
-def _bounded_int(
-    name: str,
-    value: object,
-    *,
-    minimum: int,
-    maximum: int,
-) -> int:
-    if (
-        type(value) is not int
-        or value < minimum
-        or value > maximum
-    ):
-        _reject(f"{name}_INVALID")
-    return value
-
-
-def _symbol_pairs(
-    name: str,
-    value: object,
-    *,
-    require_xau_only: bool,
-) -> tuple[tuple[str, str], ...]:
-    if type(value) not in {tuple, list}:
-        _reject(f"{name}_INVALID")
-    pairs: list[tuple[str, str]] = []
-    for item in value:
-        if type(item) not in {tuple, list} or len(item) != 2:
-            _reject(f"{name}_INVALID")
-        canonical = _text(f"{name}_CANONICAL_SYMBOL", item[0]).upper()
-        broker = _text(f"{name}_BROKER_SYMBOL", item[1])
-        if canonical != item[0]:
-            _reject(f"{name}_INVALID")
-        pairs.append((canonical, broker))
-    normalized = tuple(sorted(pairs))
-    if (
-        tuple(pairs) != normalized
-        or len({item[0] for item in normalized}) != len(normalized)
-        or len({item[1] for item in normalized}) != len(normalized)
-    ):
-        _reject(f"{name}_INVALID")
-    if require_xau_only and (
-        len(normalized) != 1 or normalized[0][0] != "XAUUSD"
-    ):
-        _reject(f"{name}_INVALID")
-    return normalized
-
-
-@dataclass(frozen=True, slots=True)
-class LiveCanaryRuntimeCandidate(CanonicalContract):
-    """Complete non-secret LIVE candidate that grants no runtime authority."""
-
-    candidate_id: str
-    broker_id: str
-    broker_legal_name: str
-    server: str
-    account_alias_sha256: str
-    account_currency: str
-    journal_database: str
-    supervisor_database: str
-    dependency_lock_file: str
-    symbol_map: tuple[tuple[str, str], ...]
-    usd_account_currency_symbols: tuple[tuple[str, str], ...]
-    journal_sha256: str
-    commit_sha: str
-    dependency_lock_sha256: str
-    installed_environment_sha256: str
-    mt5_site_packages_sha256: str
-    mt5_site_packages_tree_sha256: str
-    mt5_distribution_record_sha256: str
-    mt5_module_file_sha256: str
-    mt5_module_relative_path_sha256: str
-    runtime_profile_sha256: str
-    release_manifest_sha256: str
-    session_calendar_sha256: str
-    broker_spec_sha256: str
-    live_stage_binding_sha256: str
-    activation_policy_sha256: str
-    model_artifact_sha256: str
-    champion_archive_sha256: str
-    champion_package_identity_sha256: str
-    champion_training_snapshot_sha256: str
-    champion_config_sha256: str
-    champion_git_tree: str
-    champion_runtime_binding_sha256: str
-    demo_source_bound_archive_sha256: str
-    demo_source_bound_binding_identity_sha256: str
-    demo_source_archive_sha256: str
-    demo_source_identity_sha256: str
-    demo_production_config_sha256: str
-    demo_bootstrap_binding_sha256: str
-    demo_stage_binding_sha256: str
-    demo_configured_release_identity_sha256: str
-    demo_configured_archive_sha256: str
-    demo_execution_factory_template_sha256: str
-    demo_execution_candidate_id: str
-    demo_execution_candidate_content_sha256: str
-    demo_provider_pack_identity_sha256: str
-    demo_provider_configuration_sha256: str
-    demo_task_definition_sha256: str
-    demo_base_suite_identity_sha256: str
-    demo_execution_base_archive_sha256: str
-    demo_execution_base_release_identity_sha256: str
-    demo_git_commit: str
-    demo_git_tree: str
-    manual_demo_custodian_trust_sha256: str
-    news_guard_provider_id: str
-    news_guard_key_id: str
-    news_guard_key_fingerprint_sha256: str
-    news_guard_ruleset_sha256: str
-    news_guard_blackout_window_sha256: str
-    supervisor_key_id: str
-    supervisor_key_fingerprint_sha256: str
-    supervisor_checkpoint_key_id: str
-    supervisor_checkpoint_key_fingerprint_sha256: str
-    credential_session_key_id: str
-    credential_session_key_fingerprint_sha256: str
-    journal_provisioning_key_id: str
-    journal_provisioning_key_fingerprint_sha256: str
-    worm_audit_key_id: str
-    worm_audit_key_fingerprint_sha256: str
-    risk_ledger_id: str
-    risk_ledger_key_id: str
-    risk_ledger_key_fingerprint_sha256: str
-    journal_checkpoint_key_id: str
-    journal_checkpoint_key_fingerprint_sha256: str
-    permit_secret_fingerprint_sha256: str
-    magic_number: int
-    deviation_points: int
-    max_tick_age_seconds: int
-    intent_ttl_seconds: float
-    environment: str = field(default="LIVE", init=False)
-    mode: str = field(default="LIVE", init=False)
-    max_lot: float = field(default=LIVE_CANARY_MAX_LOT, init=False)
-    max_concurrent_positions: int = field(
-        default=LIVE_CANARY_MAX_CONCURRENT_POSITIONS,
-        init=False,
-    )
-    live_allowed: bool = field(default=False, init=False)
-    safe_to_demo_auto_order: bool = field(default=False, init=False)
-    execution_authorized: bool = field(default=False, init=False)
-    activation_authorized: bool = field(default=False, init=False)
-    order_capability: str = field(default=ORDER_CAPABILITY, init=False)
-    mt5_distribution_version: str = field(
-        default=EXPECTED_DISTRIBUTION_VERSION,
-        init=False,
-    )
-    mt5_wheel_sha256: str = field(default=EXPECTED_WHEEL_SHA256, init=False)
-    schema_version: str = field(
-        default=RUNTIME_CANDIDATE_SCHEMA_VERSION,
-        init=False,
-    )
-
-    def __post_init__(self) -> None:
-        for name in (
-            "candidate_id",
-            "broker_id",
-            "demo_execution_candidate_id",
-            "news_guard_provider_id",
-            "news_guard_key_id",
-            "supervisor_key_id",
-            "supervisor_checkpoint_key_id",
-            "credential_session_key_id",
-            "journal_provisioning_key_id",
-            "worm_audit_key_id",
-            "risk_ledger_id",
-            "risk_ledger_key_id",
-            "journal_checkpoint_key_id",
-        ):
-            object.__setattr__(self, name, _identifier(name, getattr(self, name)))
-        for name in ("broker_legal_name", "server"):
-            object.__setattr__(self, name, _text(name, getattr(self, name)))
-        currency = _text("account_currency", self.account_currency).upper()
-        if currency != self.account_currency or _CURRENCY.fullmatch(currency) is None:
-            _reject("ACCOUNT_CURRENCY_INVALID")
-        object.__setattr__(self, "account_currency", currency)
-
-        for name in (
-            "journal_database",
-            "supervisor_database",
-            "dependency_lock_file",
-        ):
-            object.__setattr__(
-                self,
-                name,
-                _absolute_path(name, getattr(self, name)),
-            )
-        if self.journal_database.casefold() == self.supervisor_database.casefold():
-            _reject("LIVE_RUNTIME_DATABASE_PATH_COLLISION")
-        if _basename(self.dependency_lock_file) != "pylock.windows-cp312.toml":
-            _reject("DEPENDENCY_LOCK_PATH_INVALID")
-
-        object.__setattr__(
-            self,
-            "symbol_map",
-            _symbol_pairs("symbol_map", self.symbol_map, require_xau_only=True),
-        )
-        object.__setattr__(
-            self,
-            "usd_account_currency_symbols",
-            _symbol_pairs(
-                "usd_account_currency_symbols",
-                self.usd_account_currency_symbols,
-                require_xau_only=False,
-            ),
-        )
-
-        hash_fields = (
-            "account_alias_sha256",
-            "journal_sha256",
-            "dependency_lock_sha256",
-            "installed_environment_sha256",
-            "mt5_site_packages_sha256",
-            "mt5_site_packages_tree_sha256",
-            "mt5_distribution_record_sha256",
-            "mt5_module_file_sha256",
-            "mt5_module_relative_path_sha256",
-            "runtime_profile_sha256",
-            "release_manifest_sha256",
-            "session_calendar_sha256",
-            "broker_spec_sha256",
-            "live_stage_binding_sha256",
-            "activation_policy_sha256",
-            "model_artifact_sha256",
-            "champion_archive_sha256",
-            "champion_package_identity_sha256",
-            "champion_training_snapshot_sha256",
-            "champion_config_sha256",
-            "champion_runtime_binding_sha256",
-            "demo_source_bound_archive_sha256",
-            "demo_source_bound_binding_identity_sha256",
-            "demo_source_archive_sha256",
-            "demo_source_identity_sha256",
-            "demo_production_config_sha256",
-            "demo_bootstrap_binding_sha256",
-            "demo_stage_binding_sha256",
-            "demo_configured_release_identity_sha256",
-            "demo_configured_archive_sha256",
-            "demo_execution_factory_template_sha256",
-            "demo_execution_candidate_content_sha256",
-            "demo_provider_pack_identity_sha256",
-            "demo_provider_configuration_sha256",
-            "demo_task_definition_sha256",
-            "demo_base_suite_identity_sha256",
-            "demo_execution_base_archive_sha256",
-            "demo_execution_base_release_identity_sha256",
-            "manual_demo_custodian_trust_sha256",
-            "news_guard_key_fingerprint_sha256",
-            "news_guard_ruleset_sha256",
-            "news_guard_blackout_window_sha256",
-            "supervisor_key_fingerprint_sha256",
-            "supervisor_checkpoint_key_fingerprint_sha256",
-            "credential_session_key_fingerprint_sha256",
-            "journal_provisioning_key_fingerprint_sha256",
-            "worm_audit_key_fingerprint_sha256",
-            "risk_ledger_key_fingerprint_sha256",
-            "journal_checkpoint_key_fingerprint_sha256",
-            "permit_secret_fingerprint_sha256",
-        )
-        for name in hash_fields:
-            object.__setattr__(self, name, _sha256(name, getattr(self, name)))
-        for name in ("commit_sha", "champion_git_tree", "demo_git_commit", "demo_git_tree"):
-            object.__setattr__(self, name, _git_sha(name, getattr(self, name)))
-
-        key_ids = self.runtime_key_ids
-        fingerprints = self.runtime_key_fingerprints
-        if len(key_ids) != 8 or len(fingerprints) != 9:
-            _reject("LIVE_RUNTIME_TRUST_DOMAIN_REUSE")
-        _bounded_int("magic_number", self.magic_number, minimum=1, maximum=2_147_483_647)
-        _bounded_int("deviation_points", self.deviation_points, minimum=0, maximum=10_000)
-        _bounded_int("max_tick_age_seconds", self.max_tick_age_seconds, minimum=1, maximum=60)
-        if isinstance(self.intent_ttl_seconds, bool) or not isinstance(
-            self.intent_ttl_seconds,
-            (int, float),
-        ):
-            _reject("INTENT_TTL_SECONDS_INVALID")
-        ttl = float(self.intent_ttl_seconds)
-        if not math.isfinite(ttl) or not 0 < ttl <= 1:
-            _reject("INTENT_TTL_SECONDS_INVALID")
-        object.__setattr__(self, "intent_ttl_seconds", ttl)
-
-        if (
-            self.environment != "LIVE"
-            or self.mode != "LIVE"
-            or _fixed_float("max_lot", self.max_lot, LIVE_CANARY_MAX_LOT)
-            != LIVE_CANARY_MAX_LOT
-            or self.max_concurrent_positions
-            != LIVE_CANARY_MAX_CONCURRENT_POSITIONS
-            or any(
-                (
-                    self.live_allowed,
-                    self.safe_to_demo_auto_order,
-                    self.execution_authorized,
-                    self.activation_authorized,
-                    self.order_capability != ORDER_CAPABILITY,
-                )
-            )
-            or self.mt5_distribution_version != EXPECTED_DISTRIBUTION_VERSION
-            or self.mt5_wheel_sha256 != EXPECTED_WHEEL_SHA256
-            or self.schema_version != RUNTIME_CANDIDATE_SCHEMA_VERSION
-        ):
-            _reject("LIVE_RUNTIME_CANDIDATE_SAFETY_DRIFT")
-
-    @property
-    def runtime_key_ids(self) -> frozenset[str]:
-        return frozenset(
-            (
-                self.news_guard_key_id,
-                self.supervisor_key_id,
-                self.supervisor_checkpoint_key_id,
-                self.credential_session_key_id,
-                self.journal_provisioning_key_id,
-                self.worm_audit_key_id,
-                self.risk_ledger_key_id,
-                self.journal_checkpoint_key_id,
-            )
-        )
-
-    @property
-    def runtime_key_fingerprints(self) -> frozenset[str]:
-        return frozenset(
-            (
-                self.news_guard_key_fingerprint_sha256,
-                self.supervisor_key_fingerprint_sha256,
-                self.supervisor_checkpoint_key_fingerprint_sha256,
-                self.credential_session_key_fingerprint_sha256,
-                self.journal_provisioning_key_fingerprint_sha256,
-                self.worm_audit_key_fingerprint_sha256,
-                self.risk_ledger_key_fingerprint_sha256,
-                self.journal_checkpoint_key_fingerprint_sha256,
-                self.permit_secret_fingerprint_sha256,
-            )
-        )
-
-
-_register_live_canary_runtime_candidate_type(
-    LiveCanaryRuntimeCandidate,
-    _seal=_REGISTRATION_SEAL,
-)
 
 
 @dataclass(frozen=True, slots=True)

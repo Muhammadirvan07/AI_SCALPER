@@ -45,6 +45,16 @@ tanpa lease tetap berhenti pada
 40 provider konkret, credential, acceptance, launch session, authorization,
 central unlock, MT5 initialization, atau order authority.
 
+Gap consumer berikutnya juga ditutup: exact deny-only
+`LiveCanaryRuntimeCandidate` kini dimiliki modul minimal dalam Execution
+release, sementara prebootstrap operator mere-ekspor kelas yang sama. Strict
+canonical loader memerlukan external SHA-256 pin, closed 91-field payload,
+single-LF UTF-8 JSON, duplicate-key rejection, exact round trip, dan batas
+1 MiB. Candidate yang berhasil dimuat tetap tidak memiliki launch-session,
+execution, activation, atau order authority. Closure bertambah dari enam
+menjadi tujuh file dan allowlist Execution menjadi 58 file; signed session
+handoff dan concrete runtime provider tetap belum tersedia.
+
 Audit TDD menemukan lalu menutup dua defect yang tidak terlihat pada happy
 path: registry path dengan komponen `..` sebelumnya dinormalisasi dan diterima,
 serta dua authorization berbeda dapat melewati predecessor yang sama sebelum
@@ -66,6 +76,7 @@ DASHBOARD_DEPENDENCY_AUDIT = PASS_LOCAL_ZERO_KNOWN_VULNERABILITIES
 DASHBOARD_WINDOWS_ACCEPTANCE = NOT_SUPPLIED
 WINDOWS_NODEJS = USER_REPORTED_INSTALLED_NOT_YET_ATTESTED
 WINDOWS_LIVE_EXTERNAL_RUNTIME_HOOK_LEASE = PASS_LOCALLY_DENY_ONLY
+WINDOWS_LIVE_RUNTIME_CANDIDATE_CONSUMER = PASS_LOCALLY_DENY_ONLY
 CONCRETE_LIVE_RUNTIME_PROVIDERS = NOT_SUPPLIED
 REAL_30_DAY_50_FILL_20_XAU_COHORT = ABSENT
 REAL_LIVE_PROMOTION_AND_NINE_GATES = ABSENT
@@ -96,10 +107,11 @@ consumption/release cluster lulus 69/69 normal dan 69/69 optimized dengan dua
 intentional optimized skip. Full serial repository gate terbaru lulus 2.362
 test dan 1.319 subtest normal dengan tiga platform skip, serta 2.350 test dan
 1.319 subtest di bawah `-O` dengan 15 platform/optimized skip. Tiga helper CLI
-diagnostik lama juga tidak lagi salah dikoleksi sebagai pytest fixture. Paket
-clean-commit belum dibangun ulang pada saat
-catatan ini; hasil scheduled proof Windows dan custody WORM aktual belum
-diterima untuk verifikasi.
+diagnostik lama juga tidak lagi salah dikoleksi sebagai pytest fixture.
+Execution release clean-commit telah dibangun dua kali secara independen dan
+ZIP/sidecar manifest terbukti byte-identical; extracted isolated closure probe
+juga lulus dengan seluruh effect `NOT_PERFORMED`. Hasil scheduled proof Windows
+dan custody WORM aktual belum diterima untuk verifikasi.
 
 ## Implemented
 
@@ -183,6 +195,13 @@ diterima untuk verifikasi.
 - LIVE configured/source-bound/provider-closure regression: 98 tests dan 58
   subtests lulus normal; 92 lulus, enam expected skip, dan 58 subtests lulus
   di bawah `PYTHONOPTIMIZE=2`.
+- Candidate-consumer/downstream cluster: 113 tests dan 134 subtests passed
+  normal; 108 passed, lima intentional skip, dan 134 subtests passed optimized.
+- Full serial repository regression setelah consumer extraction: 2.368 tests
+  dan 1.340 subtests passed normal dengan tiga skip; 2.356 tests dan 1.340
+  subtests passed optimized dengan 15 skip. Tidak ada failure.
+- Candidate-consumer spec: 100/100 Grade A, 0 error, 0 warning; focused ruff,
+  mypy, compilation, whitespace, dan Windows dependency-lock gates passed.
 
 ## Remaining external work
 
@@ -200,5 +219,7 @@ exact `node --version`, `npm.cmd --version`, clean `npm.cmd ci`, production
 build, dev-server reachability, WebSocket client, dan fresh snapshot receipt
 masih perlu dikembalikan dari target host.
 
-Deterministic clean-commit Windows artifacts and hashes are recorded only after
-this source milestone is committed and rebuilt twice from a clean worktree.
+Deterministic clean-commit Execution rebuild dan extracted closure probe sudah
+lulus. Exact target-Windows rebuild, complete atomic suite, configured LIVE
+candidate, serta external runtime/session evidence masih harus dibangun dan
+diverifikasi dari commit yang dipin sebelum deployment.

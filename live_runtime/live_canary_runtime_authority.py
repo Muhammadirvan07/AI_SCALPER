@@ -15,6 +15,7 @@ import re
 
 
 _SESSION_SEAL = object()
+_CANDIDATE_SEAL = object()
 _REGISTRATION_SEAL = object()
 _candidate_type: type[object] | None = None
 _session_type: type[object] | None = None
@@ -45,8 +46,7 @@ def _register_live_canary_runtime_candidate_type(
     if (
         _seal is not _REGISTRATION_SEAL
         or type(value) is not type
-        or value.__module__
-        != "live_runtime.live_canary_prebootstrap_admission"
+        or value.__module__ != "live_runtime.live_canary_runtime_candidate"
         or value.__name__ != "LiveCanaryRuntimeCandidate"
     ):
         raise TypeError("live candidate type registration rejected")
@@ -101,9 +101,13 @@ def _register_live_canary_provider_bound_runtime_launch_session_type(
 
 
 def is_live_canary_runtime_candidate(value: object) -> bool:
-    """Return true only for the registered exact candidate class."""
+    """Return true only for a constructed exact registered candidate."""
 
-    return _candidate_type is not None and type(value) is _candidate_type
+    return (
+        _candidate_type is not None
+        and type(value) is _candidate_type
+        and getattr(value, "_candidate_seal", None) is _CANDIDATE_SEAL
+    )
 
 
 def is_live_canary_runtime_launch_session(value: object) -> bool:

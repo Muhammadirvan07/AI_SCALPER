@@ -15,6 +15,7 @@ _REQUIRED_BOOTSTRAP_FILES = (
     "live_runtime/contracts.py",
     "live_runtime/live_canary_provider_bound_runtime_session.py",
     "live_runtime/live_canary_runtime_authority.py",
+    "live_runtime/live_canary_runtime_candidate.py",
     "live_runtime/production_bootstrap.py",
     "live_runtime/windows_live_canary_external_cas_directory_adapter.py",
     "live_runtime/windows_live_canary_execution_provider.py",
@@ -74,6 +75,13 @@ from live_runtime.live_canary_provider_bound_runtime_session import (
     PROVIDER_BOUND_RUNTIME_LAUNCH_SESSION_SCHEMA,
     is_live_canary_provider_bound_runtime_launch_session,
 )
+from live_runtime.live_canary_runtime_candidate import (
+    LiveCanaryRuntimeCandidate,
+    LiveCanaryRuntimeCandidateDocumentError,
+    RUNTIME_CANDIDATE_DOCUMENT_SCHEMA_VERSION,
+    is_live_canary_runtime_candidate,
+    load_live_canary_runtime_candidate_document,
+)
 from live_runtime.production_bootstrap import _require_live_runtime_authority
 from live_runtime.windows_live_canary_external_cas_directory_adapter import (
     CAS_REQUEST_SCHEMA,
@@ -108,6 +116,13 @@ def verify_provider_bound_runtime_closure() -> dict[str, object]:
         raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
             "PROVIDER_BOUND_RUNTIME_SCHEMA_DRIFT"
         )
+    if (
+        RUNTIME_CANDIDATE_DOCUMENT_SCHEMA_VERSION
+        != "windows-live-canary-runtime-candidate-document-v1"
+    ):
+        raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
+            "RUNTIME_CANDIDATE_DOCUMENT_SCHEMA_DRIFT"
+        )
     adapter_schemas = (
         CAS_REQUEST_SCHEMA,
         CAS_RESPONSE_SCHEMA,
@@ -125,6 +140,8 @@ def verify_provider_bound_runtime_closure() -> dict[str, object]:
         )
     callables = (
         is_live_canary_provider_bound_runtime_launch_session,
+        is_live_canary_runtime_candidate,
+        load_live_canary_runtime_candidate_document,
         _require_live_runtime_authority,
         seal_windows_live_canary_runtime_source,
         WindowsLiveCanaryExternalCasDirectoryAdapter,
@@ -139,6 +156,26 @@ def verify_provider_bound_runtime_closure() -> dict[str, object]:
         raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
             "PROVIDER_BOUND_RUNTIME_PREDICATE_DRIFT"
         )
+    if is_live_canary_runtime_candidate(object()) is not False:
+        raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
+            "RUNTIME_CANDIDATE_PREDICATE_DRIFT"
+        )
+    forged_candidate = object.__new__(LiveCanaryRuntimeCandidate)
+    if is_live_canary_runtime_candidate(forged_candidate) is not False:
+        raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
+            "RUNTIME_CANDIDATE_FORGERY_ACCEPTED"
+        )
+    try:
+        load_live_canary_runtime_candidate_document(
+            b"{}\n",
+            expected_candidate_sha256="1" * 64,
+        )
+    except LiveCanaryRuntimeCandidateDocumentError:
+        pass
+    else:
+        raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
+            "RUNTIME_CANDIDATE_MALFORMED_DOCUMENT_ACCEPTED"
+        )
     forged = object.__new__(LiveCanaryProviderBoundRuntimeLaunchSession)
     if is_live_canary_provider_bound_runtime_launch_session(forged) is not False:
         raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
@@ -147,7 +184,7 @@ def verify_provider_bound_runtime_closure() -> dict[str, object]:
     return {
         "status": "WINDOWS_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_READY",
         "release_root": str(_RELEASE_ROOT),
-        "schema_count": 1,
+        "schema_count": 2,
         "directory_adapter_schema_count": len(adapter_schemas),
         "live_allowed": False,
         "safe_to_demo_auto_order": False,

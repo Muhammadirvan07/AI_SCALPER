@@ -64,11 +64,14 @@ all imported origins before returning.
 
 ## Provider-bound v2 consumer closure
 
-The base release now contains the exact provider-bound LIVE launch-session v2
-consumer class required by production bootstrap. It does not contain the
+The base release now contains the exact deny-only LIVE runtime candidate and
+provider-bound LIVE launch-session v2 consumer classes required by production
+bootstrap. The candidate document loader requires an independent SHA-256 pin,
+closed canonical fields, duplicate-key rejection, exact round trip, and a
+1 MiB limit. It does not contain the
 operator-side admission, custody, acceptance, source-bound, conformance, or
-activation assemblers. The release manifest binds the critical six-file
-consumer closure, while the complete service allowlist contains 57 files.
+activation assemblers. The release manifest binds the critical seven-file
+consumer closure, while the complete service allowlist contains 58 files.
 
 After extracting an exact release, validate this closure without importing a
 provider or contacting MT5:

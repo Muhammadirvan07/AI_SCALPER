@@ -14,6 +14,7 @@ DASHBOARD_NETWORK_BOUNDARY = LOOPBACK_ONLY_PASS_LOCAL
 DASHBOARD_DEPENDENCIES = PASS_LOCAL_ZERO_KNOWN_VULNERABILITIES
 DASHBOARD_WINDOWS_RUNTIME = NOT_ACCEPTED
 WINDOWS_LIVE_EXTERNAL_RUNTIME_HOOK_LEASE = PASS_LOCAL_DENY_ONLY
+WINDOWS_LIVE_RUNTIME_CANDIDATE_CONSUMER = PASS_LOCAL_DENY_ONLY
 CONCRETE_LIVE_RUNTIME_PROVIDER = NOT_ACCEPTED
 WINDOWS_EXTERNAL_EVIDENCE = INCOMPLETE
 CENTRAL_LIVE_LOCK = FALSE
@@ -59,6 +60,11 @@ launch, MT5 initialization, atau order broker.
   normal and 92 tests plus six expected skips and 58 subtests optimized.
 - Focused mypy for the modified runtime/provider/launcher sources and the
   pinned Windows dependency lock both passed.
+- Candidate-consumer spec scored 100/100 Grade A without warning. Focused
+  candidate/downstream checks passed 113 tests and 134 subtests normal, serta
+  108 tests, lima intentional skip, dan 134 subtests optimized. Full serial
+  post-extraction gates passed 2.368/2.356 tests and 1.340 subtests in normal/
+  optimized modes without failure.
 
 ## Security and correctness findings closed
 
@@ -122,6 +128,13 @@ launch, MT5 initialization, atau order broker.
     parameter `symbol`, sehingga full pytest menganggap parameter itu fixture.
     Helper sekarang memakai nama operasional dan tetap lulus direct CLI smoke,
     sehingga full normal/optimized collection tidak memiliki error.
+19. Exact LIVE runtime candidate sebelumnya hanya dimiliki operator-side
+    prebootstrap graph, sehingga allowlist-only Execution consumer tidak dapat
+    merekonstruksi exact candidate yang diwajibkan production bootstrap.
+    Candidate sekarang memiliki satu minimal owner, construction seal, closed
+    canonical document schema, dan independent SHA-256 pin; operator module
+    mere-ekspor exact class yang sama. Closure tetap deny-only dan tidak
+    membentuk provider-bound session atau order authority.
 
 ## Automated category result
 
@@ -135,7 +148,7 @@ launch, MT5 initialization, atau order broker.
 | Frontend | PASS_LOCAL / WINDOWS_PENDING | 29 unit, lint/build/bundle, and 30 desktop/mobile E2E pass; GET/WebSocket-only boundary; exact Windows launch not accepted |
 | Observability | PASS_LOCAL / EXTERNAL_PENDING | Stable public reason codes and canonical receipts; external WORM/CAS/log custody not yet proven |
 | Broker/live effects | PASS_DENY_ONLY | No process/socket/requests/MetaTrader5/order call; live and activation remain false |
-| LIVE runtime composition | PASS_LOCAL / EXTERNAL_PENDING | Exact-hash loader and one-use hook lease pass locally; concrete 40-provider module, target-host hash pin, acceptance, credentials, and runtime state are absent |
+| LIVE runtime composition | PASS_LOCAL / EXTERNAL_PENDING | Exact candidate consumer, hash-pinned document loader, exact-hash runtime hook, and one-use lease pass locally; signed session handoff, concrete 40-provider module, target-host hash pin, acceptance, credentials, and runtime state are absent |
 
 ## Manual/external blockers
 
