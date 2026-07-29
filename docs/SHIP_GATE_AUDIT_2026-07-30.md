@@ -34,6 +34,9 @@ launch, MT5 initialization, atau order broker.
 - Full serial normal regression: 2,081 passed, three expected platform skips.
 - Full serial optimized regression: 2,081 passed, fourteen expected
   platform/optimized skips.
+- Post-run V6.3 focused gate setelah hardening: 41 passed normal dan 41 passed
+  optimized. Full serial repository gate terbaru: 2,087 passed normal dengan
+  tiga platform skip dan 2,087 passed optimized dengan empat belas skip.
 - Windows dependency lock/SBOM/install-manifest/MetaTrader5 wheel pins passed.
 - Python compilation, scoped whitespace, strict JSON loaders, release
   isolation, and static forbidden-effect audit passed.
@@ -59,6 +62,17 @@ launch, MT5 initialization, atau order broker.
 6. Initialization loads and fingerprint-validates both registry and checkpoint
    credentials before creating the registry, preventing a missing second key
    from leaving a partial database.
+7. Task Scheduler trigger correlation previously accepted event 107 whose
+   EventRecordID followed event 100. Record ordering is now mandatory, and a
+   completed `Ready` run requires event 102 after the start record.
+8. Task lookup by name could be ambiguous across scheduler folders. V6.3, V4,
+   and V5 now each require one exact root-path task.
+9. Evidence reads previously separated path inspection from `read_bytes`, and
+   generic JSON accepted duplicate keys. Single-handle identity/stability and
+   global duplicate-key rejection now fail closed.
+10. Post-write verification failure could leave an invalid acceptance archive,
+    while naive cleanup risked deleting a replacement. Cleanup is now bound to
+    the exact created file identity for acceptance and custody outputs.
 
 ## Automated category result
 

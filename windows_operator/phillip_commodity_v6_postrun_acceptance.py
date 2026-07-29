@@ -224,15 +224,39 @@ def _read_regular(path: Path, code: str, maximum: int = MAX_MEMBER_BYTES) -> byt
     if before.st_size <= 0 or before.st_size > maximum:
         _reject(code)
     try:
-        value = safe.read_bytes()
+        with safe.open("rb") as handle:
+            opened = os.fstat(handle.fileno())
+            fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns")
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or stat.S_ISLNK(opened.st_mode)
+                or _has_reparse_attribute(opened)
+                or any(
+                    getattr(before, name) != getattr(opened, name)
+                    for name in fields
+                )
+            ):
+                _reject(code)
+            value = handle.read(maximum + 1)
+            after_handle = os.fstat(handle.fileno())
     except OSError as exc:
         raise PostRunAcceptanceError(code) from exc
-    after = safe.lstat()
-    fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns")
+    try:
+        after_path = safe.lstat()
+    except OSError as exc:
+        raise PostRunAcceptanceError(code) from exc
     if (
-        any(getattr(before, name) != getattr(after, name) for name in fields)
-        or len(value) != after.st_size
-        or _has_reparse_attribute(after)
+        any(
+            getattr(opened, name) != getattr(after_handle, name)
+            or getattr(opened, name) != getattr(after_path, name)
+            for name in fields
+        )
+        or len(value) != opened.st_size
+        or len(value) > maximum
+        or not stat.S_ISREG(after_path.st_mode)
+        or stat.S_ISLNK(after_path.st_mode)
+        or _has_reparse_attribute(after_handle)
+        or _has_reparse_attribute(after_path)
     ):
         _reject(code)
     return value
@@ -272,16 +296,6 @@ def _pretty_json(value: object) -> bytes:
 
 
 def _json_object(value: bytes, code: str) -> dict[str, object]:
-    try:
-        parsed = json.loads(value.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError) as exc:
-        raise PostRunAcceptanceError(code) from exc
-    if not isinstance(parsed, dict):
-        _reject(code)
-    return parsed
-
-
-def _json_object_unique(value: bytes, code: str) -> dict[str, object]:
     def reject_duplicates(
         pairs: list[tuple[str, object]],
     ) -> dict[str, object]:
@@ -304,6 +318,10 @@ def _json_object_unique(value: bytes, code: str) -> dict[str, object]:
     if not isinstance(parsed, dict):
         _reject(code)
     return parsed
+
+
+def _json_object_unique(value: bytes, code: str) -> dict[str, object]:
+    return _json_object(value, code)
 
 
 def _strict_canonical_json_object(value: bytes, kind: str) -> dict[str, object]:
@@ -1180,13 +1198,17 @@ def _validate_task_scheduler_evidence(
         if row["event_id"] == TASK_COMPLETED_EVENT_ID
         and row["instance_id"] == instance_id
     ]
+    if len(triggers) != 1 or manual:
+        _reject("TASK_SCHEDULER_TRIGGER_PROVENANCE_REJECTED")
+    trigger = triggers[0]
     if (
-        len(triggers) != 1
-        or manual
+        trigger["event_record_id"] >= start["event_record_id"]
         or (
             task_state == "Ready"
             and (
                 len(completions) != 1
+                or completions[0]["event_record_id"]
+                <= start["event_record_id"]
                 or completions[0]["time_created"] < start["time_created"]
                 or completions[0]["time_created"] > observed_at
             )
@@ -1197,7 +1219,6 @@ def _validate_task_scheduler_evidence(
         )
     ):
         _reject("TASK_SCHEDULER_TRIGGER_PROVENANCE_REJECTED")
-    trigger = triggers[0]
     return {
         "source": TASK_SCHEDULER_EVENT_CHANNEL,
         "provider": TASK_SCHEDULER_EVENT_PROVIDER,
@@ -1260,7 +1281,7 @@ def _write_archive(
     path: Path,
     members: dict[str, bytes],
     ordered_paths: tuple[str, ...],
-) -> None:
+) -> tuple[int, int]:
     if set(members) != set(ordered_paths) or len(ordered_paths) != len(
         set(ordered_paths)
     ):
@@ -1293,6 +1314,9 @@ def _write_archive(
     except Exception:
         _remove_created_output(path, created_identity)
         raise
+    if created_identity is None:
+        _reject("OUTPUT_ARCHIVE_UNAVAILABLE")
+    return created_identity
 
 
 def _evidence_set_sha256(rows: list[dict[str, object]]) -> str:
@@ -1498,23 +1522,28 @@ def collect_acceptance(
     bundle["bundle_identity_sha256"] = _sha256(_canonical_json(bundle))
     evidence[BUNDLE_MANIFEST] = _pretty_json(bundle)
     output_path = output.absolute()
-    _write_archive(
-        output_path,
-        evidence,
-        (*sorted(EVIDENCE_PATHS), BUNDLE_MANIFEST),
-    )
-    archive_bytes = _read_regular(
-        output_path,
-        "OUTPUT_ARCHIVE_UNAVAILABLE",
-        maximum=MAX_ARCHIVE_BYTES,
-    )
-    archive_sha = _sha256(archive_bytes)
-    verified = verify_acceptance_archive(
-        output_path,
-        expected_archive_sha256=archive_sha,
-        expected_toolkit_source_commit=str(source["commit"]),
-        expected_toolkit_source_tree=str(source["tree"]),
-    )
+    created_identity: tuple[int, int] | None = None
+    try:
+        created_identity = _write_archive(
+            output_path,
+            evidence,
+            (*sorted(EVIDENCE_PATHS), BUNDLE_MANIFEST),
+        )
+        archive_bytes = _read_regular(
+            output_path,
+            "OUTPUT_ARCHIVE_UNAVAILABLE",
+            maximum=MAX_ARCHIVE_BYTES,
+        )
+        archive_sha = _sha256(archive_bytes)
+        verified = verify_acceptance_archive(
+            output_path,
+            expected_archive_sha256=archive_sha,
+            expected_toolkit_source_commit=str(source["commit"]),
+            expected_toolkit_source_tree=str(source["tree"]),
+        )
+    except Exception:
+        _remove_created_output(output_path, created_identity)
+        raise
     return {
         "status": verified["status"],
         "archive": str(output_path),
@@ -2270,9 +2299,9 @@ def prepare_custody_request(
     }
     manifest["request_identity_sha256"] = _sha256(_canonical_json(manifest))
     output_path = output.absolute()
-    published = False
+    created_identity: tuple[int, int] | None = None
     try:
-        _write_archive(
+        created_identity = _write_archive(
             output_path,
             {
                 CUSTODY_ACCEPTANCE_MEMBER: acceptance_bytes,
@@ -2280,7 +2309,6 @@ def prepare_custody_request(
             },
             CUSTODY_REQUEST_PATHS,
         )
-        published = True
         output_bytes = _read_regular(
             output_path,
             "CUSTODY_REQUEST_ARCHIVE_UNAVAILABLE",
@@ -2294,11 +2322,7 @@ def prepare_custody_request(
             expected_toolkit_source_tree=expected_toolkit_source_tree,
         )
     except Exception:
-        if published:
-            try:
-                output_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        _remove_created_output(output_path, created_identity)
         raise
     return {
         **verified,

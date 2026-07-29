@@ -29,6 +29,13 @@ folder, symlink valid, maupun dangling symlink yang sudah ada akan ditolak dan
 tidak dihapus. Gunakan nama output baru; jangan membersihkan path evidence
 secara otomatis setelah collision.
 
+Seluruh JSON toolkit/evidence dibaca dengan duplicate-key rejection sebelum
+proyeksi. Setiap input regular dibaca melalui satu handle yang identitas,
+ukuran, dan modification time-nya harus tetap sama dengan inspeksi path
+no-follow. Bila verifikasi setelah publikasi gagal, cleanup hanya boleh
+menghapus inode/file-index output yang dibuat invocation itu sendiri; file
+pengganti dari proses lain dipertahankan dan proses gagal tertutup.
+
 ## Kapan dijalankan
 
 Jangan jalankan sebelum boundary otomatis
@@ -39,6 +46,12 @@ run terjadwal selesai sehat dan task kembali `Ready` dengan result `0`.
 Task Scheduler Operational log harus sudah aktif sebelum boundary. Toolkit
 tidak mengaktifkannya karena perubahan konfigurasi log harus tetap merupakan
 aksi operator yang eksplisit dan tercatat.
+
+Nama task V6.3, V4, dan V5 masing-masing harus unik dan berada tepat di root
+Task Scheduler (`\`). Acceptance hanya menerima event 107 yang mempunyai
+EventRecordID lebih rendah daripada event start 100 pada instance yang sama.
+Jika task sudah kembali `Ready`, event completion 102 harus mempunyai
+EventRecordID lebih tinggi daripada event start tersebut.
 
 ## Verifikasi dan ekstraksi toolkit
 

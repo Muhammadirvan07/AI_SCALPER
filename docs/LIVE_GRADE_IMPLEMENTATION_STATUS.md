@@ -851,12 +851,16 @@ BTCUSD = shadow-only
     Operational events ke acceptance ZIP create-exclusive. Toolkit v2 juga
     menyediakan pre-boundary readiness checker. Verifier memerlukan correlated
     event 107/100 pada `InstanceId` yang sama, menolak event 110/manual pada
-    launch yang sama, dan menolak pre-boundary/non-advanced evidence,
-    transcript drift, scheduler failure, archive drift, atau custody overclaim.
+    launch yang sama, mengharuskan strict EventRecordID trigger/start/completion
+    ordering serta satu exact root-path task untuk V6.3/V4/V5, dan menolak
+    pre-boundary/non-advanced evidence, duplicate-key JSON, transient path
+    substitution, transcript drift, scheduler failure, archive drift, atau
+    custody overclaim.
     Create-exclusive publication memakai no-follow `lstat`; output regular,
     directory, valid symlink, atau dangling symlink yang sudah ada ditolak
-    tanpa mutasi, dan cleanup dibatasi ke exact file identity yang dibuat oleh
-    invocation berjalan.
+    tanpa mutasi. Evidence dibaca dari satu stable file handle dan cleanup
+    pascaverifikasi dibatasi ke exact file identity yang dibuat invocation
+    berjalan sehingga replacement race tidak pernah dihapus.
     Actual scheduled proof serta off-host Object Lock/WORM acknowledgement
     tetap belum ada.
     Loop broker-tick diagnostic non-promotional juga sudah tersedia.

@@ -31,6 +31,26 @@ BROKER_MUTATION = NOT_PERFORMED
 LIVE_TRADING = DO_NOT_SHIP
 ```
 
+## V6.3 post-run acceptance hardening
+
+Audit adversarial lanjutan terhadap toolkit bukti pemicu otomatis Phillip
+Commodity menemukan dan menutup empat kelas ambiguity/race:
+
+- event 107 sekarang wajib memiliki EventRecordID lebih rendah daripada event
+  start 100; task `Ready` wajib memiliki completion 102 setelah start;
+- task V6.3/V4/V5 masing-masing harus resolve tepat satu kali pada root path
+  Task Scheduler, sehingga same-name task di folder lain gagal tertutup;
+- semua JSON evidence/manifest/checkpoint menolak duplicate object key dan
+  semua file evidence dibaca melalui satu stable regular-file handle;
+- kegagalan verifikasi pascapublikasi membersihkan hanya exact output identity
+  milik invocation, tanpa menghapus replacement milik proses lain.
+
+Focused gate lulus 41/41 normal dan 41/41 optimized. Full serial repository
+gate lulus 2.087 test normal dengan tiga platform skip serta 2.087 test di
+bawah `-O` dengan empat belas platform/optimized skip. Paket clean-commit belum
+dibangun ulang pada saat catatan ini; scheduled proof Windows dan custody WORM
+aktual tetap belum ada.
+
 ## Implemented
 
 - Canonical replay profile mengikat binding, trust policy, registry ID,

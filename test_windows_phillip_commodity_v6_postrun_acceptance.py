@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -9,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 from windows_operator import phillip_commodity_v6_postrun_acceptance as acceptance
@@ -477,6 +477,48 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
         self.assertFalse(provenance["manual_trigger_observed"])
         self.assertEqual("LOCAL_HOST_EVENT_LOG", provenance["provenance_scope"])
 
+    def test_acceptance_cleanup_removes_only_created_output(self) -> None:
+        output = self.root / "postwrite-verification-failure.zip"
+        with mock.patch.object(
+            acceptance,
+            "verify_acceptance_archive",
+            side_effect=acceptance.PostRunAcceptanceError(
+                "FORCED_POSTWRITE_VERIFICATION_FAILURE"
+            ),
+        ):
+            with self.assertRaisesRegex(
+                acceptance.PostRunAcceptanceError,
+                "FORCED_POSTWRITE_VERIFICATION_FAILURE",
+            ):
+                self._collect(output.name)
+
+        self.assertFalse(output.exists())
+
+    def test_acceptance_cleanup_preserves_replacement_identity(self) -> None:
+        output = self.root / "postwrite-replacement-race.zip"
+        replacement = b"replacement-owned-by-another-process"
+
+        def replace_output_then_fail(*_args, **_kwargs):
+            output.unlink()
+            output.write_bytes(replacement)
+            raise acceptance.PostRunAcceptanceError(
+                "FORCED_POSTWRITE_VERIFICATION_FAILURE"
+            )
+
+        with mock.patch.object(
+            acceptance,
+            "verify_acceptance_archive",
+            side_effect=replace_output_then_fail,
+        ):
+            with self.assertRaisesRegex(
+                acceptance.PostRunAcceptanceError,
+                "FORCED_POSTWRITE_VERIFICATION_FAILURE",
+            ):
+                self._collect(output.name)
+
+        self.assertTrue(output.is_file())
+        self.assertEqual(replacement, output.read_bytes())
+
     def test_rejects_missing_scheduled_trigger_or_manual_trigger(self) -> None:
         original = json.loads(self.scheduler_events.read_text(encoding="utf-8"))
         missing = json.loads(json.dumps(original))
@@ -529,6 +571,29 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
         ):
             self._collect("scheduler-xml-drift.zip")
 
+    def test_rejects_trigger_record_that_does_not_precede_start(self) -> None:
+        evidence = json.loads(self.scheduler_events.read_text(encoding="utf-8"))
+        trigger, start = evidence["events"]
+        trigger["event_record_id"] = start["event_record_id"] + 1
+        trigger["raw_xml"] = trigger["raw_xml"].replace(
+            "<EventRecordID>500</EventRecordID>",
+            "<EventRecordID>502</EventRecordID>",
+        )
+        trigger["raw_xml_sha256"] = digest(
+            trigger["raw_xml"].encode("utf-8")
+        )
+        evidence["events"] = sorted(
+            evidence["events"],
+            key=lambda row: row["event_record_id"],
+        )
+        self.scheduler_events.write_bytes(pretty(evidence))
+
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "TASK_SCHEDULER_TRIGGER_PROVENANCE_REJECTED",
+        ):
+            self._collect("nonpreceding-trigger-record.zip")
+
     def test_rejects_scheduler_evidence_duplicate_json_key(self) -> None:
         original = self.scheduler_events.read_bytes()
         self.scheduler_events.write_bytes(
@@ -539,6 +604,17 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
             "TASK_SCHEDULER_EVIDENCE_REJECTED",
         ):
             self._collect("scheduler-duplicate-key.zip")
+
+    def test_rejects_duplicate_json_key_in_every_evidence_input(self) -> None:
+        original = self.receipt.read_bytes()
+        self.receipt.write_bytes(
+            b'{"schema_version":"duplicate",' + original[1:]
+        )
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "INSTALLATION_RECEIPT_REJECTED",
+        ):
+            self._collect("receipt-duplicate-key.zip")
 
     def test_ready_task_requires_correlated_completion_event(self) -> None:
         transcript = self.transcript.read_text(encoding="utf-8")
@@ -693,6 +769,48 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
                 self.toolkit_manifest,
                 tool_path=link,
             )
+
+    def test_regular_reader_rejects_temporary_path_substitution(self) -> None:
+        victim = self.root / "single-handle-read.json"
+        trusted = b"trusted-evidence"
+        substituted = b"foreign-evidence"
+        self.assertEqual(len(trusted), len(substituted))
+        victim.write_bytes(trusted)
+        backup = self.root / "single-handle-read.backup"
+        replacement = self.root / "single-handle-read.replacement"
+        replacement.write_bytes(substituted)
+        original_open = Path.open
+        substitution_performed = False
+
+        def substitute_during_open(path: Path, *args, **kwargs):
+            nonlocal substitution_performed
+            if path != victim.absolute() or substitution_performed:
+                return original_open(path, *args, **kwargs)
+            substitution_performed = True
+            victim.rename(backup)
+            replacement.rename(victim)
+            handle = original_open(victim, *args, **kwargs)
+            victim.rename(replacement)
+            backup.rename(victim)
+            return handle
+
+        with mock.patch.object(
+            Path,
+            "open",
+            autospec=True,
+            side_effect=substitute_during_open,
+        ):
+            with self.assertRaisesRegex(
+                acceptance.PostRunAcceptanceError,
+                "SINGLE_HANDLE_READ_REJECTED",
+            ):
+                acceptance._read_regular(
+                    victim,
+                    "SINGLE_HANDLE_READ_REJECTED",
+                )
+
+        self.assertEqual(trusted, victim.read_bytes())
+        self.assertEqual(substituted, replacement.read_bytes())
 
     def test_rejects_audit_pair_mutation(self) -> None:
         path = self.audit_root / f"{self.invocation}.audit.json"
@@ -1143,6 +1261,45 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
                 output=request,
             )
         self.assertEqual(original, request.read_bytes())
+
+    def test_custody_request_cleanup_preserves_replacement_identity(self) -> None:
+        acceptance_archive, _result = self._collect(
+            "cleanup-race-acceptance.zip"
+        )
+        output = self.root / "cleanup-race-custody-request.zip"
+        replacement = b"replacement-owned-by-another-process"
+
+        def replace_output_then_fail(*_args, **_kwargs):
+            output.unlink()
+            output.write_bytes(replacement)
+            raise acceptance.PostRunAcceptanceError(
+                "FORCED_POSTWRITE_VERIFICATION_FAILURE"
+            )
+
+        with mock.patch.object(
+            acceptance,
+            "verify_custody_request_archive",
+            side_effect=replace_output_then_fail,
+        ):
+            with self.assertRaisesRegex(
+                acceptance.PostRunAcceptanceError,
+                "FORCED_POSTWRITE_VERIFICATION_FAILURE",
+            ):
+                acceptance.prepare_custody_request(
+                    acceptance_archive=acceptance_archive,
+                    expected_acceptance_archive_sha256=digest(
+                        acceptance_archive.read_bytes()
+                    ),
+                    expected_toolkit_source_commit=self.source_commit,
+                    expected_toolkit_source_tree=self.source_tree,
+                    destination_id="independent-worm-jp-01",
+                    requested_at_utc="2026-07-29T22:00:00Z",
+                    minimum_retain_until_utc="2027-09-22T00:00:00Z",
+                    output=output,
+                )
+
+        self.assertTrue(output.is_file())
+        self.assertEqual(replacement, output.read_bytes())
 
     def test_custody_request_preserves_dangling_symlink_output(self) -> None:
         acceptance_archive, _result = self._collect(

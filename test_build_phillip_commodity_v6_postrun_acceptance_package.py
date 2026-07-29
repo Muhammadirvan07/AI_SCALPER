@@ -258,6 +258,11 @@ class PhillipCommodityV6PostRunToolkitBuilderTests(unittest.TestCase):
             combined,
         )
         self.assertIn("isenabled", combined)
+        self.assertGreaterEqual(
+            combined.count("function get-exactrootscheduledtask"),
+            2,
+        )
+        self.assertGreaterEqual(combined.count('taskpath -ne "\\"'), 2)
 
 
 if __name__ == "__main__":

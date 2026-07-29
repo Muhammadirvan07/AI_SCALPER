@@ -51,6 +51,29 @@ function Assert-RegularNonReparseFile {
   }
 }
 
+function Get-ExactRootScheduledTask {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+  $matches = @(
+    Get-ScheduledTask -TaskName $Name -ErrorAction Stop
+  )
+  if ($matches.Count -ne 1) {
+    throw "Scheduled task name is not unique: $Name"
+  }
+  $task = $matches[0]
+  $taskPathProperty = $task.PSObject.Properties["TaskPath"]
+  if ($null -eq $taskPathProperty) {
+    throw "Scheduled task path is unavailable: $Name"
+  }
+  $taskPath = [string]$taskPathProperty.Value
+  if ($taskPath -ne "\") {
+    throw "Scheduled task is not registered at the root path: $Name"
+  }
+  return $task
+}
+
 if ((Get-TimeZone).Id -ne "Tokyo Standard Time") {
   throw "Windows timezone must be Tokyo Standard Time."
 }
@@ -117,10 +140,10 @@ if (
   throw "Task Scheduler Operational log must already be enabled."
 }
 
-$task = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
-$taskInfo = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction Stop
-$v4Task = Get-ScheduledTask -TaskName $v4TaskName -ErrorAction Stop
-$v5Task = Get-ScheduledTask -TaskName $v5TaskName -ErrorAction Stop
+$task = Get-ExactRootScheduledTask -Name $taskName
+$taskInfo = Get-ScheduledTaskInfo -InputObject $task -ErrorAction Stop
+$v4Task = Get-ExactRootScheduledTask -Name $v4TaskName
+$v5Task = Get-ExactRootScheduledTask -Name $v5TaskName
 $receipt = Get-Content -LiteralPath $installationReceiptPath -Raw |
   ConvertFrom-Json
 if (

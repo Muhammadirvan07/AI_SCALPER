@@ -128,6 +128,29 @@ function Assert-NonReparseDirectory {
   }
 }
 
+function Get-ExactRootScheduledTask {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+  $matches = @(
+    Get-ScheduledTask -TaskName $Name -ErrorAction Stop
+  )
+  if ($matches.Count -ne 1) {
+    throw "Scheduled task name is not unique: $Name"
+  }
+  $task = $matches[0]
+  $taskPathProperty = $task.PSObject.Properties["TaskPath"]
+  if ($null -eq $taskPathProperty) {
+    throw "Scheduled task path is unavailable: $Name"
+  }
+  $taskPath = [string]$taskPathProperty.Value
+  if ($taskPath -ne "\") {
+    throw "Scheduled task is not registered at the root path: $Name"
+  }
+  return $task
+}
+
 function Get-TextSHA256 {
   param(
     [Parameter(Mandatory = $true)]
@@ -337,8 +360,12 @@ try {
     Get-FileHash -LiteralPath $healthTranscriptPath -Algorithm SHA256
   ).Hash.ToLowerInvariant()
 
-  $v4Task = Get-ScheduledTask -TaskName $v4TaskName -ErrorAction Stop
-  $v5Task = Get-ScheduledTask -TaskName $v5TaskName -ErrorAction Stop
+  $task = Get-ExactRootScheduledTask -Name $taskName
+  $v4Task = Get-ExactRootScheduledTask -Name $v4TaskName
+  $v5Task = Get-ExactRootScheduledTask -Name $v5TaskName
+  if ([string]$task.State -ne [string]$healthResult.TaskState) {
+    throw "Exact root task state differs from the health result."
+  }
   $tokyo = [TimeZoneInfo]::FindSystemTimeZoneById(
     "Tokyo Standard Time"
   )
