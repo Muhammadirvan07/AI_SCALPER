@@ -32,6 +32,11 @@ from .demo_auto_soak_cohort import (
     DemoAutoSoakCohortReceipt,
     verify_demo_auto_soak_cohort_receipt,
 )
+from .live_canary_broker_eligibility import (
+    LIVE_CANARY_BROKER_ELIGIBILITY_MAX_TTL,
+    LIVE_CANARY_BROKER_ELIGIBILITY_SCHEMA_VERSION,
+    LiveCanaryBrokerEligibilityEvidence,
+)
 from .promotion_evidence import (
     PromotionEvidenceReceipt,
     PromotionEvidenceValidation,
@@ -45,13 +50,9 @@ LIVE_CANARY_MAX_LOT = 0.01
 LIVE_CANARY_MAX_CONCURRENT_POSITIONS = 1
 LIVE_CANARY_MAX_TTL = timedelta(minutes=5)
 LIVE_CANARY_GATE_MAX_TTL = timedelta(days=30)
-LIVE_CANARY_BROKER_ELIGIBILITY_MAX_TTL = timedelta(days=30)
 LIVE_CANARY_CLOCK_TOLERANCE_SECONDS = 0.050
 
 LIVE_CANARY_BINDING_SCHEMA_VERSION = "live-canary-binding-v1"
-LIVE_CANARY_BROKER_ELIGIBILITY_SCHEMA_VERSION = (
-    "live-canary-broker-eligibility-evidence-v1"
-)
 LIVE_CANARY_TRUST_POLICY_SCHEMA_VERSION = "live-canary-trust-policy-v1"
 LIVE_CANARY_GATE_RECEIPT_SCHEMA_VERSION = "live-canary-gate-receipt-v1"
 LIVE_CANARY_REQUEST_SCHEMA_VERSION = "live-canary-activation-request-v2"
@@ -139,7 +140,6 @@ _REPLAY_SCHEMA_SQL = {
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+\-]{0,255}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{7,64}$")
-_JURISDICTION_RE = re.compile(r"^[A-Z]{2}$")
 
 
 class LiveCanaryActivationError(RuntimeError):
@@ -539,137 +539,6 @@ class LiveCanaryBinding(CanonicalContract):
     @property
     def binding_sha256(self) -> str:
         return self.content_sha256
-
-
-def _exact_upper_value(name: str, value: str, expected: str) -> str:
-    normalized = require_text(name, value)
-    if normalized != expected:
-        raise ValueError(f"{name} must be {expected}")
-    return normalized
-
-
-def _broker_eligibility_jurisdiction(value: str) -> str:
-    jurisdiction = require_text("operating_jurisdiction", value)
-    if _JURISDICTION_RE.fullmatch(jurisdiction) is None:
-        raise ValueError("operating_jurisdiction must be two uppercase letters")
-    return jurisdiction
-
-
-def _broker_eligibility_hashes(
-    regulatory_evidence_sha256: str,
-    compliance_approval_sha256: str,
-    legal_approval_sha256: str,
-) -> tuple[str, str, str]:
-    hashes = (
-        _nonzero_hash("regulatory_evidence_sha256", regulatory_evidence_sha256),
-        _nonzero_hash("compliance_approval_sha256", compliance_approval_sha256),
-        _nonzero_hash("legal_approval_sha256", legal_approval_sha256),
-    )
-    if len(set(hashes)) != len(hashes):
-        raise ValueError("broker eligibility evidence hashes must be distinct")
-    return hashes
-
-
-@dataclass(frozen=True)
-class LiveCanaryBrokerEligibilityEvidence(CanonicalContract):
-    """Exact deny-only regulatory eligibility evidence for one live broker."""
-
-    broker_id: str
-    broker_legal_name: str
-    operating_jurisdiction: str
-    registration_authority: str
-    registration_identifier: str
-    live_server: str
-    symbol: str
-    regulatory_evidence_sha256: str
-    compliance_approval_sha256: str
-    legal_approval_sha256: str
-    reviewed_at: datetime
-    expires_at: datetime
-    registration_status: str = "REGISTERED"
-    eligibility_decision: str = "ELIGIBLE_FOR_LIVE_CANARY"
-    live_allowed: bool = field(default=False, init=False)
-    safe_to_demo_auto_order: bool = field(default=False, init=False)
-    execution_authorized: bool = field(default=False, init=False)
-    activation_authorized: bool = field(default=False, init=False)
-    order_capability: str = field(default="DISABLED", init=False)
-    schema_version: str = LIVE_CANARY_BROKER_ELIGIBILITY_SCHEMA_VERSION
-
-    def __post_init__(self) -> None:
-        normalized = _normalize_broker_eligibility_evidence(self)
-        reviewed, expires = _window(
-            self.reviewed_at,
-            self.expires_at,
-            maximum=LIVE_CANARY_BROKER_ELIGIBILITY_MAX_TTL,
-            label="live-canary broker eligibility evidence",
-        )
-        normalized.update(reviewed_at=reviewed, expires_at=expires)
-        for name, value in normalized.items():
-            object.__setattr__(self, name, value)
-        _validate_broker_eligibility_deny_only(self)
-        if self.schema_version != LIVE_CANARY_BROKER_ELIGIBILITY_SCHEMA_VERSION:
-            raise ValueError("unsupported broker eligibility evidence schema")
-
-
-def _normalize_broker_eligibility_evidence(
-    evidence: LiveCanaryBrokerEligibilityEvidence,
-) -> dict[str, object]:
-    normalized: dict[str, object] = {
-        "broker_id": _identifier("broker_id", evidence.broker_id),
-        "broker_legal_name": require_text(
-            "broker_legal_name", evidence.broker_legal_name
-        ),
-        "operating_jurisdiction": _broker_eligibility_jurisdiction(
-            evidence.operating_jurisdiction
-        ),
-        "registration_authority": _identifier(
-            "registration_authority", evidence.registration_authority
-        ),
-        "registration_identifier": _identifier(
-            "registration_identifier", evidence.registration_identifier
-        ),
-        "live_server": require_text("live_server", evidence.live_server),
-        "symbol": _exact_upper_value("symbol", evidence.symbol, "XAUUSD"),
-        "registration_status": _exact_upper_value(
-            "registration_status", evidence.registration_status, "REGISTERED"
-        ),
-        "eligibility_decision": _exact_upper_value(
-            "eligibility_decision",
-            evidence.eligibility_decision,
-            "ELIGIBLE_FOR_LIVE_CANARY",
-        ),
-    }
-    normalized.update(
-        zip(
-            (
-                "regulatory_evidence_sha256",
-                "compliance_approval_sha256",
-                "legal_approval_sha256",
-            ),
-            _broker_eligibility_hashes(
-                evidence.regulatory_evidence_sha256,
-                evidence.compliance_approval_sha256,
-                evidence.legal_approval_sha256,
-            ),
-            strict=True,
-        )
-    )
-    return normalized
-
-
-def _validate_broker_eligibility_deny_only(
-    evidence: LiveCanaryBrokerEligibilityEvidence,
-) -> None:
-    if any(
-        (
-            evidence.live_allowed,
-            evidence.safe_to_demo_auto_order,
-            evidence.execution_authorized,
-            evidence.activation_authorized,
-            evidence.order_capability != "DISABLED",
-        )
-    ):
-        raise ValueError("broker eligibility evidence cannot grant execution")
 
 
 @dataclass(frozen=True)
@@ -2509,6 +2378,7 @@ __all__ = [
     "LiveCanaryActivationRequest",
     "LiveCanaryActivationValidation",
     "LiveCanaryBinding",
+    "LiveCanaryBrokerEligibilityEvidence",
     "LiveCanaryGateReceipt",
     "LiveCanaryHumanApproval",
     "LiveCanaryReplayCheckpoint",

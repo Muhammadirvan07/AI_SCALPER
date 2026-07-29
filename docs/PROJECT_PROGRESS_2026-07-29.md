@@ -12,6 +12,12 @@ a future first XAUUSD live canary. A new provider-bound WORM custody and
 launch-session v2 boundary now closes that accepted provider evidence into the
 runtime path while forcing legacy-only v1 sessions to fail at every production
 consumer.
+The missing operator path for broker eligibility is now implemented locally.
+It re-verifies the exact signed Phillip diagnostic observation, requires new
+independent LIVE-canary compliance and legal reviewers plus distinct keys, and
+produces the exact activation-compatible evidence for one explicit LIVE server
+and XAUUSD scope. That evidence remains deny-only; no LIVE server evidence or
+new human approvals have yet been supplied on Windows.
 The deterministic Windows Execution release now also contains a minimal,
 self-contained provider-bound v2 consumer contract and an isolated release
 probe. The authority class was extracted from operator-side activation without
@@ -51,6 +57,7 @@ being materialized, and no real broker order or broker mutation was performed.
 
 ```text
 LOCAL_SOURCE_GATE = PASS
+LIVE_CANARY_BROKER_ELIGIBILITY_REVIEW = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_EVIDENCE_BOUNDARY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PROVIDER_BOUND_PREBOOTSTRAP = PASS_LOCALLY_DENY_ONLY
@@ -79,6 +86,13 @@ LIVE_TRADING = DO_NOT_SHIP
 
 ## Implemented
 
+- The broker-eligibility preparer, two role-scoped signers, assembler, and
+  independent verifier now bind one exact Phillip legal entity, JP registry
+  source, distinct DEMO/LIVE servers, XAUUSD broker symbol, source hashes,
+  reviewer identities, key IDs/fingerprints, and a source-bounded 30-day
+  window. Diagnostic reviewers or keys cannot be reused. The tooling is
+  included only in the Windows shadow operator bundle and cannot authorize an
+  order or satisfy the separate `LEGAL_COMPLIANCE` activation gate by itself.
 - `LiveCanaryBinding` fixes one exact broker, demo account, distinct live
   account/server, XAUUSD lane, 0.01 lot, one-position ceiling, build, model,
   release, journal, dependency, calendar, broker-spec, and champion lineage.
@@ -301,6 +315,9 @@ LIVE_TRADING = DO_NOT_SHIP
 
 | Check | Result |
 |---|---|
+| Broker-eligibility review spec | 100/100, Grade A; 0 errors, warnings, or informational findings |
+| Broker-eligibility review/CLI suite | 17 PASS normal; 17 PASS optimized |
+| Activation plus broker-eligibility regression | 61 PASS normal |
 | Spec validation | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused live-canary suite | 16 PASS normal; 16 PASS optimized with one intentional nested-suite skip |
 | Focused prebootstrap suite | 10 PASS normal; 10 PASS optimized with one intentional nested-suite skip |
@@ -354,8 +371,8 @@ LIVE_TRADING = DO_NOT_SHIP
 | Atomic base-suite and Status Monitor publication specs | Both 100/100, Grade A; no findings |
 | Focused atomic base-suite tests | 24 PASS normal; 24 PASS optimized |
 | Status Monitor/base-suite release cluster | 72 PASS normal; 72 PASS optimized |
-| Full Python regression | 2,001 tests OK, 3 platform skips |
-| Full Python regression with `PYTHONOPTIMIZE=2` | 2,001 tests OK, 13 skips including optimized-only nested self-tests |
+| Full Python regression | 2,021 tests OK, 3 platform skips |
+| Full Python regression with `PYTHONOPTIMIZE=2` | 2,021 tests OK, 13 skips including optimized-only nested self-tests |
 | Uncommitted dashboard refactor audit | 16 unit PASS; lint, production build, bundle budget, and npm audit PASS; 24 desktop/mobile browser E2E PASS |
 | Python compile, dependency lock, JSON/spec validation, and scoped whitespace checks | PASS; Ruff unavailable in the active environment for this additive pass |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
@@ -385,9 +402,11 @@ uptime monitoring remain external work.
    50 reconciled closed fills, and 20 XAUUSD fills; synthetic fixtures never
    satisfy this. XM remains diagnostic/paper-only while the operating
    jurisdiction is JP.
-5. Obtain the exact LIVE promotion receipt, nine independent gate receipts,
-   three actual role approvals, deployment signature, and off-host/WORM replay
-   checkpoint custody.
+5. Obtain the exact Phillip LIVE server/account evidence, then use the new
+   broker-eligibility workflow with distinct actual LIVE compliance and legal
+   reviewers/keys. Separately obtain the exact LIVE promotion receipt, nine
+   independent gate receipts, three activation role approvals, deployment
+   signature, and off-host/WORM replay checkpoint custody.
 6. Use the new assemblers and validators to build the actual
    Phillip-Commodity/Windows LIVE provider pack and configured candidate from
    one accepted target-host suite,

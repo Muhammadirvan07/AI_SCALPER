@@ -37,6 +37,17 @@ hijau tidak menggantikan broker-forward evidence, legal review, Windows VPS
 hardening, demo soak, atau approval manusia. Tidak ada bagian dokumen ini yang
 membuka demo-auto maupun live.
 
+Broker-eligibility review V1 untuk canary Phillip XAUUSD kini lengkap secara
+source lokal. Boundary ini memverifikasi ulang exact signed diagnostic
+observation, lalu memerlukan dua reviewer dan dua key baru yang berbeda dari
+authority diagnostic sebelum menghasilkan exact deny-only
+`LiveCanaryBrokerEligibilityEvidence`. Prepare, key setup, sign, assemble, dan
+verify CLI hanya masuk Windows shadow deployment-tooling bundle; tidak masuk
+service/configured release. Hasil valid tetap memerlukan gate
+`LEGAL_COMPLIANCE`, external acceptance/custody, central unlock, dan per-order
+authorization. Exact LIVE server/account evidence serta dua approval manusia
+baru belum tersedia, sehingga ini belum mengizinkan atau memulai order.
+
 Windows decision-provider pack v1 kini lengkap secara source lokal. Base
 decision release memiliki read-only exact Credential Manager lookup, signed
 trusted-clock attestation, external directory CAS untuk IPC/cursor, strict

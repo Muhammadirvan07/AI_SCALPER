@@ -443,6 +443,17 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
         self.assertEqual(REQUIRED_SAFETY, payload["safety"])
         self.assertEqual(REQUIRED_USAGE_POLICY, payload["usage_policy"])
         paths = set(payload["files"])
+        self.assertTrue(
+            {
+                "assemble_live_canary_broker_eligibility_review.py",
+                "prepare_live_canary_broker_eligibility_review.py",
+                "setup_live_canary_broker_eligibility_review_key.py",
+                "sign_live_canary_broker_eligibility_review.py",
+                "verify_live_canary_broker_eligibility_review.py",
+                "live_runtime/live_canary_broker_eligibility.py",
+                "live_runtime/live_canary_broker_eligibility_review.py",
+            }.issubset(paths)
+        )
         self.assertNotIn("live_runtime/executor.py", paths)
         self.assertNotIn("live_runtime/mt5_adapter.py", paths)
         self.assertFalse(any(path.startswith("data/") for path in paths))
