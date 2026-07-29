@@ -116,7 +116,10 @@ konsisten. Hasil ini tidak membuktikan:
 - central LIVE policy sudah dibuka;
 - MT5 sudah diinisialisasi atau order pernah dikirim.
 
-Langkah berikutnya adalah source-bound packaging, external provider
-conformance, brokerless target-host materialization, launcher/task review, dan
-independent ship-gate ceremony. Central `LIVE_ALLOWED` harus tetap `false`
-sampai seluruh evidence eksternal diterima.
+Source-bound packaging kini tersedia di
+`docs/WINDOWS_LIVE_CANARY_EXECUTION_SOURCE_BOUND_CANDIDATE.md`. Langkah
+berikutnya adalah membangun dan memverifikasi artefak tersebut pada exact
+target Windows dengan sepuluh pin independen, kemudian external provider
+conformance, brokerless materialization, launcher/task review, dan independent
+ship-gate ceremony. Central `LIVE_ALLOWED` harus tetap `false` sampai seluruh
+evidence eksternal diterima.

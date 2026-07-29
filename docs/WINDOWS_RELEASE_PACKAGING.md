@@ -140,7 +140,10 @@ Bundle yang sama juga membawa CLI generate/validate Decision, Execution, dan
 Status Monitor provider pack serta assemble/validate configured candidate.
 Ia juga membawa generator/validator LIVE provider pack dan assembler/validator
 LIVE configured candidate yang additive serta deny-only; tool tersebut tidak
-masuk ke service release mana pun.
+masuk ke service release mana pun. Builder/verifier LIVE source-bound yang
+mengemas exact DEMO ancestry bersama 15-file LIVE candidate juga hanya berada
+di bundle operator ini. Runbook lengkapnya ada di
+`docs/WINDOWS_LIVE_CANARY_EXECUTION_SOURCE_BOUND_CANDIDATE.md`.
 Seluruhnya deny-only dan tidak boleh dijalankan oleh production service
 account.
 

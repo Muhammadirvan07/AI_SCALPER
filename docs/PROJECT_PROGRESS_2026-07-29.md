@@ -5,7 +5,8 @@
 The project gained a verifier-sealed per-order execution boundary, a separate
 brokerless Windows LIVE provider-materialization boundary, and deterministic
 four-file LIVE provider-pack plus exact 15-file configured-candidate tooling
-for a future first XAUUSD live canary.
+plus a 17-member source-ancestry closure for a future first XAUUSD live
+canary.
 The activation, launch, Windows provider composition,
 supervisor, execution coordinator, durable journal lease, runtime
 authorization, and final MT5 adapter chain are implemented and verified
@@ -24,6 +25,7 @@ LIVE_CANARY_PER_ORDER_EXECUTION = PASS_LOCALLY_FAKE_MT5_ONE_SEND
 WINDOWS_LIVE_PROVIDER_MATERIALIZATION = PASS_LOCALLY_BROKERLESS_LOCKED
 WINDOWS_LIVE_PROVIDER_PACK = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_CONFIGURED_CANDIDATE = PASS_LOCALLY_DENY_ONLY
+WINDOWS_LIVE_SOURCE_BOUND_CANDIDATE = PASS_LOCALLY_DENY_ONLY
 WINDOWS_PROVIDER_CONFORMANCE = EXTERNAL_EVIDENCE_REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
 DEMO_AUTO_SOAK = NOT_READY
@@ -151,11 +153,18 @@ LIVE_TRADING = DO_NOT_SHIP
   and emit one canonical 49-provider/12-reference template plus deny-only
   completion receipt. The legacy configured-overlay API remains
   `DEMO`/`DEMO_AUTO` only and its V1 contract is unchanged.
-- The source implementation is complete locally, but no target-host pack or
-  configured candidate has yet been built and externally accepted from an
-  exact committed Windows suite. Concrete reviewed Windows callbacks,
-  source-bound release, and external conformance/launcher receipts remain the
-  next milestones.
+- The LIVE source-bound builder and ten-pin verifier now package the exact
+  prior DEMO source-bound ZIP plus all 15 LIVE configured-candidate files into
+  one deterministic 17-member archive. Verification reconstructs both inputs
+  from packaged bytes and closes production-source, bootstrap, suite,
+  Execution role, commit/tree, base/configured release, 49-provider, and
+  12-reference identities without importing a provider or accessing runtime
+  state.
+- The source implementation is complete locally, but no target-host pack,
+  configured candidate, or LIVE source-bound archive has yet been built and
+  externally accepted from an exact committed Windows suite. Concrete
+  reviewed Windows callbacks and external conformance/launcher receipts
+  remain the next milestones.
 
 ## Verification
 
@@ -179,6 +188,9 @@ LIVE_TRADING = DO_NOT_SHIP
 | Focused LIVE pack generator/validator suite | 8 PASS normal; 8 PASS optimized |
 | Windows LIVE configured-candidate spec | 100/100, Grade A; no findings |
 | Focused LIVE configured-candidate suite | 8 PASS normal; 8 PASS optimized |
+| Windows LIVE source-bound spec | 100/100, Grade A; no findings |
+| Focused LIVE source-bound suite | 6 PASS normal; 6 PASS optimized |
+| LIVE source-bound/tooling regression cluster | 39 PASS normal; 39 PASS optimized |
 | LIVE pack/materializer/release-builder cluster | 67 PASS normal; 67 PASS optimized |
 | Combined Windows Execution provider/policy suite | 44 PASS normal; 44 PASS optimized |
 | Live/Windows execution regression cluster | 196 PASS normal; 196 PASS optimized with three intentional skips |
@@ -186,8 +198,8 @@ LIVE_TRADING = DO_NOT_SHIP
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,888 tests OK, 3 platform skips |
-| Full Python regression with `-O` | 1,888 tests OK, 6 skips including optimized-only nested self-tests |
+| Full Python regression | 1,894 tests OK, 3 platform skips |
+| Full Python regression with `-O` | 1,894 tests OK, 6 skips including optimized-only nested self-tests |
 | Python compile, Ruff, JSON/spec validation, and scoped whitespace checks | PASS |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
 | Checked-in central live lock | remains exactly false |
@@ -216,10 +228,12 @@ uptime monitoring remain external work.
 5. Obtain the exact LIVE promotion receipt, nine independent gate receipts,
    three actual role approvals, deployment signature, and off-host/WORM replay
    checkpoint custody.
-6. Use the new assembler and validator to build the actual XM/Windows LIVE
-   candidate from one accepted target-host suite, then feed its independently
-   verified source-bound ancestry plus consumed validation through the
-   prebootstrap admission; local tests use synthetic values only.
+6. Use the new assemblers and validators to build the actual XM/Windows LIVE
+   provider pack and configured candidate from one accepted target-host suite,
+   then package it with the independently verified DEMO ancestry using the
+   ten-pin LIVE source-bound boundary. Feed only the externally accepted
+   result and consumed validation through prebootstrap admission; local tests
+   use synthetic values only.
 7. Provision the real independent WORM readback and atomic CAS/nonce custody,
    retain the predecessor pin through an independent channel, and collect the
    canonical RSA receipts this local boundary expects. From an exact committed
@@ -237,9 +251,9 @@ uptime monitoring remain external work.
 
 No percentage or passing unit-test count should be interpreted as broker
 authority. The per-order, Windows LIVE materialization, deterministic
-provider-pack, and configured-candidate source boundaries now exist locally,
-but until the external evidence, exact target-host pack and configured
-candidate, central unlock
-ceremony, and first
+provider-pack, configured-candidate, and LIVE source-bound boundaries now
+exist locally, but until the external evidence, exact target-host pack,
+configured candidate and source-bound archive, central unlock ceremony, and
+first
 reconciled broker canary exist, the truthful state remains
 `LIVE_TRADING = DO_NOT_SHIP`.
