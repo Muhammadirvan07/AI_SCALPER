@@ -271,9 +271,11 @@ LIVE_TRADING = DO_NOT_SHIP
   checkpoint provider, atomic-CAS, and nonce-seen callbacks used by the
   authoritative custody core. It independently validates canonical public
   policy/proposal/checkpoint/acknowledgement bytes and RSA signatures, publishes
-  create-exclusive requests, accepts only stable immediate-child responses,
-  serializes calls, bounds polling to two seconds, and never retries an
-  ambiguous CAS. The adapter is packaged in Execution without importing
+  requests through staged sync plus atomic no-replace final visibility, accepts
+  only stable immediate-child responses, serializes calls, bounds polling to
+  two seconds, and never overwrites stale staging or retries an ambiguous CAS.
+  An external watcher can no longer observe a partially written final request.
+  The adapter is packaged in Execution without importing
   producer custody/admission/acceptance/launch-session modules; checked-in LIVE
   policy remains false and no private key, network, credential, MT5, process,
   or broker effect exists in this client.
@@ -328,8 +330,8 @@ LIVE_TRADING = DO_NOT_SHIP
 | External CAS handoff spec | 100/100, Grade A; 0 errors, warnings, or informational findings |
 | Focused external CAS handoff suite | 10 PASS normal; 10 PASS optimized, including isolated request/response CLI verification |
 | Windows external CAS directory-adapter spec | 100/100, Grade A; 0 errors, warnings, or informational findings |
-| Focused Windows external CAS adapter suite | 16 PASS normal; 16 PASS optimized with one intentional nested optimized-mode skip |
-| Execution adapter/isolated-closure/release-builder cluster | 45 PASS normal; 45 PASS optimized with one intentional nested optimized-mode skip |
+| Focused Windows external CAS adapter suite | 20 PASS normal; 20 PASS optimized with one intentional nested optimized-mode skip |
+| Execution adapter/isolated-closure/release-builder cluster | 49 PASS normal; 49 PASS optimized with one intentional nested optimized-mode skip |
 | Configured-release tooling builder after WORM/CAS handoff inclusion | 11 PASS; extracted CLIs bootstrap under `python -I -S -B` |
 | Cross-artifact service/tooling separation regression | 274 PASS |
 | Provider-bound launch/downstream regression | 165 PASS normal; 165 PASS optimized with seven intentional skips |
@@ -341,8 +343,8 @@ LIVE_TRADING = DO_NOT_SHIP
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,993 tests OK, 3 platform skips |
-| Full Python regression with `PYTHONOPTIMIZE=2` | 1,993 tests OK, 13 skips including optimized-only nested self-tests |
+| Full Python regression | 1,997 tests OK, 3 platform skips |
+| Full Python regression with `PYTHONOPTIMIZE=2` | 1,997 tests OK, 13 skips including optimized-only nested self-tests |
 | Uncommitted dashboard refactor audit | 16 unit PASS; lint, production build, bundle budget, and npm audit PASS; 24 desktop/mobile browser E2E PASS |
 | Python compile, dependency lock, JSON/spec validation, and scoped whitespace checks | PASS; Ruff unavailable in the active environment for this additive pass |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |

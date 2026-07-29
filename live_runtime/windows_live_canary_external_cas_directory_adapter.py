@@ -1288,6 +1288,23 @@ class WindowsLiveCanaryExternalCasDirectoryAdapter:
             _reject("REQUEST_DOCUMENT_INVALID")
         self._check_root(request=True)
         path = self._request_directory / name
+        staging_name = f".{name}.pending"
+        staging_path = self._request_directory / staging_name
+        _require_central_lock()
+        try:
+            staging_path.lstat()
+        except FileNotFoundError:
+            _require_central_lock()
+            self._check_root(request=True)
+        except Exception:
+            _require_central_lock()
+            raise WindowsLiveCanaryExternalCasDirectoryAdapterError(
+                ambiguity_reason
+            ) from None
+        else:
+            _require_central_lock()
+            self._check_root(request=True)
+            _reject(ambiguity_reason)
         existing = self._read_file(
             root=self._request_directory,
             name=name,
@@ -1305,17 +1322,10 @@ class WindowsLiveCanaryExternalCasDirectoryAdapter:
         try:
             _require_central_lock()
             try:
-                descriptor = os.open(path, flags, 0o600)
+                descriptor = os.open(staging_path, flags, 0o600)
             except FileExistsError:
                 _require_central_lock()
-                observed = self._read_file(
-                    root=self._request_directory,
-                    name=name,
-                    missing_ok=False,
-                )
-                if observed != payload:
-                    _reject("REQUEST_PUBLICATION_CONFLICT")
-                return
+                _reject(ambiguity_reason)
             except Exception:
                 _require_central_lock()
                 raise WindowsLiveCanaryExternalCasDirectoryAdapterError(
@@ -1352,7 +1362,46 @@ class WindowsLiveCanaryExternalCasDirectoryAdapter:
                     reason_code=ambiguity_reason,
                     args=(descriptor,),
                 )
+        staged = self._read_file(
+            root=self._request_directory,
+            name=staging_name,
+            missing_ok=False,
+        )
+        if staged != payload:
+            _reject(ambiguity_reason)
+
+        final_won_race = False
+        try:
+            _require_central_lock()
+            if os.name == "nt":
+                os.rename(staging_path, path)
+            else:
+                os.link(staging_path, path, follow_symlinks=False)
+        except FileExistsError:
+            _require_central_lock()
+            observed = self._read_file(
+                root=self._request_directory,
+                name=name,
+                missing_ok=False,
+            )
+            if observed != payload:
+                _reject("REQUEST_PUBLICATION_CONFLICT")
+            final_won_race = True
+        except Exception:
+            _require_central_lock()
+            raise WindowsLiveCanaryExternalCasDirectoryAdapterError(
+                ambiguity_reason
+            ) from None
+        _require_central_lock()
         self._sync_directory(self._request_directory)
+
+        if os.name != "nt" or final_won_race:
+            self._effect(
+                os.unlink,
+                reason_code=ambiguity_reason,
+                args=(staging_path,),
+            )
+            self._sync_directory(self._request_directory)
         observed = self._read_file(
             root=self._request_directory,
             name=name,

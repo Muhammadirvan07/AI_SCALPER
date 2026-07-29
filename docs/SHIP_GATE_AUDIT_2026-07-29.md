@@ -115,9 +115,9 @@ this boundary. Runtime or broker state was not accessed or mutated.
 
 | Category | Status | Evidence |
 |---|---|---|
-| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; the deterministic WORM handoff packages provider-bound admission plus custody/provider policies under eight independent pins, while the external CAS handoff packages the exact proposal/policy under fifteen independent pins and verifies three domain-separated signatures plus byte-identical head readback. The Windows directory adapter now implements the exact synchronous callbacks with independent public-protocol parsing, create-exclusive publication, stable reads, two-second deadlines, terminal ambiguity, and no producer/private-key import. Handoff tools remain deny-only and never claim a runtime seal, storage inspection, runtime nonce consumption, or launch capability; provider-bound custody v2 still recreates the sealed runtime result, while launch-session v2 composes the unchanged signed v1 CAS path, clamps validity to the earliest provider/custody/capability expiry, and makes every production consumer reject legacy-only v1 sessions |
+| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; the deterministic WORM handoff packages provider-bound admission plus custody/provider policies under eight independent pins, while the external CAS handoff packages the exact proposal/policy under fifteen independent pins and verifies three domain-separated signatures plus byte-identical head readback. The Windows directory adapter now implements the exact synchronous callbacks with independent public-protocol parsing, stable reads, staged file sync, atomic no-replace final request visibility, two-second deadlines, terminal ambiguity, and no producer/private-key import. Stale staging is never overwritten and a watcher cannot observe partial final JSON. Handoff tools remain deny-only and never claim a runtime seal, storage inspection, runtime nonce consumption, or launch capability; provider-bound custody v2 still recreates the sealed runtime result, while launch-session v2 composes the unchanged signed v1 CAS path, clamps validity to the earliest provider/custody/capability expiry, and makes every production consumer reject legacy-only v1 sessions |
 | Database | PASS_LOCAL | Exact SQLite DDL/trigger inventory, WAL, FULL sync, integrity check, HMAC chain, unique replay and authorization-consumption fields, atomic `BEGIN IMMEDIATE`, path identity, and signed off-host checkpoint verification |
-| Code quality | PASS_LOCAL | Spec-first implementation, including provider-bound custody/launch v2, the minimal Execution consumer closure, provider-bound WORM/external CAS handoff, and the Windows synchronous directory adapter at 100/100, 1,993-test normal/optimized regression, Python compile success, dependency-lock validation, and no scoped changed-file whitespace errors; Ruff was unavailable in the active development environment for this additive pass |
+| Code quality | PASS_LOCAL | Spec-first implementation, including provider-bound custody/launch v2, the minimal Execution consumer closure, provider-bound WORM/external CAS handoff, and the Windows synchronous directory adapter at 100/100, 1,997-test normal/optimized regression, Python compile success, dependency-lock validation, and no scoped changed-file whitespace errors; Ruff was unavailable in the active development environment for this additive pass |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
 | Deployment | INCOMPLETE_EXTERNAL | Sealed legacy and provider-bound prebootstrap, provider-bound WORM custody/launch v2, deterministic WORM and external-CAS operator handoffs, the self-contained 56-file Execution base allowlist with a minimal v2 consumer contract plus synchronous directory-CAS client, per-order runtime chain, brokerless 49-port Windows LIVE materializer, deterministic four-file pack tooling, exact 15-file configured-candidate tooling, 17-member source-bound tooling, 68-record provider-conformance v4 tooling, and non-executable two-authority acceptance tooling exist locally. The checked-in central lock is false and no exact target-host pack/configured/source-bound/v4 candidate, independently operated CAS service/mount, real signed Windows responses, owner/runtime signatures and evidence files, real provider-bound result, WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, or backup/restore evidence has been accepted |
@@ -167,8 +167,8 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | External CAS handoff spec validator (`--strict`) | 100/100; 0 errors, warnings, or informational findings |
 | Focused external CAS handoff suite | 10 PASS normal; 10 PASS optimized, including isolated request/response CLI verification |
 | Windows external CAS directory-adapter spec validator (`--strict`) | 100/100; 0 errors, warnings, or informational findings |
-| Focused Windows external CAS directory-adapter suite | 16 PASS normal; 16 PASS optimized with one intentional nested optimized-mode skip |
-| Execution adapter/isolated-closure/release-builder cluster | 45 PASS normal; 45 PASS optimized with one intentional nested optimized-mode skip |
+| Focused Windows external CAS directory-adapter suite | 20 PASS normal; 20 PASS optimized with one intentional nested optimized-mode skip |
+| Execution adapter/isolated-closure/release-builder cluster | 49 PASS normal; 49 PASS optimized with one intentional nested optimized-mode skip |
 | Configured-release tooling builder with WORM/CAS handoff | 11 PASS |
 | Cross-artifact service/tooling separation regression | 274 PASS |
 | Provider-bound launch/downstream regression | 165 PASS normal; 165 PASS optimized with seven intentional skips |
@@ -181,8 +181,8 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage regression | 81 PASS in both normal and optimized modes |
-| Full Python regression | 1,993 tests OK, 3 platform skips |
-| Full Python optimized regression | 1,993 tests OK, 13 skips |
+| Full Python regression | 1,997 tests OK, 3 platform skips |
+| Full Python optimized regression | 1,997 tests OK, 13 skips |
 | Uncommitted dashboard audit | 16 unit tests, lint, production build, bundle budget, npm audit, and 24 desktop/mobile E2E PASS locally |
 | Static quality checks | Python compile, dependency lock, external-acceptance spec validation, and scoped `git diff --check` PASS; Ruff unavailable in the active environment |
 | Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` and `SAFE_TO_DEMO_AUTO_ORDER` remain false; focused tests use fake MT5 only; no credential, network, Windows task, real MT5 initialization, or broker effect occurred |
@@ -323,8 +323,10 @@ changed-source findings.
     those three synchronous callbacks. The new directory adapter independently
     parses canonical public policy/proposal/checkpoint/acknowledgement bytes,
     verifies the existing RSA domains, serializes callback calls, uses stable
-    immediate-child reads and create-exclusive writes, and treats CAS ambiguity
-    as terminal. It is isolated-importable from Execution without any custody,
+    immediate-child reads and staged+synced atomic no-replace publication, and
+    treats stale staging, cleanup failure, and CAS ambiguity as terminal. Final
+    request filenames are never visible with partial JSON bytes. It is
+    isolated-importable from Execution without any custody,
     admission, acceptance, handoff, or launch-session producer module. It still
     cannot prove that a directory is an external atomic service.
 

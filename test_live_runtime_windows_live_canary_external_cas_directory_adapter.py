@@ -408,23 +408,25 @@ class WindowsLiveCanaryExternalCasDirectoryAdapterTests(unittest.TestCase):
         payload = b'{"live_allowed":false}'
         name = "a" * 64 + ".cas-request.json"
         path = self.requests / name
-        real_open = adapter_module.os.open
+        real_link = adapter_module.os.link
         raced = False
 
-        def racing_open(raw_path, flags, *args):
+        def racing_link(source, destination, *args, **kwargs):
             nonlocal raced
-            if not raced and flags & adapter_module.os.O_EXCL:
+            if not raced:
                 raced = True
-                Path(raw_path).write_bytes(payload)
+                self.assertEqual(payload, Path(source).read_bytes())
+                self.assertFalse(Path(destination).exists())
+                Path(destination).write_bytes(payload)
                 raise FileExistsError
-            return real_open(raw_path, flags, *args)
+            return real_link(source, destination, *args, **kwargs)
 
         self.adapter._enter()
         try:
             with mock.patch.object(
                 adapter_module.os,
-                "open",
-                side_effect=racing_open,
+                "link",
+                side_effect=racing_link,
             ):
                 self.adapter._write_request(
                     name=name,
@@ -435,6 +437,136 @@ class WindowsLiveCanaryExternalCasDirectoryAdapterTests(unittest.TestCase):
             self.adapter._leave()
         self.assertTrue(raced)
         self.assertEqual(payload, path.read_bytes())
+        self.assertEqual([], list(self.requests.glob("*.pending")))
+
+    def test_nfr4_final_request_is_atomically_published_after_sync(self) -> None:
+        payload = b'{"live_allowed":false}'
+        name = "b" * 64 + ".cas-request.json"
+        path = self.requests / name
+        real_link = adapter_module.os.link
+        publication_observed = False
+
+        def observing_link(source, destination, *args, **kwargs):
+            nonlocal publication_observed
+            self.assertFalse(Path(destination).exists())
+            self.assertEqual(payload, Path(source).read_bytes())
+            publication_observed = True
+            return real_link(source, destination, *args, **kwargs)
+
+        self.adapter._enter()
+        try:
+            with mock.patch.object(
+                adapter_module.os,
+                "link",
+                side_effect=observing_link,
+            ):
+                self.adapter._write_request(
+                    name=name,
+                    payload=payload,
+                    ambiguity_reason="CAS_REQUEST_PUBLICATION_AMBIGUOUS",
+                )
+        finally:
+            self.adapter._leave()
+        self.assertTrue(publication_observed)
+        self.assertEqual(payload, path.read_bytes())
+        self.assertEqual([], list(self.requests.glob("*.pending")))
+
+    def test_nfr4_windows_no_replace_rename_publishes_complete_bytes(self) -> None:
+        payload = b'{"live_allowed":false}'
+        name = "e" * 64 + ".cas-request.json"
+        path = self.requests / name
+        real_rename = adapter_module.os.rename
+        publication_observed = False
+
+        def windows_rename(source, destination):
+            nonlocal publication_observed
+            self.assertFalse(destination.exists())
+            self.assertEqual(payload, source.read_bytes())
+            publication_observed = True
+            return real_rename(source, destination)
+
+        self.adapter._enter()
+        try:
+            with (
+                mock.patch.object(adapter_module.os, "name", "nt"),
+                mock.patch.object(
+                    adapter_module.os,
+                    "rename",
+                    side_effect=windows_rename,
+                ),
+            ):
+                self.adapter._write_request(
+                    name=name,
+                    payload=payload,
+                    ambiguity_reason="CAS_REQUEST_PUBLICATION_AMBIGUOUS",
+                )
+        finally:
+            self.adapter._leave()
+        self.assertTrue(publication_observed)
+        self.assertEqual(payload, path.read_bytes())
+        self.assertEqual([], list(self.requests.glob("*.pending")))
+
+    def test_ec10a_staging_failure_never_exposes_final_request(self) -> None:
+        payload = b'{"live_allowed":false}'
+        name = "c" * 64 + ".cas-request.json"
+        path = self.requests / name
+        real_write = adapter_module.os.write
+        failed = False
+
+        def partial_write(descriptor, data):
+            nonlocal failed
+            if not failed:
+                failed = True
+                real_write(descriptor, data[: max(1, len(data) // 2)])
+                raise OSError("partial staging write")
+            return real_write(descriptor, data)
+
+        self.adapter._enter()
+        try:
+            with mock.patch.object(
+                adapter_module.os,
+                "write",
+                side_effect=partial_write,
+            ):
+                with self.assertRaisesRegex(
+                    WindowsLiveCanaryExternalCasDirectoryAdapterError,
+                    "CAS_REQUEST_PUBLICATION_AMBIGUOUS",
+                ):
+                    self.adapter._write_request(
+                        name=name,
+                        payload=payload,
+                        ambiguity_reason=(
+                            "CAS_REQUEST_PUBLICATION_AMBIGUOUS"
+                        ),
+                    )
+        finally:
+            self.adapter._leave()
+        self.assertTrue(failed)
+        self.assertFalse(path.exists())
+        self.assertTrue((self.requests / f".{name}.pending").is_file())
+
+    def test_ec10a_stale_staging_file_is_never_overwritten(self) -> None:
+        payload = b'{"live_allowed":false}'
+        name = "d" * 64 + ".cas-request.json"
+        staging = self.requests / f".{name}.pending"
+        stale = b""
+        staging.write_bytes(stale)
+
+        self.adapter._enter()
+        try:
+            with self.assertRaisesRegex(
+                WindowsLiveCanaryExternalCasDirectoryAdapterError,
+                "CAS_REQUEST_PUBLICATION_AMBIGUOUS",
+            ):
+                self.adapter._write_request(
+                    name=name,
+                    payload=payload,
+                    ambiguity_reason="CAS_REQUEST_PUBLICATION_AMBIGUOUS",
+                )
+        finally:
+            self.adapter._leave()
+        self.assertEqual(stale, staging.read_bytes())
+        self.assertFalse((self.requests / name).exists())
 
     def test_ec18_close_failure_is_a_stable_non_secret_error(self) -> None:
         self._seed_head()

@@ -35,7 +35,8 @@ mandiri dan dipin dengan SHA-256 yang diterima lewat channel independen.
 
 Konstruksi membutuhkan dua directory absolut, existing, real, dan berbeda:
 
-- request directory: hanya ditulis client dengan create-exclusive publication;
+- request directory: hanya ditulis client melalui staged create-exclusive,
+  file sync, lalu atomic no-replace publication;
 - response directory: hanya dibaca client untuk signed provider responses.
 
 Semua file harus immediate child, regular file, maksimal 1 MiB, canonical
@@ -61,10 +62,14 @@ locked safety fields.
 ## Batas ambiguity
 
 Timeout maksimum adalah dua detik dan polling berhenti pada trusted UTC expiry
-atau monotonic deadline. Setelah request CAS mungkin terpublikasi, timeout atau
-response invalid adalah terminal ambiguity: adapter tidak membuat request
-kedua dan tidak retry otomatis. Race create-exclusive hanya dapat dilanjutkan
-jika file yang sudah ada byte-identical.
+atau monotonic deadline. Final protocol filename baru terlihat sesudah seluruh
+request bytes ditulis dan disinkronkan di file staging non-protokol. Publikasi
+memakai atomic no-replace; stale staging, kegagalan cleanup, atau kegagalan
+publikasi diperlakukan sebagai terminal ambiguity dan artefaknya tidak
+dioverwrite. Setelah request CAS mungkin terpublikasi, timeout atau response
+invalid juga terminal: adapter tidak membuat request kedua dan tidak retry
+otomatis. Race final-file hanya dapat dilanjutkan jika file yang sudah ada
+byte-identical.
 
 ## Wiring pre-launch
 

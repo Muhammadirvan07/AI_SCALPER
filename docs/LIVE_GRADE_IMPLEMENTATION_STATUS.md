@@ -75,8 +75,10 @@ Windows LIVE-canary external CAS directory adapter v1 kini mengisi callback
 sinkron tersebut secara source lokal. Adapter menerima exact canonical public
 custody-policy bytes dengan independent SHA-256 pin, memverifikasi proposal,
 checkpoint, acknowledgement, dan nonce response secara mandiri, lalu memakai
-stable immediate-child reads, create-exclusive request publication, deadline
-dua detik, dan terminal ambiguity tanpa retry. Adapter masuk ke Execution
+stable immediate-child reads serta staged+synced atomic no-replace request
+publication sehingga watcher tidak dapat membaca final JSON parsial. Deadline
+tetap dua detik; stale staging, cleanup failure, timeout, dan hasil ambigu
+tetap terminal tanpa overwrite atau retry. Adapter masuk ke Execution
 allowlist dan isolated probe tanpa mengimpor custody/admission/acceptance/
 launch-session producer graph atau private-key tooling. Ini masih client
 primitive, bukan bukti external atomic service: actual mount/ACL/durability,

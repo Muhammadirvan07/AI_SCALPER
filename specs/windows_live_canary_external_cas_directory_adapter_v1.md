@@ -85,7 +85,11 @@ changing their canonical protocol.
 - FR-13: The CAS request MUST be canonical, create-exclusive, deterministic for
   the same proposal, bounded to the proposal expiry, and bind the exact raw
   proposal hash plus every identity needed to prevent cross-provider,
-  cross-policy, cross-repository, or cross-lane substitution.
+  cross-policy, cross-repository, or cross-lane substitution. Request bytes
+  MUST be fully written and synced under a non-protocol staging name before an
+  atomic no-replace publication makes the final protocol filename visible;
+  an external watcher MUST never be able to observe a partially written final
+  request.
 - FR-14: The CAS callback MUST publish at most one request and MUST NOT retry or
   create a second request after timeout, interruption, ambiguous publication,
   missing response, or response-verification failure.
@@ -132,8 +136,10 @@ changing their canonical protocol.
   reject duplicate keys, non-finite values, unknown fields, non-UTF-8 data, and
   noncanonical encoding before field-level processing continues.
 - NFR-4: File reads MUST compare pre-read and post-read identity, type, size,
-  timestamps, and reparse state. Request publication MUST use exclusive create,
-  flush, file sync, directory sync where supported, and exact readback.
+  timestamps, and reparse state. Request publication MUST use exclusive staged
+  create, flush, file sync, atomic no-replace final publication, directory sync
+  where supported, staging cleanup, and exact final readback. A stale staging
+  file MUST be treated as terminal ambiguity and MUST never be overwritten.
 - NFR-5: No security decision MAY rely on `assert`, process-local cache,
   filename ordering, wall-clock-only timeout, environment variables, current
   working directory, or mutable default arguments.
@@ -197,6 +203,8 @@ Given a current signed predecessor, exact proposal bytes, and a responder that
 atomically accepts the predecessor
 When the CAS callback runs
 Then exactly one canonical request is published
+And its final protocol filename becomes visible only after all bytes are
+written and synced
 And the exact independently signed checkpoint and acknowledgement bytes are
 returned
 And no local head or nonce claim is created.
@@ -285,6 +293,10 @@ the bounded unlock/canary ceremony exist.
 - EC-10: An identical CAS request file already exists with identical bytes ->
   resume bounded response observation without writing again; different bytes
   at the same derived path -> reject conflict.
+- EC-10A: A stale staging file exists, staging write/sync fails, final
+  publication is unsupported, or cleanup becomes ambiguous -> reject without
+  overwriting either artifact. A create race at the final filename MAY resume
+  only after byte-identical stable readback.
 - EC-11: CAS response exists but current head is not yet published -> return the
   signed CAS pair only; the authoritative core's mandatory subsequent head
   readback must still fail until the external service publishes it.
