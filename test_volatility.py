@@ -23,7 +23,7 @@ SYMBOLS = [
 ]
 
 
-def test_volatility(symbol):
+def volatility_snapshot(symbol):
     data_path = f"data/{symbol}.csv"
 
     if not os.path.exists(data_path):
@@ -66,7 +66,7 @@ def main():
     print("-" * 56)
 
     for symbol in SYMBOLS:
-        result = test_volatility(symbol)
+        result = volatility_snapshot(symbol)
 
         if result["status"] in ["NO_DATA", "NOT_ENOUGH_DATA"]:
             print(

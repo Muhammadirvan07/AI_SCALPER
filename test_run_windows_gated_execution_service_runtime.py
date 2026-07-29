@@ -115,6 +115,28 @@ class RunWindowsGatedExecutionServiceRuntimeTests(unittest.TestCase):
         self.assertFalse(report["broker_component_materialized"])
         self.assertFalse(report["broker_mutation_performed"])
 
+    def test_validate_only_rejects_live_runtime_provider_options(self) -> None:
+        stderr = io.StringIO()
+        with (
+            patch.object(
+                execution_cli,
+                "validate_reviewed_windows_service_factory_manifest",
+                side_effect=AssertionError("release must not be read"),
+            ),
+            redirect_stderr(stderr),
+        ):
+            status = execution_cli.main(
+                self._args(
+                    "--validate-only",
+                    "--live-runtime-provider",
+                    "C:\\AI_SCALPER_PRIVATE\\runtime.py",
+                    "--expected-live-runtime-provider-sha256",
+                    "f" * 64,
+                )
+            )
+        self.assertEqual(2, status)
+        self.assertIn("LIVE_RUNTIME_PROVIDER_OPTIONS_INVALID", stderr.getvalue())
+
     def test_materialize_only_requires_external_trust_before_factory(self) -> None:
         stderr = io.StringIO()
         with (
@@ -211,6 +233,84 @@ class RunWindowsGatedExecutionServiceRuntimeTests(unittest.TestCase):
         self.assertFalse(report["live_allowed"])
         self.assertFalse(report["safe_to_demo_auto_order"])
         self.assertEqual(0.01, report["max_lot"])
+
+    def test_materialize_only_binds_exact_external_live_runtime_provider(self) -> None:
+        events: list[str] = []
+        verified = Mock(spec=VerifiedExternalLauncherAttestation)
+        context = SimpleNamespace(
+            release_root_sha256="1" * 64,
+            factory_contract_sha256=FACTORY_HASH,
+            factory_file_sha256="2" * 64,
+            service_config_file_sha256=CONFIG_HASH,
+            bootstrap_binding_sha256=BOOTSTRAP_HASH,
+        )
+        manifest = SimpleNamespace(
+            release_profile=EXECUTION_RELEASE_PROFILE,
+            factory_contract_sha256=FACTORY_HASH,
+            bootstrap_binding_sha256=BOOTSTRAP_HASH,
+        )
+        result = self._factory_result()
+        hooks = object()
+        lease = Mock()
+        lease.__enter__ = Mock(return_value=None)
+        lease.__exit__ = Mock(return_value=False)
+
+        def load_hooks(**kwargs):
+            events.append("runtime")
+            self.assertEqual("f" * 64, kwargs["expected_runtime_provider_sha256"])
+            return SimpleNamespace(runtime_provider_sha256="f" * 64), hooks
+
+        def load_factory(**_kwargs):
+            events.append("factory")
+            return manifest, {}, result
+
+        stdout = io.StringIO()
+        with (
+            patch.object(execution_cli, "_verify_external_release_trust", return_value=verified),
+            patch.object(
+                execution_cli,
+                "validate_reviewed_windows_service_factory_manifest",
+                return_value=(manifest, {}, context),
+            ),
+            patch.object(
+                execution_cli,
+                "load_reviewed_windows_live_runtime_hooks",
+                side_effect=load_hooks,
+            ),
+            patch.object(
+                execution_cli,
+                "lease_windows_live_canary_materialization_hooks",
+                return_value=lease,
+            ) as bind,
+            patch.object(
+                execution_cli,
+                "load_reviewed_windows_service_factory",
+                side_effect=load_factory,
+            ),
+            patch.object(
+                execution_cli,
+                "require_brokerless_factory_bootstrap",
+                return_value=result.bootstrap,
+            ),
+            redirect_stdout(stdout),
+        ):
+            status = execution_cli.main(
+                self._trusted_args(
+                    "--materialize-only",
+                    "--live-runtime-provider",
+                    "C:\\AI_SCALPER_PRIVATE\\runtime.py",
+                    "--expected-live-runtime-provider-sha256",
+                    "f" * 64,
+                )
+            )
+        self.assertEqual(0, status)
+        self.assertEqual(["runtime", "factory"], events)
+        bind.assert_called_once_with(
+            hooks,
+            factory_context=context,
+            runtime_provider_sha256="f" * 64,
+        )
+        self.assertEqual("f" * 64, json.loads(stdout.getvalue())["live_runtime_provider_sha256"])
 
     def test_trust_verifier_is_pinned_to_execution_profile(self) -> None:
         with tempfile.TemporaryDirectory(dir="/private/tmp") as raw:

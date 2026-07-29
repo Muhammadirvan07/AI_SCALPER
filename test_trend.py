@@ -22,7 +22,7 @@ SYMBOLS = [
 ]
 
 
-def test_latest_trend(symbol):
+def latest_trend(symbol):
     data_path = f"data/{symbol}.csv"
 
     if not os.path.exists(data_path):
@@ -40,7 +40,7 @@ def main():
     print("\n=== LATEST TREND SIGNAL CHECK ===")
 
     for symbol in SYMBOLS:
-        signal = test_latest_trend(symbol)
+        signal = latest_trend(symbol)
         print(f"{symbol.upper():<8}: {signal}")
 
 

@@ -10,6 +10,7 @@ arguments or JSON files.
 
 from __future__ import annotations
 
+import ast
 import builtins
 from contextlib import contextmanager
 from dataclasses import InitVar, dataclass
@@ -17,9 +18,10 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import importlib
 import importlib.util
+import inspect
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import queue
 import re
 import signal
@@ -29,7 +31,7 @@ import sysconfig
 import threading
 import time
 from types import FunctionType, ModuleType
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence, cast
 import uuid
 
 from .contracts import CanonicalContract, canonical_json, require_hash, require_int, require_text, require_utc
@@ -45,6 +47,11 @@ from .production_bootstrap import (
     ProductionRuntimeComposition,
 )
 
+if TYPE_CHECKING:
+    from .windows_live_canary_execution_provider import (
+        WindowsLiveCanaryProviderMaterializationHooks,
+    )
+
 
 UTC = timezone.utc
 WINDOWS_SERVICE_FACTORY_MANIFEST_SCHEMA = "windows-service-factory-manifest-v1"
@@ -57,6 +64,8 @@ MAX_HEARTBEAT_TTL_SECONDS = 30
 SERVICE_DEADLINE_EXIT_CODE = 70
 _FACTORY_RESULT_SEAL = object()
 _STATUS_SEAL = object()
+_EXTERNAL_RUNTIME_CONTEXT_SEAL = object()
+_EXTERNAL_RUNTIME_SOURCE_VALIDATION_SEAL = object()
 _FACTORY_IMPORT_SCOPE_LOCK = threading.RLock()
 _FACTORY_IMPORT_AUDIT_LOCAL = threading.local()
 _MODULE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -75,6 +84,82 @@ _SERVICE_CONFIG_FIELDS = frozenset(
 )
 _ALLOWED_PHASES = frozenset(
     {"STARTING", "INITIALIZED", "RUNNING", "STOPPING", "STOPPED", "FAILED"}
+)
+WINDOWS_LIVE_EXTERNAL_RUNTIME_CONTEXT_SCHEMA = (
+    "windows-live-canary-external-runtime-context-v1"
+)
+WINDOWS_LIVE_EXTERNAL_RUNTIME_SOURCE_VALIDATION_SCHEMA = (
+    "windows-live-canary-external-runtime-source-validation-v1"
+)
+MAX_LIVE_RUNTIME_PROVIDER_BYTES = 4 * 1024 * 1024
+LIVE_RUNTIME_PROVIDER_BUILDER = "build_live_canary_materialization_hooks"
+_LIVE_RUNTIME_HOOKS_TYPE_NAME = (
+    "WindowsLiveCanaryProviderMaterializationHooks"
+)
+_LIVE_RUNTIME_HOOK_FIELDS = frozenset(
+    {
+        "clock_attestation_reader",
+        "credential_backend_factory",
+        "mt5_importer",
+        "network_sender",
+        "provider_state_reader",
+        "runtime_source_reader",
+        "sqlite_opener",
+    }
+)
+_LIVE_RUNTIME_ORDER_PRIMITIVE_RE = re.compile(
+    r"^order_(?:check|send)$",
+    flags=re.IGNORECASE,
+)
+_LIVE_RUNTIME_DYNAMIC_ATTRIBUTES = frozenset(
+    {
+        "find_spec",
+        "import_module",
+        "module_from_spec",
+        "reload",
+        "spec_from_file_location",
+        "spec_from_loader",
+    }
+)
+_LIVE_RUNTIME_DYNAMIC_NAMES = frozenset(
+    {
+        "__import__",
+        "compile",
+        "delattr",
+        "eval",
+        "exec",
+        "getattr",
+        "setattr",
+        "vars",
+    }
+)
+_LIVE_RUNTIME_PROCESS_ATTRIBUTES = frozenset(
+    {
+        "Popen",
+        "create_subprocess_exec",
+        "create_subprocess_shell",
+        "execl",
+        "execle",
+        "execlp",
+        "execlpe",
+        "execv",
+        "execve",
+        "execvp",
+        "execvpe",
+        "posix_spawn",
+        "posix_spawnp",
+        "popen",
+        "spawnl",
+        "spawnle",
+        "spawnlp",
+        "spawnlpe",
+        "spawnv",
+        "spawnve",
+        "spawnvp",
+        "spawnvpe",
+        "startfile",
+        "system",
+    }
 )
 
 
@@ -461,6 +546,415 @@ class WindowsServiceFactoryContext(CanonicalContract):
             object.__setattr__(self, name, require_hash(name, getattr(self, name)))
         if self.schema_version != WINDOWS_SERVICE_FACTORY_CONTEXT_SCHEMA:
             raise ValueError("unsupported Windows service factory context schema")
+
+
+@dataclass(frozen=True)
+class WindowsLiveRuntimeProviderSourceValidation(CanonicalContract):
+    source_sha256: str
+    source_size_bytes: int
+    builder_name: str
+    source_accepted: bool = False
+    module_imported: bool = False
+    hooks_built: bool = False
+    broker_mutation_performed: bool = False
+    live_allowed: bool = False
+    safe_to_demo_auto_order: bool = False
+    order_capability: str = "DISABLED"
+    schema_version: str = (
+        WINDOWS_LIVE_EXTERNAL_RUNTIME_SOURCE_VALIDATION_SCHEMA
+    )
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _EXTERNAL_RUNTIME_SOURCE_VALIDATION_SEAL:
+            raise TypeError(
+                "external runtime source validation requires validator seal"
+            )
+        object.__setattr__(
+            self,
+            "source_sha256",
+            require_hash("source_sha256", self.source_sha256),
+        )
+        require_int(
+            "source_size_bytes",
+            self.source_size_bytes,
+            minimum=1,
+            maximum=MAX_LIVE_RUNTIME_PROVIDER_BYTES,
+        )
+        if self.builder_name != LIVE_RUNTIME_PROVIDER_BUILDER:
+            raise ValueError("external runtime builder name is invalid")
+        if any(
+            value is not False
+            for value in (
+                self.source_accepted,
+                self.module_imported,
+                self.hooks_built,
+                self.broker_mutation_performed,
+                self.live_allowed,
+                self.safe_to_demo_auto_order,
+            )
+        ) or self.order_capability != "DISABLED":
+            raise ValueError("external runtime source validation must be deny-only")
+        if (
+            self.schema_version
+            != WINDOWS_LIVE_EXTERNAL_RUNTIME_SOURCE_VALIDATION_SCHEMA
+        ):
+            raise ValueError("external runtime source schema is unsupported")
+
+
+@dataclass(frozen=True)
+class WindowsLiveCanaryExternalRuntimeContext(CanonicalContract):
+    runtime_provider_sha256: str
+    release_identity_sha256: str
+    release_root_sha256: str
+    factory_contract_sha256: str
+    factory_file_sha256: str
+    service_config_file_sha256: str
+    bootstrap_binding_sha256: str
+    observed_at_utc: datetime
+    live_allowed: bool = False
+    safe_to_demo_auto_order: bool = False
+    order_capability: str = "DISABLED"
+    schema_version: str = WINDOWS_LIVE_EXTERNAL_RUNTIME_CONTEXT_SCHEMA
+    _seal: InitVar[object | None] = None
+
+    def __post_init__(self, _seal: object | None) -> None:
+        if _seal is not _EXTERNAL_RUNTIME_CONTEXT_SEAL:
+            raise TypeError("external runtime context requires launcher seal")
+        for name in (
+            "runtime_provider_sha256",
+            "release_identity_sha256",
+            "release_root_sha256",
+            "factory_contract_sha256",
+            "factory_file_sha256",
+            "service_config_file_sha256",
+            "bootstrap_binding_sha256",
+        ):
+            digest = require_hash(name, getattr(self, name))
+            if digest == "0" * 64:
+                raise ValueError(f"{name} cannot be the zero hash")
+            object.__setattr__(self, name, digest)
+        object.__setattr__(
+            self,
+            "observed_at_utc",
+            require_utc("observed_at_utc", self.observed_at_utc),
+        )
+        if (
+            self.live_allowed is not False
+            or self.safe_to_demo_auto_order is not False
+            or self.order_capability != "DISABLED"
+        ):
+            raise ValueError("external runtime context cannot grant authority")
+        if self.schema_version != WINDOWS_LIVE_EXTERNAL_RUNTIME_CONTEXT_SCHEMA:
+            raise ValueError("external runtime context schema is unsupported")
+
+
+def _literal_runtime_assignment(value: ast.AST | None) -> bool:
+    if value is None or isinstance(value, ast.Constant):
+        return True
+    if isinstance(value, (ast.Tuple, ast.List, ast.Set)):
+        return all(_literal_runtime_assignment(item) for item in value.elts)
+    if isinstance(value, ast.Dict):
+        return all(
+            _literal_runtime_assignment(key)
+            and _literal_runtime_assignment(item)
+            for key, item in zip(value.keys, value.values)
+        )
+    return False
+
+
+def _runtime_assignment_targets_are_names(
+    targets: Sequence[ast.AST],
+) -> bool:
+    return bool(targets) and all(isinstance(item, ast.Name) for item in targets)
+
+
+def _runtime_function_definition_is_declarative(
+    node: ast.FunctionDef,
+) -> bool:
+    arguments = node.args
+    annotated_arguments = (
+        *arguments.posonlyargs,
+        *arguments.args,
+        *arguments.kwonlyargs,
+    )
+    if arguments.vararg is not None:
+        annotated_arguments += (arguments.vararg,)
+    if arguments.kwarg is not None:
+        annotated_arguments += (arguments.kwarg,)
+    return (
+        not node.decorator_list
+        and not node.type_params
+        and node.returns is None
+        and all(item.annotation is None for item in annotated_arguments)
+        and all(
+            _literal_runtime_assignment(item)
+            for item in arguments.defaults
+        )
+        and all(
+            item is None or _literal_runtime_assignment(item)
+            for item in arguments.kw_defaults
+        )
+    )
+
+
+def _runtime_class_definition_is_declarative(node: ast.ClassDef) -> bool:
+    if (
+        node.decorator_list
+        or node.keywords
+        or node.type_params
+        or node.bases
+    ):
+        return False
+    for item in node.body:
+        if isinstance(item, ast.Pass):
+            continue
+        if (
+            isinstance(item, ast.Expr)
+            and isinstance(item.value, ast.Constant)
+            and isinstance(item.value.value, str)
+        ):
+            continue
+        if isinstance(item, ast.FunctionDef):
+            if not _runtime_function_definition_is_declarative(item):
+                return False
+            continue
+        if isinstance(item, ast.Assign):
+            if not (
+                _runtime_assignment_targets_are_names(item.targets)
+                and _literal_runtime_assignment(item.value)
+            ):
+                return False
+            continue
+        return False
+    return True
+
+
+def _runtime_builder_is_declarative(builder: ast.FunctionDef) -> bool:
+    body = list(builder.body)
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body.pop(0)
+    if not body or not isinstance(body[-1], ast.Return):
+        return False
+    definitions: set[str] = set()
+    for item in body[:-1]:
+        if not isinstance(item, ast.FunctionDef):
+            return False
+        if (
+            item.name == _LIVE_RUNTIME_HOOKS_TYPE_NAME
+            or item.name in definitions
+            or not _runtime_function_definition_is_declarative(item)
+        ):
+            return False
+        definitions.add(item.name)
+    returned = body[-1].value
+    if (
+        not isinstance(returned, ast.Call)
+        or not isinstance(returned.func, ast.Name)
+        or returned.func.id != _LIVE_RUNTIME_HOOKS_TYPE_NAME
+        or returned.args
+        or {item.arg for item in returned.keywords} != _LIVE_RUNTIME_HOOK_FIELDS
+        or any(
+            item.arg is None or not isinstance(item.value, ast.Name)
+            for item in returned.keywords
+        )
+    ):
+        return False
+    return True
+
+
+def validate_windows_live_runtime_provider_source(
+    payload: bytes,
+    *,
+    effect_probe: Callable[[str], object] | None = None,
+) -> WindowsLiveRuntimeProviderSourceValidation:
+    """Validate exact external provider source without executing any byte."""
+
+    if effect_probe is not None and not callable(effect_probe):
+        raise TypeError("effect_probe must be callable or None")
+    if (
+        type(payload) is not bytes
+        or not payload
+        or len(payload) > MAX_LIVE_RUNTIME_PROVIDER_BYTES
+    ):
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_SOURCE_INVALID")
+    try:
+        source = payload.decode("utf-8", errors="strict")
+        tree = ast.parse(source, filename="<reviewed-live-runtime-provider>")
+    except (UnicodeDecodeError, SyntaxError) as exc:
+        raise WindowsServiceError(
+            "LIVE_RUNTIME_PROVIDER_SOURCE_INVALID"
+        ) from exc
+
+    builder_nodes = [
+        item
+        for item in tree.body
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and item.name == LIVE_RUNTIME_PROVIDER_BUILDER
+    ]
+    if len(builder_nodes) != 1 or isinstance(builder_nodes[0], ast.AsyncFunctionDef):
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_BUILDER_INVALID")
+    builder = builder_nodes[0]
+    arguments = builder.args
+    if (
+        len(arguments.posonlyargs) + len(arguments.args) != 1
+        or arguments.vararg is not None
+        or arguments.kwarg is not None
+        or arguments.kwonlyargs
+        or arguments.defaults
+        or arguments.kw_defaults
+        or builder.decorator_list
+    ):
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_BUILDER_INVALID")
+
+    for item in tree.body:
+        if isinstance(item, (ast.Import, ast.ImportFrom)):
+            continue
+        if isinstance(item, ast.FunctionDef):
+            if not _runtime_function_definition_is_declarative(item):
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_TOP_LEVEL_EFFECT_FORBIDDEN"
+                )
+            continue
+        if isinstance(item, ast.ClassDef):
+            if not _runtime_class_definition_is_declarative(item):
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_TOP_LEVEL_EFFECT_FORBIDDEN"
+                )
+            continue
+        if (
+            isinstance(item, ast.Assign)
+            and _runtime_assignment_targets_are_names(item.targets)
+            and _literal_runtime_assignment(item.value)
+        ):
+            continue
+        if (
+            isinstance(item, ast.Expr)
+            and isinstance(item.value, ast.Constant)
+            and isinstance(item.value.value, str)
+        ):
+            continue
+        raise WindowsServiceError(
+            "LIVE_RUNTIME_PROVIDER_TOP_LEVEL_EFFECT_FORBIDDEN"
+        )
+
+    exact_hooks_imports = 0
+    reserved_binding_count = 0
+    for item in tree.body:
+        if isinstance(item, (ast.Import, ast.ImportFrom)):
+            for alias in item.names:
+                binding_name = alias.asname or alias.name.split(".", 1)[0]
+                if binding_name == _LIVE_RUNTIME_HOOKS_TYPE_NAME:
+                    reserved_binding_count += 1
+                    if (
+                        isinstance(item, ast.ImportFrom)
+                        and item.module
+                        == "live_runtime.windows_live_canary_execution_provider"
+                        and alias.name == _LIVE_RUNTIME_HOOKS_TYPE_NAME
+                        and alias.asname is None
+                    ):
+                        exact_hooks_imports += 1
+        if isinstance(item, (ast.FunctionDef, ast.ClassDef)):
+            if item.name == _LIVE_RUNTIME_HOOKS_TYPE_NAME:
+                reserved_binding_count += 1
+        if isinstance(item, ast.Assign):
+            reserved_binding_count += sum(
+                isinstance(target, ast.Name)
+                and target.id == _LIVE_RUNTIME_HOOKS_TYPE_NAME
+                for target in item.targets
+            )
+    if exact_hooks_imports != 1 or reserved_binding_count != 1:
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_HOOKS_IMPORT_INVALID")
+    if not _runtime_builder_is_declarative(builder):
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_BUILDER_INVALID")
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            aliases = node.names
+            if any(alias.name == "*" for alias in aliases):
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_IMPORT_FORBIDDEN"
+                )
+            if isinstance(node, ast.ImportFrom):
+                for alias in aliases:
+                    if alias.name in _LIVE_RUNTIME_DYNAMIC_NAMES:
+                        raise WindowsServiceError(
+                            "LIVE_RUNTIME_PROVIDER_DYNAMIC_IMPORT_FORBIDDEN"
+                        )
+                    if alias.name in _LIVE_RUNTIME_PROCESS_ATTRIBUTES:
+                        raise WindowsServiceError(
+                            "LIVE_RUNTIME_PROVIDER_PROCESS_EFFECT_FORBIDDEN"
+                        )
+                    if alias.name in {"__dict__", "modules"}:
+                        raise WindowsServiceError(
+                            "LIVE_RUNTIME_PROVIDER_MODULE_REGISTRY_FORBIDDEN"
+                        )
+                    if _LIVE_RUNTIME_ORDER_PRIMITIVE_RE.fullmatch(alias.name):
+                        raise WindowsServiceError(
+                            "LIVE_RUNTIME_PROVIDER_ORDER_PRIMITIVE_FORBIDDEN"
+                        )
+            module_names = [
+                alias.name for alias in aliases
+            ] + ([str(node.module or "")] if isinstance(node, ast.ImportFrom) else [])
+            for module_name in module_names:
+                root_name = module_name.split(".", 1)[0].casefold()
+                if root_name in {
+                    "importlib",
+                    "multiprocessing",
+                    "subprocess",
+                    "taskschd",
+                    "win32com",
+                } or module_name.casefold() == "metatrader5":
+                    raise WindowsServiceError(
+                        "LIVE_RUNTIME_PROVIDER_IMPORT_FORBIDDEN"
+                    )
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.value.casefold() == "metatrader5":
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_MT5_REFERENCE_FORBIDDEN"
+                )
+            if _LIVE_RUNTIME_ORDER_PRIMITIVE_RE.fullmatch(node.value):
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_ORDER_PRIMITIVE_FORBIDDEN"
+                )
+        if isinstance(node, ast.Name):
+            if _LIVE_RUNTIME_ORDER_PRIMITIVE_RE.fullmatch(node.id):
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_ORDER_PRIMITIVE_FORBIDDEN"
+                )
+        if isinstance(node, ast.Attribute):
+            if node.attr in {"__dict__", "modules"}:
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_MODULE_REGISTRY_FORBIDDEN"
+                )
+            if _LIVE_RUNTIME_ORDER_PRIMITIVE_RE.fullmatch(node.attr):
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_ORDER_PRIMITIVE_FORBIDDEN"
+                )
+            if node.attr in _LIVE_RUNTIME_DYNAMIC_ATTRIBUTES:
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_DYNAMIC_IMPORT_FORBIDDEN"
+                )
+            if node.attr in _LIVE_RUNTIME_PROCESS_ATTRIBUTES:
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_PROCESS_EFFECT_FORBIDDEN"
+                )
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id in _LIVE_RUNTIME_DYNAMIC_NAMES:
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_DYNAMIC_EVALUATION_FORBIDDEN"
+                )
+    return WindowsLiveRuntimeProviderSourceValidation(
+        source_sha256=_sha256_bytes(payload),
+        source_size_bytes=len(payload),
+        builder_name=LIVE_RUNTIME_PROVIDER_BUILDER,
+        _seal=_EXTERNAL_RUNTIME_SOURCE_VALIDATION_SEAL,
+    )
 
 
 @dataclass(frozen=True)
@@ -868,8 +1362,8 @@ def _reviewed_import_scope(
             absolute_name = name
         candidate = imported if type(imported) is ModuleType else None
         if candidate is not None:
-            current = candidate
-            current_parts = current.__name__.split(".")
+            current: object = candidate
+            current_parts = candidate.__name__.split(".")
             target_parts = absolute_name.split(".")
             if target_parts[: len(current_parts)] == current_parts:
                 for part in target_parts[len(current_parts) :]:
@@ -911,8 +1405,8 @@ def _reviewed_import_scope(
             stack = []
             _FACTORY_IMPORT_AUDIT_LOCAL.stack = stack
         stack.append(tracked_modules)
-        builtins.__import__ = reviewed_import
-        importlib.__import__ = reviewed_import
+        builtins.__import__ = cast(Any, reviewed_import)
+        importlib.__import__ = cast(Any, reviewed_import)
         importlib.import_module = reviewed_import_module
         importlib.reload = reviewed_reload
         for name in guarded_util_names:
@@ -1027,6 +1521,274 @@ def _verify_imported_module_origins(
             _is_relative_to(path, root) for root in stdlib_roots
         ):
             raise WindowsServiceError("SERVICE_FACTORY_IMPORT_ORIGIN_DENIED")
+
+
+def _external_runtime_file_identity(value: os.stat_result) -> tuple[int, ...]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_mode,
+        value.st_size,
+        value.st_mtime_ns,
+        int(getattr(value, "st_file_attributes", 0)),
+    )
+
+
+def _stable_read_windows_live_runtime_provider(
+    *,
+    runtime_provider_path: str | Path,
+    release_root: Path,
+    expected_runtime_provider_sha256: str,
+    platform_overridden: bool,
+) -> tuple[Path, bytes]:
+    raw = str(runtime_provider_path)
+    configured = Path(runtime_provider_path).expanduser()
+    if (
+        not raw
+        or raw != raw.strip()
+        or "\x00" in raw
+        or raw.startswith(("\\\\", "//"))
+        or not configured.is_absolute()
+    ):
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_PATH_INVALID")
+    if sys.platform == "win32" and not platform_overridden:
+        parsed = PureWindowsPath(raw)
+        if (
+            not parsed.is_absolute()
+            or not parsed.drive
+            or parsed.anchor != parsed.drive + "\\"
+            or any(":" in part for part in parsed.parts[1:])
+        ):
+            raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_PATH_INVALID")
+    expected = require_hash(
+        "expected_runtime_provider_sha256",
+        expected_runtime_provider_sha256,
+    )
+    if expected == "0" * 64:
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_HASH_INVALID")
+    configured = configured.absolute()
+    try:
+        before = configured.lstat()
+        resolved = configured.resolve(strict=True)
+        resolved.relative_to(release_root)
+    except ValueError:
+        pass
+    except OSError as exc:
+        raise WindowsServiceError(
+            "LIVE_RUNTIME_PROVIDER_UNAVAILABLE"
+        ) from exc
+    else:
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_MUST_BE_EXTERNAL")
+    reparse = int(getattr(before, "st_file_attributes", 0)) & 0x400
+    if (
+        stat.S_ISLNK(before.st_mode)
+        or reparse
+        or not stat.S_ISREG(before.st_mode)
+        or before.st_size <= 0
+        or before.st_size > MAX_LIVE_RUNTIME_PROVIDER_BYTES
+    ):
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_FILE_INVALID")
+    try:
+        with configured.open("rb") as handle:
+            opened_before = os.fstat(handle.fileno())
+            payload = handle.read(MAX_LIVE_RUNTIME_PROVIDER_BYTES + 1)
+            opened_after = os.fstat(handle.fileno())
+        after = configured.lstat()
+    except OSError as exc:
+        raise WindowsServiceError(
+            "LIVE_RUNTIME_PROVIDER_UNAVAILABLE"
+        ) from exc
+    identity = _external_runtime_file_identity(before)
+    if (
+        len(payload) != before.st_size
+        or len(payload) > MAX_LIVE_RUNTIME_PROVIDER_BYTES
+        or _external_runtime_file_identity(opened_before) != identity
+        or _external_runtime_file_identity(opened_after) != identity
+        or _external_runtime_file_identity(after) != identity
+    ):
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_CHANGED_DURING_READ")
+    if _sha256_bytes(payload) != expected:
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_HASH_MISMATCH")
+    return resolved, payload
+
+
+def _load_exact_live_runtime_provider_module(
+    *,
+    source_path: Path,
+    source_payload: bytes,
+    context: WindowsLiveCanaryExternalRuntimeContext,
+    release_root: Path,
+    inventory: Mapping[str, Mapping[str, Any]],
+) -> "WindowsLiveCanaryProviderMaterializationHooks":
+    """Execute only the exact prevalidated bytes under reviewed imports."""
+
+    module_name = (
+        "_ai_scalper_windows_live_runtime_"
+        + context.runtime_provider_sha256[:16]
+    )
+    namespace = ModuleType(module_name)
+    namespace.__file__ = str(source_path)
+    namespace.__package__ = ""
+    try:
+        code = builtins.compile(
+            source_payload,
+            str(source_path),
+            "exec",
+            flags=0,
+            dont_inherit=True,
+            optimize=0,
+        )
+    except (SyntaxError, ValueError) as exc:
+        raise WindowsServiceError(
+            "LIVE_RUNTIME_PROVIDER_SOURCE_INVALID"
+        ) from exc
+    try:
+        with _reviewed_import_scope(
+            release_root=release_root,
+            inventory=inventory,
+        ):
+            builtins.exec(code, namespace.__dict__)
+            builder = namespace.__dict__.get(LIVE_RUNTIME_PROVIDER_BUILDER)
+            if (
+                type(builder) is not FunctionType
+                or builder.__module__ != module_name
+            ):
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_BUILDER_INVALID"
+                )
+            signature = inspect.signature(builder)
+            parameters = tuple(signature.parameters.values())
+            if (
+                len(parameters) != 1
+                or parameters[0].kind
+                not in {
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                }
+                or parameters[0].default is not inspect.Parameter.empty
+            ):
+                raise WindowsServiceError(
+                    "LIVE_RUNTIME_PROVIDER_BUILDER_INVALID"
+                )
+            hooks = builder(context)
+    except WindowsServiceError:
+        raise
+    except Exception as exc:
+        raise WindowsServiceError(
+            "LIVE_RUNTIME_PROVIDER_BUILDER_FAILED"
+        ) from exc
+    return hooks
+
+
+def load_reviewed_windows_live_runtime_hooks(
+    *,
+    release_root: str | Path,
+    expected_release_identity_sha256: str,
+    factory_context: WindowsServiceFactoryContext,
+    runtime_provider_path: str | Path,
+    expected_runtime_provider_sha256: str,
+    clock_provider: Callable[[], datetime] = _now,
+    platform: str | None = None,
+) -> tuple[
+    WindowsLiveCanaryExternalRuntimeContext,
+    "WindowsLiveCanaryProviderMaterializationHooks",
+]:
+    """Load one exact external LIVE hook provider after all local locks."""
+
+    observed_platform = sys.platform if platform is None else platform
+    if observed_platform != "win32":
+        raise WindowsServiceError("WINDOWS_PLATFORM_REQUIRED")
+    if type(factory_context) is not WindowsServiceFactoryContext:
+        raise WindowsServiceError("LIVE_RUNTIME_FACTORY_CONTEXT_INVALID")
+    if not callable(clock_provider):
+        raise TypeError("clock_provider must be callable")
+    try:
+        from .windows_live_canary_execution_provider import (
+            WindowsLiveCanaryProviderMaterializationHooks,
+            require_windows_live_canary_policy,
+        )
+
+        require_windows_live_canary_policy()
+    except Exception as exc:
+        reason = getattr(exc, "reason_code", "CENTRAL_LIVE_LOCK_NOT_ENABLED")
+        raise WindowsServiceError(reason) from exc
+    root = _require_release_root(release_root)
+    expected_identity = require_hash(
+        "expected_release_identity_sha256",
+        expected_release_identity_sha256,
+    )
+    if expected_identity == "0" * 64:
+        raise WindowsServiceError("SERVICE_RELEASE_IDENTITY_MISMATCH")
+    _manifest, inventory = _verify_execution_release_manifest(
+        root=root,
+        expected_release_identity_sha256=expected_identity,
+    )
+    expected_root_sha256 = _sha256_bytes(str(root).encode("utf-8"))
+    if factory_context.release_root_sha256 != expected_root_sha256:
+        raise WindowsServiceError("LIVE_RUNTIME_FACTORY_CONTEXT_MISMATCH")
+    source_path, payload = _stable_read_windows_live_runtime_provider(
+        runtime_provider_path=runtime_provider_path,
+        release_root=root,
+        expected_runtime_provider_sha256=(
+            expected_runtime_provider_sha256
+        ),
+        platform_overridden=platform is not None,
+    )
+    validate_windows_live_runtime_provider_source(payload)
+    try:
+        require_windows_live_canary_policy()
+        observed_at = require_utc(
+            "external runtime observation",
+            clock_provider(),
+        )
+        context = WindowsLiveCanaryExternalRuntimeContext(
+            runtime_provider_sha256=_sha256_bytes(payload),
+            release_identity_sha256=expected_identity,
+            release_root_sha256=factory_context.release_root_sha256,
+            factory_contract_sha256=(
+                factory_context.factory_contract_sha256
+            ),
+            factory_file_sha256=factory_context.factory_file_sha256,
+            service_config_file_sha256=(
+                factory_context.service_config_file_sha256
+            ),
+            bootstrap_binding_sha256=(
+                factory_context.bootstrap_binding_sha256
+            ),
+            observed_at_utc=observed_at,
+            _seal=_EXTERNAL_RUNTIME_CONTEXT_SEAL,
+        )
+        hooks = _load_exact_live_runtime_provider_module(
+            source_path=source_path,
+            source_payload=payload,
+            context=context,
+            release_root=root,
+            inventory=inventory,
+        )
+        require_windows_live_canary_policy()
+    except WindowsServiceError:
+        raise
+    except Exception as exc:
+        reason = getattr(exc, "reason_code", "LIVE_RUNTIME_PROVIDER_INVALID")
+        raise WindowsServiceError(reason) from exc
+    if type(hooks) is not WindowsLiveCanaryProviderMaterializationHooks:
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_HOOKS_INVALID")
+    _second_path, second_payload = _stable_read_windows_live_runtime_provider(
+        runtime_provider_path=runtime_provider_path,
+        release_root=root,
+        expected_runtime_provider_sha256=(
+            expected_runtime_provider_sha256
+        ),
+        platform_overridden=platform is not None,
+    )
+    if _second_path != source_path or second_payload != payload:
+        raise WindowsServiceError("LIVE_RUNTIME_PROVIDER_CHANGED_DURING_BUILD")
+    try:
+        require_windows_live_canary_policy()
+    except Exception as exc:
+        reason = getattr(exc, "reason_code", "CENTRAL_LIVE_LOCK_NOT_ENABLED")
+        raise WindowsServiceError(reason) from exc
+    return context, hooks
 
 
 def load_reviewed_windows_service_factory(
@@ -1433,7 +2195,7 @@ class WindowsGatedServiceRunner:
         composition: ProductionRuntimeComposition,
         deadline_seconds: float,
         prior_receipt_sha256: str,
-    ) -> object:
+    ) -> Any:
         result_queue: queue.Queue[tuple[str, object]] = queue.Queue(maxsize=1)
 
         def worker() -> None:
@@ -1476,9 +2238,17 @@ class WindowsGatedServiceRunner:
                     )
                 continue
             if kind == "ERROR":
-                assert isinstance(value, Exception)
+                if not isinstance(value, Exception):
+                    failure = WindowsServiceError(
+                        "SERVICE_CYCLE_WORKER_RESULT_INVALID"
+                    )
+                    self._terminate_active_cycle(
+                        composition=composition,
+                        reason_code="SERVICE_CYCLE_WORKER_RESULT_INVALID",
+                        cause=failure,
+                    )
                 thread.join(timeout=min(0.1, max(remaining, 0.0)))
-                raise value
+                raise cast(Exception, value)
             thread.join(timeout=min(0.1, max(remaining, 0.0)))
             if kind != "RECEIPT" or thread.is_alive():
                 failure = WindowsServiceError(
@@ -1498,7 +2268,7 @@ class WindowsGatedServiceRunner:
         lease_seconds: int = 30,
         cycle_interval_seconds: float = 5.0,
         cycle_deadline_seconds: float = 20.0,
-    ) -> tuple[object, ...]:
+    ) -> tuple[Any, ...]:
         count = require_int("max_cycles", max_cycles, minimum=1, maximum=100_000)
         lease = require_int("lease_seconds", lease_seconds, minimum=1, maximum=300)
         if isinstance(cycle_interval_seconds, bool) or not isinstance(
@@ -1517,7 +2287,7 @@ class WindowsGatedServiceRunner:
             raise ValueError("cycle_deadline_seconds is outside the heartbeat TTL")
         started = False
         composition_failure_handled = False
-        receipts: tuple[object, ...] = ()
+        receipts: tuple[Any, ...] = ()
         try:
             self._heartbeat("STARTING")
             composition = self.result.bootstrap.materialize()
@@ -1531,7 +2301,7 @@ class WindowsGatedServiceRunner:
             self._heartbeat(
                 "RUNNING", supervisor_receipt_sha256=startup.content_sha256
             )
-            cycle_receipts: list[object] = []
+            cycle_receipts: list[Any] = []
             for index in range(count):
                 if self.stop_event.is_set():
                     break
@@ -1635,12 +2405,18 @@ def install_signal_handlers(runner: WindowsGatedServiceRunner) -> None:
 
 
 __all__ = [
+    "LIVE_RUNTIME_PROVIDER_BUILDER",
+    "MAX_LIVE_RUNTIME_PROVIDER_BYTES",
     "MAX_HEARTBEAT_TTL_SECONDS",
+    "WINDOWS_LIVE_EXTERNAL_RUNTIME_CONTEXT_SCHEMA",
+    "WINDOWS_LIVE_EXTERNAL_RUNTIME_SOURCE_VALIDATION_SCHEMA",
     "WINDOWS_SERVICE_FACTORY_CONTEXT_SCHEMA",
     "WINDOWS_SERVICE_FACTORY_MANIFEST_SCHEMA",
     "WINDOWS_SERVICE_FACTORY_RESULT_SCHEMA",
     "WINDOWS_SERVICE_STATUS_SCHEMA",
     "WindowsGatedServiceRunner",
+    "WindowsLiveCanaryExternalRuntimeContext",
+    "WindowsLiveRuntimeProviderSourceValidation",
     "WindowsServiceError",
     "WindowsServiceFactoryContext",
     "WindowsServiceFactoryManifest",
@@ -1648,7 +2424,9 @@ __all__ = [
     "WindowsServiceStatus",
     "canonical_service_factory_contract_sha256",
     "install_signal_handlers",
+    "load_reviewed_windows_live_runtime_hooks",
     "load_reviewed_windows_service_factory",
     "seal_windows_service_factory_result",
     "validate_reviewed_windows_service_factory_manifest",
+    "validate_windows_live_runtime_provider_source",
 ]

@@ -9,6 +9,8 @@ permit, or broker effect.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import InitVar, dataclass, fields
 from datetime import datetime
 import hashlib
@@ -17,7 +19,8 @@ import math
 from pathlib import PureWindowsPath
 import re
 import sys
-from typing import Any, Callable, Mapping
+import threading
+from typing import Any, Callable, Iterator, Mapping, NoReturn, cast
 
 import execution_policy
 
@@ -163,7 +166,7 @@ class WindowsLiveCanaryExecutionProviderError(RuntimeError):
         super().__init__(normalized)
 
 
-def _reject(reason_code: str) -> None:
+def _reject(reason_code: str) -> NoReturn:
     raise WindowsLiveCanaryExecutionProviderError(reason_code)
 
 
@@ -620,6 +623,88 @@ class WindowsLiveCanaryProviderMaterializationHooks:
                 )
 
 
+@dataclass(slots=True)
+class _WindowsLiveCanaryMaterializationHookLease:
+    hooks: WindowsLiveCanaryProviderMaterializationHooks
+    factory_binding: tuple[str, str, str, str, str]
+    runtime_provider_sha256: str
+    owner_thread_id: int
+    consumed: bool = False
+
+
+_HOOK_LEASE: ContextVar[
+    _WindowsLiveCanaryMaterializationHookLease | None
+] = ContextVar(
+    "ai_scalper_windows_live_canary_materialization_hook_lease",
+    default=None,
+)
+
+
+def _factory_context_binding(
+    context: WindowsServiceFactoryContext,
+) -> tuple[str, str, str, str, str]:
+    if type(context) is not WindowsServiceFactoryContext:
+        _reject("LIVE_EXECUTION_FACTORY_CONTEXT_INVALID")
+    return (
+        context.release_root_sha256,
+        context.factory_contract_sha256,
+        context.factory_file_sha256,
+        context.service_config_file_sha256,
+        context.bootstrap_binding_sha256,
+    )
+
+
+@contextmanager
+def lease_windows_live_canary_materialization_hooks(
+    hooks: WindowsLiveCanaryProviderMaterializationHooks,
+    *,
+    factory_context: WindowsServiceFactoryContext,
+    runtime_provider_sha256: str,
+) -> Iterator[None]:
+    """Lease one exact reviewed hooks object to one synchronous factory call."""
+
+    if type(hooks) is not WindowsLiveCanaryProviderMaterializationHooks:
+        _reject("LIVE_EXECUTION_MATERIALIZATION_HOOKS_INVALID")
+    binding = _factory_context_binding(factory_context)
+    runtime_identity = _hash(
+        runtime_provider_sha256,
+        "LIVE_EXECUTION_HOOK_LEASE_IDENTITY_INVALID",
+    )
+    _require_live_policy()
+    if _HOOK_LEASE.get() is not None:
+        _reject("LIVE_EXECUTION_HOOK_LEASE_ACTIVE")
+    lease = _WindowsLiveCanaryMaterializationHookLease(
+        hooks=hooks,
+        factory_binding=binding,
+        runtime_provider_sha256=runtime_identity,
+        owner_thread_id=threading.get_ident(),
+    )
+    token = _HOOK_LEASE.set(lease)
+    try:
+        _require_live_policy()
+        yield
+    finally:
+        _HOOK_LEASE.reset(token)
+
+
+def _consume_windows_live_canary_materialization_hooks(
+    factory_context: WindowsServiceFactoryContext,
+) -> WindowsLiveCanaryProviderMaterializationHooks:
+    lease = _HOOK_LEASE.get()
+    if lease is None:
+        _reject("LIVE_EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED")
+    if lease.owner_thread_id != threading.get_ident():
+        _reject("LIVE_EXECUTION_HOOK_LEASE_CONTEXT_MISMATCH")
+    if lease.consumed:
+        _reject("LIVE_EXECUTION_HOOK_LEASE_ALREADY_CONSUMED")
+    if lease.factory_binding != _factory_context_binding(factory_context):
+        _reject("LIVE_EXECUTION_HOOK_LEASE_BINDING_MISMATCH")
+    _require_live_policy()
+    lease.consumed = True
+    _require_live_policy()
+    return lease.hooks
+
+
 def _duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in pairs:
@@ -797,6 +882,12 @@ def _require_live_policy() -> None:
     lot_allowed, _lot_reason = execution_policy.validate_execution_lot(MAX_LOT)
     if symbol_allowed is not True or lot_allowed is not True:
         _reject("CENTRAL_LIVE_EXECUTION_SCOPE_INVALID")
+
+
+def require_windows_live_canary_policy() -> None:
+    """Public fail-closed policy check for the reviewed Windows launcher."""
+
+    _require_live_policy()
 
 
 def _invoke_effect(
@@ -1019,7 +1110,9 @@ def build_windows_live_canary_execution_factory_result(
         _reject("LIVE_EXECUTION_SERVICE_CONFIGURATION_BINDING_MISMATCH")
     _require_live_policy()
     if hooks is None:
-        _reject("LIVE_EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED")
+        hooks = _consume_windows_live_canary_materialization_hooks(
+            factory_context
+        )
     if type(hooks) is not WindowsLiveCanaryProviderMaterializationHooks:
         _reject("LIVE_EXECUTION_MATERIALIZATION_HOOKS_INVALID")
 
@@ -1031,6 +1124,8 @@ def build_windows_live_canary_execution_factory_result(
     if type(source) is not WindowsLiveCanaryRuntimeSource:
         _reject("LIVE_EXECUTION_RUNTIME_SOURCE_INVALID")
     production_config = source.config
+    live_candidate = cast(Any, source.live_candidate)
+    live_launch_session = cast(Any, source.live_launch_session)
     if (
         source.source_sha256 != provider_config.production_config_sha256
         or production_config.safe_binding_sha256
@@ -1041,15 +1136,15 @@ def build_windows_live_canary_execution_factory_result(
         or production_config.safe_to_demo_auto_order is not False
         or production_config.order_capability != "DISABLED"
         or production_config.config_sha256
-        != source.live_candidate.content_sha256
-        or source.live_launch_session.candidate_sha256
-        != source.live_candidate.content_sha256
+        != live_candidate.content_sha256
+        or live_launch_session.candidate_sha256
+        != live_candidate.content_sha256
     ):
         _reject("LIVE_EXECUTION_RUNTIME_SOURCE_BINDING_MISMATCH")
     _require_runtime_authority(
         production_config,
-        live_candidate=source.live_candidate,
-        live_launch_session=source.live_launch_session,
+        live_candidate=live_candidate,
+        live_launch_session=live_launch_session,
         now=source.verified_at_utc,
     )
 
@@ -1077,8 +1172,8 @@ def build_windows_live_canary_execution_factory_result(
         ) from exc
     _require_runtime_authority(
         production_config,
-        live_candidate=source.live_candidate,
-        live_launch_session=source.live_launch_session,
+        live_candidate=live_candidate,
+        live_launch_session=live_launch_session,
         now=trusted_now,
     )
 
@@ -1129,8 +1224,8 @@ def build_windows_live_canary_execution_factory_result(
         bootstrap = ProductionRuntimeBootstrap(
             production_config,
             ports,
-            live_candidate=source.live_candidate,
-            live_launch_session=source.live_launch_session,
+            live_candidate=live_candidate,
+            live_launch_session=live_launch_session,
         )
     except Exception as exc:
         raise WindowsLiveCanaryExecutionProviderError(
@@ -1217,7 +1312,9 @@ __all__ = [
     "WindowsLiveCanaryProviderMaterializationHooks",
     "WindowsLiveCanaryRuntimeSource",
     "build_windows_live_canary_execution_factory_result",
+    "lease_windows_live_canary_materialization_hooks",
     "live_provider_contracts",
+    "require_windows_live_canary_policy",
     "seal_windows_live_canary_runtime_source",
     "validate_windows_live_canary_execution_provider_configuration",
     "windows_live_canary_execution_provider_configuration_from_dict",

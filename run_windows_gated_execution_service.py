@@ -27,11 +27,16 @@ from live_runtime.production_bootstrap import (
     ProductionBootstrapError,
     require_brokerless_factory_bootstrap,
 )
+from live_runtime.windows_live_canary_execution_provider import (
+    WindowsLiveCanaryExecutionProviderError,
+    lease_windows_live_canary_materialization_hooks,
+)
 from live_runtime.signed_release_trust import PRODUCTION_RELEASE_TRUST_REQUIREMENT
 from live_runtime.windows_service_entrypoint import (
     WindowsGatedServiceRunner,
     WindowsServiceError,
     install_signal_handlers,
+    load_reviewed_windows_live_runtime_hooks,
     load_reviewed_windows_service_factory,
     validate_reviewed_windows_service_factory_manifest,
 )
@@ -72,6 +77,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "ACL-protected external RSA launcher trust policy JSON; required "
             "unless --validate-only is used"
+        ),
+    )
+    parser.add_argument(
+        "--live-runtime-provider",
+        help=(
+            "Absolute external reviewed LIVE runtime-provider Python file; "
+            "requires its independently pinned SHA-256"
+        ),
+    )
+    parser.add_argument(
+        "--expected-live-runtime-provider-sha256",
+        help=(
+            "Exact SHA-256 of --live-runtime-provider pinned in the "
+            "ACL-protected launcher definition"
         ),
     )
     parser.add_argument(
@@ -240,6 +259,18 @@ def _assert_external_release_trust_current(
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        runtime_option_values = (
+            args.live_runtime_provider,
+            args.expected_live_runtime_provider_sha256,
+        )
+        runtime_provider_requested = all(runtime_option_values)
+        if (
+            any(runtime_option_values) != runtime_provider_requested
+            or args.validate_only and runtime_provider_requested
+        ):
+            raise WindowsServiceError(
+                "LIVE_RUNTIME_PROVIDER_OPTIONS_INVALID"
+            )
         if args.validate_only:
             manifest, _config, _context = (
                 validate_reviewed_windows_service_factory_manifest(
@@ -321,13 +352,61 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         release_trust = _verify_external_release_trust(args)
-        manifest, config, result = load_reviewed_windows_service_factory(
-            release_root=args.release_root,
-            manifest_path=args.factory_manifest,
-            expected_release_identity_sha256=(
-                args.expected_release_identity_sha256
-            ),
-        )
+        runtime_provider_sha256: str | None = None
+        if runtime_provider_requested:
+            _static_manifest, _static_config, factory_context = (
+                validate_reviewed_windows_service_factory_manifest(
+                    release_root=args.release_root,
+                    manifest_path=args.factory_manifest,
+                    expected_release_identity_sha256=(
+                        args.expected_release_identity_sha256
+                    ),
+                )
+            )
+            _assert_external_release_trust_current(
+                release_trust,
+                expected_release_identity_sha256=(
+                    args.expected_release_identity_sha256
+                ),
+            )
+            runtime_context, runtime_hooks = (
+                load_reviewed_windows_live_runtime_hooks(
+                    release_root=args.release_root,
+                    expected_release_identity_sha256=(
+                        args.expected_release_identity_sha256
+                    ),
+                    factory_context=factory_context,
+                    runtime_provider_path=args.live_runtime_provider,
+                    expected_runtime_provider_sha256=(
+                        args.expected_live_runtime_provider_sha256
+                    ),
+                )
+            )
+            runtime_provider_sha256 = (
+                runtime_context.runtime_provider_sha256
+            )
+            with lease_windows_live_canary_materialization_hooks(
+                runtime_hooks,
+                factory_context=factory_context,
+                runtime_provider_sha256=runtime_provider_sha256,
+            ):
+                manifest, config, result = (
+                    load_reviewed_windows_service_factory(
+                        release_root=args.release_root,
+                        manifest_path=args.factory_manifest,
+                        expected_release_identity_sha256=(
+                            args.expected_release_identity_sha256
+                        ),
+                    )
+                )
+        else:
+            manifest, config, result = load_reviewed_windows_service_factory(
+                release_root=args.release_root,
+                manifest_path=args.factory_manifest,
+                expected_release_identity_sha256=(
+                    args.expected_release_identity_sha256
+                ),
+            )
         _assert_external_release_trust_current(
             release_trust,
             expected_release_identity_sha256=(
@@ -396,6 +475,15 @@ def main(argv: list[str] | None = None) -> int:
                         "live_allowed": False,
                         "safe_to_demo_auto_order": False,
                         "max_lot": 0.01,
+                        **(
+                            {
+                                "live_runtime_provider_sha256": (
+                                    runtime_provider_sha256
+                                )
+                            }
+                            if runtime_provider_sha256 is not None
+                            else {}
+                        ),
                     },
                     indent=2,
                     sort_keys=True,
@@ -439,6 +527,15 @@ def main(argv: list[str] | None = None) -> int:
                     "live_allowed": False,
                     "safe_to_demo_auto_order": False,
                     "max_lot": 0.01,
+                    **(
+                        {
+                            "live_runtime_provider_sha256": (
+                                runtime_provider_sha256
+                            )
+                        }
+                        if runtime_provider_sha256 is not None
+                        else {}
+                    ),
                 },
                 indent=2,
                 sort_keys=True,
@@ -447,6 +544,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except (
         WindowsServiceError,
+        WindowsLiveCanaryExecutionProviderError,
         ProductionBootstrapError,
         TypeError,
         ValueError,

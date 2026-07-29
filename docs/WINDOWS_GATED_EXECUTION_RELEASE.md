@@ -68,7 +68,7 @@ The base release now contains the exact provider-bound LIVE launch-session v2
 consumer class required by production bootstrap. It does not contain the
 operator-side admission, custody, acceptance, source-bound, conformance, or
 activation assemblers. The release manifest binds the critical six-file
-consumer closure, while the complete service allowlist contains 55 files.
+consumer closure, while the complete service allowlist contains 57 files.
 
 After extracting an exact release, validate this closure without importing a
 provider or contacting MT5:
@@ -161,6 +161,32 @@ service atau order. Trust yang salah profile atau kedaluwarsa selama factory
 construction gagal sebelum runner dibuat. Exact bootstrap/config/ports,
 execution locks, dan `mt5_module=None` diperiksa ulang setelah factory;
 injeksi MT5 pascakonstruksi ditolak sebelum runner atau broker boundary.
+
+### Exact external LIVE runtime hook lease
+
+Configured LIVE factories tetap menolak
+`LIVE_EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED` secara default. Setelah satu
+modul 40-provider konkret selesai direview dan hash-nya dipin melalui launcher
+ACL-protected, probe dapat menambahkan pasangan berikut:
+
+```powershell
+  --live-runtime-provider C:\AI_SCALPER_PRIVATE\live-runtime-provider.py `
+  --expected-live-runtime-provider-sha256 <PINNED_PROVIDER_SHA256>
+```
+
+Kedua opsi wajib hadir bersama dan tidak boleh dipakai dengan
+`--validate-only`. Launcher memverifikasi trust/release/factory/central policy,
+stable-read exact source, AST deny policy, serta exact declarative builder
+sebelum membuat sealed non-secret context dan context-local one-use hook lease.
+`--materialize-only` tetap tidak memanggil
+`ProductionRuntimeBootstrap.materialize()`, tidak menginisialisasi MT5, tidak
+membuat runner, dan tidak mengonsumsi order authorization. Output sukses
+menambahkan `live_runtime_provider_sha256`.
+
+Repository belum menyediakan modul 40-provider tersebut. Jangan membuat file
+placeholder atau menganggap valid hash sebagai provider acceptance/order
+authority. Central `LIVE_ALLOWED` tetap false sampai seluruh external evidence
+dan unlock ceremony selesai.
 
 This verification proves provenance only. It does not grant stage, permit,
 environment-arm, DEMO_AUTO, promotion, or live authority.

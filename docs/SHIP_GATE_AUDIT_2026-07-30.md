@@ -13,6 +13,8 @@ DASHBOARD_BROWSER_MUTATION_SURFACE = REMOVED
 DASHBOARD_NETWORK_BOUNDARY = LOOPBACK_ONLY_PASS_LOCAL
 DASHBOARD_DEPENDENCIES = PASS_LOCAL_ZERO_KNOWN_VULNERABILITIES
 DASHBOARD_WINDOWS_RUNTIME = NOT_ACCEPTED
+WINDOWS_LIVE_EXTERNAL_RUNTIME_HOOK_LEASE = PASS_LOCAL_DENY_ONLY
+CONCRETE_LIVE_RUNTIME_PROVIDER = NOT_ACCEPTED
 WINDOWS_EXTERNAL_EVIDENCE = INCOMPLETE
 CENTRAL_LIVE_LOCK = FALSE
 LIVE_TRADING = DO_NOT SHIP
@@ -38,9 +40,10 @@ launch, MT5 initialization, atau order broker.
 - Spec validator: 100/100 Grade A, no error/warning.
 - Focused semantic WORM/gate/activation/consumption/release cluster: 69 tests
   passed normal; 69 passed optimized dengan dua expected nested-run skips.
-- Full serial normal regression: 2.100 passed, tiga expected platform skips.
-- Full serial optimized regression: 2.100 passed, 15 expected
-  platform/optimized skips.
+- Full serial normal regression: 2.362 tests dan 1.319 subtests passed, tiga
+  expected platform skips.
+- Full serial optimized regression: 2.350 tests dan 1.319 subtests passed, 15
+  expected platform/optimized skips.
 - Prior post-run V6.3 focused hardening gate: 41 passed normal dan 41 passed
   optimized; hasil tersebut tercakup oleh full regression terbaru di atas.
 - Windows dependency lock/SBOM/install-manifest/MetaTrader5 wheel pins passed.
@@ -49,6 +52,13 @@ launch, MT5 initialization, atau order broker.
 - Dashboard backend: 202 tests, ruff, mypy, and pip-audit passed. Frontend: 29
   unit tests, ESLint, production build, bundle budget, npm audit, dan 30
   Playwright desktop/mobile tests passed tanpa retry.
+- External runtime hook-lease spec scored 98/100 Grade A with no error; focused
+  runtime/source/lease/launcher/service/release-builder checks passed 91 tests
+  and 135 subtests identically in normal and optimized modes.
+- LIVE configured/source-bound/closure checks passed 98 tests plus 58 subtests
+  normal and 92 tests plus six expected skips and 58 subtests optimized.
+- Focused mypy for the modified runtime/provider/launcher sources and the
+  pinned Windows dependency lock both passed.
 
 ## Security and correctness findings closed
 
@@ -101,6 +111,17 @@ launch, MT5 initialization, atau order broker.
 16. Probe E2E sebelumnya dapat melihat UI berita sebelum refresh awal selesai.
     Readiness kini tetap 503 sampai scheduler menyelesaikan attempt pertama;
     rerun Playwright lulus 30/30 tanpa flaky retry.
+17. Generated LIVE factory sebelumnya tidak mempunyai jalur untuk menerima
+    runtime hooks yang direview sehingga selalu berhenti pada
+    `LIVE_EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED`. Exact external source
+    loader dan context-local one-use lease kini menutup composition gap tanpa
+    mengubah generated pack atau central lock. Static validator juga menolak
+    decorator/default/class-body effect, dynamic loader, module-registry
+    access, MT5/order primitive, process/task effect, dan builder non-deklaratif.
+18. Tiga helper CLI diagnostik lama memakai prefix fungsi `test_` dengan
+    parameter `symbol`, sehingga full pytest menganggap parameter itu fixture.
+    Helper sekarang memakai nama operasional dan tetap lulus direct CLI smoke,
+    sehingga full normal/optimized collection tidak memiliki error.
 
 ## Automated category result
 
@@ -114,6 +135,7 @@ launch, MT5 initialization, atau order broker.
 | Frontend | PASS_LOCAL / WINDOWS_PENDING | 29 unit, lint/build/bundle, and 30 desktop/mobile E2E pass; GET/WebSocket-only boundary; exact Windows launch not accepted |
 | Observability | PASS_LOCAL / EXTERNAL_PENDING | Stable public reason codes and canonical receipts; external WORM/CAS/log custody not yet proven |
 | Broker/live effects | PASS_DENY_ONLY | No process/socket/requests/MetaTrader5/order call; live and activation remain false |
+| LIVE runtime composition | PASS_LOCAL / EXTERNAL_PENDING | Exact-hash loader and one-use hook lease pass locally; concrete 40-provider module, target-host hash pin, acceptance, credentials, and runtime state are absent |
 
 ## Manual/external blockers
 
@@ -127,6 +149,8 @@ launch, MT5 initialization, atau order broker.
 - Target-host provider-bound admission, independent WORM/CAS custody/readback,
   and registered launch-session capability are absent.
 - Central LIVE unlock ceremony has not occurred.
+- Exact externally reviewed 40-provider Windows runtime module and target-host
+  launcher hash pin have not been supplied.
 - No real canary order, broker acknowledgement, reconciliation, or rollback
   evidence exists.
 

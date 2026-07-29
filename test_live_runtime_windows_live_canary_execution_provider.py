@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import contextvars
 from dataclasses import fields, replace
 from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -25,6 +27,7 @@ from live_runtime.windows_live_canary_execution_provider import (
     WindowsLiveCanaryRuntimeSource,
     build_windows_live_canary_execution_factory_result,
     live_provider_contracts,
+    lease_windows_live_canary_materialization_hooks,
     seal_windows_live_canary_runtime_source,
     validate_windows_live_canary_execution_provider_configuration,
     windows_live_canary_execution_provider_configuration_from_dict,
@@ -724,6 +727,135 @@ class WindowsLiveCanaryExecutionProviderTests(unittest.TestCase):
                 "key:heartbeat_sender_key_provider",
                 "key:heartbeat_remote_key_provider",
             ],
+        )
+
+    def test_external_hook_lease_is_single_use_and_default_remains_closed(self):
+        config = self._provider_config()
+        context = self._context(config)
+        hooks = self._hooks(config, trace=[])
+        with mock.patch.object(execution_policy, "LIVE_ALLOWED", True):
+            with self.assertRaisesRegex(
+                WindowsLiveCanaryExecutionProviderError,
+                "LIVE_EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED",
+            ):
+                build_windows_live_canary_execution_factory_result(
+                    runtime_config=self.runtime_config,
+                    factory_context=context,
+                    provider_config=config,
+                    hooks=None,
+                    platform="win32",
+                )
+            with lease_windows_live_canary_materialization_hooks(
+                hooks,
+                factory_context=context,
+                runtime_provider_sha256=digest("external-live-runtime"),
+            ):
+                result = build_windows_live_canary_execution_factory_result(
+                    runtime_config=self.runtime_config,
+                    factory_context=context,
+                    provider_config=config,
+                    hooks=None,
+                    platform="win32",
+                )
+                self.assertIs(type(result), WindowsServiceFactoryResult)
+                with self.assertRaisesRegex(
+                    WindowsLiveCanaryExecutionProviderError,
+                    "LIVE_EXECUTION_HOOK_LEASE_ALREADY_CONSUMED",
+                ):
+                    build_windows_live_canary_execution_factory_result(
+                        runtime_config=self.runtime_config,
+                        factory_context=context,
+                        provider_config=config,
+                        hooks=None,
+                        platform="win32",
+                    )
+
+    def test_external_hook_lease_rejects_binding_drift_and_nested_scope(self):
+        config = self._provider_config()
+        context = self._context(config)
+        hooks = self._hooks(config, trace=[])
+        wrong = WindowsServiceFactoryContext(
+            release_root_sha256=context.release_root_sha256,
+            factory_contract_sha256=context.factory_contract_sha256,
+            factory_file_sha256=context.factory_file_sha256,
+            service_config_file_sha256=context.service_config_file_sha256,
+            bootstrap_binding_sha256=digest("wrong-bootstrap"),
+        )
+        with mock.patch.object(execution_policy, "LIVE_ALLOWED", True):
+            with lease_windows_live_canary_materialization_hooks(
+                hooks,
+                factory_context=context,
+                runtime_provider_sha256=digest("external-live-runtime"),
+            ):
+                with self.assertRaisesRegex(
+                    WindowsLiveCanaryExecutionProviderError,
+                    "LIVE_EXECUTION_HOOK_LEASE_ACTIVE",
+                ):
+                    with lease_windows_live_canary_materialization_hooks(
+                        hooks,
+                        factory_context=context,
+                        runtime_provider_sha256=digest("nested"),
+                    ):
+                        pass
+                with self.assertRaisesRegex(
+                    WindowsLiveCanaryExecutionProviderError,
+                    "LIVE_EXECUTION_HOOK_LEASE_BINDING_MISMATCH",
+                ):
+                    build_windows_live_canary_execution_factory_result(
+                        runtime_config=self.runtime_config,
+                        factory_context=wrong,
+                        provider_config=config,
+                        hooks=None,
+                        platform="win32",
+                    )
+
+    def test_external_hook_lease_does_not_cross_threads_or_survive_failure(self):
+        config = self._provider_config()
+        context = self._context(config)
+        hooks = self._hooks(config, trace=[])
+        failures: list[str] = []
+
+        def consume_from_other_thread() -> None:
+            try:
+                build_windows_live_canary_execution_factory_result(
+                    runtime_config=self.runtime_config,
+                    factory_context=context,
+                    provider_config=config,
+                    hooks=None,
+                    platform="win32",
+                )
+            except WindowsLiveCanaryExecutionProviderError as exc:
+                failures.append(exc.reason_code)
+
+        with mock.patch.object(execution_policy, "LIVE_ALLOWED", True):
+            with self.assertRaisesRegex(RuntimeError, "lease scope failed"):
+                with lease_windows_live_canary_materialization_hooks(
+                    hooks,
+                    factory_context=context,
+                    runtime_provider_sha256=digest("external-live-runtime"),
+                ):
+                    inherited = contextvars.copy_context()
+                    worker = threading.Thread(
+                        target=lambda: inherited.run(consume_from_other_thread)
+                    )
+                    worker.start()
+                    worker.join(timeout=5)
+                    self.assertFalse(worker.is_alive())
+                    raise RuntimeError("lease scope failed")
+            with self.assertRaisesRegex(
+                WindowsLiveCanaryExecutionProviderError,
+                "LIVE_EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED",
+            ):
+                build_windows_live_canary_execution_factory_result(
+                    runtime_config=self.runtime_config,
+                    factory_context=context,
+                    provider_config=config,
+                    hooks=None,
+                    platform="win32",
+                )
+        self.assertEqual(
+            ["LIVE_EXECUTION_HOOK_LEASE_CONTEXT_MISMATCH"],
+            failures,
         )
 
     def test_ac9_relock_stops_before_next_effect_and_returns_no_result(self):

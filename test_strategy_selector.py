@@ -12,7 +12,7 @@ SYMBOLS = [
 ]
 
 
-def test_symbol(symbol):
+def inspect_symbol(symbol):
     data_path = f"data/{symbol}.csv"
     df = pd.read_csv(data_path)
 
@@ -39,7 +39,7 @@ def test_symbol(symbol):
 def main():
     for symbol in SYMBOLS:
         try:
-            test_symbol(symbol)
+            inspect_symbol(symbol)
         except FileNotFoundError:
             print(f"{symbol.upper()} data not found.")
 

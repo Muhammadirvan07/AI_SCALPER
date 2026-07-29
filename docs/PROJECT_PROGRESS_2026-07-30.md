@@ -34,6 +34,17 @@ bundle budget, serta 30/30 Playwright desktop/mobile tanpa retry. Bukti ini
 hanya berlaku pada development Mac; laporan pemasangan Node.js di Windows belum
 disertai exact version/build/launch receipt.
 
+Windows LIVE Execution sekarang memiliki boundary tambahan untuk runtime hook
+eksternal yang direview. Launcher menerima hanya pasangan absolute path dan
+independently pinned SHA-256, memeriksa central LIVE lock, exact Execution
+release/factory context, stable regular-file identity, AST deny policy, exact
+builder contract, serta RSA launcher trust sebelum memasang hook ke lease
+context-local satu-kali. Generated four-file provider pack tidak berubah dan
+tanpa lease tetap berhenti pada
+`LIVE_EXECUTION_PROVIDER_RUNTIME_NOT_CONFIGURED`. Boundary ini tidak membawa
+40 provider konkret, credential, acceptance, launch session, authorization,
+central unlock, MT5 initialization, atau order authority.
+
 Audit TDD menemukan lalu menutup dua defect yang tidak terlihat pada happy
 path: registry path dengan komponen `..` sebelumnya dinormalisasi dan diterima,
 serta dua authorization berbeda dapat melewati predecessor yang sama sebelum
@@ -53,6 +64,9 @@ WINDOWS_OPERATOR_RELEASE_ISOLATION = PASS_FOCUSED
 DASHBOARD_GET_WEBSOCKET_ONLY = PASS_LOCAL
 DASHBOARD_DEPENDENCY_AUDIT = PASS_LOCAL_ZERO_KNOWN_VULNERABILITIES
 DASHBOARD_WINDOWS_ACCEPTANCE = NOT_SUPPLIED
+WINDOWS_NODEJS = USER_REPORTED_INSTALLED_NOT_YET_ATTESTED
+WINDOWS_LIVE_EXTERNAL_RUNTIME_HOOK_LEASE = PASS_LOCALLY_DENY_ONLY
+CONCRETE_LIVE_RUNTIME_PROVIDERS = NOT_SUPPLIED
 REAL_30_DAY_50_FILL_20_XAU_COHORT = ABSENT
 REAL_LIVE_PROMOTION_AND_NINE_GATES = ABSENT
 REAL_THREE_PERSON_APPROVAL_CEREMONY = NOT_PERFORMED
@@ -79,9 +93,11 @@ Commodity menemukan dan menutup empat kelas ambiguity/race:
 Focused V6.3 post-run gate sebelumnya lulus 41/41 normal dan 41/41 optimized.
 Setelah semantic WORM bridge ditambahkan, focused bridge/gate/activation/
 consumption/release cluster lulus 69/69 normal dan 69/69 optimized dengan dua
-intentional optimized skip. Full serial repository gate terbaru lulus 2.100
-test normal dengan tiga platform skip serta 2.100 test di bawah `-O` dengan 15
-platform/optimized skip. Paket clean-commit belum dibangun ulang pada saat
+intentional optimized skip. Full serial repository gate terbaru lulus 2.362
+test dan 1.319 subtest normal dengan tiga platform skip, serta 2.350 test dan
+1.319 subtest di bawah `-O` dengan 15 platform/optimized skip. Tiga helper CLI
+diagnostik lama juga tidak lagi salah dikoleksi sebagai pytest fixture. Paket
+clean-commit belum dibangun ulang pada saat
 catatan ini; hasil scheduled proof Windows dan custody WORM aktual belum
 diterima untuk verifikasi.
 
@@ -122,6 +138,18 @@ diterima untuk verifikasi.
 - Modul/CLI baru hanya masuk `WINDOWS_SHADOW_DEPLOYMENT_TOOLING_V1` dan tidak
   masuk Decision, Execution, Status Monitor, read-only shadow, atau configured
   service releases.
+- Exact-hash external LIVE runtime loader memisahkan non-secret provider source
+  dari deterministic release, menolak dynamic evaluation/import, MT5/order,
+  process/task effect, definition-time effect, module-registry access, dan
+  builder non-deklaratif sebelum source dieksekusi.
+- Sealed non-secret runtime context mengikat provider/release/root/factory/
+  service/bootstrap hashes dan trusted UTC. Hook lease terikat exact factory
+  context, tidak reentrant, tidak menyeberang thread, habis setelah satu
+  konsumsi, dan selalu dibersihkan pada failure path.
+- Launcher `--materialize-only` dapat mengikat exact reviewed runtime-provider
+  hash tetapi tetap berhenti sebelum bootstrap materialization, MT5, runner,
+  authorization consumption, atau broker mutation. Checked-in central lock
+  tidak diubah.
 
 ## Verified so far
 
@@ -134,9 +162,9 @@ diterima untuk verifikasi.
 - Prior focused activation/consumption/release cluster: 43 tests normal dan 42
   plus one intentional optimized nested-run skip; seluruhnya tercakup dalam
   focused cluster terbaru di atas.
-- Full serial repository regression: 2.100 tests passed in normal mode dengan
-  tiga platform skip; 2.100 passed under `-O` dengan 15 intentional
-  platform/optimized skip.
+- Full serial repository regression: 2.362 tests dan 1.319 subtests passed in
+  normal mode dengan tiga platform skip; 2.350 tests dan 1.319 subtests passed
+  under `-O` dengan 15 intentional platform/optimized skip.
 - Windows dependency lock, install manifest, dependency SBOM, and pinned
   MetaTrader5 wheel identity: passed.
 - Python compilation, scoped whitespace, JSON allowlist closure, constant-time
@@ -147,6 +175,14 @@ diterima untuk verifikasi.
 - A deliberately parallel full-suite run exposed shared test-resource
   interference in three legacy executor tests; all three passed in isolated
   normal/optimized reruns and both authoritative serial full suites passed.
+- External-runtime hook-lease spec: 98/100 Grade A, tanpa error; satu warning
+  HTTP-method tidak relevan karena boundary ini bukan HTTP API.
+- Focused runtime/source/lease/launcher/service/release-builder suite: 91 tests
+  dan 135 subtests lulus identik dalam normal dan optimized mode; focused mypy
+  untuk tiga source runtime/launcher lulus tanpa issue.
+- LIVE configured/source-bound/provider-closure regression: 98 tests dan 58
+  subtests lulus normal; 92 lulus, enam expected skip, dan 58 subtests lulus
+  di bawah `PYTHONOPTIMIZE=2`.
 
 ## Remaining external work
 
@@ -158,6 +194,11 @@ Credential Manager authorities, exact target-host registry initialization,
 off-host checkpoint/WORM/CAS custody, provider-bound prebootstrap acceptance,
 central policy ceremony, bounded first canary, broker acknowledgement,
 reconciliation, and rollback evidence.
+
+Laporan bahwa Node.js sudah terpasang di Windows belum merupakan acceptance:
+exact `node --version`, `npm.cmd --version`, clean `npm.cmd ci`, production
+build, dev-server reachability, WebSocket client, dan fresh snapshot receipt
+masih perlu dikembalikan dari target host.
 
 Deterministic clean-commit Windows artifacts and hashes are recorded only after
 this source milestone is committed and rebuilt twice from a clean worktree.
