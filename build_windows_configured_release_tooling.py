@@ -78,6 +78,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "build_windows_configured_service_release.py",
         "config/windows_configured_release_tooling_allowlist.v1.json",
         "live_runtime/__init__.py",
+        "live_runtime/asymmetric_release_trust.py",
         "live_runtime/configured_service_release.py",
         "live_runtime/contracts.py",
         "live_runtime/model_governance.py",
@@ -95,6 +96,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "live_runtime/windows_execution_provider_pack_generator.py",
         "live_runtime/windows_live_canary_execution_configured_candidate.py",
         "live_runtime/windows_live_canary_execution_source_bound_candidate.py",
+        "live_runtime/windows_live_provider_conformance_acceptance.py",
         "live_runtime/windows_status_monitor_configured_candidate.py",
         "live_runtime/windows_status_monitor_provider_pack_generator.py",
         "live_runtime/windows_provider_conformance_input.py",
@@ -126,6 +128,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "verify_rule_core_champion_artifact.py",
         "verify_windows_execution_production_config_source.py",
         "verify_windows_execution_source_bound_candidate.py",
+        "verify_windows_live_provider_conformance_acceptance.py",
     }
 )
 READINESS_BLOCKERS = (
@@ -164,6 +167,7 @@ ALLOWED_STDLIB_IMPORTS = frozenset(
 )
 ALLOWED_LOCAL_IMPORTS = frozenset(
     {
+        "live_runtime.asymmetric_release_trust",
         "live_runtime.configured_service_release",
         "live_runtime.contracts",
         "live_runtime.model_governance",
@@ -181,6 +185,7 @@ ALLOWED_LOCAL_IMPORTS = frozenset(
         "live_runtime.windows_execution_provider_pack_generator",
         "live_runtime.windows_live_canary_execution_configured_candidate",
         "live_runtime.windows_live_canary_execution_source_bound_candidate",
+        "live_runtime.windows_live_provider_conformance_acceptance",
         "live_runtime.windows_status_monitor_configured_candidate",
         "live_runtime.windows_status_monitor_provider_pack_generator",
         "live_runtime.windows_provider_conformance_input",

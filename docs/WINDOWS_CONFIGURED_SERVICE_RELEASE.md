@@ -40,6 +40,11 @@ Repository menyediakan:
   ketiga exact factory template dan seluruh 65/68 provider binding ke fresh
   external conformance-evidence hashes dalam packet deny-only yang masih
   membutuhkan signature owner independen;
+- `verify_windows_live_provider_conformance_acceptance.py`: memverifikasi
+  ulang exact ten-pin LIVE closure dan review v4, dua authority RSA yang
+  berbeda, independent policy/host pins, dan tiga exact evidence file; output
+  boleh menyatakan provider diterima tetapi tetap non-executable dan wajib
+  diikat prebootstrap;
 - `build_windows_configured_service_release.py`: menggabungkan exact base ZIP
   dari exact atomic five-role suite dengan exact overlay;
 - `verify_windows_configured_service_release.py`: verifier offline yang
@@ -86,6 +91,8 @@ Runbook additive LIVE source-bound candidate berada di
 [`WINDOWS_LIVE_CANARY_EXECUTION_SOURCE_BOUND_CANDIDATE.md`](WINDOWS_LIVE_CANARY_EXECUTION_SOURCE_BOUND_CANDIDATE.md).
 Runbook additive LIVE provider-conformance v4 berada di
 [`WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V4.md`](WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V4.md).
+Runbook external acceptance untuk exact v4 packet berada di
+[`WINDOWS_LIVE_PROVIDER_CONFORMANCE_ACCEPTANCE.md`](WINDOWS_LIVE_PROVIDER_CONFORMANCE_ACCEPTANCE.md).
 
 ## Overlay non-secret
 
@@ -296,6 +303,11 @@ provider-conformance v4 pada
 [`WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V4.md`](WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V4.md).
 V4 memerlukan tepat 68 fresh provider record dan tetap tidak memberi provider
 acceptance atau order authority.
+Setelah itu, hanya external acceptance pada
+[`WINDOWS_LIVE_PROVIDER_CONFORMANCE_ACCEPTANCE.md`](WINDOWS_LIVE_PROVIDER_CONFORMANCE_ACCEPTANCE.md)
+yang boleh menghasilkan `provider_accepted=true`. Hasil tersebut tetap
+`prebootstrap_binding_required=true`, `execution_enabled=false`,
+`live_allowed=false`, dan `order_capability=DISABLED`.
 
 Setelah runtime eksternal tersedia, gunakan
 `run_windows_gated_execution_service.py --materialize-only` sebagai boundary

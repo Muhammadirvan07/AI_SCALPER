@@ -128,6 +128,8 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "prepare_windows_live_canary_execution_provider_pack.py",
             "prepare_windows_three_service_provider_conformance_input.py",
             "prepare_windows_three_service_provider_conformance_review.py",
+            "verify_windows_live_provider_conformance_acceptance.py",
+            "live_runtime/asymmetric_release_trust.py",
             "live_runtime/contracts.py",
             "live_runtime/model_governance.py",
             "live_runtime/rule_core_champion_registry.py",
@@ -143,6 +145,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "live_runtime/windows_execution_provider_pack_generator.py",
             "live_runtime/windows_live_canary_execution_configured_candidate.py",
             "live_runtime/windows_live_canary_execution_source_bound_candidate.py",
+            "live_runtime/windows_live_provider_conformance_acceptance.py",
             "live_runtime/windows_status_monitor_configured_candidate.py",
             "live_runtime/windows_status_monitor_provider_pack_generator.py",
             "live_runtime/windows_external_status_monitor_factory_template.py",
@@ -288,6 +291,10 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
                     "--expected-live-bound-archive-sha256",
                 ),
                 (
+                    "verify_windows_live_provider_conformance_acceptance.py",
+                    "--expected-target-host-identity-sha256",
+                ),
+                (
                     "manage_rule_core_champion_registry.py",
                     "prepare-request",
                 ),
@@ -324,6 +331,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "live_runtime/windows_execution_configured_candidate.py",
             "live_runtime/windows_live_canary_execution_configured_candidate.py",
             "live_runtime/windows_live_canary_execution_source_bound_candidate.py",
+            "live_runtime/windows_live_provider_conformance_acceptance.py",
             "live_runtime/windows_status_monitor_configured_candidate.py",
             "validate_windows_decision_configured_candidate.py",
             "validate_windows_execution_configured_candidate.py",
@@ -336,6 +344,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "prepare_windows_execution_source_bound_candidate.py",
             "verify_windows_execution_source_bound_candidate.py",
             "prepare_windows_live_canary_execution_source_bound_candidate.py",
+            "verify_windows_live_provider_conformance_acceptance.py",
         }
         service_allowlists = (
             "config/windows_decision_service_allowlist.v1.json",

@@ -8,7 +8,7 @@ network, install a task, or grant any execution authority.
 
 from __future__ import annotations
 
-from dataclasses import InitVar, dataclass
+from dataclasses import InitVar, dataclass, field
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
@@ -1106,6 +1106,11 @@ class WindowsThreeServiceProviderConformanceReview:
     order_capability: str = ORDER_CAPABILITY
     max_lot: float = MAX_LOT
     schema_version: str = REVIEW_SCHEMA_VERSION
+    _review_seal: object = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
     _seal: InitVar[object | None] = None
 
     def __post_init__(self, _seal: object | None) -> None:
@@ -1113,6 +1118,7 @@ class WindowsThreeServiceProviderConformanceReview:
             raise TypeError(
                 "provider conformance reviews require the sealed builder"
             )
+        object.__setattr__(self, "_review_seal", _REVIEW_SEAL)
         if self.schema_version == REVIEW_SCHEMA_VERSION_V1:
             if not isinstance(
                 self.configured_release_admission_sha256,
@@ -1220,6 +1226,17 @@ class WindowsThreeServiceProviderConformanceReview:
             **self._unsigned_canonical_dict(),
             "content_sha256": self.content_sha256,
         }
+
+
+def is_windows_three_service_provider_conformance_review(
+    value: object,
+) -> bool:
+    """Return true only for a review sealed by this module."""
+
+    return (
+        type(value) is WindowsThreeServiceProviderConformanceReview
+        and getattr(value, "_review_seal", None) is _REVIEW_SEAL
+    )
 
 
 def _build_review(
@@ -1882,6 +1899,33 @@ def prepare_windows_three_service_provider_conformance_review_file(
     return review
 
 
+def verify_windows_three_service_provider_conformance_review_file(
+    review_path: str | Path,
+    *,
+    clock_provider: Callable[[], datetime],
+    execution_source_bound_verification: object = None,
+    live_execution_source_bound_verification: object = None,
+) -> WindowsThreeServiceProviderConformanceReview:
+    """Stable-read and reconstruct one canonical review packet."""
+
+    raw = _stable_read_input(Path(review_path))
+    payload = _strict_json_bytes(raw)
+    if raw != _canonical_bytes(payload) + b"\n":
+        raise WindowsProviderConformanceError(
+            "REVIEW_JSON_NOT_CANONICAL"
+        )
+    return verify_windows_three_service_provider_conformance_review(
+        payload,
+        clock_provider=clock_provider,
+        execution_source_bound_verification=(
+            execution_source_bound_verification
+        ),
+        live_execution_source_bound_verification=(
+            live_execution_source_bound_verification
+        ),
+    )
+
+
 __all__ = [
     "INPUT_SCHEMA_VERSION",
     "INPUT_SCHEMA_VERSION_V1",
@@ -1900,9 +1944,11 @@ __all__ = [
     "WindowsProviderConformanceError",
     "WindowsThreeServiceProviderConformanceReview",
     "execution_source_binding_from_verification",
+    "is_windows_three_service_provider_conformance_review",
     "live_execution_source_binding_from_verification",
     "prepare_windows_three_service_provider_conformance_review",
     "prepare_windows_three_service_provider_conformance_review_file",
     "provider_binding_targets_from_factory_template",
     "verify_windows_three_service_provider_conformance_review",
+    "verify_windows_three_service_provider_conformance_review_file",
 ]

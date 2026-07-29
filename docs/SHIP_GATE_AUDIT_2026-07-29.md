@@ -15,8 +15,9 @@ WINDOWS_LIVE_PROVIDER_PACK = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_CONFIGURED_CANDIDATE = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_SOURCE_BOUND_CANDIDATE = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_PROVIDER_CONFORMANCE_V4 = PASS_LOCALLY_DENY_ONLY
+WINDOWS_LIVE_PROVIDER_EXTERNAL_ACCEPTANCE = PASS_LOCALLY_NON_EXECUTABLE
 DEPENDENCY_OR_FRONTEND_HOST_INSTALL = NOT_CHANGED
-WINDOWS_EXTERNAL_ACCEPTANCE = INCOMPLETE
+WINDOWS_EXTERNAL_EVIDENCE = INCOMPLETE
 DEMO_AUTO_SOAK = NOT_READY
 LIVE_TRADING = DO_NOT_SHIP
 ```
@@ -69,6 +70,10 @@ Reviewed source:
   and their two isolated operator CLIs;
 - `test_live_runtime_windows_provider_conformance_v4.py`;
 - `specs/windows_three_service_provider_conformance_v4.md`;
+- offline two-authority LIVE provider-conformance acceptance verifier and
+  isolated operator CLI;
+- `test_live_runtime_windows_live_provider_conformance_acceptance.py`;
+- `specs/windows_live_provider_conformance_acceptance_v1.md`;
 - mode-aware symbol-boundary inventory in
   `test_execution_policy_mode_aware.py`;
 - verifier-seal hardening in `live_canary_prebootstrap_admission.py` and
@@ -82,13 +87,13 @@ this boundary. Runtime or broker state was not accessed or mutated.
 
 | Category | Status | Evidence |
 |---|---|---|
-| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; the launch session and one-second per-order capability validate exact candidate/session/intent/evidence bindings; the Windows LIVE materializer requires 12 purpose-bound references and never serializes credential material; the ten-pin source-bound verifier rebuilds both packaged inputs without provider or credential effects; v4 derives 49 LIVE binding hashes from exact seven-field mappings and keeps every authority false; authority is rechecked around each external callback and through the immediate pre-send boundary |
+| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; the launch session and one-second per-order capability validate exact candidate/session/intent/evidence bindings; the Windows LIVE materializer requires 12 purpose-bound references and never serializes credential material; the ten-pin source-bound verifier rebuilds both packaged inputs without provider or credential effects; v4 derives 49 LIVE binding hashes from exact seven-field mappings and keeps every authority false; external acceptance requires independently pinned policy/host, two distinct RSA authorities, three exact evidence files, and freshness relative to all 68 observations while retaining every execution lock; authority is rechecked around each external callback and through the immediate pre-send boundary |
 | Database | PASS_LOCAL | Exact SQLite DDL/trigger inventory, WAL, FULL sync, integrity check, HMAC chain, unique replay and authorization-consumption fields, atomic `BEGIN IMMEDIATE`, path identity, and signed off-host checkpoint verification |
-| Code quality | PASS_LOCAL | Spec-first implementation, LIVE pack, configured-candidate, source-bound, and provider-conformance v4 specs at 100/100, 1,900-test normal/optimized regression, Python compile success, valid JSON, and no scoped changed-file whitespace errors; Ruff was unavailable in the active development environment for this additive pass |
+| Code quality | PASS_LOCAL | Spec-first implementation, LIVE pack, configured-candidate, source-bound, provider-conformance v4, and external-acceptance specs at 100/100, 1,911-test normal/optimized regression, Python compile success, valid JSON, and no scoped changed-file whitespace errors; Ruff was unavailable in the active development environment for this additive pass |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
-| Deployment | INCOMPLETE_EXTERNAL | Sealed prebootstrap, portable WORM/CAS verification, launch session, per-order runtime chain, brokerless 49-port Windows LIVE materializer, deterministic four-file pack tooling, exact 15-file configured-candidate tooling, 17-member source-bound tooling, and 68-record provider-conformance v4 tooling exist locally, but the checked-in central lock is false and no exact target-host pack/configured/source-bound/v4 candidate, actual Windows callbacks, accepted provider review, real WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, or backup/restore evidence has been accepted |
-| Frontend | OUTSIDE_CHANGE_SCOPE / BLOCKED | No frontend source was changed by this milestone. Windows still lacks verified Node.js LTS; the running old API and uncommitted new frontend use different API/WebSocket prefixes, and the latest refactor test run is not green |
+| Deployment | INCOMPLETE_EXTERNAL | Sealed prebootstrap, portable WORM/CAS verification, launch session, per-order runtime chain, brokerless 49-port Windows LIVE materializer, deterministic four-file pack tooling, exact 15-file configured-candidate tooling, 17-member source-bound tooling, 68-record provider-conformance v4 tooling, and non-executable two-authority acceptance tooling exist locally, but the checked-in central lock is false and no exact target-host pack/configured/source-bound/v4 candidate, actual Windows callbacks, real owner/runtime signatures and evidence files, accepted provider result, downstream prebootstrap binding, WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, or backup/restore evidence has been accepted |
+| Frontend | OUTSIDE_CHANGE_SCOPE / WINDOWS_PENDING | No frontend source was changed by this milestone. The uncommitted granular pair passes 16 unit tests, lint, production build, bundle budget, npm audit with zero vulnerabilities, and 24 desktop/mobile E2E locally. Windows still lacks verified Node.js 24 LTS and an accepted matching frontend/backend launch |
 | Observability | PASS_BOUNDARY / EXTERNAL_PENDING | Canonical reason codes, pre-dispatch records, execution result bindings, and replay checkpoints exist; external uptime/alert/custody and first real canary evidence are not present |
 
 ## Automated evidence
@@ -119,6 +124,8 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Focused LIVE source-bound tests | 6 PASS normal; 6 PASS optimized |
 | Windows provider-conformance v4 spec validator (`--strict`) | 100/100; no findings |
 | Focused provider-conformance v4 tests | 6 PASS normal; 6 PASS optimized |
+| LIVE provider external-acceptance spec validator (`--strict`) | 100/100; no warnings or errors |
+| Focused LIVE provider external-acceptance tests | 11 PASS normal; 11 PASS optimized |
 | Provider-conformance v1-v4 compatibility cluster | 60 PASS normal; 60 PASS optimized |
 | LIVE source-bound/tooling regression cluster | 39 PASS normal; 39 PASS optimized |
 | LIVE pack/materializer/release-builder cluster | 67 PASS normal; 67 PASS optimized |
@@ -128,9 +135,10 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage regression | 81 PASS in both normal and optimized modes |
-| Full Python regression | 1,900 tests OK, 3 platform skips |
-| Full Python optimized regression | 1,900 tests OK, 6 skips |
-| Static quality checks | Python compile, dependency lock, v4 spec validation, and scoped `git diff --check` PASS; Ruff unavailable in the active environment |
+| Full Python regression | 1,911 tests OK, 3 platform skips |
+| Full Python optimized regression | 1,911 tests OK, 6 skips |
+| Uncommitted dashboard audit | 16 unit tests, lint, production build, bundle budget, npm audit, and 24 desktop/mobile E2E PASS locally |
+| Static quality checks | Python compile, dependency lock, external-acceptance spec validation, and scoped `git diff --check` PASS; Ruff unavailable in the active environment |
 | Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` and `SAFE_TO_DEMO_AUTO_ORDER` remain false; focused tests use fake MT5 only; no credential, network, Windows task, real MT5 initialization, or broker effect occurred |
 
 The generic repository scanner reported `DO_NOT_SHIP` with ten critical
@@ -257,10 +265,11 @@ changed-source findings.
 - No real LIVE canary order, broker acknowledgement, reconciliation evidence,
   rollback drill, or operator observation exists; fake-MT5 success is source
   verification only.
-- The running Windows dashboard API reports a stale snapshot with zero
+- The running Windows dashboard API last reported a stale snapshot with zero
   WebSocket clients. Its old `/api/health` and `/ws/v1/dashboard` contract does
-  not match the uncommitted frontend refactor's `/api/v1` and `/api/v1/ws`
-  configuration; that refactor's tests are also not green.
+  not match the uncommitted granular pair's `/api/v1` and `/api/v1/ws`
+  configuration. The pair is green locally, but Node.js and the matching pair
+  have not yet been verified running together on Windows.
 - The central live lock remains false and must not change in this milestone.
 
 Therefore the final verdict is **DO NOT SHIP LIVE TRADING**.

@@ -148,6 +148,11 @@ Bundle operator yang sama membawa provider-conformance v4 assembler/reviewer.
 Jalur ini memerlukan exact sealed ten-pin LIVE source-bound result dan 68
 fresh provider records; runbook-nya ada di
 `docs/WINDOWS_THREE_SERVICE_PROVIDER_CONFORMANCE_V4.md`.
+Bundle tersebut juga membawa public-key-only external acceptance verifier
+untuk exact v4 result. Ia memerlukan dua RSA authority terpisah, independently
+pinned policy/target-host, dan tiga exact evidence file; runbook-nya ada di
+`docs/WINDOWS_LIVE_PROVIDER_CONFORMANCE_ACCEPTANCE.md`. Output tetap
+non-executable dan tidak masuk ke service release mana pun.
 Seluruhnya deny-only dan tidak boleh dijalankan oleh production service
 account.
 

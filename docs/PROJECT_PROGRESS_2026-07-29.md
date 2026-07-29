@@ -5,8 +5,9 @@
 The project gained a verifier-sealed per-order execution boundary, a separate
 brokerless Windows LIVE provider-materialization boundary, and deterministic
 four-file LIVE provider-pack plus exact 15-file configured-candidate tooling
-plus a 17-member source-ancestry closure and exact 68-record three-service
-provider-conformance v4 boundary for a future first XAUUSD live canary.
+plus a 17-member source-ancestry closure, exact 68-record three-service
+provider-conformance v4 boundary, and two-authority external provider
+acceptance boundary for a future first XAUUSD live canary.
 The activation, launch, Windows provider composition,
 supervisor, execution coordinator, durable journal lease, runtime
 authorization, and final MT5 adapter chain are implemented and verified
@@ -27,7 +28,8 @@ WINDOWS_LIVE_PROVIDER_PACK = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_CONFIGURED_CANDIDATE = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_SOURCE_BOUND_CANDIDATE = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_PROVIDER_CONFORMANCE_V4 = PASS_LOCALLY_DENY_ONLY
-WINDOWS_EXTERNAL_PROVIDER_ACCEPTANCE = EVIDENCE_REQUIRED
+WINDOWS_LIVE_PROVIDER_EXTERNAL_ACCEPTANCE = PASS_LOCALLY_NON_EXECUTABLE
+WINDOWS_EXTERNAL_PROVIDER_EVIDENCE = REQUIRED
 MANUAL_DEMO_10_LIFECYCLES = NOT_STARTED
 DEMO_AUTO_SOAK = NOT_READY
 LIVE_CANARY = NOT_STARTED
@@ -168,12 +170,22 @@ LIVE_TRADING = DO_NOT_SHIP
   68 fresh evidence records. Preparation and reconstruction remain deny-only,
   preserve v1-v3 behavior, and grant no provider, credential, activation,
   central-lock, MT5, broker, or order authority.
+- LIVE provider-conformance external acceptance v1 now independently pins the
+  exact policy and target host, reuses the sealed LIVE source and v4 review,
+  requires distinct service-owner and Windows-runtime RSA authorities, hashes
+  three stable external evidence files, anchors runtime freshness to all 68
+  provider observations, and reconstructs a sealed assessment. A valid result
+  may set only `provider_accepted=true`; prebootstrap binding remains required
+  and every execution, LIVE, broker, promotion, and order flag remains false.
+  The verifier is stdlib-only, operator-bundle-only, and contains no signing,
+  private-key, credential, provider-import, scheduler, MT5, network, process,
+  broker, or order capability.
 - The source implementation is complete locally, but no target-host pack,
   configured candidate, LIVE source-bound archive, or v4 conformance packet
   has yet been built and externally accepted from an exact committed Windows
-  suite. Concrete reviewed Windows callbacks, owner signature, runtime
-  attestation, and external conformance/launcher receipts remain the next
-  milestones.
+  suite. Concrete reviewed Windows callbacks, real owner/runtime signatures,
+  the three exact evidence files, accepted output, downstream prebootstrap
+  binding, and external launcher receipts remain the next milestones.
 
 ## Verification
 
@@ -199,6 +211,10 @@ LIVE_TRADING = DO_NOT_SHIP
 | Focused LIVE configured-candidate suite | 8 PASS normal; 8 PASS optimized |
 | Windows LIVE source-bound spec | 100/100, Grade A; no findings |
 | Focused LIVE source-bound suite | 6 PASS normal; 6 PASS optimized |
+| Windows provider-conformance v4 spec | 100/100, Grade A; no findings |
+| Focused provider-conformance v4 suite | 6 PASS normal; 6 PASS optimized |
+| LIVE provider external-acceptance spec | 100/100, Grade A; no errors or warnings |
+| Focused LIVE provider external-acceptance suite | 11 PASS normal; 11 PASS optimized |
 | LIVE source-bound/tooling regression cluster | 39 PASS normal; 39 PASS optimized |
 | LIVE pack/materializer/release-builder cluster | 67 PASS normal; 67 PASS optimized |
 | Combined Windows Execution provider/policy suite | 44 PASS normal; 44 PASS optimized |
@@ -207,8 +223,9 @@ LIVE_TRADING = DO_NOT_SHIP
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,900 tests OK, 3 platform skips |
-| Full Python regression with `-O` | 1,900 tests OK, 6 skips including optimized-only nested self-tests |
+| Full Python regression | 1,911 tests OK, 3 platform skips |
+| Full Python regression with `-O` | 1,911 tests OK, 6 skips including optimized-only nested self-tests |
+| Uncommitted dashboard refactor audit | 16 unit PASS; lint, production build, bundle budget, and npm audit PASS; 24 desktop/mobile browser E2E PASS |
 | Python compile, Ruff, JSON/spec validation, and scoped whitespace checks | PASS |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
 | Checked-in central live lock | remains exactly false |
@@ -223,12 +240,12 @@ uptime monitoring remain external work.
 
 ## Remaining critical path
 
-1. Install/verify Node.js LTS on Windows before starting the frontend. Also
-   deploy one matching dashboard pair: the running tracked API exposes
-   `/api/health` and `/ws/v1/dashboard`, while the uncommitted frontend
-   refactor currently targets `/api/v1` and `/api/v1/ws`. Its latest local
-   test run is not green (8 passed, 3 failed, 1 cancelled), so it remains
-   outside this source commit.
+1. Install/verify Node.js 24 LTS on Windows before starting the frontend, then
+   deploy one matching dashboard pair. The running tracked API exposes
+   `/api/health` and `/ws/v1/dashboard`, while the uncommitted granular
+   frontend/backend pair targets `/api/v1` and `/api/v1/ws`. The uncommitted
+   pair is now green locally (16 unit, lint/build/bundle, and 24 E2E), but it
+   remains outside this source commit and has not been accepted on Windows.
 2. Complete exact Windows provider-conformance v3 for the DEMO soak path and
    v4 for the LIVE path, then obtain independent external acceptance for
    Decision, Execution, and Status Monitor.
