@@ -43,8 +43,8 @@ from .journal_integrity import (
 )
 from .live_canary_runtime_authority import (
     LiveCanaryRuntimeLaunchSessionError,
+    is_live_canary_provider_bound_runtime_launch_session,
     is_live_canary_runtime_candidate,
-    is_live_canary_runtime_launch_session,
 )
 from .live_canary_order_authorization import (
     LiveCanaryOrderAuthorization,
@@ -1098,7 +1098,9 @@ def _require_live_runtime_authority(
         return
     if not is_live_canary_runtime_candidate(live_candidate):
         raise ProductionBootstrapError("LIVE_RUNTIME_CANDIDATE_NOT_EXACT")
-    if not is_live_canary_runtime_launch_session(live_launch_session):
+    if not is_live_canary_provider_bound_runtime_launch_session(
+        live_launch_session
+    ):
         raise ProductionBootstrapError("LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED")
 
     candidate = live_candidate
@@ -1908,7 +1910,7 @@ class ProductionRuntimeComposition:
             )
         self._require_live_launch_session_current()
         if self.config.mode == "LIVE":
-            if not is_live_canary_runtime_launch_session(
+            if not is_live_canary_provider_bound_runtime_launch_session(
                 self.live_launch_session
             ):
                 raise ProductionBootstrapError(

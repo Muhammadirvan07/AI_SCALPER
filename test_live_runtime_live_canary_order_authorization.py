@@ -90,7 +90,10 @@ from test_fixtures.risk_source import (
 )
 from test_fixtures.verified_risk_context import build_verified_risk_context
 import test_live_runtime_live_canary_prebootstrap_admission as prebootstrap_module
-import test_live_runtime_live_canary_runtime_launch_session as launch_fixture_module
+from test_live_runtime_live_canary_provider_bound_runtime_launch_session import (
+    LiveCanaryProviderBoundRuntimeLaunchSessionTests,
+    NOW as LAUNCH_NOW,
+)
 
 
 ACCOUNT_ID = "xm-live-account-alias"
@@ -116,18 +119,18 @@ class LiveCanaryOrderAuthorizationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        launch_fixture_module.LiveCanaryRuntimeLaunchSessionTests.setUpClass()
+        LiveCanaryProviderBoundRuntimeLaunchSessionTests.setUpClass()
 
     @classmethod
     def tearDownClass(cls) -> None:
-        launch_fixture_module.LiveCanaryRuntimeLaunchSessionTests.tearDownClass()
+        LiveCanaryProviderBoundRuntimeLaunchSessionTests.tearDownClass()
         super().tearDownClass()
 
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        self.now = launch_fixture_module.NOW + timedelta(seconds=5.1)
+        self.now = LAUNCH_NOW + timedelta(seconds=8.1)
         self.journal = ExecutionJournal(
             self.root / "live-journal.sqlite3",
             clock_provider=lambda: self.now,
@@ -195,7 +198,7 @@ class LiveCanaryOrderAuthorizationTests(unittest.TestCase):
                 broker_spec_sha256=broker_spec.content_sha256,
             )
 
-        fixture = launch_fixture_module.LiveCanaryRuntimeLaunchSessionTests(
+        fixture = LiveCanaryProviderBoundRuntimeLaunchSessionTests(
             methodName="runTest"
         )
         fixture._testMethodName = f"order_authorization_{self._testMethodName}"
@@ -207,6 +210,7 @@ class LiveCanaryOrderAuthorizationTests(unittest.TestCase):
             fixture.setUp()
         self.addCleanup(fixture.doCleanups)
         session = fixture._activate()
+        self.launch_fixture = fixture
         candidate = fixture.fixture.candidate
         self.assertEqual(model.artifact_sha256, candidate.model_artifact_sha256)
         self.assertEqual(
@@ -566,7 +570,7 @@ class LiveCanaryOrderAuthorizationTests(unittest.TestCase):
             source_name=f"{candidate.server}:GOLD",
             source_aligned=True,
             data_fresh=True,
-            bar_closed_at=launch_fixture_module.NOW,
+            bar_closed_at=LAUNCH_NOW,
             created_at=self.now - timedelta(milliseconds=50),
         )
         intent = TradeIntent(
@@ -792,7 +796,7 @@ class LiveCanaryOrderAuthorizationTests(unittest.TestCase):
                 reconciliation=object(),
                 news_guard=object(),
                 runtime_facts=(),
-                now=launch_fixture_module.NOW,
+                now=LAUNCH_NOW,
             )
 
     def test_ec1_live_action_requires_intent_id(self) -> None:
@@ -800,13 +804,13 @@ class LiveCanaryOrderAuthorizationTests(unittest.TestCase):
             RuntimeSupervisorDecision(
                 decision_id="live-order-decision",
                 action="LIVE_CANARY_EXECUTE",
-                decided_at_utc=launch_fixture_module.NOW,
+                decided_at_utc=LAUNCH_NOW,
                 decision_payload_sha256="a" * 64,
             )
         decision = RuntimeSupervisorDecision(
             decision_id="live-order-decision",
             action="LIVE_CANARY_EXECUTE",
-            decided_at_utc=launch_fixture_module.NOW,
+            decided_at_utc=LAUNCH_NOW,
             decision_payload_sha256="a" * 64,
             intent_id="intent_" + "b" * 32,
         )
@@ -840,6 +844,18 @@ class LiveCanaryOrderAuthorizationTests(unittest.TestCase):
             ACCOUNT_ID,
             canonical_json(authorization.to_canonical_dict()),
         )
+
+    def test_ac2_legacy_launch_session_is_rejected_by_order_authority(self) -> None:
+        evidence = self._exact_evidence()
+        evidence["launch_session"] = self.launch_fixture._legacy_activate(
+            fresh=True
+        )
+        with mock.patch.object(execution_policy, "LIVE_ALLOWED", True):
+            with self.assertRaisesRegex(
+                LiveCanaryOrderAuthorizationError,
+                "LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED",
+            ):
+                authorize_live_canary_order(**evidence)
 
     def test_ac2_authority_rejects_fresh_cross_evidence_substitution(self) -> None:
         evidence = self._exact_evidence()

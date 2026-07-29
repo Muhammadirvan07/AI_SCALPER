@@ -804,6 +804,21 @@ class WindowsLiveCanaryExecutionProviderTests(unittest.TestCase):
                 verified_at_utc=self.now,
             )
 
+    def test_runtime_source_rejects_legacy_launch_session(self):
+        legacy_session = self.fixture.fixture._legacy_activate(fresh=True)
+        with mock.patch.object(execution_policy, "LIVE_ALLOWED", True):
+            with self.assertRaisesRegex(
+                WindowsLiveCanaryExecutionProviderError,
+                "LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED",
+            ):
+                seal_windows_live_canary_runtime_source(
+                    config=self.production_config,
+                    live_candidate=self.candidate,
+                    live_launch_session=legacy_session,
+                    source_sha256=digest("live-production-source"),
+                    now=legacy_session.activated_at_utc,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

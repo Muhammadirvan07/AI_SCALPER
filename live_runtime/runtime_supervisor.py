@@ -39,8 +39,8 @@ from .journal_integrity import (
 )
 from .live_canary_runtime_authority import (
     LiveCanaryRuntimeLaunchSessionError,
+    is_live_canary_provider_bound_runtime_launch_session,
     is_live_canary_runtime_candidate,
-    is_live_canary_runtime_launch_session,
 )
 from .live_canary_order_authorization import (
     LiveCanaryOrderAuthorization,
@@ -850,7 +850,9 @@ def seal_runtime_live_canary_execution_result(
 
     if not is_live_canary_runtime_candidate(candidate):
         raise TypeError("candidate must be an exact registered LIVE candidate")
-    if not is_live_canary_runtime_launch_session(launch_session):
+    if not is_live_canary_provider_bound_runtime_launch_session(
+        launch_session
+    ):
         raise TypeError("launch_session must be verifier sealed")
     exact = (
         (decision, RuntimeSupervisorDecision, "decision"),
@@ -2766,11 +2768,15 @@ class RuntimeSupervisor:
             ):
                 raise TypeError("live_candidate must be an exact registered candidate")
             if live_launch_session is not None and not (
-                is_live_canary_runtime_launch_session(live_launch_session)
+                is_live_canary_provider_bound_runtime_launch_session(
+                    live_launch_session
+                )
             ):
                 raise TypeError("live_launch_session must be verifier sealed")
             if (
-                is_live_canary_runtime_launch_session(live_launch_session)
+                is_live_canary_provider_bound_runtime_launch_session(
+                    live_launch_session
+                )
                 and (
                     live_launch_session.candidate_sha256
                     != binding.config_sha256
@@ -2807,7 +2813,9 @@ class RuntimeSupervisor:
                 ("live_execution_service", live_execution_service),
             )
             if execution_policy.LIVE_ALLOWED is True:
-                if not is_live_canary_runtime_launch_session(live_launch_session):
+                if not is_live_canary_provider_bound_runtime_launch_session(
+                    live_launch_session
+                ):
                     raise TypeError(
                         "enabled LIVE mode requires a sealed launch session"
                     )
@@ -3979,7 +3987,7 @@ class RuntimeSupervisor:
         ):
             raise RuntimeSupervisorCriticalError("LIVE_MODE_POLICY_LOCKED")
         session = self.live_launch_session
-        if not is_live_canary_runtime_launch_session(session):
+        if not is_live_canary_provider_bound_runtime_launch_session(session):
             raise RuntimeSupervisorCriticalError(
                 "LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED"
             )
@@ -4535,7 +4543,7 @@ class RuntimeSupervisor:
         session = self.live_launch_session
         if not is_live_canary_runtime_candidate(candidate):
             raise RuntimeSupervisorCriticalError("LIVE_CANARY_CANDIDATE_MISSING")
-        if not is_live_canary_runtime_launch_session(session):
+        if not is_live_canary_provider_bound_runtime_launch_session(session):
             raise RuntimeSupervisorCriticalError(
                 "LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED"
             )

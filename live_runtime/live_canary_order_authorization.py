@@ -29,8 +29,8 @@ from .health import RuntimeHealthFacts
 from .journal_integrity import ExecutionJournalCheckpoint
 from .live_canary_runtime_authority import (
     LiveCanaryRuntimeLaunchSessionError,
+    is_live_canary_provider_bound_runtime_launch_session,
     is_live_canary_runtime_candidate,
-    is_live_canary_runtime_launch_session,
 )
 from .market_guard import MarketGuardDecision
 from .model_governance import ModelArtifactManifest
@@ -352,7 +352,9 @@ class LiveCanaryOrderAuthorization(CanonicalContract):
             _reject("LIVE_CANARY_ORDER_AUTHORIZATION_NOT_CURRENT")
         if not is_live_canary_runtime_candidate(candidate):
             _reject("LIVE_CANARY_RUNTIME_CANDIDATE_NOT_EXACT")
-        if not is_live_canary_runtime_launch_session(launch_session):
+        if not is_live_canary_provider_bound_runtime_launch_session(
+            launch_session
+        ):
             _reject("LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED")
         if type(prepared_order) is not LiveCanaryPreparedOrder:
             _reject("LIVE_CANARY_PREPARED_ORDER_NOT_EXACT")
@@ -405,7 +407,9 @@ def verify_live_canary_order_execution_binding(
         _reject("LIVE_CANARY_ORDER_AUTHORIZATION_NOT_SEALED")
     if not is_live_canary_runtime_candidate(candidate):
         _reject("LIVE_CANARY_RUNTIME_CANDIDATE_NOT_EXACT")
-    if not is_live_canary_runtime_launch_session(launch_session):
+    if not is_live_canary_provider_bound_runtime_launch_session(
+        launch_session
+    ):
         _reject("LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED")
     if type(intent) is not TradeIntent or type(broker_spec) is not BrokerSpec:
         _reject("LIVE_CANARY_EXECUTION_INPUT_NOT_EXACT")
@@ -492,7 +496,9 @@ def _validate_exact_evidence(
             _reject(reason)
     if not is_live_canary_runtime_candidate(candidate):
         _reject("LIVE_CANARY_RUNTIME_CANDIDATE_NOT_EXACT")
-    if not is_live_canary_runtime_launch_session(launch_session):
+    if not is_live_canary_provider_bound_runtime_launch_session(
+        launch_session
+    ):
         _reject("LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED")
     facts = tuple(runtime_facts)
     if (

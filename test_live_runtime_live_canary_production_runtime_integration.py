@@ -26,7 +26,9 @@ from live_runtime.runtime_supervisor import (
     RuntimeSupervisorDecision,
 )
 import test_live_runtime_live_canary_prebootstrap_admission as prebootstrap_module
-import test_live_runtime_live_canary_runtime_launch_session as launch_fixture_module
+from test_live_runtime_live_canary_provider_bound_runtime_launch_session import (
+    LiveCanaryProviderBoundRuntimeLaunchSessionTests,
+)
 
 
 class _RiskLedger:
@@ -47,11 +49,11 @@ class LiveCanaryProductionRuntimeIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        launch_fixture_module.LiveCanaryRuntimeLaunchSessionTests.setUpClass()
+        LiveCanaryProviderBoundRuntimeLaunchSessionTests.setUpClass()
 
     @classmethod
     def tearDownClass(cls) -> None:
-        launch_fixture_module.LiveCanaryRuntimeLaunchSessionTests.tearDownClass()
+        LiveCanaryProviderBoundRuntimeLaunchSessionTests.tearDownClass()
         super().tearDownClass()
 
     def setUp(self) -> None:
@@ -77,8 +79,8 @@ class LiveCanaryProductionRuntimeIntegrationTests(unittest.TestCase):
                 ),
             )
 
-        fixture = launch_fixture_module.LiveCanaryRuntimeLaunchSessionTests(
-            methodName="test_ac1_checked_in_lock_and_mutual_exclusion_fail_before_callbacks"
+        fixture = LiveCanaryProviderBoundRuntimeLaunchSessionTests(
+            methodName="runTest"
         )
         fixture._testMethodName = f"integration_{self._testMethodName}"
         with mock.patch.object(
@@ -354,6 +356,7 @@ class LiveCanaryProductionRuntimeIntegrationTests(unittest.TestCase):
         self.assertNotIn("EXTERNAL_STAGE_AUTHORIZATION_REQUIRED", report.blockers)
         self.assertEqual([], calls)
 
+        legacy_session = self.fixture._legacy_activate(fresh=True)
         with mock.patch.object(execution_policy, "LIVE_ALLOWED", True):
             with self.assertRaisesRegex(
                 ProductionBootstrapError,
@@ -373,6 +376,16 @@ class LiveCanaryProductionRuntimeIntegrationTests(unittest.TestCase):
                     ports,
                     live_candidate=self.candidate,
                     live_launch_session=object(),
+                )
+            with self.assertRaisesRegex(
+                ProductionBootstrapError,
+                "LIVE_RUNTIME_LAUNCH_SESSION_NOT_SEALED",
+            ):
+                validate_production_bootstrap_contract(
+                    config,
+                    ports,
+                    live_candidate=self.candidate,
+                    live_launch_session=legacy_session,
                 )
         self.assertEqual([], calls)
 

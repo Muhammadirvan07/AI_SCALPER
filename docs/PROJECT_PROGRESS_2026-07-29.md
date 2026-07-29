@@ -8,7 +8,10 @@ four-file LIVE provider-pack plus exact 15-file configured-candidate tooling
 plus a 17-member source-ancestry closure, exact 68-record three-service
 provider-conformance v4 boundary, and two-authority external provider
 acceptance boundary plus a fresh provider-bound prebootstrap composition for
-a future first XAUUSD live canary.
+a future first XAUUSD live canary. A new provider-bound WORM custody and
+launch-session v2 boundary now closes that accepted provider evidence into the
+runtime path while forcing legacy-only v1 sessions to fail at every production
+consumer.
 The activation, launch, Windows provider composition,
 supervisor, execution coordinator, durable journal lease, runtime
 authorization, and final MT5 adapter chain are implemented and verified
@@ -23,6 +26,8 @@ LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PROVIDER_BOUND_PREBOOTSTRAP = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PORTABLE_CUSTODY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_RUNTIME_LAUNCH_SESSION = PASS_LOCALLY_CENTRAL_LOCKED
+LIVE_CANARY_PROVIDER_BOUND_CUSTODY_V2 = PASS_LOCALLY_DENY_ONLY
+LIVE_CANARY_PROVIDER_BOUND_LAUNCH_SESSION_V2 = PASS_LOCALLY_CENTRAL_LOCKED
 LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_PER_ORDER_GATED
 LIVE_CANARY_PER_ORDER_EXECUTION = PASS_LOCALLY_FAKE_MT5_ONE_SEND
 WINDOWS_LIVE_PROVIDER_MATERIALIZATION = PASS_LOCALLY_BROKERLESS_LOCKED
@@ -191,13 +196,28 @@ LIVE_TRADING = DO_NOT_SHIP
   It derives validity from the earliest owner, runtime, or activation expiry,
   rejects provider/runtime/activation key reuse, and remains verifier-sealed,
   non-launchable, non-executable, and `order_capability=DISABLED`.
-- The source implementation is complete locally, but no target-host pack,
+- Provider-bound custody v2 now requires a new domain-separated RSA receipt
+  and byte-identical WORM readback of the exact provider-bound admission. It
+  binds both source projections, provider acceptance/policy/review,
+  host/environment/release/task, launcher policy, service account, activation,
+  earliest provider expiry, and a custody authority distinct from both
+  provider authorities. The result is immutable, verifier-sealed, and
+  deny-only.
+- Provider-bound launch-session v2 composes that custody result with the
+  unchanged signed v1 CAS/checkpoint/nonce protocol and a freshly sealed v1
+  launch session. Its validity is the minimum of capability, provider, and
+  custody expiry. Production bootstrap, per-order authorization, supervisor,
+  and Windows LIVE materialization now accept only the exact registered v2
+  session; a valid v1 session, subclass, forged object, or duck type is
+  rejected. The v2 session remains launch-only and cannot authorize execution
+  or broker mutation.
+- The source implementation is complete locally through provider-bound
+  custody and launch composition, but no target-host pack,
   configured candidate, LIVE source-bound archive, or v4 conformance packet
   has yet been built and externally accepted from an exact committed Windows
   suite. Concrete reviewed Windows callbacks, real owner/runtime signatures,
-  the three exact evidence files, real provider-bound admission, migration of
-  portable custody to require that admission, and external launcher receipts
-  remain the next milestones.
+  the three exact evidence files, real provider-bound admission and WORM/CAS
+  receipts, and external launcher receipts remain the next milestones.
 
 ## Verification
 
@@ -214,9 +234,9 @@ LIVE_TRADING = DO_NOT_SHIP
 | Production-runtime integration spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused production-runtime integration | 7 PASS normal; 7 PASS optimized |
 | Per-order LIVE execution spec | 100/100, Grade A; 0 errors, warnings, or informational findings |
-| Focused per-order authorization suite | 8 PASS normal; 8 PASS optimized |
+| Focused per-order authorization suite | 9 PASS normal; 9 PASS optimized |
 | Windows LIVE materialization spec | 100/100, Grade A; no errors or warnings |
-| Focused Windows LIVE materialization suite | 16 PASS normal; 16 PASS optimized |
+| Focused Windows LIVE materialization suite | 17 PASS normal; 17 PASS optimized |
 | Windows LIVE provider-pack spec | 100/100, Grade A; no errors, warnings, or informational findings |
 | Focused LIVE pack generator/validator suite | 8 PASS normal; 8 PASS optimized |
 | Windows LIVE configured-candidate spec | 100/100, Grade A; no findings |
@@ -230,6 +250,10 @@ LIVE_TRADING = DO_NOT_SHIP
 | Provider-bound prebootstrap spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused provider-bound prebootstrap suite | 9 PASS normal; 9 PASS optimized with one intentional nested-suite skip |
 | Provider-bound integration cluster | 42 PASS normal; 42 PASS optimized with two intentional nested-suite skips |
+| Provider-bound custody/launch spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
+| Focused provider-bound custody suite | 6 PASS normal; 6 PASS optimized with one intentional nested-suite skip |
+| Focused provider-bound launch-session suite | 6 PASS normal; 6 PASS optimized with one intentional nested-suite skip |
+| Provider-bound launch/downstream regression | 165 PASS normal; 165 PASS optimized with seven intentional skips |
 | LIVE source-bound/tooling regression cluster | 39 PASS normal; 39 PASS optimized |
 | LIVE pack/materializer/release-builder cluster | 67 PASS normal; 67 PASS optimized |
 | Combined Windows Execution provider/policy suite | 44 PASS normal; 44 PASS optimized |
@@ -238,8 +262,8 @@ LIVE_TRADING = DO_NOT_SHIP
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,920 tests OK, 3 platform skips |
-| Full Python regression with `-O` | 1,920 tests OK, 7 skips including optimized-only nested self-tests |
+| Full Python regression | 1,955 tests OK, 3 platform skips |
+| Full Python regression with `-O` | 1,955 tests OK, 12 skips including optimized-only nested self-tests |
 | Uncommitted dashboard refactor audit | 16 unit PASS; lint, production build, bundle budget, and npm audit PASS; 24 desktop/mobile browser E2E PASS |
 | Python compile, dependency lock, JSON/spec validation, and scoped whitespace checks | PASS; Ruff unavailable in the active environment for this additive pass |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
@@ -285,10 +309,11 @@ uptime monitoring remain external work.
    49-port provider pack, then assemble and independently validate its
    suite-bound configured candidate,
    supply the reviewed external callbacks, and run brokerless materialization,
-   negative tests, and independent conformance on the target host. Before any
-   real activation, migrate portable custody to require the new provider-bound
-   admission and its earliest-expiry limit. The central lock remains unchanged
-   until that ceremony and all external evidence are accepted.
+   negative tests, and independent conformance on the target host. Feed the
+   exact provider-bound admission into the new v2 WORM verifier and compose
+   only its sealed custody result with the existing signed CAS reservation;
+   legacy-only v1 launch sessions are not accepted. The central lock remains
+   unchanged until that ceremony and all external evidence are accepted.
 8. After independent ship-gate acceptance, use a separate bounded ceremony to
    open the central policy and execute only the first 0.01 XAUUSD canary. The
    first real order, reconciliation receipt, rollback proof, and operator
@@ -297,9 +322,10 @@ uptime monitoring remain external work.
 No percentage or passing unit-test count should be interpreted as broker
 authority. The per-order, Windows LIVE materialization, deterministic
 provider-pack, configured-candidate, LIVE source-bound, and provider-bound
-prebootstrap boundaries now exist locally together with provider-conformance
+prebootstrap/custody/launch boundaries now exist locally together with
+provider-conformance
 v4, but until the external evidence, exact target-host pack, configured
 candidate, source-bound archive, 68-record accepted review, provider-bound
-custody migration, central unlock ceremony, and first
+WORM/CAS receipts, central unlock ceremony, and first
 reconciled broker canary exist, the truthful state remains
 `LIVE_TRADING = DO_NOT_SHIP`.

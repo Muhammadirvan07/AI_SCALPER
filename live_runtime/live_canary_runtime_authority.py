@@ -17,6 +17,7 @@ _SESSION_SEAL = object()
 _REGISTRATION_SEAL = object()
 _candidate_type: type[object] | None = None
 _session_type: type[object] | None = None
+_provider_bound_session_type: type[object] | None = None
 
 
 class LiveCanaryRuntimeLaunchSessionError(RuntimeError):
@@ -71,6 +72,33 @@ def _register_live_canary_runtime_launch_session_type(
     _session_type = value
 
 
+def _register_live_canary_provider_bound_runtime_launch_session_type(
+    value: type[object],
+    *,
+    _seal: object,
+) -> None:
+    global _provider_bound_session_type
+    if (
+        _seal is not _REGISTRATION_SEAL
+        or type(value) is not type
+        or value.__module__
+        != "live_runtime.live_canary_provider_bound_runtime_launch_session"
+        or value.__name__
+        != "LiveCanaryProviderBoundRuntimeLaunchSession"
+    ):
+        raise TypeError(
+            "provider-bound live launch-session type registration rejected"
+        )
+    if (
+        _provider_bound_session_type is not None
+        and _provider_bound_session_type is not value
+    ):
+        raise RuntimeError(
+            "provider-bound live launch-session type is already registered"
+        )
+    _provider_bound_session_type = value
+
+
 def is_live_canary_runtime_candidate(value: object) -> bool:
     """Return true only for the registered exact candidate class."""
 
@@ -87,8 +115,21 @@ def is_live_canary_runtime_launch_session(value: object) -> bool:
     )
 
 
+def is_live_canary_provider_bound_runtime_launch_session(
+    value: object,
+) -> bool:
+    """Return true only for the exact provider-bound v2 launch session."""
+
+    return (
+        _provider_bound_session_type is not None
+        and type(value) is _provider_bound_session_type
+        and getattr(value, "_session_seal", None) is _SESSION_SEAL
+    )
+
+
 __all__ = [
     "LiveCanaryRuntimeLaunchSessionError",
     "is_live_canary_runtime_candidate",
+    "is_live_canary_provider_bound_runtime_launch_session",
     "is_live_canary_runtime_launch_session",
 ]
