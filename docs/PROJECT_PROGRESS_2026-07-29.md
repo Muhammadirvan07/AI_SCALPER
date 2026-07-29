@@ -381,13 +381,16 @@ uptime monitoring remain external work.
    v4 for the LIVE path, then obtain independent external acceptance for
    Decision, Execution, and Status Monitor.
 3. Run ten reviewed manual-demo lifecycles.
-4. Run the real XM demo-auto soak to at least 30 clean days, 50 reconciled
-   closed fills, and 20 XAUUSD fills; synthetic fixtures never satisfy this.
+4. Run the real `phillip-commodity` demo-auto soak to at least 30 clean days,
+   50 reconciled closed fills, and 20 XAUUSD fills; synthetic fixtures never
+   satisfy this. XM remains diagnostic/paper-only while the operating
+   jurisdiction is JP.
 5. Obtain the exact LIVE promotion receipt, nine independent gate receipts,
    three actual role approvals, deployment signature, and off-host/WORM replay
    checkpoint custody.
-6. Use the new assemblers and validators to build the actual XM/Windows LIVE
-   provider pack and configured candidate from one accepted target-host suite,
+6. Use the new assemblers and validators to build the actual
+   Phillip-Commodity/Windows LIVE provider pack and configured candidate from
+   one accepted target-host suite,
    then package it with the independently verified DEMO ancestry using the
    ten-pin LIVE source-bound boundary. Assemble the exact 68-record v4 input
    and review from that sealed result; retain the owner signature and runtime

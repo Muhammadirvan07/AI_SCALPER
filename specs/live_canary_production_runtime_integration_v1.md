@@ -343,9 +343,10 @@ objects; existing supervisor receipts continue to carry hashes only.
 1. Land this source integration while checked-in LIVE remains false.
 2. Extend the reviewed Windows LIVE configured release/factory so it supplies
    the exact candidate and freshly minted session without serializing seals.
-3. Collect actual XM demo-auto cohort, provider conformance, WORM/CAS,
-   promotion, approval, Windows task, TLS, backup/restore, and monitoring
-   evidence.
+3. Collect the actual independently eligible selected-broker demo-auto cohort,
+   provider conformance, WORM/CAS, promotion, approval, Windows task, TLS,
+   backup/restore, and monitoring evidence. For the current JP operating
+   jurisdiction, this means the reviewed `phillip-commodity` lane, not XM.
 4. Specify and implement the independent per-order LIVE execution boundary.
 5. Perform a reviewed central-unlock ceremony and bounded XAUUSD 0.01 canary
    only after every external and manual ship gate passes.

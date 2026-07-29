@@ -287,8 +287,8 @@ def assess_live_canary_prebootstrap_admission(
 - OS-6: Installing/starting a task, service, process, or watchdog.
 - OS-7: Opening a journal, supervisor, replay, or risk SQLite database.
 - OS-8: Accessing the network, reconciling a broker account, or submitting an order.
-- OS-9: Claiming that actual XM evidence, approvals, Windows custody, soak duration,
-  or live-trading readiness exists.
+- OS-9: Claiming that actual independently eligible selected-broker evidence,
+  approvals, Windows custody, soak duration, or live-trading readiness exists.
 - OS-10: Pair expansion, lot scaling, or post-canary fifty-trade promotion.
 
 ## Assumptions
@@ -326,5 +326,7 @@ def assess_live_canary_prebootstrap_admission(
   prebootstrap admission in WORM storage?
 - Which production release will introduce the one-use launch-capability
   registry and controlled central-lock ceremony?
-- What exact XM LIVE server/account/broker-symbol facts will replace synthetic
-  test fixtures after the 30-day/50-fill/20-XAU demo-auto cohort completes?
+- What exact independently eligible LIVE server/account/broker-symbol facts
+  will replace synthetic test fixtures after the 30-day/50-fill/20-XAU
+  demo-auto cohort completes? For the current JP operating jurisdiction, the
+  reviewed target lane is `phillip-commodity`; XM remains legally blocked.

@@ -357,7 +357,8 @@ returns signed checkpoint/acknowledgement bytes.
 ## Open Questions
 
 - Which independent production WORM/CAS provider and retention policy will be
-  approved for the actual XM Windows host?
+  approved for the actual independently eligible selected-broker Windows host
+  (currently `phillip-commodity` for the JP lane)?
 - Which exact external launcher policy, host/service/task identities, and
   release manifest will replace synthetic fixtures?
 - Which later bootstrap release will consume this prerequisite while

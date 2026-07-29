@@ -354,7 +354,9 @@ changed-source findings.
 
 ## Blocking facts
 
-- No real XM 30-day/50-fill/20-XAU demo-auto cohort receipt exists.
+- No real independently eligible selected-broker 30-day/50-fill/20-XAU
+  demo-auto cohort receipt exists. For the current JP lane, the selected
+  eligible candidate is `phillip-commodity`; XM remains diagnostic/paper-only.
 - No exact LIVE promotion receipt or nine external gate receipts exist.
 - No actual three-person approval set, deployment authorization, or off-host
   replay checkpoint custody has been accepted.

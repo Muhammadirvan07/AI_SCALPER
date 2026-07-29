@@ -156,10 +156,12 @@ release.
 
 Artefak target-Windows yang lulus menjadi input evidence untuk external LIVE
 provider conformance dan prebootstrap review. Sebelum live canary, proyek
-masih memerlukan real XM demo-auto soak, concrete provider acceptance,
-launcher/task/ACL approval, WORM/CAS custody, promotion dan gate receipts,
-central unlock ceremony, serta per-order fresh evidence. Karena bukti itu
-belum ada, status tetap `LIVE_TRADING = DO_NOT_SHIP`.
+masih memerlukan real independently eligible selected-broker demo-auto soak
+(untuk operating jurisdiction JP saat ini: `phillip-commodity`), concrete
+provider acceptance, launcher/task/ACL approval, WORM/CAS custody, promotion
+dan gate receipts, central unlock ceremony, serta per-order fresh evidence.
+XM tetap diagnostic/paper-only selama yurisdiksi operasi adalah JP. Karena
+bukti itu belum ada, status tetap `LIVE_TRADING = DO_NOT_SHIP`.
 
 Kontrak normatif berada di
 `specs/windows_live_canary_execution_source_bound_candidate_v1.md`.

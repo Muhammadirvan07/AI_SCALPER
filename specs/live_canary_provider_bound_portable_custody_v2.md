@@ -312,8 +312,9 @@ legacy admission --existing WORM/CAS--> v1 one-use capability |
 - OS-4: Treating local fixtures as Windows/provider/custody evidence.
 - OS-5: Starting a process, materializing providers, initializing MT5,
   issuing an order permit, mutating a broker, or submitting an order.
-- OS-6: Actual XM demo soak, external approvals, first canary execution,
-  reconciliation, rollback drill, pair expansion, or lot scaling.
+- OS-6: Actual independently eligible selected-broker demo soak, external
+  approvals, first canary execution, reconciliation, rollback drill, pair
+  expansion, or lot scaling.
 
 ## Assumptions
 
