@@ -7,7 +7,11 @@
 **Related specs:** `windows_three_service_demo_soak_operations_v3.md`,
 `mt5_readonly_decision_feed_publisher_v1.md`,
 `architecture_foundation_completion_v1.md`,
-`windows_base_release_suite_transfer_v1.md`
+`windows_base_release_suite_transfer_v1.md`,
+`windows_execution_provider_bound_runtime_closure_v1.md`
+
+**Revision 2026-07-29:** the exact Execution sidecar contract includes the
+deny-only provider-bound runtime consumer closure added by the related spec.
 
 ## Context
 
@@ -88,6 +92,13 @@ and explicitly blocked.
 - FR-16: The builder MUST reject a role result whose returned archive,
   sidecar, identity, file count, capability, or readiness fact disagrees with
   the bytes independently read from staging.
+- FR-17: The exact Execution sidecar policy MUST require
+  `live_canary_provider_bound_runtime_closure`. The suite builder MUST
+  independently verify its fixed schema, exact six sorted closure-file paths,
+  positive sizes, lowercase SHA-256 values, exact file count, derived closure
+  identity, `live_allowed=false`, `order_capability=DISABLED`, and
+  `production_execution_ready=false`. A missing, unknown, malformed, or
+  authority-bearing closure MUST be rejected without publishing a suite.
 
 ## Non-Functional Requirements
 
@@ -204,6 +215,16 @@ When validation is attempted
 Then construction fails with a stable manifest-validation reason
 And no final suite is published.
 
+### AC-13: Exact provider-bound consumer closure is retained (FR-7, FR-16, FR-17)
+
+Given the current exact Execution release sidecar containing its deny-only
+provider-bound runtime consumer closure
+When the five-role suite validates the Execution role
+Then the approved closure field is accepted and bound by the sidecar and suite
+hashes
+And removing, renaming, structurally changing, unlocking, or forging that
+closure is rejected before suite publication.
+
 ## Edge Cases
 
 - EC-1: Output parent does not exist → reject before creating staging.
@@ -234,6 +255,10 @@ And no final suite is published.
 - EC-14: Current source contains an untracked user directory such as
   `frontend-dashboard/` → reject as dirty; never read, copy, modify, or delete
   that directory.
+- EC-15: The Execution sidecar omits the provider-bound runtime closure, adds
+  an unapproved top-level field, changes one required closure path, reports a
+  zero-byte member, drifts its derived identity, or enables any closure safety
+  flag → reject and publish no suite.
 
 ## API Contracts
 
@@ -298,6 +323,20 @@ interface BaseReleaseSuiteResult {
   gitCommit: string;
   gitTree: string;
   roles: BaseReleaseRoleRecord[];
+}
+
+interface ExecutionProviderBoundRuntimeClosure {
+  schemaVersion: "windows-execution-live-canary-provider-bound-runtime-closure-v1";
+  files: Array<{
+    path: string;                    // one of six fixed consumer paths
+    sizeBytes: number;               // positive integer
+    sha256: string;                  // 64 lowercase hex
+  }>;
+  fileCount: 6;
+  liveAllowed: false;
+  orderCapability: "DISABLED";
+  productionExecutionReady: false;
+  closureIdentitySha256: string;     // hash of all prior fields
 }
 ```
 
@@ -372,6 +411,18 @@ BASE_RELEASE_SUITE_REJECTED: BASE_RELEASE_SUITE_PUBLICATION_FAILED
 | effects | object | Exact map; only local packaging `git_subprocess` is true |
 | safety | object | Exact locked map, no unknown keys |
 | suite_identity_sha256 | string | Canonical SHA-256 over preceding fields |
+
+### ExecutionProviderBoundRuntimeClosure
+
+| Field | Type | Constraints |
+|---|---|---|
+| schema_version | string | Exact provider-bound consumer-closure v1 value |
+| files | array | Six fixed sorted `{path,size_bytes,sha256}` records |
+| file_count | integer | Exactly `6` |
+| live_allowed | boolean | Always `false` |
+| order_capability | string | Always `DISABLED` |
+| production_execution_ready | boolean | Always `false` |
+| closure_identity_sha256 | string | Canonical SHA-256 over preceding fields |
 
 ## Out of Scope
 

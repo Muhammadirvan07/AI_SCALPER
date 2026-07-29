@@ -18,6 +18,14 @@ probe. The authority class was extracted from operator-side activation without
 duplicating its type or seal. Candidate assemblers, source-bound verifiers,
 provider review/acceptance, admission/custody assembly, and launch activation
 remain outside the service release.
+The atomic five-role suite now understands and independently revalidates that
+exact six-file Execution consumer closure against the release source
+inventory. A clean-build regression exposed the previously stale strict
+sidecar policy before any suite was published. During optimized regression, a
+second race showed that Status Monitor request watchers could observe a final
+protocol filename before all JSON bytes were written. Checkpoint and incident
+requests now use invocation-owned staging, file sync, stable readback, and
+atomic no-replace publication; replacement paths remain preserved on failure.
 A deterministic operator-only WORM handoff now bridges the saved
 provider-bound admission to an external custodian. It produces an exact
 four-member request from eight independent closure pins and verifies the
@@ -343,8 +351,11 @@ LIVE_TRADING = DO_NOT_SHIP
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,997 tests OK, 3 platform skips |
-| Full Python regression with `PYTHONOPTIMIZE=2` | 1,997 tests OK, 13 skips including optimized-only nested self-tests |
+| Atomic base-suite and Status Monitor publication specs | Both 100/100, Grade A; no findings |
+| Focused atomic base-suite tests | 24 PASS normal; 24 PASS optimized |
+| Status Monitor/base-suite release cluster | 72 PASS normal; 72 PASS optimized |
+| Full Python regression | 2,001 tests OK, 3 platform skips |
+| Full Python regression with `PYTHONOPTIMIZE=2` | 2,001 tests OK, 13 skips including optimized-only nested self-tests |
 | Uncommitted dashboard refactor audit | 16 unit PASS; lint, production build, bundle budget, and npm audit PASS; 24 desktop/mobile browser E2E PASS |
 | Python compile, dependency lock, JSON/spec validation, and scoped whitespace checks | PASS; Ruff unavailable in the active environment for this additive pass |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |

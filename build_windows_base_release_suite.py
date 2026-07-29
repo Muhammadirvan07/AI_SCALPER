@@ -29,7 +29,11 @@ from build_windows_configured_release_tooling import (
     build_configured_release_tooling,
 )
 from build_windows_decision_release import build_decision_release
-from build_windows_execution_release import build_execution_release
+from build_windows_execution_release import (
+    LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_SCHEMA,
+    REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE,
+    build_execution_release,
+)
 from build_windows_release import build_release
 from build_windows_status_monitor_release import build_status_monitor_release
 
@@ -177,6 +181,7 @@ ROLE_POLICIES = (
                 "dependency_lock_summary",
                 "foundation_status",
                 "full_pending_gate_catalog",
+                "live_canary_provider_bound_runtime_closure",
                 "order_primitive_inventory",
                 "production_execution_ready",
                 "readiness_blockers",
@@ -489,6 +494,79 @@ def _source_files_valid(value: object) -> bool:
     return paths == sorted(paths) and len(paths) == len(set(paths))
 
 
+def _provider_bound_runtime_closure_valid(
+    manifest: Mapping[str, Any],
+) -> bool:
+    closure = manifest.get(
+        "live_canary_provider_bound_runtime_closure"
+    )
+    if (
+        not isinstance(closure, dict)
+        or frozenset(closure)
+        != {
+            "schema_version",
+            "files",
+            "file_count",
+            "live_allowed",
+            "order_capability",
+            "production_execution_ready",
+            "closure_identity_sha256",
+        }
+        or closure.get("schema_version")
+        != LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_SCHEMA
+        or closure.get("live_allowed") is not False
+        or closure.get("order_capability") != "DISABLED"
+        or closure.get("production_execution_ready") is not False
+    ):
+        return False
+
+    source_files = manifest.get("source_files")
+    if not isinstance(source_files, list):
+        return False
+    source_by_path = {
+        item.get("path"): item
+        for item in source_files
+        if isinstance(item, dict)
+    }
+    expected_files: list[dict[str, object]] = []
+    for path_text in sorted(
+        REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE
+    ):
+        item = source_by_path.get(path_text)
+        if (
+            not isinstance(item, dict)
+            or frozenset(item) != {"path", "size_bytes", "sha256"}
+            or not _is_int(item.get("size_bytes"))
+            or int(item["size_bytes"]) <= 0
+            or not isinstance(item.get("sha256"), str)
+            or HEX_64.fullmatch(str(item["sha256"])) is None
+        ):
+            return False
+        expected_files.append(
+            {
+                "path": path_text,
+                "size_bytes": item["size_bytes"],
+                "sha256": item["sha256"],
+            }
+        )
+
+    files = closure.get("files")
+    if (
+        files != expected_files
+        or not _is_int(closure.get("file_count"))
+        or closure.get("file_count") != len(expected_files)
+    ):
+        return False
+    identity = closure.get("closure_identity_sha256")
+    body = dict(closure)
+    body.pop("closure_identity_sha256", None)
+    return (
+        isinstance(identity, str)
+        and HEX_64.fullmatch(identity) is not None
+        and _sha256(_canonical_json(body)) == identity
+    )
+
+
 def _identity_valid(payload: Mapping[str, Any]) -> bool:
     identity = payload.get("release_identity_sha256")
     if not isinstance(identity, str) or HEX_64.fullmatch(identity) is None:
@@ -553,6 +631,11 @@ def _validate_role(
         or manifest.get("git_tree") != tree
         or not _identity_valid(manifest)
         or not _source_files_valid(manifest.get("source_files"))
+    ):
+        raise BaseReleaseSuiteError("BASE_RELEASE_SUITE_ROLE_MISMATCH")
+    if (
+        policy.role == "EXECUTION"
+        and not _provider_bound_runtime_closure_valid(manifest)
     ):
         raise BaseReleaseSuiteError("BASE_RELEASE_SUITE_ROLE_MISMATCH")
     expected_safety = {

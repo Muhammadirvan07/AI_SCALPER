@@ -15,10 +15,51 @@ import build_windows_base_release_suite as suite
 COMMIT = "1" * 40
 TREE = "2" * 40
 OTHER_COMMIT = "3" * 40
+PROVIDER_BOUND_RUNTIME_CLOSURE_PATHS = (
+    "execution_policy.py",
+    "live_runtime/contracts.py",
+    "live_runtime/live_canary_provider_bound_runtime_session.py",
+    "live_runtime/live_canary_runtime_authority.py",
+    "live_runtime/production_bootstrap.py",
+    "live_runtime/windows_live_canary_execution_provider.py",
+)
+PROVIDER_BOUND_RUNTIME_CLOSURE_SCHEMA = (
+    "windows-execution-live-canary-provider-bound-runtime-closure-v1"
+)
 
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _provider_bound_runtime_closure() -> dict[str, object]:
+    body: dict[str, object] = {
+        "schema_version": PROVIDER_BOUND_RUNTIME_CLOSURE_SCHEMA,
+        "files": [
+            {
+                "path": path,
+                "size_bytes": 1,
+                "sha256": _sha256(path.encode("utf-8")),
+            }
+            for path in PROVIDER_BOUND_RUNTIME_CLOSURE_PATHS
+        ],
+        "file_count": len(PROVIDER_BOUND_RUNTIME_CLOSURE_PATHS),
+        "live_allowed": False,
+        "order_capability": "DISABLED",
+        "production_execution_ready": False,
+    }
+    return {
+        **body,
+        "closure_identity_sha256": _sha256(suite._canonical_json(body)),
+    }
+
+
+def _reseal_closure(closure: dict[str, object]) -> None:
+    body = dict(closure)
+    body.pop("closure_identity_sha256", None)
+    closure["closure_identity_sha256"] = _sha256(
+        suite._canonical_json(body)
+    )
 
 
 class WindowsBaseReleaseSuiteBuilderTests(unittest.TestCase):
@@ -69,6 +110,9 @@ class WindowsBaseReleaseSuiteBuilderTests(unittest.TestCase):
             "effects_during_validation": {},
             "foundation_status": {},
             "full_pending_gate_catalog": {},
+            "live_canary_provider_bound_runtime_closure": (
+                _provider_bound_runtime_closure()
+            ),
             "order_primitive_inventory": {},
             "production_execution_ready": False,
             "readiness_blockers": [],
@@ -82,6 +126,22 @@ class WindowsBaseReleaseSuiteBuilderTests(unittest.TestCase):
         for key in policy.manifest_keys:
             if key not in payload and key != "release_identity_sha256":
                 payload[key] = defaults[key]
+        if policy.role == "EXECUTION":
+            payload["source_files"].extend(
+                {
+                    "path": path,
+                    "size_bytes": 1,
+                    "sha256": _sha256(path.encode("utf-8")),
+                }
+                for path in PROVIDER_BOUND_RUNTIME_CLOSURE_PATHS
+            )
+            payload["source_files"] = sorted(
+                payload["source_files"],
+                key=lambda item: item["path"],
+            )
+            payload["live_canary_provider_bound_runtime_closure"] = (
+                _provider_bound_runtime_closure()
+            )
         identity = _sha256(suite._canonical_json(payload))
         return {**payload, "release_identity_sha256": identity}
 
@@ -447,6 +507,94 @@ class WindowsBaseReleaseSuiteBuilderTests(unittest.TestCase):
             suite._validate_suite_manifest_bytes(
                 suite._canonical_json(payload) + b"\n"
             )
+
+    def test_ac13_exact_provider_bound_runtime_closure_is_accepted(self) -> None:
+        result = self._build("provider-bound-closure")
+        output = Path(result["output_root"])
+        execution = next(
+            policy
+            for policy in suite.ROLE_POLICIES
+            if policy.role == "EXECUTION"
+        )
+        manifest = json.loads(
+            (
+                output
+                / f"{execution.archive_name}.manifest.json"
+            ).read_text("utf-8")
+        )
+        closure = manifest[
+            "live_canary_provider_bound_runtime_closure"
+        ]
+        self.assertEqual(
+            PROVIDER_BOUND_RUNTIME_CLOSURE_SCHEMA,
+            closure["schema_version"],
+        )
+        self.assertEqual(
+            list(PROVIDER_BOUND_RUNTIME_CLOSURE_PATHS),
+            [item["path"] for item in closure["files"]],
+        )
+        self.assertEqual(6, closure["file_count"])
+        self.assertFalse(closure["live_allowed"])
+        self.assertFalse(closure["production_execution_ready"])
+        self.assertEqual("DISABLED", closure["order_capability"])
+
+    def test_ac13_missing_provider_bound_runtime_closure_is_denied(self) -> None:
+        self.manifest_mutators["EXECUTION"] = lambda payload: payload.pop(
+            "live_canary_provider_bound_runtime_closure"
+        )
+        output = self.release_parent / "provider-bound-closure-missing"
+        with self.assertRaisesRegex(
+            suite.BaseReleaseSuiteError,
+            "^BASE_RELEASE_SUITE_MANIFEST_INVALID$",
+        ):
+            self._build(output.name)
+        self.assertFalse(output.exists())
+
+    def test_ec15_malformed_provider_bound_runtime_closure_is_denied(
+        self,
+    ) -> None:
+        def wrong_path(payload: dict[str, object]) -> None:
+            closure = payload[
+                "live_canary_provider_bound_runtime_closure"
+            ]
+            closure["files"][0]["path"] = "substitute.py"
+            _reseal_closure(closure)
+
+        def zero_size(payload: dict[str, object]) -> None:
+            closure = payload[
+                "live_canary_provider_bound_runtime_closure"
+            ]
+            closure["files"][0]["size_bytes"] = 0
+            _reseal_closure(closure)
+
+        def unlocked(payload: dict[str, object]) -> None:
+            closure = payload[
+                "live_canary_provider_bound_runtime_closure"
+            ]
+            closure["live_allowed"] = True
+            _reseal_closure(closure)
+
+        def forged_identity(payload: dict[str, object]) -> None:
+            closure = payload[
+                "live_canary_provider_bound_runtime_closure"
+            ]
+            closure["closure_identity_sha256"] = "f" * 64
+
+        for name, mutation in (
+            ("wrong-path", wrong_path),
+            ("zero-size", zero_size),
+            ("unlocked", unlocked),
+            ("forged-identity", forged_identity),
+        ):
+            with self.subTest(name=name):
+                self.manifest_mutators = {"EXECUTION": mutation}
+                output = self.release_parent / f"closure-{name}"
+                with self.assertRaisesRegex(
+                    suite.BaseReleaseSuiteError,
+                    "^BASE_RELEASE_SUITE_ROLE_MISMATCH$",
+                ):
+                    self._build(output.name)
+                self.assertFalse(output.exists())
 
     def test_ec5_post_validation_artifact_change_is_denied(self) -> None:
         original = suite._validate_suite_manifest_bytes

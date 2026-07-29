@@ -19,6 +19,13 @@ eksternal. Tidak ada fallback file/environment untuk secret, auto-provisioning
 state, network client, MT5, task installer, broker adapter, atau order
 primitive.
 
+Checkpoint dan incident request tidak pernah ditulis langsung ke final
+`*.request.json`. Setiap invocation menulis staging privat, melakukan full
+write, file sync, dan stable readback, lalu menerbitkan final filename dengan
+satu operasi atomic no-replace. Watcher eksternal hanya dapat melihat dokumen
+lengkap; concurrent request identik berkonvergensi, konflik ditolak, dan
+cleanup hanya boleh menghapus inode staging milik invocation tersebut.
+
 ## Batas release
 
 - `live_runtime/windows_status_monitor_provider_pack.py` hanya masuk base

@@ -541,8 +541,9 @@ class StatusMonitorProviderPackTests(unittest.TestCase):
                 self.skipTest("symlinks are unavailable on this platform")
 
             def swap_then_fail(_descriptor: int) -> None:
-                path.unlink()
-                path.symlink_to(replacement.name)
+                staging = next(root.glob(".*.pending"))
+                staging.unlink()
+                staging.symlink_to(replacement.name)
                 raise OSError("simulated fsync failure after path swap")
 
             with patch.object(
@@ -562,9 +563,68 @@ class StatusMonitorProviderPackTests(unittest.TestCase):
                 "MONITOR_REQUEST_WRITE_FAILED",
                 caught.exception.reason_code,
             )
-            self.assertTrue(path.is_symlink())
-            self.assertEqual(Path(replacement.name), path.readlink())
+            staging = next(root.glob(".*.pending"))
+            self.assertTrue(staging.is_symlink())
+            self.assertEqual(
+                Path(replacement.name),
+                staging.readlink(),
+            )
+            self.assertFalse(path.exists())
             self.assertFalse(replacement.exists())
+
+    def test_ac8_request_final_name_is_not_visible_during_write(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            path = root / "monitor_incident.request.json"
+            payload = b'{"complete":true}\n'
+            write_started = threading.Event()
+            allow_write_to_finish = threading.Event()
+            failures: list[BaseException] = []
+            original_write = monitor_provider_module.os.write
+            first_write = True
+
+            def paused_write(descriptor: int, data: bytes) -> int:
+                nonlocal first_write
+                if first_write:
+                    first_write = False
+                    written = original_write(descriptor, data[:1])
+                    write_started.set()
+                    if not allow_write_to_finish.wait(timeout=1.0):
+                        raise OSError("test write gate timed out")
+                    return written
+                return original_write(descriptor, data)
+
+            def publish() -> None:
+                try:
+                    monitor_provider_module._write_exclusive(
+                        path,
+                        payload,
+                        "MONITOR_REQUEST_WRITE_FAILED",
+                    )
+                except BaseException as exc:
+                    failures.append(exc)
+
+            with patch.object(
+                monitor_provider_module.os,
+                "write",
+                side_effect=paused_write,
+            ):
+                thread = threading.Thread(target=publish)
+                thread.start()
+                self.assertTrue(write_started.wait(timeout=1.0))
+                self.assertFalse(path.exists())
+                self.assertEqual(
+                    (),
+                    tuple(root.glob("*.request.json")),
+                )
+                self.assertEqual(1, len(tuple(root.glob(".*.pending"))))
+                allow_write_to_finish.set()
+                thread.join(timeout=1.0)
+
+            self.assertFalse(thread.is_alive())
+            self.assertEqual([], failures)
+            self.assertEqual(payload, path.read_bytes())
+            self.assertEqual((), tuple(root.glob(".*.pending")))
 
 
 if __name__ == "__main__":

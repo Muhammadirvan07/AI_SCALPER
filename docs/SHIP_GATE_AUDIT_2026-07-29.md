@@ -106,6 +106,12 @@ Reviewed source:
   `test_execution_policy_mode_aware.py`;
 - verifier-seal hardening in `live_canary_prebootstrap_admission.py` and
   `asymmetric_release_trust.py`;
+- exact Execution closure validation in the atomic five-role suite builder,
+  its focused regression, and
+  `specs/windows_atomic_base_release_suite_v1.md`;
+- atomic no-replace Status Monitor checkpoint/incident request publication,
+  its watcher-race regression, and
+  `specs/windows_status_monitor_provider_pack_v1.md`;
 - current status/progress documentation.
 
 The working frontend/dashboard changes were not modified or staged as part of
@@ -117,7 +123,7 @@ this boundary. Runtime or broker state was not accessed or mutated.
 |---|---|---|
 | Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; the deterministic WORM handoff packages provider-bound admission plus custody/provider policies under eight independent pins, while the external CAS handoff packages the exact proposal/policy under fifteen independent pins and verifies three domain-separated signatures plus byte-identical head readback. The Windows directory adapter now implements the exact synchronous callbacks with independent public-protocol parsing, stable reads, staged file sync, atomic no-replace final request visibility, two-second deadlines, terminal ambiguity, and no producer/private-key import. Stale staging is never overwritten and a watcher cannot observe partial final JSON. Handoff tools remain deny-only and never claim a runtime seal, storage inspection, runtime nonce consumption, or launch capability; provider-bound custody v2 still recreates the sealed runtime result, while launch-session v2 composes the unchanged signed v1 CAS path, clamps validity to the earliest provider/custody/capability expiry, and makes every production consumer reject legacy-only v1 sessions |
 | Database | PASS_LOCAL | Exact SQLite DDL/trigger inventory, WAL, FULL sync, integrity check, HMAC chain, unique replay and authorization-consumption fields, atomic `BEGIN IMMEDIATE`, path identity, and signed off-host checkpoint verification |
-| Code quality | PASS_LOCAL | Spec-first implementation, including provider-bound custody/launch v2, the minimal Execution consumer closure, provider-bound WORM/external CAS handoff, and the Windows synchronous directory adapter at 100/100, 1,997-test normal/optimized regression, Python compile success, dependency-lock validation, and no scoped changed-file whitespace errors; Ruff was unavailable in the active development environment for this additive pass |
+| Code quality | PASS_LOCAL | Spec-first implementation, including provider-bound custody/launch v2, the minimal Execution consumer closure, exact atomic-suite closure revalidation, atomic Status Monitor request publication, provider-bound WORM/external CAS handoff, and the Windows synchronous directory adapter at 100/100, 2,001-test normal/optimized regression, Python compile success, dependency-lock validation, and no scoped changed-file whitespace errors; Ruff was unavailable in the active development environment for this additive pass |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
 | Deployment | INCOMPLETE_EXTERNAL | Sealed legacy and provider-bound prebootstrap, provider-bound WORM custody/launch v2, deterministic WORM and external-CAS operator handoffs, the self-contained 56-file Execution base allowlist with a minimal v2 consumer contract plus synchronous directory-CAS client, per-order runtime chain, brokerless 49-port Windows LIVE materializer, deterministic four-file pack tooling, exact 15-file configured-candidate tooling, 17-member source-bound tooling, 68-record provider-conformance v4 tooling, and non-executable two-authority acceptance tooling exist locally. The checked-in central lock is false and no exact target-host pack/configured/source-bound/v4 candidate, independently operated CAS service/mount, real signed Windows responses, owner/runtime signatures and evidence files, real provider-bound result, WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, or backup/restore evidence has been accepted |
@@ -181,8 +187,11 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage regression | 81 PASS in both normal and optimized modes |
-| Full Python regression | 1,997 tests OK, 3 platform skips |
-| Full Python optimized regression | 1,997 tests OK, 13 skips |
+| Atomic base-suite and Status Monitor publication specs | Both 100/100, no findings |
+| Focused atomic base-suite tests | 24 PASS normal; 24 PASS optimized |
+| Status Monitor/base-suite release cluster | 72 PASS normal; 72 PASS optimized |
+| Full Python regression | 2,001 tests OK, 3 platform skips |
+| Full Python optimized regression | 2,001 tests OK, 13 skips |
 | Uncommitted dashboard audit | 16 unit tests, lint, production build, bundle budget, npm audit, and 24 desktop/mobile E2E PASS locally |
 | Static quality checks | Python compile, dependency lock, external-acceptance spec validation, and scoped `git diff --check` PASS; Ruff unavailable in the active environment |
 | Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` and `SAFE_TO_DEMO_AUTO_ORDER` remain false; focused tests use fake MT5 only; no credential, network, Windows task, real MT5 initialization, or broker effect occurred |
@@ -329,6 +338,19 @@ changed-source findings.
     isolated-importable from Execution without any custody,
     admission, acceptance, handoff, or launch-session producer module. It still
     cannot prove that a directory is an external atomic service.
+22. Adding the exact provider-bound runtime closure to the Execution release
+    made the atomic five-role builder reject the current valid sidecar because
+    its closed top-level key policy was stale. The suite policy now accepts
+    only that approved field and independently verifies its schema, six exact
+    source records, positive sizes, hashes, count, derived identity, and all
+    deny-only safety values before publication.
+23. Status Monitor checkpoint/incident requests were create-exclusive but
+    written directly under their final `*.request.json` names. A concurrent
+    watcher could open a one-byte file and abandon the response. Publication
+    now uses a private invocation-owned staging inode, full write and file
+    sync, stable readback, and an atomic no-replace final operation. Concurrent
+    identical writers converge on byte-identical final bytes, and cleanup
+    never removes a substituted path.
 
 ## Blocking facts
 

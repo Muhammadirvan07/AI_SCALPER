@@ -13,6 +13,11 @@ lock
 `specs/windows_atomic_base_release_suite_v1.md`,
 `specs/windows_three_service_provider_conformance_v2.md`
 
+**Revision 2026-07-29:** checkpoint and incident request files are published
+through a private, fully flushed staging file followed by one atomic
+no-replace final-name operation. A directory watcher can never observe a
+partially written `*.request.json` document.
+
 ## Context
 
 The deterministic Status Monitor base release already contains the exact
@@ -93,7 +98,12 @@ broker, install a task, or submit an order.
   `ExternalStatusAssessment`, incident ID, provider ID, issue UTC, and expiry,
   and MUST accept only a signed exact `MonitorIncidentAcknowledgement`. The
   incident verifier MUST return true only for acknowledgements verified by
-  that adapter instance.
+  that adapter instance. Checkpoint and incident requests MUST be written to
+  invocation-owned private staging names, fully written, file-synced,
+  stable-read, and then published under the final protocol name with one
+  atomic no-replace operation. A watcher MUST NOT observe a partial final
+  request, and cleanup MUST remove only the exact invocation-owned staging
+  inode.
 - FR-10: External checkpoint and incident adapters MUST never mint custody
   signatures, clear a latch, rewrite a response, synthesize success, or claim
   that local storage is independently controlled.
@@ -190,7 +200,9 @@ broker, install a task, or submit an order.
   response timeouts MUST be in `(0, 2.0]` seconds.
 - NFR-6 Concurrency: Identical concurrent external requests MUST converge on
   one byte-identical request. Conflicting reuse of a request ID/path MUST
-  reject. Verified-object caches MUST be lock protected and bounded.
+  reject. Final protocol filenames MUST become visible only after complete
+  bytes are durable in the staging file. Verified-object caches MUST be lock
+  protected and bounded.
 - NFR-7 Portability: Offline generation, validation, and unit tests MUST run
   on macOS and Windows. Native credential materialization MUST reject all
   non-Windows platforms before backend access.
@@ -264,6 +276,7 @@ Given an exact critical `ExternalStatusAssessment`
 When incident latching receives one exact signed acknowledgement  
 Then the returned typed acknowledgement is verifier-approved  
 And retries converge on the same request  
+And a concurrent directory watcher never observes partial final request bytes
 And no clear/unlatch capability exists.
 
 ### AC-9: Preprovisioned outboxes and transports (FR-11, FR-12, FR-14,
@@ -342,6 +355,9 @@ And Decision/Execution/shadow/order authority is unchanged.
   uses zero → reject according to the exact checkpoint contract.
 - EC-8: Create-exclusive request already exists → accept only byte-identical
   content; conflicting content rejects.
+- EC-8a: A write, sync, publication, or cleanup failure swaps the staging or
+  final path → fail closed, preserve the replacement object, and never
+  delete anything not owned by the invocation.
 - EC-9: Response arrives exactly at expiry → reject.
 - EC-10: Response is accepted but readback differs from the proposal → reject.
 - EC-11: Incident response is validly signed but references another

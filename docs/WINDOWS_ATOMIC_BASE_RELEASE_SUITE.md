@@ -15,6 +15,15 @@ Setiap ZIP memiliki canonical sidecar manifest. Satu manifest tambahan,
 `BASE_RELEASE_SUITE.json`, mengikat SHA-256, ukuran, release identity, profile,
 Git commit/tree, safety lock, dan status production setiap role.
 
+Sidecar Execution juga wajib membawa exact deny-only provider-bound runtime
+consumer closure. Builder suite mencocokkan enam path, ukuran, dan SHA-256
+closure itu dengan `source_files`, menghitung ulang closure identity, serta
+menolak missing/unknown field, zero-byte record, hash drift, atau perubahan
+`live_allowed=false`, `order_capability=DISABLED`, dan
+`production_execution_ready=false`. Dengan demikian strict suite policy tidak
+dapat tertinggal diam-diam ketika Execution release menambah closure yang
+sudah disetujui.
+
 Suite ini mencegah operator melewatkan read-only shadow, mencampur ZIP dari
 commit berbeda, atau menerbitkan direktori release parsial. Tool hanya
 menjalankan executable Git lokal untuk pemeriksaan packaging. Tool tidak

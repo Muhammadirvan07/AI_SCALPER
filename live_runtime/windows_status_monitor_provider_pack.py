@@ -20,6 +20,7 @@ import stat
 import sys
 import threading
 import time
+import uuid
 from typing import Any, Callable, Mapping
 
 from .contracts import (
@@ -452,6 +453,23 @@ def _remove_created_request(
 
 
 def _write_exclusive(path: Path, data: bytes, code: str) -> None:
+    if type(data) is not bytes or not data:
+        raise WindowsStatusMonitorProviderError(code)
+    _existing_directory(path.parent, code)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise WindowsStatusMonitorProviderError(code) from exc
+    else:
+        if _stable_read(path, code) != data:
+            raise WindowsStatusMonitorProviderError(code)
+        return
+
+    staging = path.with_name(
+        f".{path.name}.{uuid.uuid4().hex}.pending"
+    )
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_CLOEXEC", 0)
@@ -459,11 +477,9 @@ def _write_exclusive(path: Path, data: bytes, code: str) -> None:
     descriptor: int | None = None
     created_identity: tuple[int, int] | None = None
     try:
-        descriptor = os.open(path, flags, 0o600)
+        descriptor = os.open(staging, flags, 0o600)
     except FileExistsError:
-        if _stable_read(path, code) != data:
-            raise WindowsStatusMonitorProviderError(code)
-        return
+        raise WindowsStatusMonitorProviderError(code) from None
     except OSError as exc:
         raise WindowsStatusMonitorProviderError(code) from exc
     try:
@@ -480,11 +496,29 @@ def _write_exclusive(path: Path, data: bytes, code: str) -> None:
             offset += written
         os.fsync(descriptor)
     except OSError as exc:
-        _remove_created_request(path, created_identity)
+        _remove_created_request(staging, created_identity)
         raise WindowsStatusMonitorProviderError(code) from exc
     finally:
         if descriptor is not None:
             os.close(descriptor)
+
+    try:
+        if _stable_read(staging, code) != data:
+            raise WindowsStatusMonitorProviderError(code)
+        try:
+            if os.name == "nt":
+                os.rename(staging, path)
+            else:
+                os.link(staging, path, follow_symlinks=False)
+        except FileExistsError:
+            if _stable_read(path, code) != data:
+                raise WindowsStatusMonitorProviderError(code)
+        except OSError as exc:
+            raise WindowsStatusMonitorProviderError(code) from exc
+        if _stable_read(path, code) != data:
+            raise WindowsStatusMonitorProviderError(code)
+    finally:
+        _remove_created_request(staging, created_identity)
 
 
 def _wait_response(
