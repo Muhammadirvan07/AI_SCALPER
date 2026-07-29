@@ -4,7 +4,8 @@
 **Date:** 2026-07-29
 **Status:** Approved for implementation
 **Reviewers:** senior architecture, security, ship-gate
-**Target:** Windows XM LIVE-canary launch reservation boundary
+**Target:** Windows independently eligible selected-broker LIVE-canary launch
+reservation boundary
 
 ## Context
 
@@ -468,9 +469,9 @@ record, or executable authority model is introduced.
   callbacks, starting a task/service/process, importing or initializing MT5,
   reading a broker account, minting per-order authority, or submitting an
   order.
-- OS-6: Relaxing the 0.01-lot XAUUSD canary scope, statistical XM demo-soak
-  requirements, three-person approval, nine gate receipts, reconciliation,
-  rollback, or any existing safety boundary.
+- OS-6: Relaxing the 0.01-lot XAUUSD canary scope, statistical selected-broker
+  demo-soak requirements, three-person approval, nine gate receipts,
+  reconciliation, rollback, or any existing safety boundary.
 - OS-7: Claiming LIVE readiness or 100% completion. Until actual target-host
   artifacts and independently retained external evidence exist, the verdict
   remains `DO_NOT_SHIP LIVE TRADING`.

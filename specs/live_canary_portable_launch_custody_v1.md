@@ -322,8 +322,9 @@ returns signed checkpoint/acknowledgement bytes.
 - OS-5: Building an effect-capable `ProductionRuntimeConfig` for LIVE.
 - OS-6: Reading broker credentials, importing MT5, reconciling positions, or
   submitting/modifying/cancelling an order.
-- OS-7: Claiming actual WORM retention, external CAS, XM evidence, launcher
-  issuance, host ACL, task installation, or live readiness from local tests.
+- OS-7: Claiming actual WORM retention, external CAS, selected-broker evidence,
+  launcher issuance, host ACL, task installation, or live readiness from local
+  tests.
 - OS-8: Pair expansion, lot scaling, or post-canary promotion.
 
 ## Assumptions

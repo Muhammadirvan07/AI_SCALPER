@@ -55,8 +55,8 @@ Jalankan dari configured-release operator tooling hasil clean committed build:
 ```powershell
 $python = "C:\AI_SCALPER\.venv\Scripts\python.exe"
 $toolingRoot = "C:\AI_SCALPER_PRIVATE\configured-release-tooling-v1"
-$evidenceRoot = "C:\AI_SCALPER_PRIVATE\xm-live-provider-bound"
-$handoffRoot = "C:\AI_SCALPER_PRIVATE\xm-live-worm-handoff-v1"
+$evidenceRoot = "C:\AI_SCALPER_PRIVATE\phillip-commodity-live-provider-bound"
+$handoffRoot = "C:\AI_SCALPER_PRIVATE\phillip-commodity-live-worm-handoff-v1"
 
 New-Item -ItemType Directory -Force $handoffRoot | Out-Null
 
@@ -72,7 +72,7 @@ $launcherPolicySha = "<64-HEX-LAUNCHER-POLICY>"
 
 $requestedAt = "<CANONICAL-UTC-WITH-6-DIGITS-Z>"
 $minimumRetainUntil = "<CANONICAL-UTC-WITH-6-DIGITS-Z>"
-$requestZip = "$handoffRoot\live-canary-provider-bound-worm-request-xm-v1.zip"
+$requestZip = "$handoffRoot\live-canary-provider-bound-worm-request-phillip-commodity-v1.zip"
 
 & $python -I -S -B `
   "$toolingRoot\manage_live_canary_provider_bound_worm_handoff.py" `
@@ -88,7 +88,7 @@ $requestZip = "$handoffRoot\live-canary-provider-bound-worm-request-xm-v1.zip"
   --expected-live-execution-release-identity-sha256 $liveReleaseSha `
   --expected-live-execution-task-definition-sha256 $taskSha `
   --expected-launcher-trust-policy-sha256 $launcherPolicySha `
-  --request-id xm-live-provider-bound-worm-request-v1 `
+  --request-id phillip-commodity-live-provider-bound-worm-request-v1 `
   --requested-at-utc $requestedAt `
   --minimum-retain-until-utc $minimumRetainUntil `
   --output $requestZip
@@ -153,7 +153,7 @@ $receipt = "$handoffRoot\provider-bound-admission-worm-receipt-v2.json"
 $readback = "$handoffRoot\provider-bound-admission-worm-readback.json"
 $readbackSha = "<64-HEX-READBACK-DARI-CHANNEL-INDEPENDEN>"
 $verifiedAt = "<TRUSTED-CANONICAL-UTC-WITH-6-DIGITS-Z>"
-$assessment = "$handoffRoot\live-canary-provider-bound-worm-assessment-xm-v1.json"
+$assessment = "$handoffRoot\live-canary-provider-bound-worm-assessment-phillip-commodity-v1.json"
 
 & $python -I -S -B `
   "$toolingRoot\manage_live_canary_provider_bound_worm_handoff.py" `

@@ -82,9 +82,9 @@ Gunakan output baru di luar repository dan di luar seluruh input root.
 ```powershell
 $suiteRoot = "C:\AI_SCALPER_RELEASES\<COMMIT>\base-release-suite-v1"
 $executionBase = "$suiteRoot\execution-base-v1.zip"
-$demoBoundZip = "C:\AI_SCALPER_PRIVATE\xm-demo-execution-source-bound-v1.zip"
-$liveCandidateRoot = "C:\AI_SCALPER_PRIVATE\xm-live-execution-configured-v1"
-$liveBoundZip = "C:\AI_SCALPER_PRIVATE\xm-live-execution-source-bound-v1.zip"
+$demoBoundZip = "C:\AI_SCALPER_PRIVATE\phillip-commodity-demo-execution-source-bound-v1.zip"
+$liveCandidateRoot = "C:\AI_SCALPER_PRIVATE\phillip-commodity-live-execution-configured-v1"
+$liveBoundZip = "C:\AI_SCALPER_PRIVATE\phillip-commodity-live-execution-source-bound-v1.zip"
 
 python -I -S -B `
   .\prepare_windows_live_canary_execution_source_bound_candidate.py `

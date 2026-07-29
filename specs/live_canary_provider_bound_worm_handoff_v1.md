@@ -321,7 +321,7 @@ def verify_live_canary_provider_bound_worm_receipt(
 ```json
 {
   "schema_version": "live-canary-provider-bound-worm-request-v1",
-  "request_id": "xm-live-provider-bound-worm-request-0001",
+  "request_id": "selected-broker-live-provider-bound-worm-request-0001",
   "requested_at_utc": "2026-07-29T00:00:00.000000Z",
   "minimum_retain_until_utc": "2027-07-29T00:00:00.000000Z",
   "provider_bound_admission_sha256": "<sha256>",

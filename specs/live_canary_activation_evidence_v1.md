@@ -30,10 +30,13 @@ lineage. Neither object alone proves that the exact live account, Windows host,
 failure drills, custody, rollback, compliance, and human owners were reviewed.
 
 This feature supplies that missing handoff as a short-lived, replay-protected,
-deny-only evidence boundary. It is broker-neutral at the source level so the
-first reviewed candidate can be XM, but every request binds one exact broker,
-demo account, live account, server pair, XAUUSD lane, release, model, and
-journal. It does not enable `LIVE_ALLOWED`, initialize MT5, or submit an order.
+deny-only evidence boundary. It is broker-neutral at the source level, but the
+selected candidate MUST be independently eligible for the operating
+jurisdiction and every request binds one exact broker, demo account, live
+account, server pair, XAUUSD lane, release, model, and journal. For the current
+JP operating jurisdiction, the reviewed lane is `phillip-commodity`; XM stays
+diagnostic/paper-only. The boundary does not enable `LIVE_ALLOWED`, initialize
+MT5, or submit an order.
 
 ## Functional Requirements
 
@@ -384,7 +387,7 @@ and presenting it on restart; the module does not perform that I/O itself.
   milestone after this evidence boundary passes.
 - OS-3: Creating or fabricating soak, promotion, gate, approval, custody,
   broker, Windows, legal, or operational evidence.
-- OS-4: Accessing XM/MT5 credentials, opening a broker connection, sending
+- OS-4: Accessing broker/MT5 credentials, opening a broker connection, sending
   demo/live orders, or mutating Windows Task Scheduler/services.
 - OS-5: Pair expansion beyond XAUUSD, multiple live accounts, portfolio
   concurrency, lot/risk scaling, or automatic kill-switch reset.

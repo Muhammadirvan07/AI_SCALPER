@@ -44,7 +44,7 @@ external ship gate and unlock ceremony are complete.
 - OS-2: This change does not create a LIVE order action, permit, promotion,
   environment arm, journal lease, broker request, or submission path.
 - OS-3: This change does not provision Windows tasks, credentials, WORM/CAS,
-  TLS, broker accounts, provider conformance, or XM evidence.
+  TLS, broker accounts, provider conformance, or selected-broker evidence.
 - OS-4: This change does not bypass MT5 attestation, journal/risk/news/
   reconciliation custody, supervisor fencing, or kill-switch controls.
 - OS-5: This change does not change DEMO or DEMO_AUTO canonical configuration

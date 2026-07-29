@@ -70,13 +70,13 @@ Jalankan dari configured-release operator tooling hasil clean committed build:
 ```powershell
 $python = "C:\AI_SCALPER\.venv\Scripts\python.exe"
 $toolingRoot = "C:\AI_SCALPER_PRIVATE\configured-release-tooling-v1"
-$handoffRoot = "C:\AI_SCALPER_PRIVATE\xm-live-cas-handoff-v1"
+$handoffRoot = "C:\AI_SCALPER_PRIVATE\phillip-commodity-live-cas-handoff-v1"
 
 New-Item -ItemType Directory -Force $handoffRoot | Out-Null
 
 $proposal = "$handoffRoot\launch-proposal.json"
 $custodyPolicy = "$handoffRoot\portable-custody-policy.json"
-$requestZip = "$handoffRoot\live-canary-external-cas-request-xm-v1.zip"
+$requestZip = "$handoffRoot\live-canary-external-cas-request-phillip-commodity-v1.zip"
 
 $proposalSha = "<64-HEX-PROPOSAL>"
 $custodyPolicySha = "<64-HEX-CUSTODY-POLICY>"
@@ -125,7 +125,7 @@ operator menunggu atau menyalin berkas secara manual.
   --proposal $proposal `
   --custody-policy $custodyPolicy `
   @pinArgs `
-  --request-id xm-live-cas-reservation-v1 `
+  --request-id phillip-commodity-live-cas-reservation-v1 `
   --output $requestZip
 
 if ($LASTEXITCODE -ne 0) {
@@ -177,7 +177,7 @@ $checkpoint = "$handoffRoot\launch-checkpoint.json"
 $ack = "$handoffRoot\launch-acknowledgement.json"
 $headReadback = "$handoffRoot\head-readback.json"
 $nonceReadback = "$handoffRoot\nonce-readback-attestation.json"
-$assessment = "$handoffRoot\live-canary-external-cas-assessment-xm-v1.json"
+$assessment = "$handoffRoot\live-canary-external-cas-assessment-phillip-commodity-v1.json"
 $verifiedAt = "<TRUSTED-CANONICAL-UTC-WITH-6-DIGITS-Z>"
 $headReadbackSha = (
   Get-FileHash $headReadback -Algorithm SHA256

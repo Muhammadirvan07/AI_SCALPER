@@ -4,7 +4,8 @@
 **Date:** 2026-07-29
 **Status:** Approved for implementation
 **Reviewers:** senior architecture, security, ship-gate
-**Target:** Windows XM LIVE canary Execution service
+**Target:** Windows independently eligible selected-broker LIVE canary
+Execution service
 
 ## Context
 
@@ -214,8 +215,8 @@ Then automated checks pass without version-1 drift or a safety-lock change.
 Given all local acceptance criteria pass
 When project progress and ship-gate documents are updated
 Then they mark only this Windows materialization boundary complete and retain
-external XM evidence, provider implementation, central unlock, Windows
-acceptance, and first real canary as blockers.
+external selected-broker evidence, provider implementation, central unlock,
+Windows acceptance, and first real canary as blockers.
 
 ## Edge Cases
 
@@ -363,8 +364,8 @@ static reports always state no readiness and no broker mutation.
 - OS-4: Building the deterministic provider ZIP, configured candidate,
   installer, Task Scheduler definition, or Windows conformance evidence; those
   are subsequent release milestones built on this boundary.
-- OS-5: Starting the Execution service, importing/initializing MT5, reading
-  an XM account, consuming per-order authority, or placing a real or demo
+- OS-5: Starting the Execution service, importing/initializing MT5, reading a
+  broker account, consuming per-order authority, or placing a real or demo
   broker order.
 - OS-6: Claiming the project is production-ready, statistically promoted,
   legally approved, safe for unrestricted trading, or 100% complete.

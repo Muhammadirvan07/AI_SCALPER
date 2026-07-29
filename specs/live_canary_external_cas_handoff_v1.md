@@ -320,5 +320,5 @@ Errors use `LiveCanaryExternalCasHandoffError.reason_code` and CLI exit code
 - OS-5: MT5 initialization, reconciliation, permit issuance, order submission,
   modification, cancellation, lot expansion, or symbol expansion.
 - OS-6: Claiming external CAS atomicity, nonce consumption, provider custody,
-  XM readiness, or live-trading readiness without real signed provider
-  artifacts and the subsequent fresh runtime verification.
+  selected-broker readiness, or live-trading readiness without real signed
+  provider artifacts and the subsequent fresh runtime verification.

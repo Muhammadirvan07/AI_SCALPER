@@ -4,7 +4,8 @@
 **Date:** 2026-07-29
 **Status:** Approved for implementation
 **Reviewers:** senior architecture, security, ship-gate
-**Target:** Windows XM LIVE canary Execution provider overlay
+**Target:** Windows independently eligible selected-broker LIVE canary
+Execution provider overlay
 
 ## Context
 
@@ -203,7 +204,7 @@ And all safety fields remain unchanged.
 Given all local acceptance criteria pass
 When project status is updated
 Then only the deterministic LIVE provider-pack slice is marked locally
-complete, while configured candidate, external Windows/XM acceptance,
+complete, while configured candidate, external target-host/broker acceptance,
 central unlock, demo soak, and first broker canary remain blocked.
 
 ## Edge Cases
@@ -325,7 +326,8 @@ validate_windows_live_canary_execution_provider_pack.py
 - OS-4: Importing the generated provider, materializing a factory, starting a
   Windows task/service, initializing MT5, reading an account, or sending an
   order.
-- OS-5: Treating local tests or deterministic bytes as XM evidence, demo-auto
-  soak evidence, LIVE approval, broker acceptance, or production readiness.
+- OS-5: Treating local tests or deterministic bytes as selected-broker
+  evidence, demo-auto soak evidence, LIVE approval, broker acceptance, or
+  production readiness.
 - OS-6: Claiming the project is 100% complete or safe for unrestricted live
   trading.

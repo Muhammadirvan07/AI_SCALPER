@@ -67,10 +67,10 @@ Jalankan dari root configured-release operator tooling:
 ```powershell
 $suiteRoot = "C:\AI_SCALPER_RELEASES\<COMMIT>\base-release-suite-v1"
 $executionBase = "$suiteRoot\execution-base-v1.zip"
-$packRoot = "C:\AI_SCALPER_PRIVATE\xm-live-provider-pack-v1"
-$taskXml = "C:\AI_SCALPER_PRIVATE\xm-live-task\reviewed-task-definition.xml"
-$candidateInput = "C:\AI_SCALPER_PRIVATE\xm-live-task\configured-candidate-input.json"
-$candidateRoot = "C:\AI_SCALPER_PRIVATE\xm-live-execution-configured-v1"
+$packRoot = "C:\AI_SCALPER_PRIVATE\phillip-commodity-live-provider-pack-v1"
+$taskXml = "C:\AI_SCALPER_PRIVATE\phillip-commodity-live-task\reviewed-task-definition.xml"
+$candidateInput = "C:\AI_SCALPER_PRIVATE\phillip-commodity-live-task\configured-candidate-input.json"
+$candidateRoot = "C:\AI_SCALPER_PRIVATE\phillip-commodity-live-execution-configured-v1"
 
 python -I -S -B `
   .\assemble_windows_live_canary_execution_configured_candidate.py `
@@ -79,7 +79,7 @@ python -I -S -B `
   --provider-pack-root $packRoot `
   --task-definition $taskXml `
   --candidate-input $candidateInput `
-  --candidate-id xm-live-canary-window-01 `
+  --candidate-id phillip-commodity-live-canary-window-01 `
   --output-root $candidateRoot
 
 if ($LASTEXITCODE -ne 0) {

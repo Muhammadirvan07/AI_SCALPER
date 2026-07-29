@@ -55,8 +55,8 @@ dan suite yang sama:
 ```powershell
 $suiteRoot = "C:\AI_SCALPER_RELEASES\<COMMIT>\base-release-suite-v1"
 $executionBase = "$suiteRoot\execution-base-v1.zip"
-$packInput = "C:\AI_SCALPER_PRIVATE\xm-live-provider-pack-input.json"
-$packRoot = "C:\AI_SCALPER_PRIVATE\xm-live-provider-pack-v1"
+$packInput = "C:\AI_SCALPER_PRIVATE\phillip-commodity-live-provider-pack-input.json"
+$packRoot = "C:\AI_SCALPER_PRIVATE\phillip-commodity-live-provider-pack-v1"
 
 python -I -S -B .\prepare_windows_live_canary_execution_provider_pack.py `
   --base-suite-root $suiteRoot `
