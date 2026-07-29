@@ -37,6 +37,16 @@ from .live_canary_broker_eligibility import (
     LIVE_CANARY_BROKER_ELIGIBILITY_SCHEMA_VERSION,
     LiveCanaryBrokerEligibilityEvidence,
 )
+from .live_canary_gate_contracts import (
+    LiveCanaryActivationBindingError as _GateBindingError,
+    LiveCanaryActivationError as _GateActivationError,
+    LiveCanaryActivationIntegrityError as _GateIntegrityError,
+    LiveCanaryActivationReplayError as _GateReplayError,
+    LiveCanaryBinding as _GateBinding,
+    LiveCanaryGateReceipt as _GateReceipt,
+    LiveCanaryTrustPolicy as _GateTrustPolicy,
+    issue_live_canary_gate_receipt as _issue_gate_receipt,
+)
 from .promotion_evidence import (
     PromotionEvidenceReceipt,
     PromotionEvidenceValidation,
@@ -655,6 +665,21 @@ def issue_live_canary_gate_receipt(
         key_id=key_id,
         key_fingerprint_sha256=trusted[1],
     ).sign(material)
+
+
+# Compatibility re-exports keep the existing activation API stable while the
+# operator-only gate workflow imports the minimal contract module directly.
+# Definitions above remain temporarily local to preserve source archaeology;
+# every downstream activation class and function resolves these canonical
+# aliases at runtime.
+LiveCanaryActivationError = _GateActivationError
+LiveCanaryActivationBindingError = _GateBindingError
+LiveCanaryActivationIntegrityError = _GateIntegrityError
+LiveCanaryActivationReplayError = _GateReplayError
+LiveCanaryTrustPolicy = _GateTrustPolicy
+LiveCanaryBinding = _GateBinding
+LiveCanaryGateReceipt = _GateReceipt
+issue_live_canary_gate_receipt = _issue_gate_receipt
 
 
 @dataclass(frozen=True)

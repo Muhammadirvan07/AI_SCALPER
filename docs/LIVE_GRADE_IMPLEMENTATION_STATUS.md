@@ -2,9 +2,9 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-29 menjalankan **2.001 test** tanpa
+Validasi lokal terakhir pada 2026-07-29 menjalankan **2.037 test** tanpa
 kegagalan dalam mode normal dan optimized pada development Mac; tiga test
-platform-dependent dilewati pada mode normal dan tiga belas pada mode
+platform-dependent dilewati pada mode normal dan empat belas pada mode
 optimized.
 Baseline dashboard read-only yang sudah dilacak sebelumnya lulus 21 unit test
 frontend, 50 test backend, 14 browser E2E, lint, TypeScript, production build,
@@ -47,6 +47,17 @@ service/configured release. Hasil valid tetap memerlukan gate
 `LEGAL_COMPLIANCE`, external acceptance/custody, central unlock, dan per-order
 authorization. Exact LIVE server/account evidence serta dua approval manusia
 baru belum tersedia, sehingga ini belum mengizinkan atau memulai order.
+
+Operator gate-receipt V1 kini menutup jalur file yang sebelumnya hanya dapat
+dibentuk in-memory oleh test. Exact binding dan trust policy dapat dimuat
+secara canonical, delapan evidence file dipin berdasarkan byte SHA-256, dan
+`LEGAL_COMPLIANCE` wajib mengikat exact broker-eligibility evidence yang sudah
+diverifikasi. Sembilan receipt dapat ditandatangani dari key Credential Manager,
+diverifikasi ulang, lalu disusun menjadi satu set canonical create-exclusive.
+Kontrak gate minimal dipisahkan dari activation composition agar operator ZIP
+tidak menarik dependency runtime/MT5. Tooling hanya masuk shadow deployment
+operator release dan semua output tetap deny-only; sembilan review nyata,
+binding/policy approved, serta key terpisah belum tersedia pada Windows.
 
 Windows decision-provider pack v1 kini lengkap secara source lokal. Base
 decision release memiliki read-only exact Credential Manager lookup, signed

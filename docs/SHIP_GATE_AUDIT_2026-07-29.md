@@ -5,6 +5,7 @@
 ```text
 LOCAL_SOURCE_GATE = PASS
 LIVE_CANARY_BROKER_ELIGIBILITY_REVIEW = PASS_LOCALLY_DENY_ONLY
+LIVE_CANARY_GATE_RECEIPT_OPERATOR = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_ACTIVATION_EVIDENCE = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PROVIDER_BOUND_PREBOOTSTRAP = PASS_LOCALLY_DENY_ONLY
@@ -37,6 +38,9 @@ orders.
 
 Reviewed source:
 
+- deny-only nine-domain gate receipt contract/artifact workflow, four isolated
+  operator CLIs, shadow deployment-tooling allowlist integration, tests,
+  runbook, and `specs/live_canary_gate_receipt_operator_v1.md`;
 - deny-only LIVE-canary broker-eligibility contract/review module, its five
   isolated operator CLIs, Windows shadow-tooling allowlist integration, tests,
   and `specs/live_canary_broker_eligibility_review_v1.md`;
@@ -127,7 +131,7 @@ this boundary. Runtime or broker state was not accessed or mutated.
 |---|---|---|
 | Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; the deterministic WORM handoff packages provider-bound admission plus custody/provider policies under eight independent pins, while the external CAS handoff packages the exact proposal/policy under fifteen independent pins and verifies three domain-separated signatures plus byte-identical head readback. The Windows directory adapter now implements the exact synchronous callbacks with independent public-protocol parsing, stable reads, staged file sync, atomic no-replace final request visibility, two-second deadlines, terminal ambiguity, and no producer/private-key import. Stale staging is never overwritten and a watcher cannot observe partial final JSON. Handoff tools remain deny-only and never claim a runtime seal, storage inspection, runtime nonce consumption, or launch capability; provider-bound custody v2 still recreates the sealed runtime result, while launch-session v2 composes the unchanged signed v1 CAS path, clamps validity to the earliest provider/custody/capability expiry, and makes every production consumer reject legacy-only v1 sessions |
 | Database | PASS_LOCAL | Exact SQLite DDL/trigger inventory, WAL, FULL sync, integrity check, HMAC chain, unique replay and authorization-consumption fields, atomic `BEGIN IMMEDIATE`, path identity, and signed off-host checkpoint verification |
-| Code quality | PASS_LOCAL | Spec-first implementation, including the broker-eligibility workflow, provider-bound custody/launch v2, the minimal Execution consumer closure, exact atomic-suite closure revalidation, atomic Status Monitor request publication, provider-bound WORM/external CAS handoff, and the Windows synchronous directory adapter at 100/100, 2,021-test normal/optimized regression, Python compile success, dependency-lock validation, and no scoped changed-file whitespace errors |
+| Code quality | PASS_LOCAL | Spec-first implementation, including the minimal gate-receipt operator workflow, broker-eligibility workflow, provider-bound custody/launch v2, minimal Execution consumer closure, exact atomic-suite closure revalidation, atomic Status Monitor request publication, provider-bound WORM/external CAS handoff, and the Windows synchronous directory adapter at 100/100; 2,037-test normal/optimized regression, Python compile success, dependency-lock validation, and no scoped changed-file whitespace errors |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
 | Deployment | INCOMPLETE_EXTERNAL | Sealed legacy and provider-bound prebootstrap, provider-bound WORM custody/launch v2, deterministic WORM and external-CAS operator handoffs, the self-contained 56-file Execution base allowlist with a minimal v2 consumer contract plus synchronous directory-CAS client, per-order runtime chain, brokerless 49-port Windows LIVE materializer, deterministic four-file pack tooling, exact 15-file configured-candidate tooling, 17-member source-bound tooling, 68-record provider-conformance v4 tooling, and non-executable two-authority acceptance tooling exist locally. The checked-in central lock is false and no exact target-host pack/configured/source-bound/v4 candidate, independently operated CAS service/mount, real signed Windows responses, owner/runtime signatures and evidence files, real provider-bound result, WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, or backup/restore evidence has been accepted |
@@ -197,8 +201,10 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Atomic base-suite and Status Monitor publication specs | Both 100/100, no findings |
 | Focused atomic base-suite tests | 24 PASS normal; 24 PASS optimized |
 | Status Monitor/base-suite release cluster | 72 PASS normal; 72 PASS optimized |
-| Full Python regression | 2,021 tests OK, 3 platform skips |
-| Full Python optimized regression | 2,021 tests OK, 13 skips |
+| LIVE gate-receipt operator spec validator (`--strict`) | 100/100, no findings |
+| Focused gate-receipt artifact/CLI tests | 16 PASS normal; 16 PASS optimized with one intentional nested optimized-mode skip |
+| Full Python regression | 2,037 tests OK, 3 platform skips |
+| Full Python optimized regression | 2,037 tests OK, 14 skips |
 | Uncommitted dashboard audit | 16 unit tests, lint, production build, bundle budget, npm audit, and 24 desktop/mobile E2E PASS locally |
 | Static quality checks | Python compile, dependency lock, external-acceptance spec validation, and scoped `git diff --check` PASS; Ruff unavailable in the active environment |
 | Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` and `SAFE_TO_DEMO_AUTO_ORDER` remain false; focused tests use fake MT5 only; no credential, network, Windows task, real MT5 initialization, or broker effect occurred |

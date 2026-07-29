@@ -445,6 +445,15 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
         self.assertEqual(REQUIRED_SAFETY, payload["safety"])
         self.assertEqual(REQUIRED_USAGE_POLICY, payload["usage_policy"])
         paths = set(payload["files"])
+        gate_operator_paths = {
+            "assemble_live_canary_gate_receipt_set.py",
+            "live_runtime/live_canary_gate_cli_support.py",
+            "live_runtime/live_canary_gate_contracts.py",
+            "live_runtime/live_canary_gate_receipt_artifacts.py",
+            "sign_live_canary_gate_receipt.py",
+            "verify_live_canary_gate_receipt.py",
+            "verify_live_canary_gate_receipt_set.py",
+        }
         self.assertTrue(
             {
                 "assemble_live_canary_broker_eligibility_review.py",
@@ -456,6 +465,21 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
                 "live_runtime/live_canary_broker_eligibility_review.py",
             }.issubset(paths)
         )
+        self.assertTrue(gate_operator_paths.issubset(paths))
+        for relative in (
+            "config/windows_configured_release_tooling_allowlist.v1.json",
+            "config/windows_decision_service_allowlist.v1.json",
+            "config/windows_execution_service_allowlist.v1.json",
+            "config/windows_shadow_service_allowlist.v1.json",
+            "config/windows_status_monitor_allowlist.v1.json",
+        ):
+            with self.subTest(service_allowlist=relative):
+                service_payload = json.loads(
+                    (REPO_ROOT / relative).read_text(encoding="utf-8")
+                )
+                self.assertTrue(
+                    gate_operator_paths.isdisjoint(service_payload["files"])
+                )
         self.assertNotIn("live_runtime/executor.py", paths)
         self.assertNotIn("live_runtime/mt5_adapter.py", paths)
         self.assertFalse(any(path.startswith("data/") for path in paths))

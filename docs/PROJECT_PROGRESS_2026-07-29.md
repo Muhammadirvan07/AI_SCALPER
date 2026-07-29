@@ -18,6 +18,14 @@ independent LIVE-canary compliance and legal reviewers plus distinct keys, and
 produces the exact activation-compatible evidence for one explicit LIVE server
 and XAUUSD scope. That evidence remains deny-only; no LIVE server evidence or
 new human approvals have yet been supplied on Windows.
+The previously in-memory-only nine-domain gate receipt path is now an isolated
+Windows operator workflow. It strictly reconstructs the exact binding/policy,
+binds eight distinct reviewed source files by byte hash, binds
+`LEGAL_COMPLIANCE` to the re-verified broker-eligibility evidence, signs only
+through policy-pinned Credential Manager keys, and independently verifies one
+canonical nine-receipt set. The minimal gate contracts are separated from the
+activation dependency graph, so the operator bundle does not inherit MT5 or
+runtime execution modules. No real gate evidence or key ceremony was performed.
 The deterministic Windows Execution release now also contains a minimal,
 self-contained provider-bound v2 consumer contract and an isolated release
 probe. The authority class was extracted from operator-side activation without
@@ -58,6 +66,7 @@ being materialized, and no real broker order or broker mutation was performed.
 ```text
 LOCAL_SOURCE_GATE = PASS
 LIVE_CANARY_BROKER_ELIGIBILITY_REVIEW = PASS_LOCALLY_DENY_ONLY
+LIVE_CANARY_GATE_RECEIPT_OPERATOR = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_EVIDENCE_BOUNDARY = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PREBOOTSTRAP_ADMISSION = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PROVIDER_BOUND_PREBOOTSTRAP = PASS_LOCALLY_DENY_ONLY
@@ -93,6 +102,12 @@ LIVE_TRADING = DO_NOT_SHIP
   window. Diagnostic reviewers or keys cannot be reused. The tooling is
   included only in the Windows shadow operator bundle and cannot authorize an
   order or satisfy the separate `LEGAL_COMPLIANCE` activation gate by itself.
+- The gate-receipt operator workflow strictly loads exact canonical binding,
+  policy, and receipt artifacts; re-hashes eight unique non-legal evidence
+  files; derives the legal evidence hash only from fresh verified broker
+  eligibility; and requires exactly nine unique receipts, sources, keys, and
+  fingerprints. Writes are exclusive and fsync-backed, raw key CLI arguments
+  do not exist, and no service release receives this tooling.
 - `LiveCanaryBinding` fixes one exact broker, demo account, distinct live
   account/server, XAUUSD lane, 0.01 lot, one-position ceiling, build, model,
   release, journal, dependency, calendar, broker-spec, and champion lineage.
@@ -371,8 +386,10 @@ LIVE_TRADING = DO_NOT_SHIP
 | Atomic base-suite and Status Monitor publication specs | Both 100/100, Grade A; no findings |
 | Focused atomic base-suite tests | 24 PASS normal; 24 PASS optimized |
 | Status Monitor/base-suite release cluster | 72 PASS normal; 72 PASS optimized |
-| Full Python regression | 2,021 tests OK, 3 platform skips |
-| Full Python regression with `PYTHONOPTIMIZE=2` | 2,021 tests OK, 13 skips including optimized-only nested self-tests |
+| LIVE gate-receipt operator spec validator (`--strict`) | 100/100, no findings |
+| Focused gate-receipt artifact/CLI tests | 16 PASS normal; 16 PASS optimized with one intentional nested optimized-mode skip |
+| Full Python regression | 2,037 tests OK, 3 platform skips |
+| Full Python regression with `PYTHONOPTIMIZE=2` | 2,037 tests OK, 14 skips including optimized-only nested self-tests |
 | Uncommitted dashboard refactor audit | 16 unit PASS; lint, production build, bundle budget, and npm audit PASS; 24 desktop/mobile browser E2E PASS |
 | Python compile, dependency lock, JSON/spec validation, and scoped whitespace checks | PASS; Ruff unavailable in the active environment for this additive pass |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
