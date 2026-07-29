@@ -138,6 +138,9 @@ Panduan lengkap ada di
 `docs/WINDOWS_CONFIGURED_SERVICE_RELEASE.md`.
 Bundle yang sama juga membawa CLI generate/validate Decision, Execution, dan
 Status Monitor provider pack serta assemble/validate configured candidate.
+Ia juga membawa generator/validator LIVE provider pack dan assembler/validator
+LIVE configured candidate yang additive serta deny-only; tool tersebut tidak
+masuk ke service release mana pun.
 Seluruhnya deny-only dan tidak boleh dijalankan oleh production service
 account.
 

@@ -35,6 +35,9 @@ from .windows_base_release_suite import (
 
 MANIFEST_MEMBER = "RELEASE_MANIFEST.json"
 CONFIGURED_OVERLAY_SCHEMA = "windows-configured-service-overlay-v1"
+LIVE_CANARY_CONFIGURED_OVERLAY_SCHEMA = (
+    "windows-live-canary-configured-service-overlay-v1"
+)
 CONFIGURED_BINDING_SCHEMA = "windows-configured-service-release-binding-v1"
 VERIFICATION_REPORT_SCHEMA = "windows-configured-service-verification-v1"
 FACTORY_MANIFEST_SCHEMA = "windows-service-factory-manifest-v1"
@@ -247,6 +250,9 @@ _FACTORY_TEMPLATE_MEMBER_BY_PROFILE = {
         "live_runtime/windows_external_status_monitor_factory_template.py"
     ),
 }
+_LIVE_CANARY_EXECUTION_FACTORY_TEMPLATE_MEMBER = (
+    "live_runtime/windows_live_canary_execution_provider.py"
+)
 _CANDIDATE_FACTORY_PATH = "reviewed_windows_factory.py"
 _CANDIDATE_SERVICE_CONFIG_PATH = "config/windows_service_config.json"
 _CANDIDATE_FACTORY_MANIFEST_PATH = "config/windows_factory_manifest.json"
@@ -619,14 +625,15 @@ def _read_stable_file(
         raise
     except OSError as exc:
         raise ConfiguredReleaseError(code) from exc
-    identity = lambda item: (
-        int(item.st_dev),
-        int(item.st_ino),
-        int(item.st_mode),
-        int(item.st_size),
-        int(item.st_mtime_ns),
-        int(getattr(item, "st_file_attributes", 0)),
-    )
+    def identity(item: os.stat_result) -> tuple[int, ...]:
+        return (
+            int(item.st_dev),
+            int(item.st_ino),
+            int(item.st_mode),
+            int(item.st_size),
+            int(item.st_mtime_ns),
+            int(getattr(item, "st_file_attributes", 0)),
+        )
     if (
         len(data) > max_bytes
         or identity(before) != identity(opened_before)
@@ -839,7 +846,11 @@ def _load_base_release(
 def _validate_descriptor(payload: Mapping[str, object]) -> dict[str, Any]:
     if not isinstance(payload, Mapping) or set(payload) != _DESCRIPTOR_FIELDS:
         raise ConfiguredReleaseError("DESCRIPTOR_SCHEMA_INVALID")
-    if payload.get("schema_version") != CONFIGURED_OVERLAY_SCHEMA:
+    descriptor_schema = payload.get("schema_version")
+    if descriptor_schema not in {
+        CONFIGURED_OVERLAY_SCHEMA,
+        LIVE_CANARY_CONFIGURED_OVERLAY_SCHEMA,
+    }:
         raise ConfiguredReleaseError("DESCRIPTOR_SCHEMA_INVALID")
     profile = payload.get("base_release_profile")
     if not isinstance(profile, str) or profile not in _PROFILE_POLICY:
@@ -849,7 +860,13 @@ def _validate_descriptor(payload: Mapping[str, object]) -> dict[str, Any]:
         "DESCRIPTOR_BASE_IDENTITY_INVALID",
     )
     runtime_mode = payload.get("runtime_mode")
-    if runtime_mode not in {"DEMO", "DEMO_AUTO"}:
+    if descriptor_schema == CONFIGURED_OVERLAY_SCHEMA:
+        runtime_mode_valid = runtime_mode in {"DEMO", "DEMO_AUTO"}
+    else:
+        runtime_mode_valid = (
+            profile == EXECUTION_PROFILE and runtime_mode == "LIVE"
+        )
+    if not runtime_mode_valid:
         raise ConfiguredReleaseError("DESCRIPTOR_RUNTIME_MODE_INVALID")
     overlay_id = _require_id(payload.get("overlay_id"), "DESCRIPTOR_ID_INVALID")
     if payload.get("safety") != _DESCRIPTOR_SAFETY:
@@ -963,7 +980,6 @@ def _read_overlay(
         raise
     except OSError as exc:
         raise ConfiguredReleaseError("OVERLAY_ROOT_INVALID") from exc
-    expected = {item["path"]: item for item in descriptor["files"]}
     observed: dict[str, bytes] = {}
     observed_folded: set[str] = set()
     total = 0
@@ -1326,7 +1342,7 @@ def _remove_created_file(
         pass
 
 
-def prepare_configured_overlay_candidate(
+def _prepare_configured_overlay_candidate(
     *,
     base_archive: str | Path,
     overlay_root: str | Path,
@@ -1335,18 +1351,28 @@ def prepare_configured_overlay_candidate(
     bootstrap_binding_sha256: str,
     runtime_mode: str,
     descriptor_output_path: str | Path,
+    descriptor_schema: str,
 ) -> ConfiguredOverlayCandidatePreparation:
     """Prepare one static configured-overlay candidate without authority."""
 
     _base_bytes, base_manifest, base_sources = _load_base_release(base_archive)
     profile = str(base_manifest["release_profile"])
-    template_path = _FACTORY_TEMPLATE_MEMBER_BY_PROFILE.get(profile)
+    if descriptor_schema == CONFIGURED_OVERLAY_SCHEMA:
+        template_path = _FACTORY_TEMPLATE_MEMBER_BY_PROFILE.get(profile)
+        runtime_mode_valid = runtime_mode in {"DEMO", "DEMO_AUTO"}
+    elif descriptor_schema == LIVE_CANARY_CONFIGURED_OVERLAY_SCHEMA:
+        template_path = _LIVE_CANARY_EXECUTION_FACTORY_TEMPLATE_MEMBER
+        runtime_mode_valid = (
+            profile == EXECUTION_PROFILE and runtime_mode == "LIVE"
+        )
+    else:
+        raise ConfiguredReleaseError("DESCRIPTOR_SCHEMA_INVALID")
     if template_path is None or template_path not in base_sources:
         raise ConfiguredReleaseError("BASE_FACTORY_TEMPLATE_MISSING")
     template_sha256 = _sha256(base_sources[template_path])
 
     candidate_id = _require_id(overlay_id, "DESCRIPTOR_ID_INVALID")
-    if runtime_mode not in {"DEMO", "DEMO_AUTO"}:
+    if not runtime_mode_valid:
         raise ConfiguredReleaseError("DESCRIPTOR_RUNTIME_MODE_INVALID")
     bootstrap_sha256 = _require_nonzero_hash(
         bootstrap_binding_sha256,
@@ -1435,7 +1461,7 @@ def prepare_configured_overlay_candidate(
         "reviewed_factory_template_sha256": template_sha256,
         "runtime_mode": runtime_mode,
         "safety": dict(_DESCRIPTOR_SAFETY),
-        "schema_version": CONFIGURED_OVERLAY_SCHEMA,
+        "schema_version": descriptor_schema,
         "service_config_relative_path": _CANDIDATE_SERVICE_CONFIG_PATH,
         "task_definition_sha256": task_sha256,
     }
@@ -1509,6 +1535,53 @@ def prepare_configured_overlay_candidate(
         provider_source_relative_paths=tuple(provider_paths),
         file_count=len(final_overlay),
         _seal=_PREPARATION_SEAL,
+    )
+
+
+def prepare_configured_overlay_candidate(
+    *,
+    base_archive: str | Path,
+    overlay_root: str | Path,
+    task_definition_path: str | Path,
+    overlay_id: str,
+    bootstrap_binding_sha256: str,
+    runtime_mode: str,
+    descriptor_output_path: str | Path,
+) -> ConfiguredOverlayCandidatePreparation:
+    """Prepare one DEMO/DEMO_AUTO overlay with the legacy schema."""
+
+    return _prepare_configured_overlay_candidate(
+        base_archive=base_archive,
+        overlay_root=overlay_root,
+        task_definition_path=task_definition_path,
+        overlay_id=overlay_id,
+        bootstrap_binding_sha256=bootstrap_binding_sha256,
+        runtime_mode=runtime_mode,
+        descriptor_output_path=descriptor_output_path,
+        descriptor_schema=CONFIGURED_OVERLAY_SCHEMA,
+    )
+
+
+def prepare_live_canary_configured_overlay_candidate(
+    *,
+    base_archive: str | Path,
+    overlay_root: str | Path,
+    task_definition_path: str | Path,
+    overlay_id: str,
+    bootstrap_binding_sha256: str,
+    descriptor_output_path: str | Path,
+) -> ConfiguredOverlayCandidatePreparation:
+    """Prepare one LIVE-labelled overlay while preserving every lock."""
+
+    return _prepare_configured_overlay_candidate(
+        base_archive=base_archive,
+        overlay_root=overlay_root,
+        task_definition_path=task_definition_path,
+        overlay_id=overlay_id,
+        bootstrap_binding_sha256=bootstrap_binding_sha256,
+        runtime_mode="LIVE",
+        descriptor_output_path=descriptor_output_path,
+        descriptor_schema=LIVE_CANARY_CONFIGURED_OVERLAY_SCHEMA,
     )
 
 
@@ -2111,8 +2184,11 @@ def verify_configured_service_release(
 __all__ = [
     "CONFIGURED_BINDING_SCHEMA",
     "CONFIGURED_OVERLAY_SCHEMA",
+    "LIVE_CANARY_CONFIGURED_OVERLAY_SCHEMA",
     "ConfiguredReleaseError",
     "ConfiguredReleaseVerificationReport",
     "build_configured_service_release",
+    "prepare_configured_overlay_candidate",
+    "prepare_live_canary_configured_overlay_candidate",
     "verify_configured_service_release",
 ]

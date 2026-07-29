@@ -81,7 +81,8 @@ initialization, atau order authority.
 
 ## Langkah berikutnya
 
-1. Assemble satu suite-bound LIVE configured candidate dari pack exact ini.
+1. Assemble dan validasi satu suite-bound LIVE configured candidate mengikuti
+   `docs/WINDOWS_LIVE_CANARY_EXECUTION_CONFIGURED_CANDIDATE.md`.
 2. Validasi ulang candidate terhadap suite, Execution role, commit, tree, dan
    seluruh source inventory.
 3. Sediakan concrete Windows provider callbacks melalui review terpisah.

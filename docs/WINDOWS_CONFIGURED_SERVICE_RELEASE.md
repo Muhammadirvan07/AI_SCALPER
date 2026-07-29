@@ -277,6 +277,15 @@ Generated factory tetap berhenti dengan
 yang direview tersedia; configured candidate tidak mengubah policy atau order
 authority.
 
+Jalur LIVE canary tidak boleh memakai atau merelabel descriptor/template V1
+di atas. Gunakan additive LIVE-only flow pada
+[`WINDOWS_LIVE_CANARY_EXECUTION_PROVIDER_PACK.md`](WINDOWS_LIVE_CANARY_EXECUTION_PROVIDER_PACK.md)
+dan
+[`WINDOWS_LIVE_CANARY_EXECUTION_CONFIGURED_CANDIDATE.md`](WINDOWS_LIVE_CANARY_EXECUTION_CONFIGURED_CANDIDATE.md).
+Jalur tersebut menetapkan `runtime_mode=LIVE` tetapi tetap
+`order_capability=DISABLED`, `live_allowed=false`, dan membutuhkan external
+provider conformance serta seluruh gate berikutnya.
+
 Setelah runtime eksternal tersedia, gunakan
 `run_windows_gated_execution_service.py --materialize-only` sebagai boundary
 evidence pertama. Ia mewajibkan exact configured identity dan external RSA

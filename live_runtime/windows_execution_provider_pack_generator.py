@@ -157,6 +157,7 @@ def _live_contracts() -> tuple[ExternalProviderContract, ...]:
 
 
 _LIVE_CONTRACTS = _live_contracts()
+LIVE_EXECUTION_PROVIDER_CONTRACTS = _LIVE_CONTRACTS
 LIVE_EXECUTION_PROVIDER_ROLES = tuple(
     item.port_name for item in _LIVE_CONTRACTS
 )
@@ -164,6 +165,20 @@ LIVE_EXECUTION_CREDENTIAL_PURPOSES = tuple(
     item.credential_purpose
     for item in _LIVE_CONTRACTS
     if item.credential_purpose is not None
+)
+LIVE_EXECUTION_PROVIDER_CONTRACT_SET_SHA256 = canonical_sha256(
+    [
+        {
+            "call_contract": item.call_contract,
+            "contract_sha256": item.contract_sha256,
+            "credential_purpose": item.credential_purpose,
+            "port_name": item.port_name,
+            "provider_kind": item.provider_kind,
+            "required": item.required,
+            "schema_version": item.schema_version,
+        }
+        for item in _LIVE_CONTRACTS
+    ]
 )
 _LIVE_FORBIDDEN_PROVIDER_PORTS = frozenset(
     {
@@ -2513,6 +2528,8 @@ __all__ = [
     "FOUNDATION_PATHS",
     "GENERATED_PATHS",
     "LIVE_EXECUTION_CREDENTIAL_PURPOSES",
+    "LIVE_EXECUTION_PROVIDER_CONTRACT_SET_SHA256",
+    "LIVE_EXECUTION_PROVIDER_CONTRACTS",
     "LIVE_EXECUTION_PROVIDER_ROLES",
     "LIVE_FOUNDATION_PATHS",
     "LIVE_PACK_INPUT_SCHEMA",

@@ -121,6 +121,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
         required = {
             "assemble_windows_decision_configured_candidate.py",
             "assemble_windows_execution_configured_candidate.py",
+            "assemble_windows_live_canary_execution_configured_candidate.py",
             "assemble_windows_status_monitor_configured_candidate.py",
             "prepare_windows_decision_provider_pack.py",
             "prepare_windows_execution_provider_pack.py",
@@ -140,6 +141,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "live_runtime/windows_decision_provider_pack_generator.py",
             "live_runtime/windows_execution_configured_candidate.py",
             "live_runtime/windows_execution_provider_pack_generator.py",
+            "live_runtime/windows_live_canary_execution_configured_candidate.py",
             "live_runtime/windows_status_monitor_configured_candidate.py",
             "live_runtime/windows_status_monitor_provider_pack_generator.py",
             "live_runtime/windows_external_status_monitor_factory_template.py",
@@ -150,6 +152,7 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
             "validate_windows_decision_configured_candidate.py",
             "validate_windows_execution_provider_pack.py",
             "validate_windows_live_canary_execution_provider_pack.py",
+            "validate_windows_live_canary_execution_configured_candidate.py",
             "validate_windows_execution_configured_candidate.py",
             "validate_windows_status_monitor_configured_candidate.py",
             "validate_windows_status_monitor_provider_pack.py",
@@ -202,6 +205,10 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
                     "--provider-pack-root",
                 ),
                 (
+                    "assemble_windows_live_canary_execution_configured_candidate.py",
+                    "--provider-pack-root",
+                ),
+                (
                     "prepare_windows_execution_provider_pack.py",
                     "--pack-input",
                 ),
@@ -216,6 +223,10 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
                 (
                     "validate_windows_live_canary_execution_provider_pack.py",
                     "--pack-root",
+                ),
+                (
+                    "validate_windows_live_canary_execution_configured_candidate.py",
+                    "--candidate-root",
                 ),
                 (
                     "validate_windows_execution_configured_candidate.py",
@@ -296,12 +307,15 @@ class WindowsConfiguredReleaseToolingBuilderTests(unittest.TestCase):
         forbidden = {
             "assemble_windows_decision_configured_candidate.py",
             "assemble_windows_execution_configured_candidate.py",
+            "assemble_windows_live_canary_execution_configured_candidate.py",
             "assemble_windows_status_monitor_configured_candidate.py",
             "live_runtime/windows_decision_configured_candidate.py",
             "live_runtime/windows_execution_configured_candidate.py",
+            "live_runtime/windows_live_canary_execution_configured_candidate.py",
             "live_runtime/windows_status_monitor_configured_candidate.py",
             "validate_windows_decision_configured_candidate.py",
             "validate_windows_execution_configured_candidate.py",
+            "validate_windows_live_canary_execution_configured_candidate.py",
             "validate_windows_status_monitor_configured_candidate.py",
             "prepare_windows_execution_production_config_source.py",
             "verify_windows_execution_production_config_source.py",

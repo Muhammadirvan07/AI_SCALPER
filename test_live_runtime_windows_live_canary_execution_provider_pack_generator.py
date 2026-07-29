@@ -13,6 +13,7 @@ from build_windows_release import _canonical_json, _create_archive
 from live_runtime.windows_execution_provider_pack_generator import (
     GENERATED_PATHS,
     LIVE_EXECUTION_CREDENTIAL_PURPOSES,
+    LIVE_EXECUTION_PROVIDER_CONTRACT_SET_SHA256,
     LIVE_EXECUTION_PROVIDER_ROLES,
     LIVE_FOUNDATION_PATHS,
     ExecutionProviderPackError,
@@ -406,6 +407,10 @@ class WindowsLiveCanaryExecutionProviderPackGeneratorTests(
         )
         self.assertNotEqual(
             WINDOWS_FACTORY_PROVIDER_CONTRACT_SET_SHA256,
+            LIVE_WINDOWS_FACTORY_PROVIDER_CONTRACT_SET_SHA256,
+        )
+        self.assertEqual(
+            LIVE_EXECUTION_PROVIDER_CONTRACT_SET_SHA256,
             LIVE_WINDOWS_FACTORY_PROVIDER_CONTRACT_SET_SHA256,
         )
         self.assertEqual(

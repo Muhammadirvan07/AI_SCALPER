@@ -73,6 +73,7 @@ APPROVED_SOURCE_PATHS = frozenset(
     {
         "assemble_windows_decision_configured_candidate.py",
         "assemble_windows_execution_configured_candidate.py",
+        "assemble_windows_live_canary_execution_configured_candidate.py",
         "assemble_windows_status_monitor_configured_candidate.py",
         "build_windows_configured_service_release.py",
         "config/windows_configured_release_tooling_allowlist.v1.json",
@@ -92,6 +93,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "live_runtime/windows_decision_provider_pack_generator.py",
         "live_runtime/windows_execution_configured_candidate.py",
         "live_runtime/windows_execution_provider_pack_generator.py",
+        "live_runtime/windows_live_canary_execution_configured_candidate.py",
         "live_runtime/windows_status_monitor_configured_candidate.py",
         "live_runtime/windows_status_monitor_provider_pack_generator.py",
         "live_runtime/windows_provider_conformance_input.py",
@@ -111,6 +113,7 @@ APPROVED_SOURCE_PATHS = frozenset(
         "validate_windows_decision_provider_pack.py",
         "validate_windows_execution_provider_pack.py",
         "validate_windows_live_canary_execution_provider_pack.py",
+        "validate_windows_live_canary_execution_configured_candidate.py",
         "validate_windows_status_monitor_provider_pack.py",
         "validate_windows_decision_configured_candidate.py",
         "validate_windows_execution_configured_candidate.py",
@@ -152,6 +155,7 @@ ALLOWED_STDLIB_IMPORTS = frozenset(
         "tempfile",
         "typing",
         "unicodedata",
+        "xml",
         "zipfile",
     }
 )
@@ -172,6 +176,7 @@ ALLOWED_LOCAL_IMPORTS = frozenset(
         "live_runtime.windows_decision_provider_pack_generator",
         "live_runtime.windows_execution_configured_candidate",
         "live_runtime.windows_execution_provider_pack_generator",
+        "live_runtime.windows_live_canary_execution_configured_candidate",
         "live_runtime.windows_status_monitor_configured_candidate",
         "live_runtime.windows_status_monitor_provider_pack_generator",
         "live_runtime.windows_provider_conformance_input",
