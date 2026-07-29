@@ -96,6 +96,7 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
                 first_result["release_identity_sha256"],
                 second_result["release_identity_sha256"],
             )
+            self.assertIs(first_result["production_execution_ready"], False)
             with zipfile.ZipFile(first) as archive:
                 self.assertEqual(
                     {
@@ -108,6 +109,7 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
                 manifest = json.loads(archive.read(MANIFEST_MEMBER))
             self.assertEqual(REQUIRED_SAFETY, manifest["safety"])
             self.assertEqual(REQUIRED_USAGE_POLICY, manifest["usage_policy"])
+            self.assertIs(manifest["production_execution_ready"], False)
             self.assertEqual(
                 ["app.py", "config/windows_release_allowlist.v1.json"],
                 [item["path"] for item in manifest["source_files"]],

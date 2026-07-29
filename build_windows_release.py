@@ -816,6 +816,8 @@ def build_release(
             for path_text in sorted(source_bytes)
         ],
     }
+    if allowlist["schema_version"] == ALLOWLIST_SCHEMA:
+        manifest_without_identity["production_execution_ready"] = False
     release_identity = _sha256(_canonical_json(manifest_without_identity))
     manifest = {
         **manifest_without_identity,
@@ -847,7 +849,7 @@ def build_release(
         _remove_created_output(resolved_output, output_identity)
         _remove_created_output(sidecar, sidecar_identity)
         raise
-    return {
+    result = {
         "archive": str(resolved_output),
         "archive_sha256": _sha256(archive_bytes),
         "manifest": str(sidecar),
@@ -856,6 +858,9 @@ def build_release(
         "bundle_class": allowlist["usage_policy"]["bundle_class"],
         "execution_context": allowlist["usage_policy"]["execution_context"],
     }
+    if allowlist["schema_version"] == ALLOWLIST_SCHEMA:
+        result["production_execution_ready"] = False
+    return result
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -896,6 +901,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Files: {result['file_count']}")
     print(f"Bundle class: {result['bundle_class']}")
     print(f"Execution context: {result['execution_context']}")
+    print("Production execution ready: false")
     print("Order capability: DISABLED")
     return 0
 

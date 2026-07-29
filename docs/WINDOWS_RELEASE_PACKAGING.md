@@ -183,8 +183,9 @@ Builder menolak release bila:
 
 ZIP dan `RELEASE_MANIFEST.json` dibuat deterministik. Manifest mengikat exact
 Git commit/tree, hash raw allowlist, hash dan ukuran setiap source file, safety
-policy, serta `release_identity_sha256`. Manifest sidecar sama persis dengan
-manifest di dalam ZIP.
+policy, serta `release_identity_sha256`. Profile deployment/tooling juga
+mencatat explicit `production_execution_ready=false`. Manifest sidecar sama
+persis dengan manifest di dalam ZIP.
 
 Source yang masuk ke ZIP dibaca dari immutable Git blob pada exact release
 commit, bukan dari byte worktree. Ini mempertahankan identitas yang sama pada
