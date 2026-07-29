@@ -1243,6 +1243,32 @@ def aggregate_demo_auto_soak_cohort(
     )
 
 
+# Compatibility aliases make the execution-capable aggregator and the minimal
+# operator verifier share one exact canonical type identity.  Function globals
+# are resolved at call time, so aggregation also emits these contract types.
+from . import demo_auto_soak_cohort_contracts as _cohort_contracts
+
+COHORT_BINDING_SCHEMA_VERSION = _cohort_contracts.COHORT_BINDING_SCHEMA_VERSION
+COHORT_RECEIPT_SCHEMA_VERSION = _cohort_contracts.COHORT_RECEIPT_SCHEMA_VERSION
+MAX_CURRENT_RECEIPT_AGE = _cohort_contracts.MAX_CURRENT_RECEIPT_AGE
+_COHORT_RECEIPT_SEAL = _cohort_contracts._COHORT_RECEIPT_SEAL
+DemoAutoSoakCohortError = _cohort_contracts.DemoAutoSoakCohortError
+DemoAutoSoakCohortBindingError = _cohort_contracts.DemoAutoSoakCohortBindingError
+DemoAutoSoakCohortIntegrityError = _cohort_contracts.DemoAutoSoakCohortIntegrityError
+DemoAutoSoakCohortReplayError = _cohort_contracts.DemoAutoSoakCohortReplayError
+DemoAutoSoakCohortMemberBinding = (
+    _cohort_contracts.DemoAutoSoakCohortMemberBinding
+)
+DemoAutoSoakCohortBinding = _cohort_contracts.DemoAutoSoakCohortBinding
+DemoAutoSoakCohortMemberSnapshot = (
+    _cohort_contracts.DemoAutoSoakCohortMemberSnapshot
+)
+DemoAutoSoakCohortReceipt = _cohort_contracts.DemoAutoSoakCohortReceipt
+verify_demo_auto_soak_cohort_receipt = (
+    _cohort_contracts.verify_demo_auto_soak_cohort_receipt
+)
+
+
 __all__ = [
     "COHORT_BINDING_SCHEMA_VERSION",
     "COHORT_RECEIPT_SCHEMA_VERSION",

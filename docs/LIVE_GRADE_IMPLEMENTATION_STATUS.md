@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-29 menjalankan **2.037 test** tanpa
+Validasi penuh terbaru pada 2026-07-30 menjalankan **2.058 test** tanpa
 kegagalan dalam mode normal dan optimized pada development Mac; tiga test
 platform-dependent dilewati pada mode normal dan empat belas pada mode
 optimized.
@@ -16,8 +16,8 @@ software regression evidence pada Mac, bukan Windows host acceptance,
 broker-forward evidence, atau izin trading.
 
 Audit aktif dan baseline release-candidate dicatat di
-[SHIP_GATE_AUDIT_2026-07-29.md](SHIP_GATE_AUDIT_2026-07-29.md) serta
-[PROJECT_PROGRESS_2026-07-29.md](PROJECT_PROGRESS_2026-07-29.md). Audit
+[SHIP_GATE_AUDIT_2026-07-30.md](SHIP_GATE_AUDIT_2026-07-30.md) serta
+[PROJECT_PROGRESS_2026-07-30.md](PROJECT_PROGRESS_2026-07-30.md). Audit
 historis tetap immutable sebagai catatan keputusan pada tanggalnya.
 
 Dependency lock/install manifest/SBOM lokal juga tervalidasi dan
@@ -58,6 +58,15 @@ Kontrak gate minimal dipisahkan dari activation composition agar operator ZIP
 tidak menarik dependency runtime/MT5. Tooling hanya masuk shadow deployment
 operator release dan semua output tetap deny-only; sembilan review nyata,
 binding/policy approved, serta key terpisah belum tersedia pada Windows.
+
+Workflow deny-only LIVE-canary activation V1 kini juga tersedia di source
+operator. Enam CLI membuat dan memverifikasi request, tiga approval manusia,
+serta deployment authorization canonical setelah seluruh gate/evidence
+direvalidasi. Workflow ini tidak mengonsumsi replay, tidak mengubah central
+unlock, tidak membuka MT5, dan tidak mengirim order. Runbook operator ada di
+[LIVE_CANARY_ACTIVATION_OPERATOR.md](LIVE_CANARY_ACTIVATION_OPERATOR.md).
+Artefak autentik, exact policy-pinned key, tiga reviewer independen, dan
+seluruh external acceptance masih belum tersedia; status tetap DO NOT SHIP.
 
 Windows decision-provider pack v1 kini lengkap secara source lokal. Base
 decision release memiliki read-only exact Credential Manager lookup, signed

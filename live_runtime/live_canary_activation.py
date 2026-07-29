@@ -27,7 +27,7 @@ from .contracts import (
     require_text,
     require_utc,
 )
-from .demo_auto_soak_cohort import (
+from .demo_auto_soak_cohort_contracts import (
     DemoAutoSoakCohortBinding,
     DemoAutoSoakCohortReceipt,
     verify_demo_auto_soak_cohort_receipt,

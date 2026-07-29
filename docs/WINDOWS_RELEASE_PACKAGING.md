@@ -63,6 +63,13 @@ Tooling review regulatory (`setup_regulatory_review_key.py`,
 operator; ia tidak masuk minimal shadow service. Reviewer key tetap berada di
 Windows Credential Manager dan semua output review mempertahankan registration
 serta order capability disabled.
+Bundle operator juga membawa workflow deny-only LIVE-canary activation V1:
+request, tiga approval manusia, dan deployment authorization dapat dibuat lalu
+diverifikasi secara canonical dari exact gate/evidence yang sudah diterima.
+Tooling ini tidak mengonsumsi replay, tidak mengubah central unlock, tidak
+membuka MT5, dan tidak mengirim order. Ia tidak masuk Decision, Execution,
+Shadow, Status Monitor, maupun configured service release. Runbook lengkap ada
+di `docs/LIVE_CANARY_ACTIVATION_OPERATOR.md`.
 `run_manual_demo_readiness.py` juga hanya berada di bundle operator. Ia membaca
 tracked candidate/profile/readiness policy dan menghasilkan daftar blocker
 non-mutating. Modul/command ini sengaja tidak masuk allowlist minimal shadow

@@ -454,6 +454,17 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
             "verify_live_canary_gate_receipt.py",
             "verify_live_canary_gate_receipt_set.py",
         }
+        activation_operator_paths = {
+            "assemble_live_canary_activation_authorization.py",
+            "assemble_live_canary_activation_request.py",
+            "live_runtime/live_canary_activation.py",
+            "live_runtime/live_canary_activation_artifacts.py",
+            "live_runtime/live_canary_activation_cli_support.py",
+            "sign_live_canary_human_approval.py",
+            "verify_live_canary_activation_authorization.py",
+            "verify_live_canary_activation_request.py",
+            "verify_live_canary_human_approval.py",
+        }
         self.assertTrue(
             {
                 "assemble_live_canary_broker_eligibility_review.py",
@@ -466,6 +477,8 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
             }.issubset(paths)
         )
         self.assertTrue(gate_operator_paths.issubset(paths))
+        self.assertTrue(activation_operator_paths.issubset(paths))
+        self.assertIn("live_runtime/demo_auto_soak_cohort_contracts.py", paths)
         for relative in (
             "config/windows_configured_release_tooling_allowlist.v1.json",
             "config/windows_decision_service_allowlist.v1.json",
@@ -479,6 +492,9 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
                 )
                 self.assertTrue(
                     gate_operator_paths.isdisjoint(service_payload["files"])
+                )
+                self.assertTrue(
+                    activation_operator_paths.isdisjoint(service_payload["files"])
                 )
         self.assertNotIn("live_runtime/executor.py", paths)
         self.assertNotIn("live_runtime/mt5_adapter.py", paths)
