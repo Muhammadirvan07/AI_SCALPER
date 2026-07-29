@@ -13,6 +13,7 @@ LIVE_CANARY_PROVIDER_BOUND_CUSTODY_V2 = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PROVIDER_BOUND_LAUNCH_SESSION_V2 = PASS_LOCALLY_CENTRAL_LOCKED
 WINDOWS_EXECUTION_PROVIDER_BOUND_V2_CONSUMER = PASS_LOCALLY_LOCKED
 LIVE_CANARY_PROVIDER_BOUND_WORM_HANDOFF = PASS_LOCALLY_DENY_ONLY
+LIVE_CANARY_EXTERNAL_CAS_HANDOFF = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_PER_ORDER_GATED
 LIVE_CANARY_PER_ORDER_EXECUTION = PASS_LOCALLY_FAKE_MT5_ONE_SEND
 WINDOWS_LIVE_PROVIDER_MATERIALIZATION = PASS_LOCALLY_BROKERLESS_LOCKED
@@ -55,6 +56,9 @@ Reviewed source:
 - deterministic provider-bound WORM request/receipt-assessment module,
   isolated operator CLI, configured-tooling allowlist integration, tests, and
   `specs/live_canary_provider_bound_worm_handoff_v1.md`;
+- deterministic external CAS request/response-assessment module, isolated
+  operator CLI, configured-tooling allowlist integration, tests, and
+  `specs/live_canary_external_cas_handoff_v1.md`;
 - `live_runtime/live_canary_provider_bound_runtime_launch_session.py`;
 - minimal Execution consumer contract in
   `live_runtime/live_canary_provider_bound_runtime_session.py`, its authority
@@ -107,12 +111,12 @@ this boundary. Runtime or broker state was not accessed or mutated.
 
 | Category | Status | Evidence |
 |---|---|---|
-| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; the deterministic handoff packages provider-bound admission plus custody/provider policies under eight independent pins and verifies only the existing domain-signed receipt plus byte-identical exported WORM readback; it rejects provider/custody authority reuse and never claims a runtime seal or storage inspection; provider-bound custody v2 still recreates the sealed runtime result, while launch-session v2 composes the unchanged signed v1 CAS path, clamps validity to the earliest provider/custody/capability expiry, and makes every production consumer reject legacy-only v1 sessions |
+| Security | PASS_LOCAL / EXTERNAL_PENDING | All promotion, gate, human, deployment, replay, and checkpoint keys are independently policy-pinned; the deterministic WORM handoff packages provider-bound admission plus custody/provider policies under eight independent pins, while the external CAS handoff packages the exact proposal/policy under fifteen independent pins and verifies three domain-separated signatures plus byte-identical head readback; both remain deny-only and never claim a runtime seal, storage inspection, synchronous CAS callback, or nonce consumption; provider-bound custody v2 still recreates the sealed runtime result, while launch-session v2 composes the unchanged signed v1 CAS path, clamps validity to the earliest provider/custody/capability expiry, and makes every production consumer reject legacy-only v1 sessions |
 | Database | PASS_LOCAL | Exact SQLite DDL/trigger inventory, WAL, FULL sync, integrity check, HMAC chain, unique replay and authorization-consumption fields, atomic `BEGIN IMMEDIATE`, path identity, and signed off-host checkpoint verification |
-| Code quality | PASS_LOCAL | Spec-first implementation, including provider-bound custody/launch v2, the minimal Execution consumer closure, and provider-bound WORM handoff at 100/100, 1,967-test normal/optimized regression, Python compile success, dependency-lock validation, and no scoped changed-file whitespace errors; Ruff was unavailable in the active development environment for this additive pass |
+| Code quality | PASS_LOCAL | Spec-first implementation, including provider-bound custody/launch v2, the minimal Execution consumer closure, and provider-bound WORM plus external CAS handoff at 100/100, 1,977-test normal/optimized regression, Python compile success, dependency-lock validation, and no scoped changed-file whitespace errors; Ruff was unavailable in the active development environment for this additive pass |
 | Dependencies | NOT_CHANGED | No dependency manifest or lock was changed; exact Windows dependency acceptance remains a separate gate |
 | AI/model lineage | PASS_LOCAL / REAL_EVIDENCE_PENDING | Exact model and five champion pins are bound through LIVE promotion evidence; synthetic tests are not promotion evidence |
-| Deployment | INCOMPLETE_EXTERNAL | Sealed legacy and provider-bound prebootstrap, provider-bound WORM custody/launch v2, the self-contained 55-file Execution base allowlist with a minimal v2 consumer contract, per-order runtime chain, brokerless 49-port Windows LIVE materializer, deterministic four-file pack tooling, exact 15-file configured-candidate tooling, 17-member source-bound tooling, 68-record provider-conformance v4 tooling, and non-executable two-authority acceptance tooling exist locally, but the checked-in central lock is false and no exact target-host pack/configured/source-bound/v4 candidate, actual Windows callbacks, real owner/runtime signatures and evidence files, real provider-bound result, WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, or backup/restore evidence has been accepted |
+| Deployment | INCOMPLETE_EXTERNAL | Sealed legacy and provider-bound prebootstrap, provider-bound WORM custody/launch v2, deterministic WORM and external-CAS operator handoffs, the self-contained 55-file Execution base allowlist with a minimal v2 consumer contract, per-order runtime chain, brokerless 49-port Windows LIVE materializer, deterministic four-file pack tooling, exact 15-file configured-candidate tooling, 17-member source-bound tooling, 68-record provider-conformance v4 tooling, and non-executable two-authority acceptance tooling exist locally, but the checked-in central lock is false and no exact target-host pack/configured/source-bound/v4 candidate, actual Windows callbacks, real owner/runtime signatures and evidence files, real provider-bound result, WORM/CAS receipts, task/service assembly, ACLs, TLS/auth where applicable, rollback, or backup/restore evidence has been accepted |
 | Frontend | OUTSIDE_CHANGE_SCOPE / WINDOWS_PENDING | No frontend source was changed by this milestone. The uncommitted granular pair passes 16 unit tests, lint, production build, bundle budget, npm audit with zero vulnerabilities, and 24 desktop/mobile E2E locally. Windows still lacks verified Node.js 24 LTS and an accepted matching frontend/backend launch |
 | Observability | PASS_BOUNDARY / EXTERNAL_PENDING | Canonical reason codes, pre-dispatch records, execution result bindings, and replay checkpoints exist; external uptime/alert/custody and first real canary evidence are not present |
 
@@ -156,7 +160,9 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Focused consumer closure/Execution/launch integration | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Provider-bound WORM handoff spec validator (`--strict`) | 100/100; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused provider-bound WORM handoff suite | 8 PASS, including normal and optimized isolated CLI verification |
-| Configured-release tooling builder with WORM handoff | 11 PASS |
+| External CAS handoff spec validator (`--strict`) | 100/100; 0 errors, warnings, or informational findings |
+| Focused external CAS handoff suite | 10 PASS normal; 10 PASS optimized, including isolated request/response CLI verification |
+| Configured-release tooling builder with WORM/CAS handoff | 11 PASS |
 | Cross-artifact service/tooling separation regression | 274 PASS |
 | Provider-bound launch/downstream regression | 165 PASS normal; 165 PASS optimized with seven intentional skips |
 | Provider-conformance v1-v4 compatibility cluster | 60 PASS normal; 60 PASS optimized |
@@ -168,8 +174,8 @@ this boundary. Runtime or broker state was not accessed or mutated.
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage regression | 81 PASS in both normal and optimized modes |
-| Full Python regression | 1,967 tests OK, 3 platform skips |
-| Full Python optimized regression | 1,967 tests OK, 12 skips |
+| Full Python regression | 1,977 tests OK, 3 platform skips |
+| Full Python optimized regression | 1,977 tests OK, 12 skips |
 | Uncommitted dashboard audit | 16 unit tests, lint, production build, bundle budget, npm audit, and 24 desktop/mobile E2E PASS locally |
 | Static quality checks | Python compile, dependency lock, external-acceptance spec validation, and scoped `git diff --check` PASS; Ruff unavailable in the active environment |
 | Static no-effect assertion | central `execution_policy.LIVE_ALLOWED` and `SAFE_TO_DEMO_AUTO_ORDER` remain false; focused tests use fake MT5 only; no credential, network, Windows task, real MT5 initialization, or broker effect occurred |
@@ -299,6 +305,13 @@ changed-source findings.
     an allowlist-only extracted root. All operator-only modules remain outside
     every service allowlist, and the release manifest binds the critical
     six-file consumer closure while keeping readiness false.
+20. The existing atomic checkpoint/nonce runtime protocol had no deterministic
+    provider-neutral operator format. The new external CAS handoff binds the
+    exact proposal and custody policy to fifteen independent pins, reconstructs
+    an exact three-member request, and verifies three separately authenticated
+    response claims plus byte-identical head readback. It deliberately cannot
+    execute the runtime callback, consume a nonce locally, mint a sealed
+    capability, or replace the required synchronous external provider adapter.
 
 ## Blocking facts
 
@@ -312,6 +325,12 @@ changed-source findings.
   accepted. The offline assessment intentionally emits no runtime custody
   seal; local files, callbacks, and synthetic RSA fixtures are not external
   custody evidence.
+- The deterministic external CAS request/response review format is implemented
+  locally, but no production CAS provider, credentials, synchronous callback
+  adapter, independently retained predecessor, or real signed checkpoint,
+  acknowledgement, head readback, and nonce attestation has been accepted.
+  The proposal window is at most 60 seconds, so manual file transfer cannot
+  satisfy the authoritative runtime protocol.
 - The brokerless Windows LIVE materialization primitive, deterministic
   provider-pack tooling, suite-bound configured-candidate tooling, and
   ten-pin source-bound plus v4 conformance tooling exist locally, but no exact

@@ -2,7 +2,7 @@
 
 Status: **FOUNDATION IMPLEMENTED / DO NOT SHIP / NOT_READY**
 
-Validasi lokal terakhir pada 2026-07-29 menjalankan **1.967 test** tanpa
+Validasi lokal terakhir pada 2026-07-29 menjalankan **1.977 test** tanpa
 kegagalan dalam mode normal dan optimized pada development Mac; tiga test
 platform-dependent dilewati pada mode normal dan dua belas pada mode
 optimized.
@@ -58,6 +58,18 @@ offline dan deny-only: tidak ada storage API inspection, runtime seal, CAS,
 nonce, central unlock, process, MT5, atau broker effect. WORM upload/readback
 aktual dan signed external CAS/checkpoint/nonce masih wajib sebelum
 launch-session v2 dapat dibentuk pada runtime.
+
+External CAS handoff v1 kini juga lengkap secara source lokal dan masuk ke
+configured-release operator tooling. Request ZIP tiga member mengikat exact
+canonical launch proposal serta public custody policy ke lima belas pin
+independen. Response verifier menerima hanya signed checkpoint, separately
+signed acknowledgement, byte-identical head readback, dan signed nonce
+readback pada domain ketiga. Assessment tetap evidence-only: runtime callback
+belum dijalankan, nonce tidak dikonsumsi oleh tool, module-sealed capability
+tidak dibuat, dan central unlock/process/MT5/broker tetap tidak dilakukan.
+Karena proposal berlaku maksimal 60 detik, actual integration harus memakai
+adapter provider sinkron yang direview; workflow manual atau file lokal tidak
+dapat menggantikan atomic external CAS.
 
 Decision configured-candidate assembler v1 juga lengkap secara source lokal.
 Ia menjaga original four-file pack immutable, membuat working overlay
@@ -276,10 +288,11 @@ hanya memperkuat artifact custody dan tidak mengubah `order_capability`,
 | 7. Pair expansion | Not started | EURUSD, USDJPY, dan AUDUSD harus mengulang seluruh gate per lane; hasil lane lain tidak boleh menutup kegagalan sebuah pair. |
 | 8. Scaling | Out of v1 | Tidak ada auto-scaling lot maupun risk cap. |
 
-Catatan roadmap tahap 6: deterministic provider-bound WORM handoff sekarang
-termasuk dalam foundation lokal. Ia belum mengubah status canary karena WORM
-upload/readback, runtime-sealed custody, CAS/checkpoint/nonce, dan external
-acceptance aktual tetap belum tersedia.
+Catatan roadmap tahap 6: deterministic provider-bound WORM dan external CAS
+handoff sekarang termasuk dalam foundation lokal. Keduanya belum mengubah
+status canary karena WORM upload/readback, runtime-sealed custody, synchronous
+CAS callback, signed checkpoint/acknowledgement/head/nonce readback, dan
+external acceptance aktual tetap belum tersedia.
 
 ## Kontrol yang sudah diimplementasikan lokal
 

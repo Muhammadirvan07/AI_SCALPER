@@ -95,7 +95,10 @@ initialization, atau order authority.
    Gunakan handoff deny-only di
    `docs/LIVE_CANARY_PROVIDER_BOUND_WORM_HANDOFF.md` setelah exact
    provider-bound admission tersedia; assessment offline itu belum merupakan
-   runtime custody seal atau CAS authority.
+   runtime custody seal atau CAS authority. Gunakan kontrak lanjutannya di
+   `docs/LIVE_CANARY_EXTERNAL_CAS_HANDOFF.md` untuk exact proposal dan exported
+   signed response; assessment tersebut juga tidak menggantikan synchronous
+   runtime callback atau module-sealed launch capability.
 6. Pertahankan central `LIVE_ALLOWED=false` sampai seluruh ship gate diterima.
 
 Tidak ada langkah pada runbook ini yang mengirim order.

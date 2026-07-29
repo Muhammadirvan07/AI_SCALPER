@@ -25,6 +25,12 @@ existing RSA receipt plus exported byte-identical readback into a canonical
 deny-only assessment. It performs no storage API call and deliberately emits
 no runtime custody seal, CAS reservation, nonce, launch, central unlock, or
 broker authority.
+A deterministic external CAS handoff now packages the exact launch proposal
+and public custody policy under fifteen independent pins. It verifies exported
+checkpoint, acknowledgement, head, and nonce claims under three distinct
+signature domains, but remains deny-only; the authoritative runtime still
+requires a reviewed synchronous provider adapter inside the 60-second proposal
+window.
 The activation, launch, Windows provider composition,
 supervisor, execution coordinator, durable journal lease, runtime
 authorization, and final MT5 adapter chain are implemented and verified
@@ -43,6 +49,7 @@ LIVE_CANARY_PROVIDER_BOUND_CUSTODY_V2 = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PROVIDER_BOUND_LAUNCH_SESSION_V2 = PASS_LOCALLY_CENTRAL_LOCKED
 WINDOWS_EXECUTION_PROVIDER_BOUND_V2_CONSUMER = PASS_LOCALLY_LOCKED
 LIVE_CANARY_PROVIDER_BOUND_WORM_HANDOFF = PASS_LOCALLY_DENY_ONLY
+LIVE_CANARY_EXTERNAL_CAS_HANDOFF = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_PER_ORDER_GATED
 LIVE_CANARY_PER_ORDER_EXECUTION = PASS_LOCALLY_FAKE_MT5_ONE_SEND
 WINDOWS_LIVE_PROVIDER_MATERIALIZATION = PASS_LOCALLY_BROKERLESS_LOCKED
@@ -244,6 +251,16 @@ LIVE_TRADING = DO_NOT_SHIP
   pinned byte-identical exported readback. It explicitly reports that direct
   storage inspection, runtime custody sealing, CAS, nonce consumption, central
   unlock, process launch, MT5, and broker mutation were not performed.
+- External CAS handoff v1 now packages the exact canonical launch proposal and
+  public custody policy into a deterministic three-member request under
+  fifteen independent predecessor/nonce/candidate/admission/release/host/task
+  pins. Its offline response verifier requires the existing separately signed
+  checkpoint and acknowledgement, byte-identical head readback, plus a third
+  domain-separated signed nonce-readback attestation. A successful assessment
+  accepts only those external claims; it explicitly emits no runtime CAS
+  callback result, nonce consumption, verifier seal, launch capability,
+  central unlock, process, MT5, or broker authority. The short proposal window
+  still requires a separately reviewed synchronous provider adapter.
 - The source implementation is complete locally through provider-bound
   custody and launch composition, but no target-host pack,
   configured candidate, LIVE source-bound archive, or v4 conformance packet
@@ -290,7 +307,9 @@ LIVE_TRADING = DO_NOT_SHIP
 | Focused consumer closure/Execution/launch integration | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Provider-bound WORM handoff spec | 100/100, Grade A; 0 errors/warnings and one informational TypeScript-N/A note |
 | Focused provider-bound WORM handoff suite | 8 PASS normal, including isolated normal/optimized CLI request and receipt verification |
-| Configured-release tooling builder after WORM handoff inclusion | 11 PASS; extracted CLI bootstraps under `python -I -S -B` |
+| External CAS handoff spec | 100/100, Grade A; 0 errors, warnings, or informational findings |
+| Focused external CAS handoff suite | 10 PASS normal; 10 PASS optimized, including isolated request/response CLI verification |
+| Configured-release tooling builder after WORM/CAS handoff inclusion | 11 PASS; extracted CLIs bootstrap under `python -I -S -B` |
 | Cross-artifact service/tooling separation regression | 274 PASS |
 | Provider-bound launch/downstream regression | 165 PASS normal; 165 PASS optimized with seven intentional skips |
 | LIVE source-bound/tooling regression cluster | 39 PASS normal; 39 PASS optimized |
@@ -301,8 +320,8 @@ LIVE_TRADING = DO_NOT_SHIP
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,967 tests OK, 3 platform skips |
-| Full Python regression with `-O` | 1,967 tests OK, 12 skips including optimized-only nested self-tests |
+| Full Python regression | 1,977 tests OK, 3 platform skips |
+| Full Python regression with `-O` | 1,977 tests OK, 12 skips including optimized-only nested self-tests |
 | Uncommitted dashboard refactor audit | 16 unit PASS; lint, production build, bundle budget, and npm audit PASS; 24 desktop/mobile browser E2E PASS |
 | Python compile, dependency lock, JSON/spec validation, and scoped whitespace checks | PASS; Ruff unavailable in the active environment for this additive pass |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
@@ -345,13 +364,17 @@ uptime monitoring remain external work.
    consumer probe before assembling downstream candidates. Local tests use
    synthetic values only.
 7. Build the configured operator-tooling ZIP containing
-   `manage_live_canary_provider_bound_worm_handoff.py`, prepare and
+   `manage_live_canary_provider_bound_worm_handoff.py` and
+   `manage_live_canary_external_cas_handoff.py`, prepare and
    independently verify its exact four-member request, then provision the real
    independent WORM upload/readback. Verify the external RSA receipt with the
    exported byte-identical readback; this offline assessment remains unsealed
-   and deny-only. Separately provision atomic CAS/nonce custody, retain the
-   predecessor pin through an independent channel, and collect the canonical
-   RSA receipts the runtime boundary expects. From an exact committed
+   and deny-only. Separately provision atomic CAS/nonce custody and a reviewed
+   synchronous adapter, retain all fifteen CAS closure pins through an
+   independent channel, and use the new three-member request plus signed
+   checkpoint/ack/head/nonce response format inside the short proposal window.
+   Its offline assessment still cannot replace the fresh runtime callback or
+   module-owned one-use capability. From an exact committed
    Windows base suite, build and independently validate the new deterministic
    49-port provider pack, then assemble and independently validate its
    suite-bound configured candidate,
