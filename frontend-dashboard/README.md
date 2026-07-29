@@ -21,6 +21,39 @@ VITE_WS_URL=ws://127.0.0.1:8000/api/v1/ws
 Frontend berjalan di <http://127.0.0.1:5173/overview>. Jalankan backend dari
 `../backend` pada port 8000 terlebih dahulu.
 
+## Windows PowerShell
+
+`dashboard_api/run_dashboard_api.py` adalah compatibility server lama dan
+tidak menyediakan kontrak granular frontend ini. Hentikan server lama pada
+port 8000, lalu jalankan backend canonical dari root repository di terminal
+pertama:
+
+```powershell
+cd C:\AI_SCALPER
+$env:AI_SCALPER_ROOT = "C:\AI_SCALPER"
+.\.venv-dashboard\Scripts\python.exe -m pip install `
+  --requirement .\backend\requirements.txt
+.\.venv-dashboard\Scripts\python.exe -B .\backend\run_backend.py
+```
+
+Verifikasi `http://127.0.0.1:8000/api/v1/health/ready`. Di terminal kedua:
+
+```powershell
+cd C:\AI_SCALPER\frontend-dashboard
+node --version
+npm.cmd --version
+Copy-Item .\.env.example .\.env.local -Force
+npm.cmd ci
+npm.cmd run typecheck
+npm.cmd run test:unit
+npm.cmd run build
+npm.cmd run dev -- --host 127.0.0.1 --port 5173
+```
+
+Vite 8.1.5 yang dipin repository memerlukan Node `^20.19.0` atau
+`>=22.12.0`. Browser harus dibuka pada
+`http://127.0.0.1:5173/overview`.
+
 ## Arsitektur data
 
 1. `DashboardRealtimeProvider` memuat domain data awal lewat REST.

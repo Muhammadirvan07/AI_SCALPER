@@ -1,4 +1,12 @@
-# AI_SCALPER Dashboard API
+# AI_SCALPER Dashboard API (legacy compatibility)
+
+> **Jangan pasangkan service ini dengan `frontend-dashboard/`.** Service ini
+> mempertahankan kontrak dashboard lama seperti `/api/health`, `/api/v1/summary`,
+> dan `/api/v1/paper-orders`. Dashboard React granular memakai service canonical
+> di `backend/`, dengan health `/api/v1/health/ready`, seluruh domain API v1,
+> dan WebSocket `/api/v1/ws`. Pada Windows, jalankan
+> `.\.venv-dashboard\Scripts\python.exe -B .\backend\run_backend.py` dari root
+> repository.
 
 Adapter observasi read-only yang menghubungkan file proyek AI_SCALPER ke dashboard
 React melalui REST dan WebSocket. Adapter ini tidak mengimpor MetaTrader5, tidak
@@ -95,7 +103,12 @@ termasuk pada allowlist yang sama; middleware CORS saja tidak melindungi
 WebSocket. Public/non-loopback deployment sengaja ditolak sampai TLS,
 authentication, CSP/security headers, dan network policy direview terpisah.
 
-## Menjalankan frontend
+## Menjalankan frontend legacy
+
+Bagian ini hanya dipertahankan sebagai referensi migrasi. Untuk
+`frontend-dashboard/` saat ini, ikuti
+[`frontend-dashboard/README.md`](../frontend-dashboard/README.md) dan jalankan
+backend granular dari `backend/`.
 
 Di terminal kedua:
 
