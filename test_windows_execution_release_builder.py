@@ -16,6 +16,7 @@ from build_windows_execution_release import (
     DEFAULT_ALLOWLIST,
     LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_SCHEMA,
     READINESS_BLOCKERS,
+    REQUIRED_LIVE_CANARY_EXTERNAL_CAS_DIRECTORY_ADAPTER,
     REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE,
     REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_PROBE,
     REQUIRED_SAFETY,
@@ -163,6 +164,15 @@ class WindowsExecutionReleaseBuilderTests(unittest.TestCase):
             "PRODUCTION_EXECUTION_READY = False\n",
             encoding="utf-8",
         )
+        (
+            root
+            / "live_runtime"
+            / "windows_live_canary_external_cas_directory_adapter.py"
+        ).write_text(
+            "ORDER_CAPABILITY = 'DISABLED'\n"
+            "PRODUCTION_EXECUTION_READY = False\n",
+            encoding="utf-8",
+        )
         (root / "live_runtime" / "windows_provider_primitives.py").write_text(
             "ORDER_CAPABILITY = 'DISABLED'\n"
             "PRODUCTION_EXECUTION_READY = False\n",
@@ -222,6 +232,7 @@ version = "1.0"
             "live_runtime/signed_release_trust.py",
             "live_runtime/soak_tracker.py",
             "live_runtime/windows_execution_provider_pack.py",
+            REQUIRED_LIVE_CANARY_EXTERNAL_CAS_DIRECTORY_ADAPTER,
             "live_runtime/windows_live_canary_execution_provider.py",
             "live_runtime/windows_provider_primitives.py",
             "live_runtime/windows_service_factory_template.py",
@@ -290,6 +301,7 @@ version = "1.0"
                         "live_runtime/signed_release_trust.py",
                         "live_runtime/soak_tracker.py",
                         "live_runtime/windows_execution_provider_pack.py",
+                        REQUIRED_LIVE_CANARY_EXTERNAL_CAS_DIRECTORY_ADAPTER,
                         "live_runtime/windows_live_canary_execution_provider.py",
                         "live_runtime/windows_provider_primitives.py",
                         "live_runtime/windows_service_factory_template.py",
@@ -781,6 +793,10 @@ def hidden_sender(self, name):
         )
         self.assertIn(
             "live_runtime/windows_live_canary_execution_provider.py",
+            allowlist["files"],
+        )
+        self.assertIn(
+            REQUIRED_LIVE_CANARY_EXTERNAL_CAS_DIRECTORY_ADAPTER,
             allowlist["files"],
         )
         self.assertTrue(

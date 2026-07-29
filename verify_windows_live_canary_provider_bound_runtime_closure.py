@@ -11,10 +11,12 @@ from typing import Sequence
 _REQUIRED_BOOTSTRAP_FILES = (
     "execution_policy.py",
     "live_runtime/__init__.py",
+    "live_runtime/asymmetric_release_trust.py",
     "live_runtime/contracts.py",
     "live_runtime/live_canary_provider_bound_runtime_session.py",
     "live_runtime/live_canary_runtime_authority.py",
     "live_runtime/production_bootstrap.py",
+    "live_runtime/windows_live_canary_external_cas_directory_adapter.py",
     "live_runtime/windows_live_canary_execution_provider.py",
 )
 
@@ -73,6 +75,15 @@ from live_runtime.live_canary_provider_bound_runtime_session import (
     is_live_canary_provider_bound_runtime_launch_session,
 )
 from live_runtime.production_bootstrap import _require_live_runtime_authority
+from live_runtime.windows_live_canary_external_cas_directory_adapter import (
+    CAS_REQUEST_SCHEMA,
+    CAS_RESPONSE_SCHEMA,
+    NONCE_QUERY_REQUEST_SCHEMA,
+    NONCE_QUERY_RESPONSE_SCHEMA,
+    WindowsLiveCanaryExternalCasDirectoryAdapter,
+    WindowsLiveCanaryExternalCasDirectoryAdapterError,
+    live_canary_nonce_query_response_signing_message,
+)
 from live_runtime.windows_live_canary_execution_provider import (
     seal_windows_live_canary_runtime_source,
 )
@@ -97,10 +108,28 @@ def verify_provider_bound_runtime_closure() -> dict[str, object]:
         raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
             "PROVIDER_BOUND_RUNTIME_SCHEMA_DRIFT"
         )
+    adapter_schemas = (
+        CAS_REQUEST_SCHEMA,
+        CAS_RESPONSE_SCHEMA,
+        NONCE_QUERY_REQUEST_SCHEMA,
+        NONCE_QUERY_RESPONSE_SCHEMA,
+    )
+    if adapter_schemas != (
+        "windows-live-canary-directory-cas-request-v1",
+        "windows-live-canary-directory-cas-response-v1",
+        "windows-live-canary-nonce-query-request-v1",
+        "windows-live-canary-nonce-query-response-v1",
+    ):
+        raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
+            "EXTERNAL_CAS_DIRECTORY_ADAPTER_SCHEMA_DRIFT"
+        )
     callables = (
         is_live_canary_provider_bound_runtime_launch_session,
         _require_live_runtime_authority,
         seal_windows_live_canary_runtime_source,
+        WindowsLiveCanaryExternalCasDirectoryAdapter,
+        WindowsLiveCanaryExternalCasDirectoryAdapterError,
+        live_canary_nonce_query_response_signing_message,
     )
     if any(not callable(item) for item in callables):
         raise WindowsLiveCanaryProviderBoundRuntimeClosureError(
@@ -119,6 +148,7 @@ def verify_provider_bound_runtime_closure() -> dict[str, object]:
         "status": "WINDOWS_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE_READY",
         "release_root": str(_RELEASE_ROOT),
         "schema_count": 1,
+        "directory_adapter_schema_count": len(adapter_schemas),
         "live_allowed": False,
         "safe_to_demo_auto_order": False,
         "production_execution_ready": False,
@@ -153,6 +183,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(report["status"])
     print(f"Release root: {report['release_root']}")
     print(f"Schemas: {report['schema_count']}")
+    print(
+        "Directory adapter schemas: "
+        f"{report['directory_adapter_schema_count']}"
+    )
     print("Live allowed: false")
     print("Production execution ready: false")
     print("Order capability: DISABLED")

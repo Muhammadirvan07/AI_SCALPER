@@ -28,9 +28,12 @@ broker authority.
 A deterministic external CAS handoff now packages the exact launch proposal
 and public custody policy under fifteen independent pins. It verifies exported
 checkpoint, acknowledgement, head, and nonce claims under three distinct
-signature domains, but remains deny-only; the authoritative runtime still
-requires a reviewed synchronous provider adapter inside the 60-second proposal
-window.
+signature domains, but remains deny-only. A synchronous Windows directory
+adapter now implements the exact authoritative checkpoint/CAS/nonce callbacks,
+independently parses the canonical public custody protocol, and imports from an
+isolated Execution release without the producer graph. A real independently
+operated atomic CAS service, accepted mounts/ACLs, and signed Windows responses
+are still required inside the 60-second proposal window.
 The activation, launch, Windows provider composition,
 supervisor, execution coordinator, durable journal lease, runtime
 authorization, and final MT5 adapter chain are implemented and verified
@@ -50,6 +53,7 @@ LIVE_CANARY_PROVIDER_BOUND_LAUNCH_SESSION_V2 = PASS_LOCALLY_CENTRAL_LOCKED
 WINDOWS_EXECUTION_PROVIDER_BOUND_V2_CONSUMER = PASS_LOCALLY_LOCKED
 LIVE_CANARY_PROVIDER_BOUND_WORM_HANDOFF = PASS_LOCALLY_DENY_ONLY
 LIVE_CANARY_EXTERNAL_CAS_HANDOFF = PASS_LOCALLY_DENY_ONLY
+WINDOWS_LIVE_CANARY_EXTERNAL_CAS_DIRECTORY_ADAPTER = PASS_LOCALLY_LOCKED
 LIVE_CANARY_PRODUCTION_INTEGRATION = PASS_LOCALLY_PER_ORDER_GATED
 LIVE_CANARY_PER_ORDER_EXECUTION = PASS_LOCALLY_FAKE_MT5_ONE_SEND
 WINDOWS_LIVE_PROVIDER_MATERIALIZATION = PASS_LOCALLY_BROKERLESS_LOCKED
@@ -260,14 +264,28 @@ LIVE_TRADING = DO_NOT_SHIP
   accepts only those external claims; it explicitly emits no runtime CAS
   callback result, nonce consumption, verifier seal, launch capability,
   central unlock, process, MT5, or broker authority. The short proposal window
-  still requires a separately reviewed synchronous provider adapter.
+  now has a separately reviewed synchronous Windows directory adapter, while
+  an actual independently operated provider, mount/ACL evidence, and signed
+  target-host responses remain absent.
+- Windows LIVE-canary external CAS directory adapter v1 implements the exact
+  checkpoint provider, atomic-CAS, and nonce-seen callbacks used by the
+  authoritative custody core. It independently validates canonical public
+  policy/proposal/checkpoint/acknowledgement bytes and RSA signatures, publishes
+  create-exclusive requests, accepts only stable immediate-child responses,
+  serializes calls, bounds polling to two seconds, and never retries an
+  ambiguous CAS. The adapter is packaged in Execution without importing
+  producer custody/admission/acceptance/launch-session modules; checked-in LIVE
+  policy remains false and no private key, network, credential, MT5, process,
+  or broker effect exists in this client.
 - The source implementation is complete locally through provider-bound
   custody and launch composition, but no target-host pack,
   configured candidate, LIVE source-bound archive, or v4 conformance packet
   has yet been built and externally accepted from an exact committed Windows
-  suite. Concrete reviewed Windows callbacks, real owner/runtime signatures,
-  the three exact evidence files, real provider-bound admission and WORM/CAS
-  receipts, and external launcher receipts remain the next milestones.
+  suite. The reviewed Windows callback client now exists, but its external
+  atomic service, mount/ACL/durability evidence, actual signed responses, real
+  owner/runtime signatures, the three exact evidence files, real provider-bound
+  admission and WORM/CAS receipts, and external launcher receipts remain the
+  next milestones.
 
 ## Verification
 
@@ -309,6 +327,9 @@ LIVE_TRADING = DO_NOT_SHIP
 | Focused provider-bound WORM handoff suite | 8 PASS normal, including isolated normal/optimized CLI request and receipt verification |
 | External CAS handoff spec | 100/100, Grade A; 0 errors, warnings, or informational findings |
 | Focused external CAS handoff suite | 10 PASS normal; 10 PASS optimized, including isolated request/response CLI verification |
+| Windows external CAS directory-adapter spec | 100/100, Grade A; 0 errors, warnings, or informational findings |
+| Focused Windows external CAS adapter suite | 16 PASS normal; 16 PASS optimized with one intentional nested optimized-mode skip |
+| Execution adapter/isolated-closure/release-builder cluster | 45 PASS normal; 45 PASS optimized with one intentional nested optimized-mode skip |
 | Configured-release tooling builder after WORM/CAS handoff inclusion | 11 PASS; extracted CLIs bootstrap under `python -I -S -B` |
 | Cross-artifact service/tooling separation regression | 274 PASS |
 | Provider-bound launch/downstream regression | 165 PASS normal; 165 PASS optimized with seven intentional skips |
@@ -320,8 +341,8 @@ LIVE_TRADING = DO_NOT_SHIP
 | Mode-aware policy plus launch-session regression | 13 PASS |
 | Activation/source-bound/provider regression cluster | 48 PASS normal; 48 PASS optimized with two intentional nested-suite skips |
 | Related soak/promotion/stage cluster | 81 PASS normal; 81 PASS optimized with one intentional skip |
-| Full Python regression | 1,977 tests OK, 3 platform skips |
-| Full Python regression with `-O` | 1,977 tests OK, 12 skips including optimized-only nested self-tests |
+| Full Python regression | 1,993 tests OK, 3 platform skips |
+| Full Python regression with `PYTHONOPTIMIZE=2` | 1,993 tests OK, 13 skips including optimized-only nested self-tests |
 | Uncommitted dashboard refactor audit | 16 unit PASS; lint, production build, bundle budget, and npm audit PASS; 24 desktop/mobile browser E2E PASS |
 | Python compile, dependency lock, JSON/spec validation, and scoped whitespace checks | PASS; Ruff unavailable in the active environment for this additive pass |
 | Generic ship-gate scanner | `DO_NOT_SHIP`; 10 critical and 11 high raw findings, with external/manual blockers still unresolved |
@@ -359,7 +380,7 @@ uptime monitoring remain external work.
    and review from that sealed result; retain the owner signature and runtime
    attestation. Feed the exact raw acceptance inputs and consumed validation
    through the provider-bound prebootstrap assessment; do not replay a prior
-   acceptance JSON or hash. Rebuild the 55-file Execution base release from
+   acceptance JSON or hash. Rebuild the 56-file Execution base release from
    the resulting exact committed tree and run its isolated provider-bound v2
    consumer probe before assembling downstream candidates. Local tests use
    synthetic values only.

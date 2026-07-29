@@ -1,6 +1,6 @@
 # LIVE Canary External CAS Handoff v1
 
-Status: **IMPLEMENTED LOCALLY / EXTERNAL CAS PROVIDER REQUIRED / DENY-ONLY**
+Status: **HANDOFF + WINDOWS CLIENT IMPLEMENTED LOCALLY / EXTERNAL CAS PROVIDER REQUIRED / DENY-ONLY**
 
 Tooling ini membuat archive deterministik dari exact launch-reservation
 proposal dan public custody policy, lalu memverifikasi empat exported response:
@@ -206,11 +206,27 @@ Sukses menampilkan `LIVE_CANARY_EXTERNAL_CAS_RESPONSE_VERIFIED`. Ini hanya
 menerima signed external claims; bukan bukti bahwa callback runtime yang sama
 sudah menghasilkan module-sealed capability.
 
+## 4A. Windows synchronous directory client
+
+Windows Execution base release sekarang membawa
+`WindowsLiveCanaryExternalCasDirectoryAdapter`. Client ini menjalankan exact
+checkpoint/CAS/nonce callbacks melalui request dan response directory yang
+dikontrol terpisah. Ia memverifikasi canonical public custody policy,
+checkpoint, acknowledgement, dan nonce response secara mandiri dengan RSA
+public key tanpa mengimpor producer-side custody graph.
+
+Implementasi lokal dan isolated import tidak membuktikan provider eksternal.
+Production deployment masih wajib membuktikan atomic service, mount identity,
+ownership/ACL, durability, backup/restore, signed response, serta target-host
+acceptance. Detail kontrak ada di
+`docs/WINDOWS_LIVE_CANARY_EXTERNAL_CAS_DIRECTORY_ADAPTER.md`.
+
 ## 5. Boundary runtime yang tetap wajib
 
 Untuk launch nyata, satu invocation fresh masih harus menjalankan
 `consume_live_canary_launch_reservation(...)` secara sinkron dengan callback
-provider yang direview. Fungsi itu sendiri harus:
+adapter yang sudah direview dan layanan provider eksternal yang sudah diterima.
+Fungsi itu sendiri harus:
 
 - melakukan pre-read current head dan nonce;
 - memanggil atomic CAS;

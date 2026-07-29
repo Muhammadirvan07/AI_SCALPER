@@ -41,6 +41,7 @@ class WindowsLiveCanaryProviderBoundRuntimeClosureTests(unittest.TestCase):
             report["status"],
         )
         self.assertEqual(1, report["schema_count"])
+        self.assertEqual(4, report["directory_adapter_schema_count"])
         self.assertFalse(report["live_allowed"])
         self.assertFalse(report["safe_to_demo_auto_order"])
         self.assertFalse(report["production_execution_ready"])
@@ -92,6 +93,10 @@ class WindowsLiveCanaryProviderBoundRuntimeClosureTests(unittest.TestCase):
                         completed.stdout,
                     )
                     self.assertIn("Live allowed: false", completed.stdout)
+                    self.assertIn(
+                        "Directory adapter schemas: 4",
+                        completed.stdout,
+                    )
                     self.assertIn(
                         "Production execution ready: false",
                         completed.stdout,
@@ -164,6 +169,18 @@ class WindowsLiveCanaryProviderBoundRuntimeClosureTests(unittest.TestCase):
             self.assertFalse(
                 any(operator_only in module for module in runtime_imports)
             )
+
+        adapter_source = (
+            REPO_ROOT
+            / "live_runtime/windows_live_canary_external_cas_directory_adapter.py"
+        ).read_text(encoding="utf-8")
+        for producer_only in (
+            "live_canary_portable_launch_custody",
+            "live_canary_prebootstrap_admission",
+            "live_canary_provider_bound_runtime_launch_session",
+            "live_canary_external_cas_handoff",
+        ):
+            self.assertNotIn(producer_only, adapter_source)
 
 
 if __name__ == "__main__":

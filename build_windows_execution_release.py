@@ -128,6 +128,9 @@ REQUIRED_EXECUTION_PROVIDER_FOUNDATION = (
 REQUIRED_LIVE_EXECUTION_PROVIDER_FOUNDATION = (
     "live_runtime/windows_live_canary_execution_provider.py"
 )
+REQUIRED_LIVE_CANARY_EXTERNAL_CAS_DIRECTORY_ADAPTER = (
+    "live_runtime/windows_live_canary_external_cas_directory_adapter.py"
+)
 REQUIRED_WINDOWS_PROVIDER_PRIMITIVES = (
     "live_runtime/windows_provider_primitives.py"
 )
@@ -1144,6 +1147,7 @@ def load_execution_allowlist(path: Path) -> dict[str, Any]:
         REQUIRED_FACTORY_TEMPLATE,
         REQUIRED_EXECUTION_PROVIDER_FOUNDATION,
         REQUIRED_LIVE_EXECUTION_PROVIDER_FOUNDATION,
+        REQUIRED_LIVE_CANARY_EXTERNAL_CAS_DIRECTORY_ADAPTER,
         REQUIRED_WINDOWS_PROVIDER_PRIMITIVES,
         REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_PROBE,
         *REQUIRED_LIVE_CANARY_PROVIDER_BOUND_RUNTIME_CLOSURE,
@@ -1155,7 +1159,8 @@ def load_execution_allowlist(path: Path) -> dict[str, Any]:
             "execution allowlist is missing bootstrap, adapter, MT5 attestation, "
             "DEMO_AUTO IPC/risk-intent/session/soak projection/cohort foundations, "
             "readiness gate catalog, signed release-trust foundation, static factory template, "
-            "Execution provider foundation, Windows provider primitives, "
+            "Execution provider foundation, external CAS directory adapter, "
+            "Windows provider primitives, "
             "provider-bound LIVE consumer closure/probe, validator, or embedded config"
         )
     result = dict(payload)
