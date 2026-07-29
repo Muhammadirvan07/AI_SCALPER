@@ -68,6 +68,20 @@ unlock, tidak membuka MT5, dan tidak mengirim order. Runbook operator ada di
 Artefak autentik, exact policy-pinned key, tiga reviewer independen, dan
 seluruh external acceptance masih belum tersedia; status tetap DO NOT SHIP.
 
+Workflow consumption operator V1 kini menutup tahap replay berikutnya secara
+source lokal. Exact target-host profile mengikat registry path/identity serta
+dua authority berbeda; genesis initialization, one-use consume, independent
+verify, dan post-commit recovery tersedia melalui satu CLI deny-only. Signed
+predecessor diperiksa ulang di dalam transaksi `BEGIN IMMEDIATE` sebelum
+`INSERT`, sehingga dua authorization berbeda tidak dapat sama-sama berangkat
+dari head yang sama. Historical verification memakai exact HMAC-authenticated
+consumption time dan tetap menolak event dari masa depan. Output race tidak
+menimpa byte pemenang dan recovery tidak menambah event. Tooling hanya masuk
+operator release, tidak membuka central lock/process/MT5/broker, dan runbook ada
+di [LIVE_CANARY_ACTIVATION_CONSUMPTION_OPERATOR.md](LIVE_CANARY_ACTIVATION_CONSUMPTION_OPERATOR.md).
+Target-host credential/ACL, registry/checkpoint actual, off-host custody, serta
+seluruh evidence autentik masih belum tersedia; status tetap DO NOT SHIP.
+
 Windows decision-provider pack v1 kini lengkap secara source lokal. Base
 decision release memiliki read-only exact Credential Manager lookup, signed
 trusted-clock attestation, external directory CAS untuk IPC/cursor, strict

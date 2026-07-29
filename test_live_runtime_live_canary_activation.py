@@ -27,6 +27,7 @@ from live_runtime.live_canary_activation import (
     issue_live_canary_gate_receipt,
     issue_live_canary_human_approval,
     validate_and_consume_live_canary_activation,
+    verify_consumed_live_canary_activation,
 )
 from live_runtime.promotion_evidence import PromotionEvidenceReceipt
 from test_live_runtime_demo_auto_soak_cohort import (
@@ -453,6 +454,29 @@ class LiveCanaryActivationTests(unittest.TestCase):
         )
         self.assertTrue(result.valid)
         self.assertTrue(result.consumed_once)
+
+    def test_ac6_consumed_event_can_be_verified_after_authorization_expiry(self):
+        registry = self._registry("expired-recovery.sqlite3")
+        consumed = self._validate(registry)
+        verified = verify_consumed_live_canary_activation(
+            authorization=self.authorization,
+            trust_policy=self.policy,
+            soak_receipt=self.soak_receipt,
+            soak_binding=self.soak.binding,
+            soak_key_provider=self.soak.aggregator_key,
+            promotion_evidence=self.promotion,
+            promotion_key_provider=lambda _key_id: self.promotion_secret,
+            live_account_alias="phillip-live-account-alias",
+            broker_eligibility_evidence=self.eligibility,
+            gate_receipts=self.gate_receipts,
+            gate_key_provider=self._gate_key,
+            approval_key_provider=self._approval_key,
+            deployment_key_provider=lambda _key_id: self.deployment_secret,
+            replay_registry=registry,
+            now=NOW + timedelta(hours=1),
+            clock_provider=lambda: NOW + timedelta(hours=1),
+        )
+        self.assertEqual(consumed, verified)
 
     def test_ac6_untrusted_deployment_authority_is_rejected_at_validation(self):
         rogue_secret = b"rogue-live-deployment-secret-material-padding-v1"

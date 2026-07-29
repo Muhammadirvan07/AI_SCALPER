@@ -1933,10 +1933,15 @@ class LiveCanaryReplayRegistry:
                 int(identity["schema_version"])
                 != LIVE_CANARY_REPLAY_SCHEMA_VERSION,
                 identity["registry_id"] != self.registry_id,
-                identity["binding_sha256"] != self.binding.binding_sha256,
+                not hmac.compare_digest(
+                    str(identity["binding_sha256"]),
+                    self.binding.binding_sha256,
+                ),
                 identity["key_id"] != self.key_id,
-                identity["key_fingerprint_sha256"]
-                != self.key_fingerprint_sha256,
+                not hmac.compare_digest(
+                    str(identity["key_fingerprint_sha256"]),
+                    self.key_fingerprint_sha256,
+                ),
                 not hmac.compare_digest(
                     str(identity["identity_hmac_sha256"]), expected_hmac
                 ),
@@ -1995,7 +2000,10 @@ class LiveCanaryReplayRegistry:
             )
             if (
                 int(row["sequence"]) != sequence
-                or row["previous_event_hmac_sha256"] != previous
+                or not hmac.compare_digest(
+                    str(row["previous_event_hmac_sha256"]),
+                    previous,
+                )
                 or not hmac.compare_digest(
                     str(row["event_hmac_sha256"]), expected_event
                 )
@@ -2026,6 +2034,8 @@ class LiveCanaryReplayRegistry:
         authorization: LiveCanaryActivationAuthorization,
         *,
         consumed_at: datetime,
+        predecessor_checkpoint: LiveCanaryReplayCheckpoint | None = None,
+        checkpoint_key_provider: Callable[[str], str | bytes] | None = None,
         _seal: object | None = None,
     ) -> bool:
         if _seal is not _REPLAY_CONSUME_SEAL:
@@ -2035,6 +2045,18 @@ class LiveCanaryReplayRegistry:
         if authorization.request.binding != self.binding:
             raise LiveCanaryActivationBindingError(
                 "LIVE_CANARY_REPLAY_BINDING_MISMATCH"
+            )
+        if (predecessor_checkpoint is None) != (checkpoint_key_provider is None):
+            raise TypeError("replay predecessor inputs must be provided together")
+        if predecessor_checkpoint is not None:
+            if type(predecessor_checkpoint) is not LiveCanaryReplayCheckpoint:
+                raise TypeError("predecessor_checkpoint must be exact")
+            if not callable(checkpoint_key_provider):
+                raise TypeError("checkpoint_key_provider must be callable")
+            self.verify_checkpoint(
+                predecessor_checkpoint,
+                key_provider=checkpoint_key_provider,
+                require_current=False,
             )
         consumed = require_utc("consumed_at", consumed_at)
         if not authorization.issued_at <= consumed < authorization.request.expires_at:
@@ -2046,6 +2068,33 @@ class LiveCanaryReplayRegistry:
         try:
             connection.execute("BEGIN IMMEDIATE")
             rows = self._verify_connection(connection)
+            if predecessor_checkpoint is not None:
+                facts = self._prefix_facts(rows, len(rows))
+                predecessor_matches_current = (
+                    predecessor_checkpoint.event_count == len(rows)
+                    and hmac.compare_digest(
+                        str(facts["head_event_hmac_sha256"]),
+                        predecessor_checkpoint.head_event_hmac_sha256,
+                    )
+                    and hmac.compare_digest(
+                        str(facts["authorization_ids_sha256"]),
+                        predecessor_checkpoint.authorization_ids_sha256,
+                    )
+                    and hmac.compare_digest(
+                        str(facts["nonce_hashes_sha256"]),
+                        predecessor_checkpoint.nonce_hashes_sha256,
+                    )
+                    and str(facts["last_authorization_id"])
+                    == predecessor_checkpoint.last_authorization_id
+                    and hmac.compare_digest(
+                        str(facts["last_nonce_sha256"]),
+                        predecessor_checkpoint.last_nonce_sha256,
+                    )
+                )
+                if not predecessor_matches_current:
+                    raise LiveCanaryActivationReplayError(
+                        "LIVE_CANARY_REPLAY_PREDECESSOR_NOT_CURRENT"
+                    )
             sequence = len(rows) + 1
             previous = ZERO_SHA256 if not rows else str(rows[-1]["event_hmac_sha256"])
             payload = {
@@ -2207,8 +2256,10 @@ class LiveCanaryReplayRegistry:
         if (
             checkpoint.checkpoint_key_id
             != self.trust_policy.replay_checkpoint_key_id
-            or checkpoint.checkpoint_key_fingerprint_sha256
-            != self.trust_policy.replay_checkpoint_key_fingerprint_sha256
+            or not hmac.compare_digest(
+                checkpoint.checkpoint_key_fingerprint_sha256,
+                self.trust_policy.replay_checkpoint_key_fingerprint_sha256,
+            )
             or not hmac.compare_digest(
                 _fingerprint(material),
                 self.trust_policy.replay_checkpoint_key_fingerprint_sha256,
@@ -2220,10 +2271,15 @@ class LiveCanaryReplayRegistry:
             )
         if (
             checkpoint.registry_id != self.registry_id
-            or checkpoint.binding_sha256 != self.binding.binding_sha256
+            or not hmac.compare_digest(
+                checkpoint.binding_sha256,
+                self.binding.binding_sha256,
+            )
             or checkpoint.registry_key_id != self.key_id
-            or checkpoint.registry_key_fingerprint_sha256
-            != self.key_fingerprint_sha256
+            or not hmac.compare_digest(
+                checkpoint.registry_key_fingerprint_sha256,
+                self.key_fingerprint_sha256,
+            )
         ):
             raise LiveCanaryActivationBindingError(
                 "LIVE_CANARY_REPLAY_CHECKPOINT_BINDING_MISMATCH"
@@ -2248,14 +2304,24 @@ class LiveCanaryReplayRegistry:
                         "LIVE_CANARY_REPLAY_CHECKPOINT_TIME_INVALID"
                     )
             comparisons = (
-                facts["head_event_hmac_sha256"]
-                == checkpoint.head_event_hmac_sha256,
-                facts["authorization_ids_sha256"]
-                == checkpoint.authorization_ids_sha256,
-                facts["nonce_hashes_sha256"] == checkpoint.nonce_hashes_sha256,
+                hmac.compare_digest(
+                    str(facts["head_event_hmac_sha256"]),
+                    checkpoint.head_event_hmac_sha256,
+                ),
+                hmac.compare_digest(
+                    str(facts["authorization_ids_sha256"]),
+                    checkpoint.authorization_ids_sha256,
+                ),
+                hmac.compare_digest(
+                    str(facts["nonce_hashes_sha256"]),
+                    checkpoint.nonce_hashes_sha256,
+                ),
                 facts["last_authorization_id"]
                 == checkpoint.last_authorization_id,
-                facts["last_nonce_sha256"] == checkpoint.last_nonce_sha256,
+                hmac.compare_digest(
+                    str(facts["last_nonce_sha256"]),
+                    checkpoint.last_nonce_sha256,
+                ),
             )
             if not all(comparisons):
                 raise LiveCanaryActivationReplayError(
@@ -2278,8 +2344,83 @@ class LiveCanaryReplayRegistry:
         finally:
             connection.close()
 
+    def _recover_validation(
+        self,
+        authorization: LiveCanaryActivationAuthorization,
+        *,
+        require_current: bool,
+        _seal: object | None = None,
+    ) -> LiveCanaryActivationValidation:
+        """Reconstruct a sealed validation from one authenticated event."""
 
-def validate_and_consume_live_canary_activation(
+        if _seal is not _VALIDATION_SEAL:
+            raise TypeError("live-canary validation recovery requires its verifier")
+        if type(authorization) is not LiveCanaryActivationAuthorization:
+            raise TypeError("authorization must be exact")
+        if type(require_current) is not bool:
+            raise TypeError("require_current must be bool")
+        if authorization.request.binding != self.binding:
+            raise LiveCanaryActivationBindingError(
+                "LIVE_CANARY_REPLAY_BINDING_MISMATCH"
+            )
+        self._assert_path_identity()
+        connection = self._connect()
+        try:
+            rows = self._verify_connection(connection)
+            matches = tuple(
+                row
+                for row in rows
+                if hmac.compare_digest(
+                    str(row["authorization_id"]), authorization.authorization_id
+                )
+            )
+            if len(matches) != 1:
+                raise LiveCanaryActivationReplayError(
+                    "LIVE_CANARY_REPLAY_EVENT_MISSING"
+                )
+            row = matches[0]
+            expected_nonce = hashlib.sha256(
+                authorization.request.nonce.encode("utf-8")
+            ).hexdigest()
+            comparisons = (
+                hmac.compare_digest(
+                    str(row["authorization_sha256"]),
+                    authorization.content_sha256,
+                ),
+                hmac.compare_digest(
+                    str(row["request_sha256"]),
+                    authorization.request.content_sha256,
+                ),
+                hmac.compare_digest(str(row["nonce_sha256"]), expected_nonce),
+            )
+            if not all(comparisons):
+                raise LiveCanaryActivationReplayError(
+                    "LIVE_CANARY_REPLAY_EVENT_BINDING_MISMATCH"
+                )
+            if require_current and int(row["sequence"]) != int(rows[-1]["sequence"]):
+                raise LiveCanaryActivationReplayError(
+                    "LIVE_CANARY_REPLAY_EVENT_NOT_CURRENT"
+                )
+            consumed_at = datetime.fromisoformat(
+                str(row["consumed_at_utc"]).replace("Z", "+00:00")
+            )
+        finally:
+            connection.close()
+        self._assert_path_identity()
+        return LiveCanaryActivationValidation(
+            valid=True,
+            reason_codes=(),
+            checked_at=consumed_at,
+            authorization_id=authorization.authorization_id,
+            authorization_sha256=authorization.content_sha256,
+            request_sha256=authorization.request.content_sha256,
+            binding_sha256=authorization.request.binding.binding_sha256,
+            consumed_once=True,
+            _seal=_VALIDATION_SEAL,
+        )
+
+
+def _activation_revalidation_reasons(
     *,
     authorization: LiveCanaryActivationAuthorization,
     trust_policy: LiveCanaryTrustPolicy,
@@ -2294,17 +2435,8 @@ def validate_and_consume_live_canary_activation(
     gate_key_provider: Callable[[str], str | bytes],
     approval_key_provider: Callable[[str], str | bytes],
     deployment_key_provider: Callable[[str], str | bytes],
-    replay_registry: LiveCanaryReplayRegistry,
-    now: datetime,
-    clock_provider: Callable[[], datetime],
-) -> LiveCanaryActivationValidation:
-    """Rebuild, authenticate, and atomically consume one authorization."""
-
-    if type(authorization) is not LiveCanaryActivationAuthorization:
-        raise TypeError("authorization must be exact LiveCanaryActivationAuthorization")
-    if type(replay_registry) is not LiveCanaryReplayRegistry:
-        raise TypeError("replay_registry must be exact LiveCanaryReplayRegistry")
-    checked = _trusted_now(clock_provider, now)
+    checked: datetime,
+) -> list[str]:
     reasons: list[str] = []
     try:
         rebuilt = _build_live_canary_activation_request_at(
@@ -2324,7 +2456,9 @@ def validate_and_consume_live_canary_activation(
             nonce=authorization.request.nonce,
             trusted_now=checked,
         )
-        if rebuilt.content_sha256 != authorization.request.content_sha256:
+        if not hmac.compare_digest(
+            rebuilt.content_sha256, authorization.request.content_sha256
+        ):
             reasons.append("LIVE_CANARY_REQUEST_REBUILD_MISMATCH")
     except Exception:
         reasons.append("LIVE_CANARY_EVIDENCE_REVALIDATION_FAILED")
@@ -2367,11 +2501,60 @@ def validate_and_consume_live_canary_activation(
             reasons.append("LIVE_CANARY_DEPLOYMENT_SIGNATURE_INVALID")
     except Exception:
         reasons.append("LIVE_CANARY_DEPLOYMENT_SIGNATURE_INVALID")
+    return reasons
+
+
+def validate_and_consume_live_canary_activation(
+    *,
+    authorization: LiveCanaryActivationAuthorization,
+    trust_policy: LiveCanaryTrustPolicy,
+    soak_receipt: DemoAutoSoakCohortReceipt,
+    soak_binding: DemoAutoSoakCohortBinding,
+    soak_key_provider: Callable[[str], str | bytes],
+    promotion_evidence: PromotionEvidenceReceipt,
+    promotion_key_provider: Callable[[str], str | bytes],
+    live_account_alias: str,
+    broker_eligibility_evidence: LiveCanaryBrokerEligibilityEvidence,
+    gate_receipts: Sequence[LiveCanaryGateReceipt],
+    gate_key_provider: Callable[[str], str | bytes],
+    approval_key_provider: Callable[[str], str | bytes],
+    deployment_key_provider: Callable[[str], str | bytes],
+    replay_registry: LiveCanaryReplayRegistry,
+    now: datetime,
+    clock_provider: Callable[[], datetime],
+    predecessor_checkpoint: LiveCanaryReplayCheckpoint | None = None,
+    checkpoint_key_provider: Callable[[str], str | bytes] | None = None,
+) -> LiveCanaryActivationValidation:
+    """Rebuild, authenticate, and atomically consume one authorization."""
+
+    if type(authorization) is not LiveCanaryActivationAuthorization:
+        raise TypeError("authorization must be exact LiveCanaryActivationAuthorization")
+    if type(replay_registry) is not LiveCanaryReplayRegistry:
+        raise TypeError("replay_registry must be exact LiveCanaryReplayRegistry")
+    checked = _trusted_now(clock_provider, now)
+    reasons = _activation_revalidation_reasons(
+        authorization=authorization,
+        trust_policy=trust_policy,
+        soak_receipt=soak_receipt,
+        soak_binding=soak_binding,
+        soak_key_provider=soak_key_provider,
+        promotion_evidence=promotion_evidence,
+        promotion_key_provider=promotion_key_provider,
+        live_account_alias=live_account_alias,
+        broker_eligibility_evidence=broker_eligibility_evidence,
+        gate_receipts=gate_receipts,
+        gate_key_provider=gate_key_provider,
+        approval_key_provider=approval_key_provider,
+        deployment_key_provider=deployment_key_provider,
+        checked=checked,
+    )
     consumed = False
     if not reasons:
         consumed = replay_registry.consume(
             authorization,
             consumed_at=checked,
+            predecessor_checkpoint=predecessor_checkpoint,
+            checkpoint_key_provider=checkpoint_key_provider,
             _seal=_REPLAY_CONSUME_SEAL,
         )
         if not consumed:
@@ -2388,6 +2571,68 @@ def validate_and_consume_live_canary_activation(
         consumed_once=consumed,
         _seal=_VALIDATION_SEAL,
     )
+
+
+def verify_consumed_live_canary_activation(
+    *,
+    authorization: LiveCanaryActivationAuthorization,
+    trust_policy: LiveCanaryTrustPolicy,
+    soak_receipt: DemoAutoSoakCohortReceipt,
+    soak_binding: DemoAutoSoakCohortBinding,
+    soak_key_provider: Callable[[str], str | bytes],
+    promotion_evidence: PromotionEvidenceReceipt,
+    promotion_key_provider: Callable[[str], str | bytes],
+    live_account_alias: str,
+    broker_eligibility_evidence: LiveCanaryBrokerEligibilityEvidence,
+    gate_receipts: Sequence[LiveCanaryGateReceipt],
+    gate_key_provider: Callable[[str], str | bytes],
+    approval_key_provider: Callable[[str], str | bytes],
+    deployment_key_provider: Callable[[str], str | bytes],
+    replay_registry: LiveCanaryReplayRegistry,
+    now: datetime,
+    clock_provider: Callable[[], datetime],
+    require_current: bool = True,
+) -> LiveCanaryActivationValidation:
+    """Revalidate and recover one already consumed authorization read-only."""
+
+    if type(authorization) is not LiveCanaryActivationAuthorization:
+        raise TypeError("authorization must be exact LiveCanaryActivationAuthorization")
+    if type(replay_registry) is not LiveCanaryReplayRegistry:
+        raise TypeError("replay_registry must be exact LiveCanaryReplayRegistry")
+    if type(require_current) is not bool:
+        raise TypeError("require_current must be bool")
+    checked = _trusted_now(clock_provider, now)
+    recovered = replay_registry._recover_validation(
+        authorization,
+        require_current=require_current,
+        _seal=_VALIDATION_SEAL,
+    )
+    if recovered.checked_at > checked:
+        raise LiveCanaryActivationReplayError(
+            "LIVE_CANARY_REPLAY_EVENT_TIME_INVALID"
+        )
+    reasons = _activation_revalidation_reasons(
+        authorization=authorization,
+        trust_policy=trust_policy,
+        soak_receipt=soak_receipt,
+        soak_binding=soak_binding,
+        soak_key_provider=soak_key_provider,
+        promotion_evidence=promotion_evidence,
+        promotion_key_provider=promotion_key_provider,
+        live_account_alias=live_account_alias,
+        broker_eligibility_evidence=broker_eligibility_evidence,
+        gate_receipts=gate_receipts,
+        gate_key_provider=gate_key_provider,
+        approval_key_provider=approval_key_provider,
+        deployment_key_provider=deployment_key_provider,
+        checked=recovered.checked_at,
+    )
+    if reasons:
+        raise LiveCanaryActivationIntegrityError(
+            "LIVE_CANARY_CONSUMED_VALIDATION_REVALIDATION_FAILED:"
+            + ",".join(sorted(set(reasons)))
+        )
+    return recovered
 
 
 __all__ = [
@@ -2414,4 +2659,5 @@ __all__ = [
     "issue_live_canary_gate_receipt",
     "issue_live_canary_human_approval",
     "validate_and_consume_live_canary_activation",
+    "verify_consumed_live_canary_activation",
 ]

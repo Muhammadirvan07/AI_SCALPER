@@ -460,6 +460,8 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
             "live_runtime/live_canary_activation.py",
             "live_runtime/live_canary_activation_artifacts.py",
             "live_runtime/live_canary_activation_cli_support.py",
+            "live_runtime/live_canary_activation_consumption.py",
+            "manage_live_canary_activation_consumption.py",
             "sign_live_canary_human_approval.py",
             "verify_live_canary_activation_authorization.py",
             "verify_live_canary_activation_request.py",

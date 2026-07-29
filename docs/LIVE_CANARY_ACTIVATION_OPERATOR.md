@@ -192,3 +192,8 @@ trading. Tahap terpisah masih memerlukan one-use replay consumption, off-host
 checkpoint/WORM/CAS custody, accepted target-host provider closure, central
 unlock ceremony, per-order risk/news/reconciliation checks, dan bounded first
 canary.
+
+Tahap one-use replay berikutnya dijalankan hanya melalui
+[`LIVE_CANARY_ACTIVATION_CONSUMPTION_OPERATOR.md`](LIVE_CANARY_ACTIVATION_CONSUMPTION_OPERATOR.md).
+Jangan mengulang command `consume` setelah hasil ambigu; gunakan recovery yang
+merekonstruksi event current tanpa menambah event kedua.

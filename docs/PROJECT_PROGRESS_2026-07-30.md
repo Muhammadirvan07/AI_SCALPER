@@ -2,26 +2,30 @@
 
 ## Outcome
 
-Operator workflow untuk request, tiga approval manusia, dan deployment
-authorization LIVE-canary kini lengkap secara source lokal dan tetap deny-only.
-Enam CLI Windows merekonstruksi artefak canonical, memverifikasi ulang cohort
-30-day/50-fill/20-XAU, promotion LIVE, broker eligibility, dan sembilan gate,
-kemudian memakai hanya key yang dipin trust policy dari Windows Credential
-Manager. Tidak ada replay consumption, central unlock, MT5 initialization,
-process launch, atau broker mutation.
+Windows operator bridge untuk konsumsi satu-kali authorization LIVE-canary kini
+lengkap secara source lokal dan tetap deny-only. Workflow membentuk exact
+target-host replay profile, membuat genesis registry/checkpoint, memverifikasi
+ulang seluruh evidence dan authorization, mengonsumsi authorization secara
+atomik, menerbitkan successor checkpoint, serta mendukung independent verify
+dan deterministic recovery setelah post-commit publication failure.
 
-Kontrak cohort receipt minimum dipisahkan dari aggregator execution graph.
-Execution aggregator dan operator verifier kini memakai exact class/seal/HMAC
-identity yang sama, tetapi operator release tidak lagi menarik journal,
-reconciliation, projection runtime, atau `mt5_adapter.py`.
+Audit TDD menemukan lalu menutup dua defect yang tidak terlihat pada happy
+path: registry path dengan komponen `..` sebelumnya dinormalisasi dan diterima,
+serta dua authorization berbeda dapat melewati predecessor yang sama sebelum
+SQLite lock sehingga event kedua baru ditolak setelah commit. Path traversal
+kini berhenti sebelum credential access. Exact signed predecessor kini dicek
+lagi di dalam transaksi `BEGIN IMMEDIATE` sebelum `INSERT`, sehingga stale
+consumer tidak dapat meninggalkan orphan event.
 
 ```text
 LOCAL_SOURCE_GATE = PASS
-LIVE_CANARY_ACTIVATION_OPERATOR = PASS_LOCALLY_DENY_ONLY
+LIVE_CANARY_ACTIVATION_CONSUMPTION_OPERATOR = PASS_LOCALLY_DENY_ONLY
+ATOMIC_STALE_PREDECESSOR_GUARD = PASS
 WINDOWS_OPERATOR_RELEASE_ISOLATION = PASS_FOCUSED
 REAL_30_DAY_50_FILL_20_XAU_COHORT = ABSENT
 REAL_LIVE_PROMOTION_AND_NINE_GATES = ABSENT
 REAL_THREE_PERSON_APPROVAL_CEREMONY = NOT_PERFORMED
+TARGET_WINDOWS_REPLAY_REGISTRY = NOT_INITIALIZED
 CENTRAL_LIVE_UNLOCK = FALSE
 BROKER_MUTATION = NOT_PERFORMED
 LIVE_TRADING = DO_NOT_SHIP
@@ -29,40 +33,57 @@ LIVE_TRADING = DO_NOT_SHIP
 
 ## Implemented
 
-- Strict canonical loaders reject duplicate keys, BOM, NaN/Infinity,
-  noncanonical bytes, schema drift, nested substitution, symlink/reparse input,
-  and unstable/bounded-file violations.
-- Request assembly preflights every gate file before credential verification,
-  re-verifies exact signed source evidence, and publishes create-exclusive.
-- Approval verification checks the policy-pinned role/identity/key and current
-  request window before reading credential material.
-- Authorization assembly verifies exactly three separated approvals before
-  reading the independent deployment key.
-- Authorization verification compares the supplied request/approval files to
-  the embedded objects before secret-dependent verification and never consumes
-  the authorization.
-- Malformed CLI arguments fail with exit code 2 without echoing caller values;
-  every success/failure reports the locked capability state.
-- Operator-only surface is absent from Decision, Execution, Status Monitor,
-  read-only shadow, and configured-release tooling allowlists. The minimal
-  cohort contract is shared only where the existing Execution cohort
-  aggregator requires the same exact type identity.
+- Canonical replay profile mengikat binding, trust policy, registry ID,
+  absolute-path hash, registry authority, dan policy-pinned checkpoint
+  authority.
+- Registry/checkpoint keys hanya diterima dari injected provider di library
+  dan Windows Credential Manager di CLI; material minimal 256 bit, fingerprint
+  constant-time, dan seluruh activation-authority reuse ditolak.
+- Genesis initialization memvalidasi kedua credential sebelum membuat SQLite,
+  memverifikasi exact DDL/triggers/integrity, dan membuat signed zero-event
+  checkpoint.
+- Consumption memerlukan current signed predecessor, memverifikasi ulang
+  request, three approvals, deployment authorization, cohort, promotion,
+  eligibility, nine gates, serta original evidence sebelum mutation.
+- Atomic predecessor guard mengulang exact current-head comparison di dalam
+  `BEGIN IMMEDIATE`, menutup interleaving dua authorization berbeda.
+- Verification dan recovery mengambil historical consumed time dari exact
+  HMAC-authenticated event, menolak future event, tetap bekerja setelah
+  authorization expiry, dan tidak menambah event.
+- Output preflight mendahului Credential Manager/SQLite, final publication
+  create-exclusive dan fsync-backed, output race mempertahankan byte pemenang,
+  serta recovery memakai destination baru.
+- CLI hanya memiliki `prepare-profile`, `initialize`, `consume`, `verify`, dan
+  `recover`; semua success/failure menyatakan live/activation false,
+  `order_capability=DISABLED`, dan broker mutation tidak dilakukan.
+- Modul/CLI baru hanya masuk `WINDOWS_SHADOW_DEPLOYMENT_TOOLING_V1` dan tidak
+  masuk Decision, Execution, Status Monitor, read-only shadow, atau configured
+  service releases.
 
 ## Verified so far
 
-- Activation operator spec: 100/100, Grade A, no findings.
-- Focused cohort/activation/operator/release cluster: 79 tests passed.
-- Focused optimized cohort/activation/operator cluster: 52 tests passed, one
-  intentional platform/nested skip.
-- Full repository regression: 2,058 tests passed in normal mode with three
-  platform-dependent skips, and 2,058 passed under `-O` with fourteen
-  intentional platform/optimized skips.
+- Consumption operator spec: 100/100, Grade A, 0 error, 0 warning.
+- Focused activation/consumption/release cluster: 43 tests passed in normal
+  mode; 42 passed plus one intentional optimized nested-run skip under `-O`.
+- Full serial repository regression: 2,081 tests passed in normal mode with
+  three platform skips; 2,081 passed under `-O` with fourteen intentional
+  platform/optimized skips.
 - Windows dependency lock, install manifest, dependency SBOM, and pinned
   MetaTrader5 wheel identity: passed.
-- Operator and Execution allowlist closure tests: passed.
-- No focused operator module imports or invokes process, socket, requests,
-  MetaTrader5, `order_send`, or system execution primitives.
+- Python compilation, scoped whitespace, JSON allowlist closure, constant-time
+  authority comparison, output-race recovery, and no-effect AST checks passed.
+- A deliberately parallel full-suite run exposed shared test-resource
+  interference in three legacy executor tests; all three passed in isolated
+  normal/optimized reruns and both authoritative serial full suites passed.
 
-Deterministic clean-commit operator builds and final artifact hashes are
-recorded after the source commit. Authentic Windows evidence remains an
-external blocker and cannot be replaced by fixture tests.
+## Remaining external work
+
+Source completion is not production evidence. Windows still requires authentic
+cohort/promotion/gate/approval/authorization inputs, independently provisioned
+Credential Manager authorities, exact target-host registry initialization,
+off-host checkpoint/WORM/CAS custody, provider-bound prebootstrap acceptance,
+central policy ceremony, bounded first canary, broker acknowledgement,
+reconciliation, and rollback evidence.
+
+Deterministic clean-commit Windows artifacts and hashes are recorded only after
+this source milestone is committed and rebuilt twice from a clean worktree.
