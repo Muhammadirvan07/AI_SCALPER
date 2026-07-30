@@ -97,6 +97,9 @@ WINDOWS_LIVE_EXTERNAL_RUNTIME_HOOK_LEASE = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_CANDIDATE_CONSUMER = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_SESSION_HANDOFF_CONSUMER = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_SESSION_REPLAY_DIRECTORY_ADAPTER = PASS_LOCALLY_DENY_ONLY
+PHILLIP_V6_FIRST_AUTOMATIC_RUN = FAILED_RESULT_3_NO_AUDIT
+TASK_SCHEDULER_OPERATIONAL_LOG = ENABLED_AFTER_FIRST_BOUNDARY
+PHILLIP_V6_NEXT_AUTOMATIC_RUN = 2026-07-31T06:45:00+09:00
 CONCRETE_LIVE_RUNTIME_PROVIDERS = NOT_SUPPLIED
 REAL_30_DAY_50_FILL_20_XAU_COHORT = ABSENT
 REAL_LIVE_PROMOTION_AND_NINE_GATES = ABSENT
@@ -106,6 +109,33 @@ CENTRAL_LIVE_UNLOCK = FALSE
 BROKER_MUTATION = NOT_PERFORMED
 LIVE_TRADING = DO_NOT_SHIP
 ```
+
+## Phillip V6.3 Windows scheduled-run observation
+
+Windows melaporkan bahwa task exact-root
+`AI_SCALPER-PhillipCommodityV6-ReadOnlyShadow` memang mencoba berjalan pada
+`2026-07-30T06:45:00+09:00`, tetapi kembali ke state `Ready` dengan
+`LastTaskResult=3`. Task Scheduler Operational log masih nonaktif ketika
+boundary itu terjadi, sehingga tidak ada event 107/100 yang dapat membuktikan
+atau merekonstruksi penyebab run pertama. Run tersebut tidak diterima sebagai
+scheduled proof.
+
+Operational log kemudian diaktifkan pada 30 Juli dengan `RecordCount=0` dan
+readiness checker menghasilkan
+`PHILLIP_COMMODITY_V6_TRIGGER_AUDIT_READY`. Pemeriksaan read-only lanjutan
+membuktikan seluruh executable/runtime/worker/dependency-lock/terminal/
+contract/journal path tersedia, exact Python `--help` keluar `0`, tidak ada
+worker Phillip aktif, dan persistent one-byte `.shadow-worker.lock` dapat
+dikunci serta dilepas kembali. Tidak ada persistent launch-path atau singleton
+lock failure yang dapat direproduksi setelah observasi tersebut.
+
+Keputusan operasional: jangan menghapus lock, jangan reinstall, dan jangan
+menjalankan task manual. Pertahankan host tetap menyala dengan user installer
+masih login, lalu observasi pemicu otomatis berikutnya pada
+`2026-07-31T06:45:00+09:00`. Hanya run dengan event provenance yang direkam,
+heartbeat autentik segar, dan post-run acceptance yang lulus dapat menutup
+scheduled-proof gate. `OrderCapability` tetap `DISABLED`, `LiveAllowed` tetap
+`false`, dan tidak ada broker mutation.
 
 ## V6.3 post-run acceptance hardening
 

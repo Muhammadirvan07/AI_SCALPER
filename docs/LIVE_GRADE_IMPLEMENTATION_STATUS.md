@@ -365,6 +365,16 @@ dan optimized sama-sama lulus 1.790 test dengan tiga platform skip. Kontrak ini
 hanya memperkuat artifact custody dan tidak mengubah `order_capability`,
 `live_allowed`, demo-auto, promotion, atau broker authority.
 
+> **Windows evidence update, 2026-07-30:** status Stage 3 di bawah yang masih
+> menyebut “awaiting first automatic scheduled run” telah digantikan oleh
+> observasi aktual. Task V6.3 mencoba berjalan tepat 06:45 JST tetapi selesai
+> dengan `LastTaskResult=3`; Operational log saat itu nonaktif dan tidak dapat
+> menyediakan event 107/100. Sesudah log diaktifkan, readiness lulus, seluruh
+> exact path tersedia, Python launch probe keluar `0`, tidak ada worker aktif,
+> dan singleton lock probe tersedia. Run pertama tidak diterima. Jangan manual
+> start/reinstall/delete lock; run otomatis berikutnya adalah 31 Juli 06:45
+> JST dan tetap wajib menghasilkan provenance serta post-run acceptance.
+
 ## Status roadmap
 
 | Tahap | Status | Bukti saat ini |
@@ -1012,11 +1022,13 @@ eksternal belum terpenuhi.
    kosong. Namespace v2 sudah diregistrasikan dan pre-window proof-nya
    terverifikasi, tetapi tidak dipakai untuk scheduled append karena latency
    full-environment verification melebihi deadline. Namespace v3/v4/v5 adalah
-   bukti historis immutable. Remediasi scheduler V6.3 sudah terpasang dan
-   health `PRE_START` Windows sudah sehat; tahap berikutnya wajib menunggu
-   pemicu otomatis pertama pada `2026-07-30T06:45:00+09:00`, lalu menjalankan
-   menjalankan trigger-audit readiness sebelum boundary, lalu acceptance
-   post-run tanpa manual start. `phillip-fx` tetap menunggu review
+   bukti historis immutable. Remediasi scheduler V6.3 sudah terpasang. Pemicu
+   otomatis 30 Juli mencoba berjalan tetapi berakhir `LastTaskResult=3` saat
+   Operational log masih nonaktif, sehingga run pertama tidak memiliki
+   provenance dan tidak diterima. Log sekarang aktif; readiness serta probe
+   Python/path/lock lulus. Tahap berikutnya wajib menunggu pemicu otomatis
+   `2026-07-31T06:45:00+09:00`, lalu menjalankan acceptance post-run tanpa
+   manual start. `phillip-fx` tetap menunggu review
    dan activation lane-nya sendiri. XM Window 02 tetap tidak boleh dijalankan.
    Setiap kandidat
    tetap membutuhkan minimal 20 sesi terpisah.
