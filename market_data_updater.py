@@ -12,11 +12,12 @@ import asyncio
 import logging
 import os
 import signal
+import stat
 import sys
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Final
+from typing import Final, TextIO
 
 try:
     import fcntl
@@ -32,6 +33,48 @@ DEFAULT_TIMEOUT_SECONDS: Final[float] = 240.0
 DEFAULT_MAX_BACKOFF_SECONDS: Final[float] = 300.0
 MIN_FAST_INTERVAL_SECONDS: Final[float] = 15.0
 MIN_FULL_INTERVAL_SECONDS: Final[float] = 60.0
+_O_CLOEXEC: Final[int] = getattr(os, "O_CLOEXEC", 0)
+_O_NOFOLLOW: Final[int] = getattr(os, "O_NOFOLLOW", 0)
+
+
+class LockSecurityError(RuntimeError):
+    """Raised when the updater lock path violates its local security contract."""
+
+
+def _default_runtime_directory() -> Path:
+    xdg_runtime = os.getenv("XDG_RUNTIME_DIR")
+    if xdg_runtime:
+        base = Path(xdg_runtime).expanduser()
+        if not base.is_absolute():
+            raise ValueError("XDG_RUNTIME_DIR harus berupa path absolut")
+        return base / "ai_scalper"
+    if os.name == "nt":
+        local_app_data = os.getenv("LOCALAPPDATA")
+        if not local_app_data:
+            raise ValueError("LOCALAPPDATA diperlukan untuk runtime lock Windows")
+        return Path(local_app_data).expanduser() / "AI_SCALPER" / "runtime"
+    return Path.home() / ".cache" / "ai_scalper" / "runtime"
+
+
+def _current_uid() -> int:
+    getuid = getattr(os, "getuid", None)
+    if getuid is None:
+        raise LockSecurityError("Platform tidak menyediakan verifikasi owner POSIX")
+    return int(getuid())
+
+
+def _ensure_private_runtime_directory(path: Path) -> None:
+    try:
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        metadata = os.lstat(path)
+    except OSError as exc:
+        raise LockSecurityError("Direktori runtime lock tidak dapat diverifikasi") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        raise LockSecurityError("Direktori runtime lock harus berupa direktori biasa")
+    if metadata.st_uid != _current_uid():
+        raise LockSecurityError("Direktori runtime lock bukan milik current user")
+    if stat.S_IMODE(metadata.st_mode) & 0o077:
+        raise LockSecurityError("Direktori runtime lock harus private (mode 0700)")
 
 
 def _env_float(name: str, default: float) -> float:
@@ -86,12 +129,12 @@ class UpdaterSettings:
             Path(os.getenv("AI_SCALPER_COLLECTOR_PYTHON", str(default_python))),
             root,
         )
-        lock_file = Path(
-            os.getenv(
-                "AI_SCALPER_MARKET_UPDATER_LOCK_FILE",
-                "/tmp/ai_scalper_market_data_updater.lock",
-            )
-        ).expanduser()
+        configured_lock = os.getenv("AI_SCALPER_MARKET_UPDATER_LOCK_FILE")
+        lock_file = (
+            Path(configured_lock).expanduser()
+            if configured_lock
+            else _default_runtime_directory() / "market-data-updater.lock"
+        )
         settings = cls(
             root=root,
             python_executable=python_executable,
@@ -132,6 +175,8 @@ class UpdaterSettings:
             )
         if not self.collector_script.is_file():
             raise ValueError(f"Collector tidak ditemukan: {self.collector_script}")
+        if not self.lock_file.is_absolute():
+            raise ValueError("AI_SCALPER_MARKET_UPDATER_LOCK_FILE harus berupa path absolut")
         if self.fast_interval_seconds < MIN_FAST_INTERVAL_SECONDS:
             raise ValueError(
                 "AI_SCALPER_MARKET_FAST_INTERVAL_SECONDS minimal "
@@ -163,38 +208,87 @@ class CollectionResult:
 
 
 class SingleInstanceLock:
-    """Advisory lock yang otomatis dilepas OS saat proses berhenti."""
+    """Private, symlink-safe advisory lock released by the OS on process exit."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        self._handle: object | None = None
+        self._handle: TextIO | None = None
+
+    def _validate_open_file(self, descriptor: int) -> None:
+        opened = os.fstat(descriptor)
+        try:
+            linked = os.lstat(self.path)
+        except OSError as exc:
+            raise LockSecurityError("Path lock berubah saat sedang dibuka") from exc
+        if not stat.S_ISREG(opened.st_mode) or stat.S_ISLNK(linked.st_mode):
+            raise LockSecurityError("Lock updater harus berupa regular file, bukan symbolic link")
+        if opened.st_uid != _current_uid():
+            raise LockSecurityError("Lock updater bukan milik current user")
+        if stat.S_IMODE(opened.st_mode) & 0o077:
+            raise LockSecurityError("Lock updater harus private (mode 0600)")
+        if opened.st_nlink != 1:
+            raise LockSecurityError("Lock updater tidak boleh memiliki hard link")
+        if (opened.st_dev, opened.st_ino) != (linked.st_dev, linked.st_ino):
+            raise LockSecurityError("Path lock diganti saat sedang dibuka")
+
+    def _open_secure_file(self) -> int:
+        _ensure_private_runtime_directory(self.path.parent)
+        if _O_NOFOLLOW == 0:
+            try:
+                existing = os.lstat(self.path)
+            except FileNotFoundError:
+                existing = None
+            if existing is not None and stat.S_ISLNK(existing.st_mode):
+                raise LockSecurityError("Symbolic link lock ditolak pada platform fallback")
+        flags = os.O_CREAT | os.O_RDWR | _O_CLOEXEC | _O_NOFOLLOW
+        try:
+            descriptor = os.open(self.path, flags, 0o600)
+        except OSError as exc:
+            raise LockSecurityError("Lock updater tidak dapat dibuka secara aman") from exc
+        try:
+            os.set_inheritable(descriptor, False)
+            self._validate_open_file(descriptor)
+        except Exception:
+            os.close(descriptor)
+            raise
+        return descriptor
 
     def acquire(self) -> bool:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        handle = self.path.open("a+", encoding="utf-8")
         if fcntl is None:
-            handle.close()
             raise RuntimeError("Platform ini belum mendukung advisory lock updater")
+        descriptor = self._open_secure_file()
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            handle.close()
+            os.close(descriptor)
             return False
-        handle.seek(0)
-        handle.truncate()
-        handle.write(f"{os.getpid()}\n")
-        handle.flush()
-        self._handle = handle
+        except Exception:
+            os.close(descriptor)
+            raise
+        try:
+            self._validate_open_file(descriptor)
+            os.ftruncate(descriptor, 0)
+            os.write(descriptor, f"{os.getpid()}\n".encode("ascii"))
+            os.fsync(descriptor)
+            self._handle = os.fdopen(descriptor, "r+", encoding="ascii", closefd=True)
+        except Exception:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+            raise
         return True
 
     def release(self) -> None:
         handle = self._handle
         if handle is None:
             return
-        if fcntl is not None:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        handle.close()
-        self._handle = None
+        try:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+            self._handle = None
 
     def __enter__(self) -> "SingleInstanceLock":
         if not self.acquire():

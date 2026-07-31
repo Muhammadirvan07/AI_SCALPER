@@ -9,15 +9,18 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 from urllib.parse import urlparse
-from xml.etree import ElementTree
 
 import httpx
 
 from app.core.config import Settings
 
 from .base import ProviderFetchError, ProviderRateLimitError
+from .safe_xml import UnsafeXmlError, effective_xml_limit, parse_untrusted_xml
+
+if TYPE_CHECKING:
+    from xml.etree.ElementTree import Element
 
 _BLOCK_TAG_RE = re.compile(
     r"<(script|style|iframe|form)\b[^>]*>.*?</\1\s*>",
@@ -25,7 +28,6 @@ _BLOCK_TAG_RE = re.compile(
 )
 _TAG_RE = re.compile(r"<[^>]+>")
 _SPACE_RE = re.compile(r"\s+")
-_FORBIDDEN_XML = (b"<!doctype", b"<!entity")
 _ALLOWED_CONTENT_TYPES = {
     "application/rss+xml",
     "application/atom+xml",
@@ -304,9 +306,10 @@ class InvestingRssNewsProvider:
                     if content_type not in _ALLOWED_CONTENT_TYPES:
                         raise ProviderFetchError("Investing RSS returned unsupported content type")
                     declared = response.headers.get("content-length")
+                    xml_limit = effective_xml_limit(self.settings.investing_rss_max_response_bytes)
                     if declared:
                         try:
-                            if int(declared) > self.settings.investing_rss_max_response_bytes:
+                            if int(declared) > xml_limit:
                                 raise ProviderFetchError("Investing RSS response exceeds configured size limit")
                         except ValueError as exc:
                             raise ProviderFetchError("Investing RSS returned an invalid content length") from exc
@@ -314,7 +317,7 @@ class InvestingRssNewsProvider:
                     size = 0
                     async for chunk in response.aiter_bytes():
                         size += len(chunk)
-                        if size > self.settings.investing_rss_max_response_bytes:
+                        if size > xml_limit:
                             raise ProviderFetchError("Investing RSS response exceeds configured size limit")
                         chunks.append(chunk)
                     state.etag = response.headers.get("etag") or state.etag
@@ -363,7 +366,7 @@ class InvestingRssNewsProvider:
         return tag.rsplit("}", 1)[-1].lower()
 
     @classmethod
-    def _child_text(cls, entry: ElementTree.Element, names: set[str]) -> str | None:
+    def _child_text(cls, entry: Element, names: set[str]) -> str | None:
         for child in entry.iter():
             if child is entry or cls._local(child.tag) not in names:
                 continue
@@ -373,7 +376,7 @@ class InvestingRssNewsProvider:
         return None
 
     @classmethod
-    def _link(cls, entry: ElementTree.Element) -> str | None:
+    def _link(cls, entry: Element) -> str | None:
         for child in entry.iter():
             if cls._local(child.tag) != "link":
                 continue
@@ -382,26 +385,25 @@ class InvestingRssNewsProvider:
                 return value.strip()
         return None
 
-    @classmethod
-    def _parse(cls, payload: bytes, feed: dict) -> list[dict]:
-        lowered = payload.lower()
-        if any(marker in lowered for marker in _FORBIDDEN_XML):
-            raise ProviderFetchError("Investing RSS XML declarations are not allowed")
+    def _parse(self, payload: bytes, feed: dict) -> list[dict]:
         try:
-            root = ElementTree.fromstring(payload)
-        except ElementTree.ParseError as exc:
-            raise ProviderFetchError("Investing RSS returned invalid XML") from exc
-        entries = [item for item in root.iter() if cls._local(item.tag) in {"item", "entry"}]
+            root = parse_untrusted_xml(
+                payload,
+                max_bytes=self.settings.investing_rss_max_response_bytes,
+            )
+        except UnsafeXmlError as exc:
+            raise ProviderFetchError(f"Investing RSS returned invalid XML: {exc}") from exc
+        entries = [item for item in root.iter() if self._local(item.tag) in {"item", "entry"}]
         rows: list[dict] = []
         for entry in entries:
-            title = cls._child_text(entry, {"title"})
-            link = cls._link(entry)
+            title = self._child_text(entry, {"title"})
+            link = self._link(entry)
             if not title or not link:
                 continue
             item_categories = [
-                cls._plain_text(child.get("term") or child.text, maximum=80)
+                self._plain_text(child.get("term") or child.text, maximum=80)
                 for child in entry.iter()
-                if cls._local(child.tag) == "category"
+                if self._local(child.tag) == "category"
             ]
             categories = list(
                 dict.fromkeys(
@@ -413,12 +415,12 @@ class InvestingRssNewsProvider:
             )
             rows.append(
                 {
-                    "id": cls._child_text(entry, {"guid", "id"}) or link,
+                    "id": self._child_text(entry, {"guid", "id"}) or link,
                     "title": title,
-                    "summary": cls._child_text(entry, {"description", "summary"}),
+                    "summary": self._child_text(entry, {"description", "summary"}),
                     "url": link,
-                    "published_at": cls._child_text(entry, {"pubdate", "published", "updated", "date"}),
-                    "author": cls._child_text(entry, {"author", "creator"}),
+                    "published_at": self._child_text(entry, {"pubdate", "published", "updated", "date"}),
+                    "author": self._child_text(entry, {"author", "creator"}),
                     "source": "Investing.com",
                     "language": feed.get("language", "en"),
                     "countries": feed.get("countries", []),

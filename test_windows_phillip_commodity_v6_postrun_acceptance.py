@@ -206,11 +206,20 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
 
         self.invocation = "postrun-invocation-0001"
         audit = {
+            "operational_events": [
+                {
+                    "invocation_id": self.invocation,
+                    "stage": "INVOCATION_TERMINAL",
+                    "outcome": "PASS",
+                }
+            ],
             "source_operational_event_count": 110,
             "source_operational_head_sha256": "6" * 64,
             "source_operational_signed_head_hmac_sha256": "7" * 64,
             "runtime_status": {
+                "invocation_id": self.invocation,
                 "recorded_state": "HEALTHY",
+                "failure_code": None,
                 "heartbeat_at_utc": "2026-07-29T21:49:30Z",
                 "authenticity": "HMAC_SHA256",
                 "signing_key_id": "fixture-key-id",
@@ -218,6 +227,7 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
             "order_capability": "DISABLED",
             "live_allowed": False,
             "safe_to_demo_auto_order": False,
+            "max_lot": 0.01,
         }
         self.audit_bytes = pretty(audit)
         manifest = {
@@ -229,6 +239,7 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
             "order_capability": "DISABLED",
             "live_allowed": False,
             "safe_to_demo_auto_order": False,
+            "max_lot": 0.01,
         }
         manifest["manifest_sha256"] = digest(canonical(manifest))
         self.audit_manifest_bytes = pretty(manifest)
@@ -305,6 +316,36 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
         }
         self.receipt = self.root / "installation-receipt.json"
         self.receipt.write_bytes(pretty(receipt))
+        self.receipt_acl = self.root / "receipt-acl-evidence.json"
+        self.receipt_acl.write_bytes(
+            pretty(
+                {
+                    "schema_version": acceptance.RECEIPT_ACL_SCHEMA,
+                    "captured_at_utc": "2026-07-29T21:50:00Z",
+                    "receipt_path": (
+                        "C:\\review\\"
+                        f"{acceptance.TASK_NAME}.installation-receipt.json"
+                    ),
+                    "receipt_sha256": digest(self.receipt.read_bytes()),
+                    "owner_sid": "S-1-5-21-fixture",
+                    "acl_protected": True,
+                    "authorized_write_sids": sorted(
+                        [
+                            *acceptance.AUTHORIZED_RECEIPT_WRITE_SIDS,
+                            "S-1-5-21-fixture",
+                        ]
+                    ),
+                    "unauthorized_write_sids": [],
+                    "acl_sddl_sha256": "d" * 64,
+                    "collection": {
+                        "api": "Get-Acl",
+                        "access_rules_translated_to_sid": True,
+                        "task_scheduler_mutation": "NOT_PERFORMED",
+                        "broker_mutation": "NOT_PERFORMED",
+                    },
+                }
+            )
+        )
         self.transcript = self.root / "health-transcript.txt"
         self.transcript.write_text(
             "\n".join(
@@ -312,8 +353,8 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
                     "Status : PHILLIP_COMMODITY_V6_TASK_HEALTHY",
                     "ObservedAtUtc : 2026-07-29T21:50:00Z",
                     f"TaskName : {acceptance.TASK_NAME}",
-                    "TaskState : Running",
-                    "LastTaskResult : 267009",
+                    "TaskState : Ready",
+                    "LastTaskResult : 0",
                     "AuthenticatedHeartbeatAtUtc : 2026-07-29T21:49:30Z",
                     "AuthenticatedSourceEventCount : 110",
                     "AuditPairs : 3",
@@ -343,6 +384,7 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
         for event_id, record_id, timestamp in (
             (107, 500, "2026-07-29T21:45:00.0000000Z"),
             (100, 501, "2026-07-29T21:45:02.0000000Z"),
+            (102, 502, "2026-07-29T21:49:45.0000000Z"),
         ):
             raw_xml = scheduler_event_xml(
                 event_id=event_id,
@@ -432,12 +474,13 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
             checkpoint_root=self.checkpoints,
             audit_root=self.audit_root,
             installed_task_xml=self.task_xml,
+            receipt_acl_evidence=self.receipt_acl,
             health_transcript=self.transcript,
             task_scheduler_events=self.scheduler_events,
-            task_state="Running",
+            task_state="Ready",
             last_run_at_utc="2026-07-29T21:45:02Z",
-            last_task_result=267009,
-            next_run_time_local="2026-07-31T06:45:00",
+            last_task_result=0,
+            next_run_time_local="2026-07-31T06:45:00+09:00",
             v4_task_state="Disabled",
             v5_task_state="Disabled",
             observed_at_utc="2026-07-29T21:50:00Z",
@@ -466,6 +509,9 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
         self.assertEqual(result["bundle_identity_sha256"], verified["bundle_identity_sha256"])
         self.assertFalse(verified["live_allowed"])
         self.assertFalse(verified["promotion_eligible"])
+        self.assertEqual(0, verified["process_exit_code"])
+        self.assertTrue(verified["receipt_acl_validated"])
+        self.assertEqual(0, verified["broker_order_count"])
         with zipfile.ZipFile(archive) as package:
             self.assertEqual(
                 (*sorted(acceptance.EVIDENCE_PATHS), acceptance.BUNDLE_MANIFEST),
@@ -476,6 +522,116 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
         self.assertTrue(provenance["scheduled_trigger_observed"])
         self.assertFalse(provenance["manual_trigger_observed"])
         self.assertEqual("LOCAL_HOST_EVENT_LOG", provenance["provenance_scope"])
+
+    def test_rejects_running_or_in_progress_result_as_final_acceptance(self) -> None:
+        transcript = self.transcript.read_text(encoding="utf-8")
+        self.transcript.write_text(
+            transcript.replace("TaskState : Ready", "TaskState : Running").replace(
+                "LastTaskResult : 0",
+                "LastTaskResult : 267009",
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "POSTRUN_ACCEPTANCE_STATE_REJECTED",
+        ):
+            acceptance.collect_acceptance(
+                toolkit_manifest=self.toolkit_manifest,
+                installation_receipt=self.receipt,
+                checkpoint_root=self.checkpoints,
+                audit_root=self.audit_root,
+                installed_task_xml=self.task_xml,
+                receipt_acl_evidence=self.receipt_acl,
+                health_transcript=self.transcript,
+                task_scheduler_events=self.scheduler_events,
+                task_state="Running",
+                last_run_at_utc="2026-07-29T21:45:02Z",
+                last_task_result=267009,
+                next_run_time_local="2026-07-31T06:45:00+09:00",
+                v4_task_state="Disabled",
+                v5_task_state="Disabled",
+                observed_at_utc="2026-07-29T21:50:00Z",
+                output=self.root / "running-is-not-acceptance.zip",
+                tool_path=self.tool,
+            )
+
+    def test_rejects_stale_heartbeat_and_naive_next_run_timestamp(self) -> None:
+        receipt = json.loads(self.receipt.read_text(encoding="utf-8"))
+        checkpoint = dict(self.advanced_checkpoint)
+        checkpoint["latest_heartbeat_at_utc"] = "2026-07-29T21:40:00Z"
+        transcript = self.transcript.read_text(encoding="utf-8").replace(
+            "AuthenticatedHeartbeatAtUtc : 2026-07-29T21:49:30Z",
+            "AuthenticatedHeartbeatAtUtc : 2026-07-29T21:40:00Z",
+        )
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "POSTRUN_ACCEPTANCE_STATE_REJECTED",
+        ):
+            acceptance._validate_postrun_state(
+                receipt=receipt,
+                checkpoint=checkpoint,
+                observed_at=acceptance._parse_utc(
+                    "2026-07-29T21:50:00Z", "TEST_TIME"
+                ),
+                task_state="Ready",
+                last_run_at=acceptance._parse_utc(
+                    "2026-07-29T21:45:02Z", "TEST_TIME"
+                ),
+                last_task_result=0,
+                next_run_local="2026-07-31T06:45:00+09:00",
+                v4_state="Disabled",
+                v5_state="Disabled",
+                health_transcript=transcript.encode("utf-8"),
+            )
+
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "NEXT_RUN_TIME_REJECTED",
+        ):
+            acceptance.collect_acceptance(
+                toolkit_manifest=self.toolkit_manifest,
+                installation_receipt=self.receipt,
+                checkpoint_root=self.checkpoints,
+                audit_root=self.audit_root,
+                installed_task_xml=self.task_xml,
+                receipt_acl_evidence=self.receipt_acl,
+                health_transcript=self.transcript,
+                task_scheduler_events=self.scheduler_events,
+                task_state="Ready",
+                last_run_at_utc="2026-07-29T21:45:02Z",
+                last_task_result=0,
+                next_run_time_local="2026-07-31T06:45:00",
+                v4_task_state="Disabled",
+                v5_task_state="Disabled",
+                observed_at_utc="2026-07-29T21:50:00Z",
+                output=self.root / "naive-next-run.zip",
+                tool_path=self.tool,
+            )
+
+    def test_rejects_unsafe_receipt_acl_attestation(self) -> None:
+        acl = json.loads(self.receipt_acl.read_text(encoding="utf-8"))
+        acl["unauthorized_write_sids"] = ["S-1-5-11"]
+        self.receipt_acl.write_bytes(pretty(acl))
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "RECEIPT_ACL_EVIDENCE_REJECTED",
+        ):
+            self._collect("unsafe-receipt-acl.zip")
+
+    def test_rejects_audit_safety_max_lot_drift(self) -> None:
+        audit_path = self.audit_root / f"{self.invocation}.audit.json"
+        audit = json.loads(audit_path.read_text(encoding="utf-8"))
+        audit["max_lot"] = 0.02
+        audit_path.write_bytes(pretty(audit))
+        checkpoint = json.loads(self.advanced_path.read_text(encoding="utf-8"))
+        checkpoint["last_audit_sha256"] = digest(audit_path.read_bytes())
+        self.advanced_path.write_bytes(pretty(checkpoint))
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "AUDIT_PAIR_PROJECTION_REJECTED",
+        ):
+            self._collect("unsafe-max-lot.zip")
 
     def test_acceptance_cleanup_removes_only_created_output(self) -> None:
         output = self.root / "postwrite-verification-failure.zip"
@@ -536,14 +692,14 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
         instance_id = "{12345678-1234-4234-8234-123456789abc}"
         raw_xml = scheduler_event_xml(
             event_id=110,
-            record_id=502,
+            record_id=503,
             timestamp="2026-07-29T21:45:03.0000000Z",
             instance_id=instance_id,
         )
         evidence["events"].append(
             {
                 "event_id": 110,
-                "event_record_id": 502,
+                "event_record_id": 503,
                 "time_created_utc": "2026-07-29T21:45:03.0000000Z",
                 "raw_xml": raw_xml,
                 "raw_xml_sha256": digest(raw_xml.encode("utf-8")),
@@ -573,11 +729,11 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
 
     def test_rejects_trigger_record_that_does_not_precede_start(self) -> None:
         evidence = json.loads(self.scheduler_events.read_text(encoding="utf-8"))
-        trigger, start = evidence["events"]
-        trigger["event_record_id"] = start["event_record_id"] + 1
+        trigger, start = evidence["events"][:2]
+        trigger["event_record_id"] = start["event_record_id"] + 2
         trigger["raw_xml"] = trigger["raw_xml"].replace(
             "<EventRecordID>500</EventRecordID>",
-            "<EventRecordID>502</EventRecordID>",
+            "<EventRecordID>503</EventRecordID>",
         )
         trigger["raw_xml_sha256"] = digest(
             trigger["raw_xml"].encode("utf-8")
@@ -617,14 +773,14 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
             self._collect("receipt-duplicate-key.zip")
 
     def test_ready_task_requires_correlated_completion_event(self) -> None:
-        transcript = self.transcript.read_text(encoding="utf-8")
-        self.transcript.write_text(
-            transcript.replace("TaskState : Running", "TaskState : Ready").replace(
-                "LastTaskResult : 267009",
-                "LastTaskResult : 0",
-            ),
-            encoding="utf-8",
+        evidence = json.loads(self.scheduler_events.read_text(encoding="utf-8"))
+        completion = next(
+            row for row in evidence["events"] if row["event_id"] == 102
         )
+        evidence["events"] = [
+            row for row in evidence["events"] if row["event_id"] != 102
+        ]
+        self.scheduler_events.write_bytes(pretty(evidence))
         with self.assertRaisesRegex(
             acceptance.PostRunAcceptanceError,
             "TASK_SCHEDULER_TRIGGER_PROVENANCE_REJECTED",
@@ -635,35 +791,21 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
                 checkpoint_root=self.checkpoints,
                 audit_root=self.audit_root,
                 installed_task_xml=self.task_xml,
+                receipt_acl_evidence=self.receipt_acl,
                 health_transcript=self.transcript,
                 task_scheduler_events=self.scheduler_events,
                 task_state="Ready",
                 last_run_at_utc="2026-07-29T21:45:02Z",
                 last_task_result=0,
-                next_run_time_local="2026-07-31T06:45:00",
+                next_run_time_local="2026-07-31T06:45:00+09:00",
                 v4_task_state="Disabled",
                 v5_task_state="Disabled",
                 observed_at_utc="2026-07-29T21:50:00Z",
                 output=self.root / "ready-without-completion.zip",
                 tool_path=self.tool,
             )
-        evidence = json.loads(self.scheduler_events.read_text(encoding="utf-8"))
-        instance_id = "{12345678-1234-4234-8234-123456789abc}"
-        raw_xml = scheduler_event_xml(
-            event_id=102,
-            record_id=502,
-            timestamp="2026-07-29T21:49:45.0000000Z",
-            instance_id=instance_id,
-        )
-        evidence["events"].append(
-            {
-                "event_id": 102,
-                "event_record_id": 502,
-                "time_created_utc": "2026-07-29T21:49:45.0000000Z",
-                "raw_xml": raw_xml,
-                "raw_xml_sha256": digest(raw_xml.encode("utf-8")),
-            }
-        )
+        evidence["events"].append(completion)
+        evidence["events"].sort(key=lambda row: row["event_record_id"])
         self.scheduler_events.write_bytes(pretty(evidence))
         result = acceptance.collect_acceptance(
             toolkit_manifest=self.toolkit_manifest,
@@ -671,12 +813,13 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
             checkpoint_root=self.checkpoints,
             audit_root=self.audit_root,
             installed_task_xml=self.task_xml,
+            receipt_acl_evidence=self.receipt_acl,
             health_transcript=self.transcript,
             task_scheduler_events=self.scheduler_events,
             task_state="Ready",
             last_run_at_utc="2026-07-29T21:45:02Z",
             last_task_result=0,
-            next_run_time_local="2026-07-31T06:45:00",
+            next_run_time_local="2026-07-31T06:45:00+09:00",
             v4_task_state="Disabled",
             v5_task_state="Disabled",
             observed_at_utc="2026-07-29T21:50:00Z",
@@ -693,6 +836,9 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
         receipt["authenticated_source_event_count"] = 110
         receipt["authenticated_audit_pairs"] = 3
         self.receipt.write_bytes(pretty(receipt))
+        acl = json.loads(self.receipt_acl.read_text(encoding="utf-8"))
+        acl["receipt_sha256"] = digest(self.receipt.read_bytes())
+        self.receipt_acl.write_bytes(pretty(acl))
         with self.assertRaisesRegex(
             acceptance.PostRunAcceptanceError,
             "POSTRUN_ACCEPTANCE_STATE_REJECTED",
@@ -718,12 +864,13 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
                 checkpoint_root=self.checkpoints,
                 audit_root=self.audit_root,
                 installed_task_xml=self.task_xml,
+                receipt_acl_evidence=self.receipt_acl,
                 health_transcript=self.transcript,
                 task_scheduler_events=self.scheduler_events,
-                task_state="Running",
+                task_state="Ready",
                 last_run_at_utc="2026-07-29T21:44:59Z",
-                last_task_result=267009,
-                next_run_time_local="2026-07-31T06:45:00",
+                last_task_result=0,
+                next_run_time_local="2026-07-31T06:45:00+09:00",
                 v4_task_state="Disabled",
                 v5_task_state="Disabled",
                 observed_at_utc="2026-07-29T21:44:59Z",
@@ -845,12 +992,13 @@ class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
                 checkpoint_root=self.checkpoints,
                 audit_root=self.audit_root,
                 installed_task_xml=self.task_xml,
+                receipt_acl_evidence=self.receipt_acl,
                 health_transcript=self.transcript,
                 task_scheduler_events=self.scheduler_events,
                 task_state="Ready",
                 last_run_at_utc="2026-07-29T21:45:02Z",
                 last_task_result=2,
-                next_run_time_local="2026-07-31T06:45:00",
+                next_run_time_local="2026-07-31T06:45:00+09:00",
                 v4_task_state="Disabled",
                 v5_task_state="Disabled",
                 observed_at_utc="2026-07-29T21:50:00Z",

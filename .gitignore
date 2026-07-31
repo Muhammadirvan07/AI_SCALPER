@@ -3,6 +3,16 @@
 venv/
 .venv/
 .venv-dashboard/
+.venv-*/
+env/
+ENV/
+.env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 __pycache__/
 *.pyc
 .DS_Store

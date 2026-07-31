@@ -74,7 +74,7 @@ MAX_CUSTODY_EXPANDED_BYTES = 40 * 1024 * 1024
 MAX_CUSTODY_DOCUMENT_BYTES = 262_144
 CHECKPOINT_SCHEMA = "phillip-commodity-v6-scheduler-evidence-checkpoint-v1"
 TOOLKIT_SCHEMA = "phillip-commodity-v6-postrun-toolkit-v2"
-BUNDLE_SCHEMA = "phillip-commodity-v6-postrun-acceptance-bundle-v2"
+BUNDLE_SCHEMA = "phillip-commodity-v6-postrun-acceptance-bundle-v3"
 TASK_SCHEDULER_EVIDENCE_SCHEMA = (
     "phillip-commodity-v6-task-scheduler-trigger-evidence-v1"
 )
@@ -112,6 +112,7 @@ EVIDENCE_PATHS = (
     "health-transcript.txt",
     "installation-receipt.json",
     "installed-task.xml",
+    "receipt-acl-evidence.json",
     "task-scheduler-events.json",
 )
 BUNDLE_PATHS = (*EVIDENCE_PATHS, BUNDLE_MANIFEST)
@@ -157,6 +158,16 @@ TASK_SCHEDULER_CAPTURE_MAXIMUM_DELAY = timedelta(minutes=30)
 TASK_SCHEDULER_CORRELATION_TOLERANCE = timedelta(minutes=2)
 MAX_TASK_SCHEDULER_EVENTS = 4096
 MAX_TASK_SCHEDULER_EVENT_XML_BYTES = 512 * 1024
+JST = timezone(timedelta(hours=9))
+SCHEDULE_BOUNDARY_TOLERANCE = timedelta(minutes=5)
+HEARTBEAT_MAXIMUM_AGE = timedelta(minutes=5)
+HEARTBEAT_FUTURE_SKEW = timedelta(minutes=1)
+RECEIPT_ACL_CAPTURE_MAXIMUM_DELAY = timedelta(minutes=30)
+RECEIPT_ACL_SCHEMA = "phillip-commodity-v6-receipt-acl-evidence-v1"
+AUTHORIZED_RECEIPT_WRITE_SIDS = (
+    "S-1-5-18",  # LocalSystem
+    "S-1-5-32-544",  # BUILTIN\\Administrators
+)
 
 
 class PostRunAcceptanceError(RuntimeError):
@@ -415,6 +426,27 @@ def _parse_utc(value: object, code: str) -> datetime:
     if parsed.utcoffset() != timedelta(0):
         _reject(code)
     return parsed.astimezone(timezone.utc)
+
+
+def _parse_jst(value: object, code: str) -> datetime:
+    if not isinstance(value, str):
+        _reject(code)
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise PostRunAcceptanceError(code) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(hours=9):
+        _reject(code)
+    return parsed.astimezone(JST)
+
+
+def _is_scheduled_boundary(value: datetime) -> bool:
+    local = value.astimezone(JST)
+    expected = local.replace(hour=6, minute=45, second=0, microsecond=0)
+    return (
+        local.weekday() < 5
+        and abs(local - expected) <= SCHEDULE_BOUNDARY_TOLERANCE
+    )
 
 
 def _utc_text(value: datetime) -> str:
@@ -823,6 +855,18 @@ def _validate_audit_pair(
     audit = _json_object(audit_bytes, "AUDIT_EXPORT_JSON_REJECTED")
     manifest = _json_object(manifest_bytes, "AUDIT_MANIFEST_JSON_REJECTED")
     runtime_status = audit.get("runtime_status")
+    operational_events = audit.get("operational_events")
+    terminal_events = (
+        [
+            event
+            for event in operational_events
+            if isinstance(event, dict)
+            and event.get("invocation_id") == checkpoint["last_invocation_id"]
+            and event.get("stage") == "INVOCATION_TERMINAL"
+        ]
+        if isinstance(operational_events, list)
+        else []
+    )
     if (
         _manifest_authenticated_sha256(manifest)
         != checkpoint["last_manifest_authenticated_sha256"]
@@ -834,8 +878,11 @@ def _validate_audit_pair(
         or manifest.get("order_capability") != "DISABLED"
         or manifest.get("live_allowed") is not False
         or manifest.get("safe_to_demo_auto_order") is not False
+        or manifest.get("max_lot") != 0.01
         or not isinstance(runtime_status, dict)
         or runtime_status.get("recorded_state") != "HEALTHY"
+        or runtime_status.get("invocation_id") != checkpoint["last_invocation_id"]
+        or runtime_status.get("failure_code") is not None
         or runtime_status.get("authenticity") != "HMAC_SHA256"
         or runtime_status.get("signing_key_id") != checkpoint["signing_key_id"]
         or runtime_status.get("heartbeat_at_utc")
@@ -849,8 +896,77 @@ def _validate_audit_pair(
         or audit.get("order_capability") != "DISABLED"
         or audit.get("live_allowed") is not False
         or audit.get("safe_to_demo_auto_order") is not False
+        or audit.get("max_lot") != 0.01
+        or len(terminal_events) != 1
+        or terminal_events[0].get("outcome") != "PASS"
     ):
         _reject("AUDIT_PAIR_PROJECTION_REJECTED")
+
+
+def _validate_receipt_acl_evidence(
+    value: bytes,
+    *,
+    receipt_bytes: bytes,
+    receipt: dict[str, object],
+    observed_at: datetime,
+    last_run_at: datetime,
+) -> dict[str, object]:
+    evidence = _json_object_unique(value, "RECEIPT_ACL_EVIDENCE_REJECTED")
+    expected_sids = sorted(
+        {*AUTHORIZED_RECEIPT_WRITE_SIDS, str(receipt["windows_sid"])}
+    )
+    captured_at = _parse_utc(
+        evidence.get("captured_at_utc"),
+        "RECEIPT_ACL_TIME_REJECTED",
+    )
+    receipt_path = evidence.get("receipt_path")
+    if (
+        set(evidence)
+        != {
+            "schema_version",
+            "captured_at_utc",
+            "receipt_path",
+            "receipt_sha256",
+            "owner_sid",
+            "acl_protected",
+            "authorized_write_sids",
+            "unauthorized_write_sids",
+            "acl_sddl_sha256",
+            "collection",
+        }
+        or evidence.get("schema_version") != RECEIPT_ACL_SCHEMA
+        or not isinstance(receipt_path, str)
+        or not PureWindowsPath(receipt_path).is_absolute()
+        or PureWindowsPath(receipt_path).name
+        != f"{TASK_NAME}.installation-receipt.json"
+        or ".." in PureWindowsPath(receipt_path).parts
+        or evidence.get("receipt_sha256") != _sha256(receipt_bytes)
+        or evidence.get("owner_sid") not in expected_sids
+        or evidence.get("acl_protected") is not True
+        or evidence.get("authorized_write_sids") != expected_sids
+        or evidence.get("unauthorized_write_sids") != []
+        or not _is_sha256(evidence.get("acl_sddl_sha256"))
+        or evidence.get("collection")
+        != {
+            "api": "Get-Acl",
+            "access_rules_translated_to_sid": True,
+            "task_scheduler_mutation": "NOT_PERFORMED",
+            "broker_mutation": "NOT_PERFORMED",
+        }
+        or captured_at < last_run_at
+        or captured_at < observed_at - RECEIPT_ACL_CAPTURE_MAXIMUM_DELAY
+        or captured_at > observed_at + RECEIPT_ACL_CAPTURE_MAXIMUM_DELAY
+    ):
+        _reject("RECEIPT_ACL_EVIDENCE_REJECTED")
+    return {
+        "receipt_sha256": evidence["receipt_sha256"],
+        "owner_sid": evidence["owner_sid"],
+        "acl_protected": True,
+        "authorized_write_sids": expected_sids,
+        "unauthorized_write_sids": [],
+        "acl_sddl_sha256": evidence["acl_sddl_sha256"],
+        "captured_at_utc": _utc_text(captured_at),
+    }
 
 
 def _validate_postrun_state(
@@ -874,6 +990,7 @@ def _validate_postrun_state(
         checkpoint["latest_heartbeat_at_utc"],
         "CHECKPOINT_TIME_REJECTED",
     )
+    next_run_at = _parse_jst(next_run_local, "NEXT_RUN_TIME_REJECTED")
     fields = _health_transcript_fields(health_transcript)
     transcript_heartbeat = _parse_utc(
         fields["AuthenticatedHeartbeatAtUtc"],
@@ -892,8 +1009,14 @@ def _validate_postrun_state(
         or observed_at >= SCHEDULE_END_UTC
         or last_run_at < FIRST_SCHEDULED_START_UTC
         or last_run_at > observed_at
+        or not _is_scheduled_boundary(last_run_at)
+        or next_run_at <= last_run_at.astimezone(JST)
+        or next_run_at.astimezone(timezone.utc) >= SCHEDULE_END_UTC
         or latest_heartbeat < FIRST_SCHEDULED_START_UTC
         or latest_heartbeat <= initial_heartbeat
+        or latest_heartbeat < last_run_at
+        or observed_at - latest_heartbeat > HEARTBEAT_MAXIMUM_AGE
+        or latest_heartbeat - observed_at > HEARTBEAT_FUTURE_SKEW
         or int(checkpoint["source_operational_event_count"])
         <= int(receipt["authenticated_source_event_count"])
         or int(checkpoint["committed_manifest_count"])
@@ -901,11 +1024,10 @@ def _validate_postrun_state(
         or checkpoint["checkpoint_hmac_sha256"]
         == receipt["initial_evidence_checkpoint_hmac_sha256"]
         or checkpoint["predecessor_checkpoint_hmac_sha256"] is None
-        or task_state not in {"Running", "Ready"}
-        or (task_state == "Ready" and last_task_result != 0)
+        or task_state != "Ready"
+        or last_task_result != 0
         or not isinstance(last_task_result, int)
         or isinstance(last_task_result, bool)
-        or not next_run_local
         or v4_state != "Disabled"
         or v5_state != "Disabled"
         or fields["Status"] != "PHILLIP_COMMODITY_V6_TASK_HEALTHY"
@@ -1198,25 +1320,35 @@ def _validate_task_scheduler_evidence(
         if row["event_id"] == TASK_COMPLETED_EVENT_ID
         and row["instance_id"] == instance_id
     ]
-    if len(triggers) != 1 or manual:
+    instance_events = [
+        row for row in parsed if row["instance_id"] == instance_id
+    ]
+    if (
+        len(triggers) != 1
+        or manual
+        or len(
+            [row for row in instance_events if row["event_id"] == TASK_STARTED_EVENT_ID]
+        )
+        != 1
+        or len(
+            [
+                row
+                for row in instance_events
+                if row["event_id"] == SCHEDULED_TRIGGER_EVENT_ID
+            ]
+        )
+        != 1
+        or len(completions) != 1
+    ):
         _reject("TASK_SCHEDULER_TRIGGER_PROVENANCE_REJECTED")
     trigger = triggers[0]
+    completion = completions[0]
     if (
         trigger["event_record_id"] >= start["event_record_id"]
-        or (
-            task_state == "Ready"
-            and (
-                len(completions) != 1
-                or completions[0]["event_record_id"]
-                <= start["event_record_id"]
-                or completions[0]["time_created"] < start["time_created"]
-                or completions[0]["time_created"] > observed_at
-            )
-        )
-        or (
-            task_state == "Running"
-            and any(row["time_created"] <= observed_at for row in completions)
-        )
+        or task_state != "Ready"
+        or completion["event_record_id"] <= start["event_record_id"]
+        or completion["time_created"] < start["time_created"]
+        or completion["time_created"] > observed_at
     ):
         _reject("TASK_SCHEDULER_TRIGGER_PROVENANCE_REJECTED")
     return {
@@ -1229,6 +1361,9 @@ def _validate_task_scheduler_evidence(
         "task_start_event_id": TASK_STARTED_EVENT_ID,
         "task_start_record_id": start["event_record_id"],
         "task_start_at_utc": _utc_text(start["time_created"]),
+        "task_completion_event_id": TASK_COMPLETED_EVENT_ID,
+        "task_completion_record_id": completion["event_record_id"],
+        "task_completion_at_utc": _utc_text(completion["time_created"]),
         "manual_trigger_event_id": MANUAL_TRIGGER_EVENT_ID,
         "scheduled_trigger_observed": True,
         "manual_trigger_observed": False,
@@ -1330,6 +1465,7 @@ def collect_acceptance(
     checkpoint_root: Path,
     audit_root: Path,
     installed_task_xml: Path,
+    receipt_acl_evidence: Path,
     health_transcript: Path,
     task_scheduler_events: Path,
     task_state: str,
@@ -1412,6 +1548,18 @@ def collect_acceptance(
     )
     observed_at = _parse_utc(observed_at_utc, "OBSERVED_TIME_REJECTED")
     last_run_at = _parse_utc(last_run_at_utc, "LAST_RUN_TIME_REJECTED")
+    receipt_acl_bytes = _read_regular(
+        receipt_acl_evidence,
+        "RECEIPT_ACL_EVIDENCE_UNAVAILABLE",
+        maximum=MAX_CUSTODY_DOCUMENT_BYTES,
+    )
+    receipt_acl = _validate_receipt_acl_evidence(
+        receipt_acl_bytes,
+        receipt_bytes=receipt_bytes,
+        receipt=receipt,
+        observed_at=observed_at,
+        last_run_at=last_run_at,
+    )
     _validate_postrun_state(
         receipt=receipt,
         checkpoint=checkpoint,
@@ -1443,6 +1591,7 @@ def collect_acceptance(
         "health-transcript.txt": transcript_bytes,
         "installation-receipt.json": receipt_bytes,
         "installed-task.xml": task_xml_bytes,
+        "receipt-acl-evidence.json": receipt_acl_bytes,
         "task-scheduler-events.json": scheduler_event_bytes,
     }
     rows = [_member_row(path, evidence[path]) for path in sorted(evidence)]
@@ -1473,12 +1622,16 @@ def collect_acceptance(
             "task_state": task_state,
             "last_run_at_utc": _utc_text(last_run_at),
             "last_task_result": last_task_result,
+            "process_exit_code": last_task_result,
+            "process_completed": True,
             "next_run_time_local": next_run_time_local,
             "v4_task_state": v4_task_state,
             "v5_task_state": v5_task_state,
             "automatic_boundary_accepted": True,
             "scheduler_trigger_provenance_accepted": True,
             "manual_start_performed": False,
+            "duplicate_run_observed": False,
+            "stale_receipt_reuse_observed": False,
             "trigger_provenance": trigger_provenance,
         },
         "authenticated_evidence": {
@@ -1497,6 +1650,7 @@ def collect_acceptance(
             "last_manifest_file_sha256": checkpoint[
                 "last_manifest_file_sha256"
             ],
+            "receipt_acl": receipt_acl,
             "source_chain_from_genesis": True,
             "source_host_health_verifier_passed": True,
             "independent_hmac_reverification_performed": False,
@@ -1517,6 +1671,9 @@ def collect_acceptance(
             "promotion_eligible": False,
             "task_scheduler_mutation": "NOT_PERFORMED",
             "broker_mutation": "NOT_PERFORMED",
+            "max_lot": 0.01,
+            "broker_order_count": 0,
+            "broker_order_submission_performed": False,
         },
     }
     bundle["bundle_identity_sha256"] = _sha256(_canonical_json(bundle))
@@ -1559,6 +1716,12 @@ def collect_acceptance(
             "scheduled_trigger_record_id"
         ],
         "task_start_record_id": trigger_provenance["task_start_record_id"],
+        "task_completion_record_id": trigger_provenance[
+            "task_completion_record_id"
+        ],
+        "process_exit_code": 0,
+        "receipt_acl_validated": True,
+        "broker_order_count": 0,
         "order_capability": "DISABLED",
         "live_allowed": False,
         "offhost_custody_performed": False,
@@ -1868,9 +2031,14 @@ def _verify_acceptance_members(
         or scheduler.get("automatic_boundary_accepted") is not True
         or scheduler.get("scheduler_trigger_provenance_accepted") is not True
         or scheduler.get("manual_start_performed") is not False
+        or scheduler.get("duplicate_run_observed") is not False
+        or scheduler.get("stale_receipt_reuse_observed") is not False
         or scheduler.get("v4_task_state") != "Disabled"
         or scheduler.get("v5_task_state") != "Disabled"
-        or scheduler.get("task_state") not in {"Running", "Ready"}
+        or scheduler.get("task_state") != "Ready"
+        or scheduler.get("last_task_result") != 0
+        or scheduler.get("process_exit_code") != 0
+        or scheduler.get("process_completed") is not True
         or not isinstance(authenticated, dict)
         or authenticated.get("source_chain_from_genesis") is not True
         or authenticated.get("source_host_health_verifier_passed") is not True
@@ -1893,6 +2061,9 @@ def _verify_acceptance_members(
             "promotion_eligible": False,
             "task_scheduler_mutation": "NOT_PERFORMED",
             "broker_mutation": "NOT_PERFORMED",
+            "max_lot": 0.01,
+            "broker_order_count": 0,
+            "broker_order_submission_performed": False,
         }
     ):
         _reject("BUNDLE_MANIFEST_REJECTED")
@@ -1923,6 +2094,13 @@ def _verify_acceptance_members(
         _reject("INSTALLED_TASK_XML_HASH_REJECTED")
     observed_at = _parse_utc(scheduler.get("observed_at_utc"), "OBSERVED_TIME_REJECTED")
     last_run = _parse_utc(scheduler.get("last_run_at_utc"), "LAST_RUN_TIME_REJECTED")
+    receipt_acl = _validate_receipt_acl_evidence(
+        members["receipt-acl-evidence.json"],
+        receipt_bytes=members["installation-receipt.json"],
+        receipt=receipt,
+        observed_at=observed_at,
+        last_run_at=last_run,
+    )
     _validate_postrun_state(
         receipt=receipt,
         checkpoint=checkpoint,
@@ -1957,6 +2135,7 @@ def _verify_acceptance_members(
         or authenticated.get("last_audit_sha256") != checkpoint["last_audit_sha256"]
         or authenticated.get("last_manifest_file_sha256")
         != checkpoint["last_manifest_file_sha256"]
+        or authenticated.get("receipt_acl") != receipt_acl
     ):
         _reject("BUNDLE_EVIDENCE_PROJECTION_REJECTED")
     return {
@@ -1974,6 +2153,12 @@ def _verify_acceptance_members(
             "scheduled_trigger_record_id"
         ],
         "task_start_record_id": trigger_provenance["task_start_record_id"],
+        "task_completion_record_id": trigger_provenance[
+            "task_completion_record_id"
+        ],
+        "process_exit_code": 0,
+        "receipt_acl_validated": True,
+        "broker_order_count": 0,
         "offhost_custody_performed": False,
         "order_capability": "DISABLED",
         "live_allowed": False,
@@ -2658,6 +2843,7 @@ def _parser() -> argparse.ArgumentParser:
     collect.add_argument("--checkpoint-root", type=Path, required=True)
     collect.add_argument("--audit-root", type=Path, required=True)
     collect.add_argument("--installed-task-xml", type=Path, required=True)
+    collect.add_argument("--receipt-acl-evidence", type=Path, required=True)
     collect.add_argument("--health-transcript", type=Path, required=True)
     collect.add_argument("--task-scheduler-events", type=Path, required=True)
     collect.add_argument("--task-state", required=True)
@@ -2735,6 +2921,7 @@ def main(argv: list[str] | None = None) -> int:
                 checkpoint_root=args.checkpoint_root,
                 audit_root=args.audit_root,
                 installed_task_xml=args.installed_task_xml,
+                receipt_acl_evidence=args.receipt_acl_evidence,
                 health_transcript=args.health_transcript,
                 task_scheduler_events=args.task_scheduler_events,
                 task_state=args.task_state,

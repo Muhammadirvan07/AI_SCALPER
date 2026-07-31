@@ -3,14 +3,18 @@ from __future__ import annotations
 import html
 import ipaddress
 import re
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
-from xml.etree import ElementTree
 
 import httpx
 
 from app.core.config import Settings
 
 from .base import ProviderFetchError, ProviderRateLimitError
+from .safe_xml import UnsafeXmlError, effective_xml_limit, parse_untrusted_xml
+
+if TYPE_CHECKING:
+    from xml.etree.ElementTree import Element
 
 _TAG_RE = re.compile(r"<[^>]+>")
 
@@ -72,13 +76,18 @@ class RSSNewsProvider:
                 if content_type and not any(token in content_type for token in ("xml", "rss", "atom")):
                     raise ProviderFetchError(f"Unsupported RSS content type: {content_type}")
                 declared = response.headers.get("content-length")
-                if declared and int(declared) > self.settings.news_max_response_bytes:
-                    raise ProviderFetchError("RSS response exceeds configured size limit")
+                xml_limit = effective_xml_limit(self.settings.news_max_response_bytes)
+                if declared:
+                    try:
+                        if int(declared) > xml_limit:
+                            raise ProviderFetchError("RSS response exceeds configured size limit")
+                    except ValueError as exc:
+                        raise ProviderFetchError("RSS provider returned an invalid content length") from exc
                 chunks: list[bytes] = []
                 size = 0
                 async for chunk in response.aiter_bytes():
                     size += len(chunk)
-                    if size > self.settings.news_max_response_bytes:
+                    if size > xml_limit:
                         raise ProviderFetchError("RSS response exceeds configured size limit")
                     chunks.append(chunk)
                 return b"".join(chunks), content_type
@@ -104,50 +113,49 @@ class RSSNewsProvider:
             raise ValueError("Private RSS addresses are not allowed")
 
     @staticmethod
-    def _text(element: ElementTree.Element | None) -> str | None:
+    def _text(element: Element | None) -> str | None:
         if element is None or element.text is None:
             return None
         value = html.unescape(_TAG_RE.sub(" ", element.text))
         cleaned = " ".join(value.split())
         return cleaned or None
 
-    @classmethod
-    def _parse(cls, payload: bytes, feed_url: str, content_type: str) -> list[dict]:
+    def _parse(self, payload: bytes, feed_url: str, content_type: str) -> list[dict]:
         del content_type
         try:
-            root = ElementTree.fromstring(payload)
-        except ElementTree.ParseError as exc:
-            raise ProviderFetchError("RSS provider returned invalid XML") from exc
+            root = parse_untrusted_xml(payload, max_bytes=self.settings.news_max_response_bytes)
+        except UnsafeXmlError as exc:
+            raise ProviderFetchError(f"RSS provider returned invalid XML: {exc}") from exc
         channel = root.find("channel")
-        feed_title = cls._text(channel.find("title")) if channel is not None else None
+        feed_title = self._text(channel.find("title")) if channel is not None else None
         entries = root.findall("./channel/item")
         if not entries:
             entries = root.findall("{*}entry")
         rows: list[dict] = []
         for entry in entries:
-            link = cls._text(entry.find("link"))
+            link = self._text(entry.find("link"))
             if link is None:
                 link_element = entry.find("{*}link")
                 link = link_element.get("href") if link_element is not None else None
-            title = cls._text(entry.find("title")) or cls._text(entry.find("{*}title"))
+            title = self._text(entry.find("title")) or self._text(entry.find("{*}title"))
             if not title or not link:
                 continue
             rows.append(
                 {
-                    "id": cls._text(entry.find("guid")) or cls._text(entry.find("{*}id")),
+                    "id": self._text(entry.find("guid")) or self._text(entry.find("{*}id")),
                     "title": title,
                     "summary": (
-                        cls._text(entry.find("description"))
-                        or cls._text(entry.find("{*}summary"))
-                        or cls._text(entry.find("{*}content"))
+                        self._text(entry.find("description"))
+                        or self._text(entry.find("{*}summary"))
+                        or self._text(entry.find("{*}content"))
                     ),
                     "url": link,
                     "published_at": (
-                        cls._text(entry.find("pubDate"))
-                        or cls._text(entry.find("{*}published"))
-                        or cls._text(entry.find("{*}updated"))
+                        self._text(entry.find("pubDate"))
+                        or self._text(entry.find("{*}published"))
+                        or self._text(entry.find("{*}updated"))
                     ),
-                    "author": cls._text(entry.find("author")) or cls._text(entry.find("{*}author/{*}name")),
+                    "author": self._text(entry.find("author")) or self._text(entry.find("{*}author/{*}name")),
                     "source": feed_title or urlparse(feed_url).hostname,
                     "language": root.attrib.get("{http://www.w3.org/XML/1998/namespace}lang"),
                 }

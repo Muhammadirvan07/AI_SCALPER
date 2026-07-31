@@ -89,6 +89,11 @@ $taskSchedulerEvidencePath = Join-Path ([System.IO.Path]::GetTempPath()) (
   [Guid]::NewGuid().ToString("N") +
   ".json"
 )
+$receiptAclEvidencePath = Join-Path ([System.IO.Path]::GetTempPath()) (
+  "ai-scalper-phillip-v6-receipt-acl-" +
+  [Guid]::NewGuid().ToString("N") +
+  ".json"
+)
 $taskSchedulerChannel = "Microsoft-Windows-TaskScheduler/Operational"
 $taskSchedulerProvider = "Microsoft-Windows-TaskScheduler"
 $taskEventIds = @(100, 102, 107, 110)
@@ -231,6 +236,8 @@ $healthTranscriptLength = -1
 $healthTranscriptSHA256 = ""
 $taskSchedulerEvidenceLength = -1
 $taskSchedulerEvidenceSHA256 = ""
+$receiptAclEvidenceLength = -1
+$receiptAclEvidenceSHA256 = ""
 
 if ((Get-TimeZone).Id -ne "Tokyo Standard Time") {
   throw "Windows timezone must be Tokyo Standard Time."
@@ -346,6 +353,15 @@ try {
   ) {
     throw "V6.3 health result projection mismatch."
   }
+  if (
+    [string]$healthResult.TaskState -ne "Ready" -or
+    [int]$healthResult.LastTaskResult -ne 0
+  ) {
+    throw (
+      "Automatic acceptance requires a completed Ready task with " +
+      "LastTaskResult=0. Running/manual/preflight state is not acceptance."
+    )
+  }
   $healthText = $healthResult | Format-List * | Out-String -Width 4096
   [System.IO.File]::WriteAllText(
     $healthTranscriptPath,
@@ -378,9 +394,132 @@ try {
     $tokyo
   ).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
   $observedAtUtc = [string]$healthResult.ObservedAtUtc
-  $nextRunLocal = ([DateTime]$healthResult.NextRunTime).ToString(
-    "yyyy-MM-ddTHH:mm:ss"
+  $nextRunDate = [DateTime]::SpecifyKind(
+    [DateTime]$healthResult.NextRunTime,
+    [DateTimeKind]::Unspecified
   )
+  $nextRunOffset = [DateTimeOffset]::new(
+    $nextRunDate,
+    $tokyo.GetUtcOffset($nextRunDate)
+  )
+  $nextRunLocal = $nextRunOffset.ToString(
+    "yyyy-MM-ddTHH:mm:sszzz",
+    [Globalization.CultureInfo]::InvariantCulture
+  )
+
+  $receiptAcl = Get-Acl -LiteralPath $installationReceiptPath
+  if (-not [bool]$receiptAcl.AreAccessRulesProtected) {
+    throw "Installation receipt ACL inheritance must be disabled."
+  }
+  $ownerAccount = [System.Security.Principal.NTAccount]::new(
+    [string]$receiptAcl.Owner
+  )
+  $ownerSid = [string](
+    $ownerAccount.Translate(
+      [System.Security.Principal.SecurityIdentifier]
+    ).Value
+  )
+  $installationReceipt = Get-Content `
+    -LiteralPath $installationReceiptPath `
+    -Raw |
+    ConvertFrom-Json
+  $expectedWriteSids = @(
+    "S-1-5-18",
+    "S-1-5-32-544",
+    [string]$installationReceipt.windows_sid
+  )
+  if ([string]::IsNullOrWhiteSpace($expectedWriteSids[2])) {
+    throw "Installation receipt Windows SID is unavailable."
+  }
+  $expectedWriteSids = @($expectedWriteSids | Sort-Object -Unique)
+  if ($ownerSid -notin $expectedWriteSids) {
+    throw "Installation receipt owner SID is not authorized."
+  }
+  $writeMask = (
+    [int64][System.Security.AccessControl.FileSystemRights]::Write -bor
+    [int64][System.Security.AccessControl.FileSystemRights]::Modify -bor
+    [int64][System.Security.AccessControl.FileSystemRights]::FullControl -bor
+    [int64][System.Security.AccessControl.FileSystemRights]::Delete -bor
+    [int64][System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+    [int64][System.Security.AccessControl.FileSystemRights]::TakeOwnership
+  )
+  $observedWriteSids = @()
+  $unauthorizedWriteSids = @()
+  $accessRules = @(
+    $receiptAcl.GetAccessRules(
+      $true,
+      $true,
+      [System.Security.Principal.SecurityIdentifier]
+    )
+  )
+  foreach ($rule in $accessRules) {
+    if (
+      $rule.AccessControlType -ne
+        [System.Security.AccessControl.AccessControlType]::Allow -or
+      (([int64]$rule.FileSystemRights -band $writeMask) -eq 0)
+    ) {
+      continue
+    }
+    $sid = [string]$rule.IdentityReference.Value
+    if ($sid -in $expectedWriteSids) {
+      $observedWriteSids += $sid
+    }
+    else {
+      $unauthorizedWriteSids += $sid
+    }
+  }
+  $observedWriteSids = @($observedWriteSids | Sort-Object -Unique)
+  $unauthorizedWriteSids = @(
+    $unauthorizedWriteSids | Sort-Object -Unique
+  )
+  if (
+    $unauthorizedWriteSids.Count -ne 0 -or
+    @(
+      Compare-Object `
+        -ReferenceObject $expectedWriteSids `
+        -DifferenceObject $observedWriteSids
+    ).Count -ne 0
+  ) {
+    throw "Installation receipt has missing or unauthorized write grants."
+  }
+  $receiptSha256 = (
+    Get-FileHash -LiteralPath $installationReceiptPath -Algorithm SHA256
+  ).Hash.ToLowerInvariant()
+  $aclSddl = $receiptAcl.GetSecurityDescriptorSddlForm(
+    [System.Security.AccessControl.AccessControlSections]::Access
+  )
+  $aclEvidence = [ordered]@{
+    schema_version = "phillip-commodity-v6-receipt-acl-evidence-v1"
+    captured_at_utc = [DateTimeOffset]::UtcNow.ToString(
+      "yyyy-MM-ddTHH:mm:ss.fffffffZ",
+      [Globalization.CultureInfo]::InvariantCulture
+    )
+    receipt_path = $installationReceiptPath
+    receipt_sha256 = $receiptSha256
+    owner_sid = $ownerSid
+    acl_protected = $true
+    authorized_write_sids = $observedWriteSids
+    unauthorized_write_sids = $unauthorizedWriteSids
+    acl_sddl_sha256 = Get-TextSHA256 -Value $aclSddl
+    collection = [ordered]@{
+      api = "Get-Acl"
+      access_rules_translated_to_sid = $true
+      task_scheduler_mutation = "NOT_PERFORMED"
+      broker_mutation = "NOT_PERFORMED"
+    }
+  }
+  [System.IO.File]::WriteAllText(
+    $receiptAclEvidencePath,
+    ($aclEvidence | ConvertTo-Json -Depth 8),
+    [System.Text.UTF8Encoding]::new($false)
+  )
+  Assert-RegularNonReparseFile -Path $receiptAclEvidencePath
+  $receiptAclEvidenceLength = (
+    Get-Item -LiteralPath $receiptAclEvidencePath
+  ).Length
+  $receiptAclEvidenceSHA256 = (
+    Get-FileHash -LiteralPath $receiptAclEvidencePath -Algorithm SHA256
+  ).Hash.ToLowerInvariant()
 
   $log = Get-WinEvent -ListLog $taskSchedulerChannel -ErrorAction Stop
   if ($null -eq $log -or [bool]$log.IsEnabled -ne $true) {
@@ -487,6 +626,7 @@ try {
       --checkpoint-root $checkpointRoot `
       --audit-root $auditRoot `
       --installed-task-xml $installedTaskXmlPath `
+      --receipt-acl-evidence $receiptAclEvidencePath `
       --health-transcript $healthTranscriptPath `
       --task-scheduler-events $taskSchedulerEvidencePath `
       --task-state ([string]$healthResult.TaskState) `
@@ -516,7 +656,11 @@ try {
       [string]$collection.scheduler_instance_id
     ) -or
     [long]$collection.scheduled_trigger_record_id -le 0 -or
-    [long]$collection.task_start_record_id -le 0
+    [long]$collection.task_start_record_id -le 0 -or
+    [long]$collection.task_completion_record_id -le 0 -or
+    [int]$collection.process_exit_code -ne 0 -or
+    $collection.receipt_acl_validated -ne $true -or
+    [int]$collection.broker_order_count -ne 0
   ) {
     throw "Post-run collection projection mismatch."
   }
@@ -558,7 +702,12 @@ try {
     $acceptance.scheduled_trigger_record_id -ne
       $collection.scheduled_trigger_record_id -or
     $acceptance.task_start_record_id -ne
-      $collection.task_start_record_id
+      $collection.task_start_record_id -or
+    $acceptance.task_completion_record_id -ne
+      $collection.task_completion_record_id -or
+    [int]$acceptance.process_exit_code -ne 0 -or
+    $acceptance.receipt_acl_validated -ne $true -or
+    [int]$acceptance.broker_order_count -ne 0
   ) {
     throw "Post-run acceptance verification projection mismatch."
   }
@@ -578,6 +727,10 @@ try {
     SchedulerInstanceId = $acceptance.scheduler_instance_id
     ScheduledTriggerRecordId = $acceptance.scheduled_trigger_record_id
     TaskStartRecordId = $acceptance.task_start_record_id
+    TaskCompletionRecordId = $acceptance.task_completion_record_id
+    ProcessExitCode = $acceptance.process_exit_code
+    ReceiptAclValidated = $acceptance.receipt_acl_validated
+    BrokerOrderCount = $acceptance.broker_order_count
     TriggerProvenanceScope = "LOCAL_HOST_EVENT_LOG"
     CopyInstruction = "COPY_ZIP_TO_INDEPENDENT_OFFHOST_WORM"
     OffhostCustodyPerformed = $false
@@ -606,5 +759,14 @@ finally {
       -Path $taskSchedulerEvidencePath `
       -ExpectedLength $taskSchedulerEvidenceLength `
       -ExpectedSHA256 $taskSchedulerEvidenceSHA256
+  }
+  if (
+    $receiptAclEvidenceLength -ge 0 -and
+    $receiptAclEvidenceSHA256.Length -eq 64
+  ) {
+    Remove-ExactTemporaryFile `
+      -Path $receiptAclEvidencePath `
+      -ExpectedLength $receiptAclEvidenceLength `
+      -ExpectedSHA256 $receiptAclEvidenceSHA256
   }
 }

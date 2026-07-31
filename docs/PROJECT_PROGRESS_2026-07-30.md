@@ -99,7 +99,8 @@ WINDOWS_LIVE_RUNTIME_SESSION_HANDOFF_CONSUMER = PASS_LOCALLY_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_SESSION_REPLAY_DIRECTORY_ADAPTER = PASS_LOCALLY_DENY_ONLY
 PHILLIP_V6_FIRST_AUTOMATIC_RUN = FAILED_RESULT_3_NO_AUDIT
 TASK_SCHEDULER_OPERATIONAL_LOG = ENABLED_AFTER_FIRST_BOUNDARY
-PHILLIP_V6_NEXT_AUTOMATIC_RUN = 2026-07-31T06:45:00+09:00
+PHILLIP_V6_AUTOMATIC_ACCEPTANCE = BLOCKED_EXTERNAL_SCHEDULED_RUN
+PHILLIP_V6_NEXT_AUTOMATIC_RUN = OPERATOR_REPORTED_2026-08-03T06:45:00+09:00
 CONCRETE_LIVE_RUNTIME_PROVIDERS = NOT_SUPPLIED
 REAL_30_DAY_50_FILL_20_XAU_COHORT = ABSENT
 REAL_LIVE_PROMOTION_AND_NINE_GATES = ABSENT
@@ -136,6 +137,15 @@ masih login, lalu observasi pemicu otomatis berikutnya pada
 heartbeat autentik segar, dan post-run acceptance yang lulus dapat menutup
 scheduled-proof gate. `OrderCapability` tetap `DISABLED`, `LiveAllowed` tetap
 `false`, dan tidak ada broker mutation.
+
+Update operator 31 Juli: tanggal 31 Juli di atas dipertahankan sebagai
+historical schedule. Output Windows terbaru melaporkan exact task `Ready`,
+historical `LastTaskResult=3`, Operational log aktif, ACL remediation receipt
+valid, MT5 Commodity berjalan, dan `NextRunTime=2026-08-03T06:45:00+09:00`.
+Belum ada exact post-run ZIP schema v3 beserta event 107/100/102 dan completion
+result `0` yang diimpor ke repository. Karena itu automatic acceptance tetap
+`BLOCKED_EXTERNAL_SCHEDULED_RUN`; snapshot readiness tidak diperlakukan sebagai
+scheduled proof.
 
 ## V6.3 post-run acceptance hardening
 

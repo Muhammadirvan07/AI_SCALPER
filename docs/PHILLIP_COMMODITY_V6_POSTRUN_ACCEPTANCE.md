@@ -2,10 +2,16 @@
 
 Status: **READ-ONLY / POST-SCHEDULED-RUN ONLY / ORDER DISABLED**
 
+Kontrak baru memakai
+`specs/phillip_commodity_v6_postrun_acceptance_v3.md`. Status operasional dan
+urutan boundary terbaru ada di
+`docs/PHILLIP_V6_AUTOMATIC_ACCEPTANCE_RUNBOOK.md`.
+
 Toolkit ini menutup handoff setelah pemicu otomatis V6.3. Ia menjalankan exact
 health checker yang sudah terpasang, memverifikasi task dan signed checkpoint,
-lalu mengikat checkpoint terbaru, exact audit pair, installation receipt,
-installed task XML, health transcript, dan raw XML Task Scheduler Operational
+family ACL installation receipt yang tertutup, lalu mengikat checkpoint
+terbaru, exact audit pair, installation receipt, installed task XML, ACL
+attestation, health transcript, dan raw XML Task Scheduler Operational
 event ke satu ZIP create-exclusive. Event 107 dan 100 harus berkorelasi pada
 `InstanceId` yang sama; event 110 pada instance atau launch window yang sama
 membatalkan acceptance. Toolkit yang sama juga membuat custody-request ZIP
@@ -40,8 +46,11 @@ pengganti dari proses lain dipertahankan dan proses gagal tertutup.
 
 Jangan jalankan sebelum boundary otomatis
 `2026-07-30T06:45:00+09:00`. Manual start bukan pengganti bukti scheduler.
-Jalankan toolkit ketika V6 sedang `Running` dengan heartbeat segar, atau setelah
-run terjadwal selesai sehat dan task kembali `Ready` dengan result `0`.
+Jalankan final acceptance hanya setelah run terjadwal selesai sehat, task
+kembali `Ready`, event completion 102 tersedia, dan `LastTaskResult=0`.
+Pemeriksaan ketika task masih `Running` hanya boleh dilabeli
+`MANUAL_PREFLIGHT`; keadaan itu ditolak sebagai final acceptance walaupun
+heartbeat masih segar.
 
 Task Scheduler Operational log harus sudah aktif sebelum boundary. Toolkit
 tidak mengaktifkannya karena perubahan konfigurasi log harus tetap merupakan
@@ -50,8 +59,9 @@ aksi operator yang eksplisit dan tercatat.
 Nama task V6.3, V4, dan V5 masing-masing harus unik dan berada tepat di root
 Task Scheduler (`\`). Acceptance hanya menerima event 107 yang mempunyai
 EventRecordID lebih rendah daripada event start 100 pada instance yang sama.
-Jika task sudah kembali `Ready`, event completion 102 harus mempunyai
-EventRecordID lebih tinggi daripada event start tersebut.
+Event completion 102 wajib mempunyai EventRecordID lebih tinggi daripada event
+start tersebut. Event 107/100/102 harus unik untuk satu `InstanceId`; duplicate
+atau stale run ditolak.
 
 ## Verifikasi dan ekstraksi toolkit
 
@@ -130,7 +140,11 @@ event pengganti.
 
 ## Buat acceptance ZIP
 
-Perintah ini menjalankan health checker, tetapi tidak memulai task.
+Perintah ini menjalankan health checker, tetapi tidak memulai task. Wrapper
+juga memerlukan DACL receipt yang protected dan hanya memberikan write kepada
+SID installer yang terikat di receipt, `LocalSystem`, dan
+`BUILTIN\\Administrators`. Grant tulis untuk principal lain menggagalkan
+collection sebelum ZIP dibuat.
 
 ```powershell
 $output = (
@@ -157,6 +171,10 @@ Status                  = PHILLIP_COMMODITY_V6_POSTRUN_ACCEPTANCE_READY
 SchedulerInstanceId     = <CORRELATED_GUID>
 ScheduledTriggerRecordId = <EVENT_107_RECORD_ID>
 TaskStartRecordId       = <EVENT_100_RECORD_ID>
+TaskCompletionRecordId  = <EVENT_102_RECORD_ID>
+ProcessExitCode         = 0
+ReceiptAclValidated     = True
+BrokerOrderCount        = 0
 TriggerProvenanceScope  = LOCAL_HOST_EVENT_LOG
 OffhostCustodyPerformed = False
 OrderCapability         = DISABLED
@@ -170,7 +188,7 @@ BrokerMutation          = NOT_PERFORMED
 
 Simpan `ArchiveSHA256`, `BundleIdentitySHA256`, checkpoint HMAC, heartbeat,
 source event count, task state, scheduler result, correlated instance ID, dan
-record ID event 107/100 dari output. Verifikasi ulang ZIP sebelum transfer:
+record ID event 107/100/102 dari output. Verifikasi ulang ZIP sebelum transfer:
 
 ```powershell
 $acceptanceSHA256 = (

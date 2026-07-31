@@ -18,7 +18,8 @@ WINDOWS_LIVE_RUNTIME_CANDIDATE_CONSUMER = PASS_LOCAL_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_SESSION_HANDOFF_CONSUMER = PASS_LOCAL_DENY_ONLY
 WINDOWS_LIVE_RUNTIME_SESSION_REPLAY_DIRECTORY_ADAPTER = PASS_LOCAL_DENY_ONLY
 PHILLIP_V6_FIRST_AUTOMATIC_RUN = FAILED_RESULT_3_NO_AUDIT
-PHILLIP_V6_NEXT_AUTOMATIC_RUN = PENDING_2026-07-31T06:45:00+09:00
+PHILLIP_V6_AUTOMATIC_ACCEPTANCE = BLOCKED_EXTERNAL_SCHEDULED_RUN
+PHILLIP_V6_NEXT_AUTOMATIC_RUN = OPERATOR_REPORTED_2026-08-03T06:45:00+09:00
 CONCRETE_LIVE_RUNTIME_PROVIDER = NOT_ACCEPTED
 WINDOWS_EXTERNAL_EVIDENCE = INCOMPLETE
 CENTRAL_LIVE_LOCK = FALSE
@@ -198,8 +199,13 @@ launch, MT5 initialization, atau order broker.
   belum disuplai untuk verifikasi audit ini. Pemicu pertama pada 30 Juli
   berakhir `LastTaskResult=3` ketika Operational log masih nonaktif; probe
   Python/path/singleton-lock sesudah log diaktifkan lulus, tetapi tidak dapat
-  membuat ulang event provenance yang hilang. Percobaan otomatis berikutnya
-  dijadwalkan 31 Juli 06:45 JST dan manual start tetap dilarang.
+  membuat ulang event provenance yang hilang. Tanggal 31 Juli 06:45 JST adalah
+  historical retry schedule; tidak ada portable acceptance archive dari retry
+  itu di repository ini. Snapshot operator 31 Juli melaporkan task `Ready`,
+  historical result `3`, ACL remediation receipt valid, Operational log aktif,
+  dan next run 3 Agustus 06:45 JST. Karena snapshot itu belum berupa evidence
+  bundle yang dapat diverifikasi, gate tetap blocked dan manual start tetap
+  dilarang.
 - Target-host provider-bound admission, independent WORM/CAS custody/readback,
   and registered launch-session capability are absent.
 - Central LIVE unlock ceremony has not occurred.

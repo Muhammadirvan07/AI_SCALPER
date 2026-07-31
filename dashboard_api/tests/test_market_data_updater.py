@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import stat
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -10,6 +12,7 @@ import pytest
 
 from market_data_updater import (
     CollectorRunner,
+    LockSecurityError,
     MarketDataUpdater,
     SingleInstanceLock,
     UpdaterSettings,
@@ -64,6 +67,110 @@ def test_single_instance_lock_prevents_duplicate_process(tmp_path: Path) -> None
         first.release()
 
 
+def test_single_instance_lock_rejects_symbolic_link(tmp_path: Path) -> None:
+    target = tmp_path / "target.lock"
+    target.touch(mode=0o600)
+    link = tmp_path / "updater.lock"
+    link.symlink_to(target)
+
+    with pytest.raises(LockSecurityError, match="aman|link"):
+        SingleInstanceLock(link).acquire()
+
+
+def test_single_instance_lock_rejects_unsafe_file_permission(tmp_path: Path) -> None:
+    lock_path = tmp_path / "updater.lock"
+    lock_path.touch(mode=0o600)
+    lock_path.chmod(0o644)
+
+    with pytest.raises(LockSecurityError, match="0600"):
+        SingleInstanceLock(lock_path).acquire()
+
+
+def test_single_instance_lock_rejects_unsafe_runtime_directory(tmp_path: Path) -> None:
+    runtime = tmp_path / "shared"
+    runtime.mkdir(mode=0o700)
+    runtime.chmod(0o755)
+
+    with pytest.raises(LockSecurityError, match="0700"):
+        SingleInstanceLock(runtime / "updater.lock").acquire()
+
+
+def test_single_instance_lock_rejects_owner_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    actual_uid = os.getuid()
+    observed = iter((actual_uid, actual_uid + 1))
+    monkeypatch.setattr("market_data_updater._current_uid", lambda: next(observed))
+
+    with pytest.raises(LockSecurityError, match="current user"):
+        SingleInstanceLock(tmp_path / "updater.lock").acquire()
+
+
+def test_single_instance_lock_fallback_still_rejects_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "target.lock"
+    target.touch(mode=0o600)
+    link = tmp_path / "updater.lock"
+    link.symlink_to(target)
+    monkeypatch.setattr("market_data_updater._O_NOFOLLOW", 0)
+
+    with pytest.raises(LockSecurityError, match="Symbolic link"):
+        SingleInstanceLock(link).acquire()
+
+
+def test_single_instance_lock_fails_closed_without_platform_locking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("market_data_updater.fcntl", None)
+
+    with pytest.raises(RuntimeError, match="belum mendukung"):
+        SingleInstanceLock(tmp_path / "updater.lock").acquire()
+
+    assert not (tmp_path / "updater.lock").exists()
+
+
+def test_single_instance_lock_closes_descriptor_after_flock_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    closed: list[int] = []
+    real_close = os.close
+
+    def record_close(descriptor: int) -> None:
+        closed.append(descriptor)
+        real_close(descriptor)
+
+    def fail_flock(_descriptor: int, _operation: int) -> None:
+        raise OSError("simulated flock failure")
+
+    monkeypatch.setattr("market_data_updater.os.close", record_close)
+    monkeypatch.setattr("market_data_updater.fcntl.flock", fail_flock)
+    lock = SingleInstanceLock(tmp_path / "updater.lock")
+
+    with pytest.raises(OSError, match="simulated"):
+        lock.acquire()
+
+    assert lock._handle is None
+    assert len(closed) == 1
+
+
+def test_single_instance_lock_release_closes_handle_and_allows_reacquire(tmp_path: Path) -> None:
+    path = tmp_path / "updater.lock"
+    first = SingleInstanceLock(path)
+    assert first.acquire() is True
+    handle = first._handle
+    assert handle is not None
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+    first.release()
+
+    assert handle.closed is True
+    assert first._handle is None
+    second = SingleInstanceLock(path)
+    assert second.acquire() is True
+    second.release()
+
+
 def test_failure_backoff_is_bounded_and_resets(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     updater = MarketDataUpdater(settings)
@@ -98,3 +205,23 @@ def test_environment_keeps_virtualenv_python_symlink(
 
     assert settings.python_executable == python_link
     assert settings.python_executable.is_symlink()
+    assert settings.lock_file != Path("/tmp/ai_scalper_market_data_updater.lock")
+
+
+def test_environment_uses_private_xdg_runtime_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "repo"
+    venv_bin = root / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "python").symlink_to(Path(sys.executable))
+    (root / "data_collector.py").write_text("pass\n", encoding="utf-8")
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(mode=0o700)
+    monkeypatch.setenv("AI_SCALPER_ROOT", str(root))
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    monkeypatch.delenv("AI_SCALPER_MARKET_UPDATER_LOCK_FILE", raising=False)
+
+    settings = UpdaterSettings.from_environment()
+
+    assert settings.lock_file == runtime / "ai_scalper" / "market-data-updater.lock"
