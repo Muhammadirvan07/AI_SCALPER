@@ -124,14 +124,45 @@ if (-not $?) {
 Output yang sah harus memuat:
 
 ```text
-Status                    = PHILLIP_COMMODITY_V6_TRIGGER_AUDIT_READY
-OperationalLogEnabled     = True
-ManualStartRequired       = False
-TriggerEvidenceCollection = PENDING_AUTOMATIC_RUN
-TaskSchedulerMutation     = NOT_PERFORMED
-OrderCapability           = DISABLED
-LiveAllowed               = False
+Status                        = PHILLIP_COMMODITY_V6_TRIGGER_AUDIT_READY
+OperationalLogEnabled         = True
+TaskEnabled                   = True
+AllowStartOnDemand            = False
+StartWhenAvailable            = False
+MultipleInstances             = IgnoreNew
+LastTaskResultHex             = 0x........
+LastRunClassification         = <diagnostic classification>
+LatestExpectedBoundaryUtc     = <UTC boundary or null>
+LatestBoundaryStatus          = <diagnostic boundary status>
+LatestBoundaryObserved        = <True or False>
+ManualStartRequired           = False
+ManualStartProvenanceObserved = False
+EventProvenanceInspected      = False
+TriggerEvidenceCollection     = <diagnostic evidence state>
+AcceptanceReady               = False
+TaskSchedulerMutation         = NOT_PERFORMED
+OrderCapability               = DISABLED
+LiveAllowed                   = False
 ```
+
+Readiness diagnostic tidak membaca event provenance dan tidak dapat memberikan
+acceptance. `NON_BOUNDARY_REQUEST_REFUSED_WITH_DEMAND_START_DISABLED` hanya
+berarti last-run berada di luar toleransi boundary, result ternormalisasi
+`0x800710E0`, dan installed task melarang demand start. Nilai itu tidak boleh
+diubah menjadi klaim manual invocation tanpa event 110. Demikian pula
+`AUTOMATIC_RUN_COMPLETED_PENDING_EVIDENCE` tetap memerlukan korelasi event
+107/100/102 serta seluruh acceptance evidence.
+
+`TriggerEvidenceCollection` bersifat informatif dan deny-only:
+
+- `PENDING_AUTOMATIC_RUN` berarti latest boundary belum teramati;
+- `PENDING_AUTOMATIC_COMPLETION` berarti task boundary-aligned masih berjalan;
+- `PENDING_EVENT_CORRELATION_AND_ACCEPTANCE` berarti result boundary-aligned
+  sudah `0`, tetapi event dan seluruh bundle acceptance belum diverifikasi;
+- `FORENSIC_REVIEW_REQUIRED` berarti boundary-aligned berakhir nonzero.
+
+Tidak satu pun nilai tersebut memberikan acceptance, promotion, atau order
+authority.
 
 Jika checker menyatakan log belum aktif, hentikan alur dan aktifkan Task
 Scheduler history melalui prosedur administrator Windows yang disetujui,

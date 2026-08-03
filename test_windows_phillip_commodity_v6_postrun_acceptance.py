@@ -111,6 +111,169 @@ def rsa_sign(message: bytes) -> str:
     return signature.hex()
 
 
+class PhillipCommodityV6TriggerDiagnosticTests(unittest.TestCase):
+    def test_classifies_non_boundary_refusal_without_manual_overclaim(self) -> None:
+        result = acceptance.diagnose_trigger_readiness(
+            observed_at_utc="2026-08-03T07:31:01Z",
+            last_run_at_utc="2026-08-03T02:14:39Z",
+            last_task_result=2147946720,
+            task_state="Ready",
+            next_run_time_local="2026-08-04T06:45:00+09:00",
+            allow_start_on_demand=False,
+        )
+
+        self.assertEqual(
+            "NON_BOUNDARY_REQUEST_REFUSED_WITH_DEMAND_START_DISABLED",
+            result["last_run_classification"],
+        )
+        self.assertEqual("NOT_OBSERVED", result["latest_boundary_status"])
+        self.assertEqual("0x800710E0", result["last_task_result_hex"])
+        self.assertEqual(
+            "2026-08-02T21:45:00Z",
+            result["latest_expected_boundary_utc"],
+        )
+        self.assertFalse(result["latest_boundary_observed"])
+        self.assertEqual(
+            "PENDING_AUTOMATIC_RUN",
+            result["trigger_evidence_collection"],
+        )
+        self.assertFalse(result["manual_start_provenance_observed"])
+        self.assertFalse(result["event_provenance_inspected"])
+        self.assertFalse(result["acceptance_ready"])
+        self.assertEqual("DISABLED", result["order_capability"])
+        self.assertFalse(result["live_allowed"])
+
+    def test_classifies_running_automatic_boundary_without_accepting_it(self) -> None:
+        result = acceptance.diagnose_trigger_readiness(
+            observed_at_utc="2026-08-03T21:47:00Z",
+            last_run_at_utc="2026-08-03T21:45:01Z",
+            last_task_result=267009,
+            task_state="Running",
+            next_run_time_local="2026-08-05T06:45:00+09:00",
+            allow_start_on_demand=False,
+        )
+
+        self.assertEqual("AUTOMATIC_RUN_ACTIVE", result["last_run_classification"])
+        self.assertEqual("OBSERVED_RUNNING", result["latest_boundary_status"])
+        self.assertTrue(result["latest_boundary_observed"])
+        self.assertEqual(
+            "PENDING_AUTOMATIC_COMPLETION",
+            result["trigger_evidence_collection"],
+        )
+        self.assertFalse(result["acceptance_ready"])
+
+    def test_classifies_completed_boundary_as_pending_event_evidence(self) -> None:
+        result = acceptance.diagnose_trigger_readiness(
+            observed_at_utc="2026-08-04T21:15:00Z",
+            last_run_at_utc="2026-08-03T21:45:00Z",
+            last_task_result=0,
+            task_state="Ready",
+            next_run_time_local="2026-08-05T06:45:00+09:00",
+            allow_start_on_demand=False,
+        )
+
+        self.assertEqual(
+            "AUTOMATIC_RUN_COMPLETED_PENDING_EVIDENCE",
+            result["last_run_classification"],
+        )
+        self.assertEqual(
+            "OBSERVED_COMPLETED_ZERO",
+            result["latest_boundary_status"],
+        )
+        self.assertEqual(
+            "PENDING_EVENT_CORRELATION_AND_ACCEPTANCE",
+            result["trigger_evidence_collection"],
+        )
+        self.assertFalse(result["acceptance_ready"])
+
+    def test_normalizes_signed_task_result_and_rejects_future_last_run(self) -> None:
+        result = acceptance.diagnose_trigger_readiness(
+            observed_at_utc="2026-08-03T07:31:01Z",
+            last_run_at_utc="2026-08-03T02:14:39Z",
+            last_task_result=-2147020576,
+            task_state="Ready",
+            next_run_time_local="2026-08-04T06:45:00+09:00",
+            allow_start_on_demand=False,
+        )
+
+        self.assertEqual(2147946720, result["last_task_result_uint32"])
+        self.assertEqual("0x800710E0", result["last_task_result_hex"])
+        self.assertEqual(
+            "NON_BOUNDARY_REQUEST_REFUSED_WITH_DEMAND_START_DISABLED",
+            result["last_run_classification"],
+        )
+
+        with self.assertRaisesRegex(
+            acceptance.PostRunAcceptanceError,
+            "TRIGGER_READINESS_INPUT_INVALID",
+        ):
+            acceptance.diagnose_trigger_readiness(
+                observed_at_utc="2026-08-03T07:31:01Z",
+                last_run_at_utc="2026-08-03T07:31:02Z",
+                last_task_result=0,
+                task_state="Ready",
+                next_run_time_local="2026-08-04T06:45:00+09:00",
+                allow_start_on_demand=False,
+            )
+
+    def test_caps_latest_boundary_at_schedule_end(self) -> None:
+        result = acceptance.diagnose_trigger_readiness(
+            observed_at_utc="2036-08-03T07:31:01Z",
+            last_run_at_utc="2026-09-20T21:45:00Z",
+            last_task_result=0,
+            task_state="Ready",
+            next_run_time_local="2036-08-04T06:45:00+09:00",
+            allow_start_on_demand=False,
+        )
+
+        self.assertEqual(
+            "2026-09-20T21:45:00Z",
+            result["latest_expected_boundary_utc"],
+        )
+        self.assertEqual("OBSERVED_COMPLETED_ZERO", result["latest_boundary_status"])
+
+    def test_diagnostic_cli_runs_isolated_and_remains_deny_only(self) -> None:
+        tool = (
+            ROOT
+            / "windows_operator"
+            / "phillip_commodity_v6_postrun_acceptance.py"
+        )
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                "-S",
+                "-B",
+                str(tool),
+                "diagnose-readiness",
+                "--observed-at-utc",
+                "2026-08-03T07:31:01Z",
+                "--last-run-at-utc",
+                "2026-08-03T02:14:39Z",
+                "--last-task-result",
+                "2147946720",
+                "--task-state",
+                "Ready",
+                "--next-run-time-local",
+                "2026-08-04T06:45:00+09:00",
+                "--allow-start-on-demand",
+                "false",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        result = json.loads(completed.stdout)
+        self.assertEqual(
+            "PHILLIP_COMMODITY_V6_TRIGGER_DIAGNOSTIC_READY",
+            result["status"],
+        )
+        self.assertFalse(result["acceptance_ready"])
+        self.assertEqual("DISABLED", result["order_capability"])
+
+
 class PhillipCommodityV6PostRunAcceptanceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()

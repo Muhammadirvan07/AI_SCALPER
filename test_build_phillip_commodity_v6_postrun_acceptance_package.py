@@ -258,6 +258,20 @@ class PhillipCommodityV6PostRunToolkitBuilderTests(unittest.TestCase):
             combined,
         )
         self.assertIn("isenabled", combined)
+        for diagnostic_token in (
+            "diagnose-readiness",
+            "allowstartondemand",
+            "lasttaskresulthex",
+            "lastrunclassification",
+            "latestexpectedboundaryutc",
+            "latestboundarystatus",
+            "latestboundaryobserved",
+            "triggerevidencecollection",
+            "acceptanceready",
+            "eventprovenanceinspected",
+        ):
+            with self.subTest(diagnostic_token=diagnostic_token):
+                self.assertIn(diagnostic_token, combined)
         self.assertGreaterEqual(
             combined.count("function get-exactrootscheduledtask"),
             2,

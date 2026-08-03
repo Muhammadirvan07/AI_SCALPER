@@ -39,6 +39,15 @@ target-host receipt ACL attestation and explicit safety/no-order facts.
    mutation.
 10. All checks MUST remain effective under Python `-O`; no safety decision may
     depend on `assert`.
+11. Pre-boundary readiness MUST expose the unsigned/hex task result, latest
+    expected weekday boundary, alignment status, installed demand-start guard,
+    and a non-authoritative last-run classification. It MUST keep
+    `acceptance_ready=false`, MUST NOT infer event 110/manual provenance from a
+    result code alone, and MUST NOT start or mutate the task.
+12. Readiness MUST publish an evidence-state projection that distinguishes an
+    unobserved boundary, an active automatic run, a zero-result run awaiting
+    event correlation, and a nonzero run requiring forensic review. Every
+    state remains deny-only and MUST NOT imply acceptance.
 
 ## Evidence inventory
 

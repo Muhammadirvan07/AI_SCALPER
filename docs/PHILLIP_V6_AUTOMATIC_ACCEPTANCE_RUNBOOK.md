@@ -15,16 +15,24 @@ dengan manual invocation.
 
 ## Snapshot operasional yang belum menjadi evidence repository
 
-Output Windows yang dilaporkan operator pada 31 Juli 2026 menunjukkan task
-`Ready`, historical `LastTaskResult=3`, Operational log aktif, ACL remediation
-receipt valid, MT5 Commodity berjalan, dan `NextRunTime` 3 Agustus 2026 pukul
-06:45 JST. Artifact acceptance dari run otomatis yang selesai belum disalin ke
-repository ini, sehingga informasi tersebut tetap **operator-reported** dan
-tidak menutup gate.
+Output Windows yang dilaporkan operator pada 3 Agustus 2026 menunjukkan task
+`Ready`, `LastRunTime=2026-08-03T11:14:39+09:00`, result
+`2147946720/0x800710E0`, Operational log aktif, dan
+`NextRunTime=2026-08-04T06:45:00+09:00`. Installed task melaporkan
+`AllowStartOnDemand=false`, `StartWhenAvailable=false`,
+`MultipleInstances=IgnoreNew`, dan principal interaktif. Query pukul
+06:35--07:05 tidak menemukan event Task Scheduler. Karena last-run tidak
+sejajar dengan boundary 06:45 dan event provenance tidak ada, snapshot ini
+tidak membuktikan automatic run maupun manual invocation. Kombinasi
+non-boundary `0x800710E0` dan demand-start disabled hanya boleh dilabeli
+request refused yang memerlukan event review.
 
-Tanggal 30 dan 31 Juli tetap historical schedule. Percobaan berikutnya hanya
-boleh disebut `2026-08-03T06:45:00+09:00` jika `Get-ScheduledTaskInfo` pada host
-yang sama masih melaporkan nilai itu segera sebelum boundary.
+Artifact acceptance dari run otomatis yang selesai belum disalin ke repository
+ini, sehingga informasi tersebut tetap **operator-reported** dan tidak menutup
+gate. Tanggal 30 Juli, 31 Juli, dan 3 Agustus tetap historical schedule.
+Percobaan berikutnya hanya boleh disebut `2026-08-04T06:45:00+09:00` jika
+`Get-ScheduledTaskInfo` pada host yang sama masih melaporkan nilai itu segera
+sebelum boundary.
 
 ## Identitas dan prasyarat
 
@@ -73,6 +81,13 @@ $log = Get-WinEvent `
 PASS readiness memerlukan timezone benar, task unik, log aktif, task tidak
 disabled, dan `NextRunTime` masih cocok dengan boundary yang hendak diamati.
 Readiness bukan acceptance.
+
+Toolkit build berikutnya juga memproyeksikan guard dan diagnosis read-only:
+`AllowStartOnDemand`, `StartWhenAvailable`, `MultipleInstances`, result hex,
+latest expected boundary, boundary alignment, serta last-run classification.
+Classifier tidak membaca event provenance dan selalu menghasilkan
+`AcceptanceReady=False`; final acceptance tetap hanya dimiliki verifier
+post-run.
 
 ## Biarkan run otomatis selesai
 

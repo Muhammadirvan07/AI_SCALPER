@@ -74,6 +74,74 @@ function Get-ExactRootScheduledTask {
   return $task
 }
 
+function Get-RequiredObjectPropertyValue {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$InputObject,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+  $property = $InputObject.PSObject.Properties[$Name]
+  if ($null -eq $property) {
+    throw "Required scheduled-task property is unavailable: $Name"
+  }
+  return $property.Value
+}
+
+function Get-RequiredBooleanObjectPropertyValue {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$InputObject,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+  $value = Get-RequiredObjectPropertyValue `
+    -InputObject $InputObject `
+    -Name $Name
+  if ($value -isnot [bool]) {
+    throw "Required scheduled-task property is not boolean: $Name"
+  }
+  return [bool]$value
+}
+
+function Convert-TokyoLocalDateTimeToUtcText {
+  param(
+    [Parameter(Mandatory = $true)]
+    [DateTime]$Value
+  )
+  $unspecified = [DateTime]::SpecifyKind(
+    $Value,
+    [DateTimeKind]::Unspecified
+  )
+  return [DateTimeOffset]::new(
+    $unspecified,
+    [TimeSpan]::FromHours(9)
+  ).ToUniversalTime().ToString(
+    "yyyy-MM-ddTHH:mm:ss.fffffffZ",
+    [Globalization.CultureInfo]::InvariantCulture
+  )
+}
+
+function Convert-TokyoLocalDateTimeToOffsetText {
+  param(
+    [Parameter(Mandatory = $true)]
+    [DateTime]$Value
+  )
+  $unspecified = [DateTime]::SpecifyKind(
+    $Value,
+    [DateTimeKind]::Unspecified
+  )
+  return [DateTimeOffset]::new(
+    $unspecified,
+    [TimeSpan]::FromHours(9)
+  ).ToString(
+    "yyyy-MM-ddTHH:mm:ss.fffffffzzz",
+    [Globalization.CultureInfo]::InvariantCulture
+  )
+}
+
 if ((Get-TimeZone).Id -ne "Tokyo Standard Time") {
   throw "Windows timezone must be Tokyo Standard Time."
 }
@@ -144,6 +212,40 @@ $task = Get-ExactRootScheduledTask -Name $taskName
 $taskInfo = Get-ScheduledTaskInfo -InputObject $task -ErrorAction Stop
 $v4Task = Get-ExactRootScheduledTask -Name $v4TaskName
 $v5Task = Get-ExactRootScheduledTask -Name $v5TaskName
+$taskEnabled = Get-RequiredBooleanObjectPropertyValue `
+  -InputObject $task.Settings `
+  -Name "Enabled"
+$allowStartOnDemand = Get-RequiredBooleanObjectPropertyValue `
+  -InputObject $task.Settings `
+  -Name "AllowDemandStart"
+$startWhenAvailable = Get-RequiredBooleanObjectPropertyValue `
+  -InputObject $task.Settings `
+  -Name "StartWhenAvailable"
+$multipleInstances = [string](
+  Get-RequiredObjectPropertyValue `
+    -InputObject $task.Settings `
+    -Name "MultipleInstances"
+)
+$principalLogonType = [string](
+  Get-RequiredObjectPropertyValue `
+    -InputObject $task.Principal `
+    -Name "LogonType"
+)
+$principalUserId = [string](
+  Get-RequiredObjectPropertyValue `
+    -InputObject $task.Principal `
+    -Name "UserId"
+)
+if (
+  -not $taskEnabled -or
+  $allowStartOnDemand -or
+  $startWhenAvailable -or
+  $multipleInstances -ne "IgnoreNew" -or
+  $principalLogonType -notin @("Interactive", "InteractiveToken") -or
+  [string]::IsNullOrWhiteSpace($principalUserId)
+) {
+  throw "Installed scheduler safety or interactive-session guard drift."
+}
 $receipt = Get-Content -LiteralPath $installationReceiptPath -Raw |
   ConvertFrom-Json
 if (
@@ -176,19 +278,86 @@ if ($now -lt $firstBoundary) {
   }
 }
 
+$observedAt = [DateTimeOffset]::UtcNow
+$observedAtUtcText = $observedAt.ToString(
+  "yyyy-MM-ddTHH:mm:ss.fffffffZ",
+  [Globalization.CultureInfo]::InvariantCulture
+)
+$lastRunAtUtc = Convert-TokyoLocalDateTimeToUtcText `
+  -Value ([DateTime]$taskInfo.LastRunTime)
+$nextRunTimeLocal = Convert-TokyoLocalDateTimeToOffsetText `
+  -Value ([DateTime]$taskInfo.NextRunTime)
+$lastTaskResult = [Int64]$taskInfo.LastTaskResult
+$taskState = [string]$task.State
+$allowStartOnDemandText = if ($allowStartOnDemand) {
+  "true"
+}
+else {
+  "false"
+}
+$diagnosticOutput = @(
+  & $ReleasePython `
+    -I `
+    -S `
+    -B `
+    $toolPath `
+    diagnose-readiness `
+    --observed-at-utc $observedAtUtcText `
+    --last-run-at-utc $lastRunAtUtc `
+    --last-task-result $lastTaskResult `
+    --task-state $taskState `
+    --next-run-time-local $nextRunTimeLocal `
+    --allow-start-on-demand $allowStartOnDemandText `
+    2>&1
+)
+if ($LASTEXITCODE -ne 0) {
+  $diagnosticOutput
+  throw "Trigger readiness diagnosis failed."
+}
+$diagnostic = (
+  $diagnosticOutput -join [Environment]::NewLine
+) | ConvertFrom-Json
+if (
+  [string]$diagnostic.status -ne
+    "PHILLIP_COMMODITY_V6_TRIGGER_DIAGNOSTIC_READY" -or
+  [bool]$diagnostic.acceptance_ready -ne $false -or
+  [string]$diagnostic.order_capability -ne "DISABLED" -or
+  [bool]$diagnostic.live_allowed -ne $false -or
+  [string]$diagnostic.task_scheduler_mutation -ne "NOT_PERFORMED" -or
+  [string]$diagnostic.broker_mutation -ne "NOT_PERFORMED"
+) {
+  throw "Trigger readiness diagnosis projection mismatch."
+}
+
 [PSCustomObject]@{
   Status = "PHILLIP_COMMODITY_V6_TRIGGER_AUDIT_READY"
-  ObservedAtUtc = [DateTimeOffset]::UtcNow.ToString(
+  ObservedAtUtc = $observedAt.ToString(
     "yyyy-MM-ddTHH:mm:ss.fffZ"
   )
   TaskName = $taskName
   TaskState = $task.State
+  TaskEnabled = $taskEnabled
+  TaskPrincipalUserId = $principalUserId
+  TaskPrincipalLogonType = $principalLogonType
+  AllowStartOnDemand = $allowStartOnDemand
+  StartWhenAvailable = $startWhenAvailable
+  MultipleInstances = $multipleInstances
+  LastRunTime = $taskInfo.LastRunTime
+  LastTaskResult = $taskInfo.LastTaskResult
+  LastTaskResultHex = $diagnostic.last_task_result_hex
+  LastRunClassification = $diagnostic.last_run_classification
+  LatestExpectedBoundaryUtc = $diagnostic.latest_expected_boundary_utc
+  LatestBoundaryStatus = $diagnostic.latest_boundary_status
+  LatestBoundaryObserved = $diagnostic.latest_boundary_observed
   NextRunTime = $taskInfo.NextRunTime
   OperationalLog = $taskSchedulerChannel
   OperationalLogEnabled = $true
   AutomaticBoundary = "2026-07-30T06:45:00+09:00"
   ManualStartRequired = $false
-  TriggerEvidenceCollection = "PENDING_AUTOMATIC_RUN"
+  ManualStartProvenanceObserved = $false
+  EventProvenanceInspected = $false
+  TriggerEvidenceCollection = $diagnostic.trigger_evidence_collection
+  AcceptanceReady = $false
   ProvenanceScope = "LOCAL_HOST_EVENT_LOG"
   IndependentAttestationPerformed = $false
   OrderCapability = "DISABLED"

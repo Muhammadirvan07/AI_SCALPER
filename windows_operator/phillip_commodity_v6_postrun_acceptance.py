@@ -160,6 +160,8 @@ MAX_TASK_SCHEDULER_EVENTS = 4096
 MAX_TASK_SCHEDULER_EVENT_XML_BYTES = 512 * 1024
 JST = timezone(timedelta(hours=9))
 SCHEDULE_BOUNDARY_TOLERANCE = timedelta(minutes=5)
+TASK_NEVER_RUN_CUTOFF_UTC = datetime(2000, 1, 1, tzinfo=timezone.utc)
+TASK_RESULT_REQUEST_REFUSED = 0x800710E0
 HEARTBEAT_MAXIMUM_AGE = timedelta(minutes=5)
 HEARTBEAT_FUTURE_SKEW = timedelta(minutes=1)
 RECEIPT_ACL_CAPTURE_MAXIMUM_DELAY = timedelta(minutes=30)
@@ -447,6 +449,129 @@ def _is_scheduled_boundary(value: datetime) -> bool:
         local.weekday() < 5
         and abs(local - expected) <= SCHEDULE_BOUNDARY_TOLERANCE
     )
+
+
+def _latest_scheduled_boundary(observed_at: datetime) -> datetime | None:
+    local = observed_at.astimezone(JST)
+    candidate = local.replace(hour=6, minute=45, second=0, microsecond=0)
+    if candidate > local:
+        candidate -= timedelta(days=1)
+    schedule_end_local = SCHEDULE_END_UTC.astimezone(JST)
+    if candidate > schedule_end_local:
+        candidate = schedule_end_local.replace(
+            hour=6,
+            minute=45,
+            second=0,
+            microsecond=0,
+        )
+        if candidate > schedule_end_local:
+            candidate -= timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate -= timedelta(days=1)
+    candidate_utc = candidate.astimezone(timezone.utc)
+    if candidate_utc < FIRST_SCHEDULED_START_UTC:
+        return None
+    return candidate_utc
+
+
+def diagnose_trigger_readiness(
+    *,
+    observed_at_utc: str,
+    last_run_at_utc: str,
+    last_task_result: int,
+    task_state: str,
+    next_run_time_local: str,
+    allow_start_on_demand: bool,
+) -> dict[str, object]:
+    """Classify scheduler observations without granting acceptance authority."""
+
+    observed_at = _parse_utc(observed_at_utc, "OBSERVED_TIME_REJECTED")
+    last_run_at = _parse_utc(last_run_at_utc, "LAST_RUN_TIME_REJECTED")
+    next_run_at = _parse_jst(next_run_time_local, "NEXT_RUN_TIME_REJECTED")
+    if (
+        type(last_task_result) is not int
+        or last_task_result < -(2**31)
+        or last_task_result > 0xFFFFFFFF
+        or task_state not in {"Ready", "Running"}
+        or type(allow_start_on_demand) is not bool
+        or last_run_at > observed_at
+        or next_run_at.astimezone(timezone.utc) <= observed_at
+    ):
+        _reject("TRIGGER_READINESS_INPUT_INVALID")
+
+    normalized_result = last_task_result & 0xFFFFFFFF
+    result_hex = f"0x{normalized_result:08X}"
+    latest_boundary = _latest_scheduled_boundary(observed_at)
+    boundary_aligned = bool(
+        latest_boundary is not None
+        and abs(last_run_at - latest_boundary) <= SCHEDULE_BOUNDARY_TOLERANCE
+    )
+
+    if latest_boundary is None:
+        boundary_status = "PRE_FIRST_BOUNDARY"
+    elif boundary_aligned and task_state == "Running":
+        boundary_status = "OBSERVED_RUNNING"
+    elif boundary_aligned and normalized_result == 0:
+        boundary_status = "OBSERVED_COMPLETED_ZERO"
+    elif boundary_aligned:
+        boundary_status = "OBSERVED_NONZERO"
+    else:
+        boundary_status = "NOT_OBSERVED"
+
+    if last_run_at < TASK_NEVER_RUN_CUTOFF_UTC:
+        last_run_classification = "NO_RECORDED_RUN"
+    elif boundary_aligned and task_state == "Running":
+        last_run_classification = "AUTOMATIC_RUN_ACTIVE"
+    elif boundary_aligned and normalized_result == 0:
+        last_run_classification = "AUTOMATIC_RUN_COMPLETED_PENDING_EVIDENCE"
+    elif boundary_aligned:
+        last_run_classification = "AUTOMATIC_RUN_NONZERO_REQUIRES_REVIEW"
+    elif (
+        normalized_result == TASK_RESULT_REQUEST_REFUSED
+        and not allow_start_on_demand
+    ):
+        last_run_classification = (
+            "NON_BOUNDARY_REQUEST_REFUSED_WITH_DEMAND_START_DISABLED"
+        )
+    else:
+        last_run_classification = "NON_BOUNDARY_LAST_RUN_REQUIRES_REVIEW"
+
+    if boundary_status in {"PRE_FIRST_BOUNDARY", "NOT_OBSERVED"}:
+        trigger_evidence_collection = "PENDING_AUTOMATIC_RUN"
+    elif boundary_status == "OBSERVED_RUNNING":
+        trigger_evidence_collection = "PENDING_AUTOMATIC_COMPLETION"
+    elif boundary_status == "OBSERVED_COMPLETED_ZERO":
+        trigger_evidence_collection = (
+            "PENDING_EVENT_CORRELATION_AND_ACCEPTANCE"
+        )
+    else:
+        trigger_evidence_collection = "FORENSIC_REVIEW_REQUIRED"
+
+    return {
+        "status": "PHILLIP_COMMODITY_V6_TRIGGER_DIAGNOSTIC_READY",
+        "observed_at_utc": _utc_text(observed_at),
+        "latest_expected_boundary_utc": (
+            _utc_text(latest_boundary) if latest_boundary is not None else None
+        ),
+        "latest_boundary_status": boundary_status,
+        "latest_boundary_observed": boundary_aligned,
+        "last_run_at_utc": _utc_text(last_run_at),
+        "last_task_result": last_task_result,
+        "last_task_result_uint32": normalized_result,
+        "last_task_result_hex": result_hex,
+        "last_run_classification": last_run_classification,
+        "trigger_evidence_collection": trigger_evidence_collection,
+        "task_state": task_state,
+        "next_run_time_local": next_run_time_local,
+        "allow_start_on_demand": allow_start_on_demand,
+        "manual_start_provenance_observed": False,
+        "event_provenance_inspected": False,
+        "acceptance_ready": False,
+        "order_capability": "DISABLED",
+        "live_allowed": False,
+        "task_scheduler_mutation": "NOT_PERFORMED",
+        "broker_mutation": "NOT_PERFORMED",
+    }
 
 
 def _utc_text(value: datetime) -> str:
@@ -2837,6 +2962,17 @@ def _parser() -> argparse.ArgumentParser:
     toolkit.add_argument("--expected-archive-sha256", required=True)
     toolkit.add_argument("--expected-source-commit", required=True)
     toolkit.add_argument("--expected-source-tree", required=True)
+    diagnose = subparsers.add_parser("diagnose-readiness")
+    diagnose.add_argument("--observed-at-utc", required=True)
+    diagnose.add_argument("--last-run-at-utc", required=True)
+    diagnose.add_argument("--last-task-result", type=int, required=True)
+    diagnose.add_argument("--task-state", choices=("Ready", "Running"), required=True)
+    diagnose.add_argument("--next-run-time-local", required=True)
+    diagnose.add_argument(
+        "--allow-start-on-demand",
+        choices=("true", "false"),
+        required=True,
+    )
     collect = subparsers.add_parser("collect")
     collect.add_argument("--toolkit-manifest", type=Path, required=True)
     collect.add_argument("--installation-receipt", type=Path, required=True)
@@ -2913,6 +3049,17 @@ def main(argv: list[str] | None = None) -> int:
                 expected_archive_sha256=args.expected_archive_sha256,
                 expected_source_commit=args.expected_source_commit,
                 expected_source_tree=args.expected_source_tree,
+            )
+        elif args.command == "diagnose-readiness":
+            result = diagnose_trigger_readiness(
+                observed_at_utc=args.observed_at_utc,
+                last_run_at_utc=args.last_run_at_utc,
+                last_task_result=args.last_task_result,
+                task_state=args.task_state,
+                next_run_time_local=args.next_run_time_local,
+                allow_start_on_demand=(
+                    args.allow_start_on_demand == "true"
+                ),
             )
         elif args.command == "collect":
             result = collect_acceptance(
