@@ -32,7 +32,18 @@ StageReporter = Callable[[str, str, str], None]
 
 
 class ShadowCollectorError(RuntimeError):
-    pass
+    """Fail-closed collector error with bounded machine-readable evidence codes."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        verification_failures: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.verification_failures = tuple(
+            str(item) for item in verification_failures
+        )
 
 
 def _canonical_symbol_subset(value: object, field: str) -> tuple[str, ...]:
@@ -367,10 +378,12 @@ def _run_shadow_cycle_locked(
                 "HOLD",
                 "CONTRACT_EVIDENCE_INVALID",
             )
+        failures = tuple(str(item) for item in verification["failures"])
         raise ShadowCollectorError(
             "forward evidence verification failed: "
-            + ",".join(verification["failures"][:3])
-    )
+            + ",".join(failures[:3]),
+            verification_failures=failures,
+        )
     if stage_reporter is not None:
         stage_reporter(
             "CONTRACT_VERIFICATION",

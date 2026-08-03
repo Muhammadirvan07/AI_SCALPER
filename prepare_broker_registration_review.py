@@ -35,6 +35,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
+        "--template",
+        type=Path,
+        default=None,
+        help="Optional exact review-only calendar template",
+    )
+    parser.add_argument(
         "--candidate-config",
         type=Path,
         default=Path("config/broker_candidates.phase3.json"),
@@ -50,7 +56,17 @@ def main(argv: list[str] | None = None) -> int:
             _repo_path(args.profile_config),
             args.candidate,
         )
-        template = read_json_object(REPO_ROOT / profile.template_path)
+        template_path = (
+            REPO_ROOT / profile.template_path
+            if args.template is None
+            else _repo_path(args.template)
+        )
+        template = read_json_object(template_path)
+        if (
+            args.template is not None
+            and template.get("candidate_id") != profile.candidate_id
+        ):
+            raise RegistrationReviewError("calendar template lane mismatch")
         candidates = read_json_object(_repo_path(args.candidate_config))
         manifest = load_regulatory_source_manifest(_repo_path(args.source_manifest))
         evidence = prepare_regulatory_evidence(

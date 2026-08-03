@@ -1498,6 +1498,28 @@ def main(argv: list[str] | None = None) -> int:
             terminal_reason = current_stage + "_FAILED"
             terminal_detail_type = type(exc).__name__
             terminal_exit_code = 2
+            verification_failures = getattr(
+                exc,
+                "verification_failures",
+                (),
+            )
+            failure_metadata = {}
+            if (
+                isinstance(verification_failures, tuple)
+                and verification_failures
+                and all(
+                    isinstance(item, str) and item
+                    for item in verification_failures
+                )
+            ):
+                failure_metadata = {
+                    "verification_failures": list(
+                        verification_failures[:16]
+                    ),
+                    "verification_failure_count": len(
+                        verification_failures
+                    ),
+                }
             try:
                 operational.record_stage(
                     invocation_id=invocation_id,
@@ -1506,6 +1528,7 @@ def main(argv: list[str] | None = None) -> int:
                     outcome="HOLD",
                     reason_code=terminal_reason,
                     detail_type=type(exc).__name__,
+                    metadata=failure_metadata,
                     runtime_state="FAILED",
                 )
             except (OSError, RuntimeError, sqlite3.Error):

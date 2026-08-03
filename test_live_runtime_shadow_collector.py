@@ -617,7 +617,7 @@ class ShadowCollectorTests(unittest.TestCase):
                 with self.assertRaisesRegex(
                     ShadowCollectorError,
                     "verification failed",
-                ):
+                ) as captured:
                     run_shadow_cycle(
                         FakeMT5(),
                         repo_root=root,
@@ -631,6 +631,10 @@ class ShadowCollectorTests(unittest.TestCase):
                             (stage, outcome, reason)
                         ),
                     )
+        self.assertEqual(
+            ("SYNTHETIC",),
+            captured.exception.verification_failures,
+        )
         self.assertEqual(
             [
                 (

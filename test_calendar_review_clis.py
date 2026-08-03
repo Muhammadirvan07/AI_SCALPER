@@ -101,6 +101,69 @@ class CalendarReviewCLITests(unittest.TestCase):
         self.assertIn("Future exception completeness: false", output.getvalue())
         self.assertIn("Order capability: DISABLED", output.getvalue())
 
+    def test_prepare_cli_can_bind_an_explicit_review_template(self) -> None:
+        profile = SimpleNamespace(
+            candidate_id="phillip-commodity",
+            template_path="config/active.json",
+        )
+        evidence = {
+            "candidate_id": "phillip-commodity",
+            "evidence_bundle_sha256": "a" * 64,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            template = root / "window-02.json"
+            manifest = root / "manifest.json"
+            destination = root / "evidence.json"
+            template.write_text("{}", encoding="utf-8")
+            manifest.write_text("{}", encoding="utf-8")
+            with (
+                patch.object(
+                    prepare_cli,
+                    "load_broker_evidence_profile",
+                    return_value=profile,
+                ),
+                patch.object(
+                    prepare_cli,
+                    "read_json_object",
+                    side_effect=[
+                        {"candidate_id": "phillip-commodity"},
+                        {},
+                    ],
+                ) as reader,
+                patch.object(
+                    prepare_cli,
+                    "load_calendar_source_manifest",
+                    return_value={},
+                ),
+                patch.object(
+                    prepare_cli,
+                    "prepare_calendar_review_evidence",
+                    return_value=evidence,
+                ),
+                patch.object(
+                    prepare_cli,
+                    "write_calendar_review_artifact_exclusive",
+                    return_value=destination,
+                ),
+            ):
+                result = prepare_cli.main(
+                    [
+                        "--candidate",
+                        "phillip-commodity",
+                        "--template",
+                        str(template),
+                        "--source-manifest",
+                        str(manifest),
+                        "--source-root",
+                        str(root),
+                        "--output",
+                        str(destination),
+                    ]
+                )
+        self.assertEqual(0, result)
+        self.assertEqual(template, reader.call_args_list[0].args[0])
+
     def test_sign_cli_loads_only_derived_calendar_key(self) -> None:
         approval = {
             "candidate_id": "phillip-fx",
@@ -188,6 +251,50 @@ class CalendarReviewCLITests(unittest.TestCase):
         self.assertIn("Template patched: false", output.getvalue())
         self.assertIn("Registration enabled: false", output.getvalue())
         self.assertIn("Order capability: DISABLED", output.getvalue())
+
+    def test_assemble_cli_rejects_explicit_template_lane_mismatch(self) -> None:
+        profile = SimpleNamespace(
+            candidate_id="phillip-commodity",
+            template_path="config/active.json",
+            registration_enabled=True,
+        )
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            template = root / "wrong-lane.json"
+            evidence = root / "evidence.json"
+            approval = root / "approval.json"
+            for path in (template, evidence, approval):
+                path.write_text("{}", encoding="utf-8")
+            with (
+                patch.object(
+                    assemble_cli,
+                    "load_broker_evidence_profile",
+                    return_value=profile,
+                ),
+                patch.object(
+                    assemble_cli,
+                    "read_json_object",
+                    return_value={"candidate_id": "phillip-fx"},
+                ),
+                redirect_stdout(output),
+            ):
+                result = assemble_cli.main(
+                    [
+                        "--candidate",
+                        "phillip-commodity",
+                        "--template",
+                        str(template),
+                        "--evidence",
+                        str(evidence),
+                        "--approval",
+                        str(approval),
+                        "--output",
+                        str(root / "review.json"),
+                    ]
+                )
+        self.assertEqual(2, result)
+        self.assertIn("template lane mismatch", output.getvalue())
 
 
 if __name__ == "__main__":

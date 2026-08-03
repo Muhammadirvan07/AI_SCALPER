@@ -23,6 +23,7 @@
     "assemble_live_canary_broker_eligibility_review.py",
     "assemble_broker_registration_review.py",
     "assemble_prewindow_calendar_review.py",
+    "assemble_signed_broker_calendar_template.py",
     "attest_calendar_completeness.py",
     "bootstrap_windows_dependencies.py",
     "build_broker_calendar.py",
@@ -37,6 +38,7 @@
     "config/crypto_weekend_shadow.json",
     "config/fbs_calendar_window_01.template.json",
     "config/phillip_commodity_calendar_window_01.template.json",
+    "config/phillip_commodity_calendar_window_02.review-template.json",
     "config/phillip_fx_calendar_window_01.template.json",
     "config/windows_release_allowlist.v1.json",
     "config/xm_calendar_window_02.template.json",
@@ -179,6 +181,7 @@
     "verify_windows_pre_manual_configured_release_admission.py",
     "verify_windows_vulnerability_audit.py",
     "validate_windows_gated_execution_service.py",
-    "windows_operator/phillip_commodity_v6_postrun_acceptance.py"
+    "windows_operator/phillip_commodity_v6_postrun_acceptance.py",
+    "windows_operator/Suspend-PhillipCommodityV6StaleContract.ps1"
   ]
 }

@@ -549,6 +549,63 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
         ]
         self.assertEqual("ValueError", unexpected[0]["detail_type"])
 
+    def test_contract_verification_failure_codes_are_durable(self):
+        class EvidenceFailure(RuntimeError):
+            verification_failures = (
+                "SNAPSHOT:SNAPSHOT_INVALID:PermissionError",
+                "CONTRACT:CONTRACT_HASH_MISMATCH",
+            )
+
+        def failing_run(*args, **kwargs):
+            kwargs["stage_reporter"](
+                "CONTRACT_VERIFICATION",
+                "HOLD",
+                "CONTRACT_EVIDENCE_INVALID",
+            )
+            raise EvidenceFailure("synthetic evidence failure")
+
+        mt5 = SimpleNamespace(
+            initialize=lambda: True,
+            shutdown=lambda: None,
+        )
+        with (
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_dependency_guard",
+                return_value=self.passing_guard(),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_runtime_components",
+                return_value=self.runtime_components(run=failing_run),
+            ),
+            mock.patch.object(
+                run_xm_shadow_once,
+                "_load_mt5_module",
+                return_value=mt5,
+            ),
+        ):
+            result = run_xm_shadow_once.main(self.runner_args())
+        self.assertEqual(2, result)
+        with sqlite3.connect(self.journal) as connection:
+            payload = json.loads(
+                connection.execute(
+                    "SELECT payload_json FROM shadow_operational_events "
+                    "WHERE reason_code='SHADOW_CYCLE_FAILED'"
+                ).fetchone()[0]
+            )
+        self.assertEqual(
+            [
+                "SNAPSHOT:SNAPSHOT_INVALID:PermissionError",
+                "CONTRACT:CONTRACT_HASH_MISMATCH",
+            ],
+            payload["metadata"]["verification_failures"],
+        )
+        self.assertEqual(
+            2,
+            payload["metadata"]["verification_failure_count"],
+        )
+
     def test_disk_guard_runs_before_cycle_and_low_disk_holds(self):
         run = mock.Mock(side_effect=AssertionError("cycle must not run"))
         output = io.StringIO()
