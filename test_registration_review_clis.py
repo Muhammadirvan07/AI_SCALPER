@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from contextlib import redirect_stdout
 import io
-import json
 from pathlib import Path
 from types import SimpleNamespace
 import subprocess
@@ -170,6 +169,44 @@ class RegistrationReviewCLITests(unittest.TestCase):
         store.return_value.load.assert_called_once_with(
             "phillip-fx-legal-review-v1"
         )
+        self.assertIn("Order capability: DISABLED", output.getvalue())
+
+    def test_sign_cli_rejects_control_token_before_evidence_or_key_access(self) -> None:
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence_path = root / "evidence.json"
+            output_path = root / "approval.json"
+            evidence_path.write_text("{}", encoding="utf-8")
+            with (
+                patch.object(sign_cli, "validate_regulatory_approver_id") as validator,
+                patch.object(sign_cli, "load_regulatory_evidence") as loader,
+                patch.object(sign_cli, "WindowsEvidenceKeyStore") as store,
+                patch.object(sign_cli, "write_regulatory_artifact_exclusive") as writer,
+                redirect_stdout(output),
+            ):
+                validator.side_effect = sign_cli.RegistrationReviewError(
+                    "approver_id must identify a reviewer, not an operator control token"
+                )
+                result = sign_cli.main(
+                    [
+                        "--candidate",
+                        "phillip-commodity",
+                        "--role",
+                        "COMPLIANCE_REVIEW",
+                        "--approver-id",
+                        "APPROVE-PHILLIP-COMMODITY-WINDOW-02-COMPLIANCE",
+                        "--evidence",
+                        str(evidence_path),
+                        "--output",
+                        str(output_path),
+                    ]
+                )
+        self.assertEqual(2, result)
+        loader.assert_not_called()
+        store.assert_not_called()
+        writer.assert_not_called()
+        self.assertIn("operator control token", output.getvalue())
         self.assertIn("Order capability: DISABLED", output.getvalue())
 
     def test_assembly_cli_uses_vault_provider_and_does_not_activate_profile(self) -> None:

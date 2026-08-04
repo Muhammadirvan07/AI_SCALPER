@@ -24,7 +24,7 @@ from .broker_window_plan import (
     BrokerWindowPlanError,
     verify_broker_calendar_template,
 )
-from .contracts import canonical_sha256, require_utc
+from .contracts import canonical_sha256, is_operator_control_token, require_utc
 from .secure_files import SecureFileError, write_json_exclusive
 from .xm_window_plan import (
     MAX_REGULATORY_EVIDENCE_AGE,
@@ -265,6 +265,17 @@ def _identifier(value: object, field: str, *, lower: bool = False) -> str:
     if _IDENTIFIER_RE.fullmatch(normalized) is None:
         raise RegistrationReviewError(f"{field} is invalid")
     return normalized.lower() if lower else normalized
+
+
+def validate_regulatory_approver_id(value: object) -> str:
+    """Return one approver identity, rejecting operator action tokens."""
+
+    approver_id = _identifier(value, "approver_id")
+    if is_operator_control_token(approver_id):
+        raise RegistrationReviewError(
+            "approver_id must identify a reviewer, not an operator control token"
+        )
+    return approver_id
 
 
 def regulatory_review_key_name(candidate_id: str, approver_role: str) -> str:
@@ -690,7 +701,7 @@ def sign_regulatory_approval(
 ) -> dict[str, object]:
     now = _trusted_now(now_provider)
     verified_at = _validate_evidence(evidence, now=now)
-    reviewer = _identifier(approver_id, "approver_id")
+    reviewer = validate_regulatory_approver_id(approver_id)
     role = str(approver_role or "").strip().upper()
     if role not in _APPROVAL_ROLES:
         raise RegistrationReviewError("approver_role is invalid")
@@ -726,6 +737,7 @@ def _validate_approval_shape(approval: Mapping[str, object]) -> None:
         raise RegistrationReviewError("regulatory approval fields are invalid")
     if approval.get("schema_version") != REGULATORY_APPROVAL_SCHEMA_VERSION:
         raise RegistrationReviewError("unsupported regulatory approval schema")
+    validate_regulatory_approver_id(approval.get("approver_id"))
     if _SHA256_RE.fullmatch(
         str(approval.get("signature_hmac_sha256") or "").lower()
     ) is None:
@@ -832,5 +844,6 @@ __all__ = [
     "prepare_regulatory_evidence",
     "regulatory_review_key_name",
     "sign_regulatory_approval",
+    "validate_regulatory_approver_id",
     "write_regulatory_artifact_exclusive",
 ]

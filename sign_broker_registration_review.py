@@ -14,6 +14,7 @@ from live_runtime.registration_review import (
     load_regulatory_evidence,
     regulatory_review_key_name,
     sign_regulatory_approval,
+    validate_regulatory_approver_id,
     write_regulatory_artifact_exclusive,
 )
 from live_runtime.secure_files import SecureFileError
@@ -41,6 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
+        approver_id = validate_regulatory_approver_id(args.approver_id)
         evidence = load_regulatory_evidence(_repo_path(args.evidence))
         candidate_id = str(evidence.get("candidate_id") or "")
         if candidate_id != str(args.candidate).strip().lower():
@@ -49,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
         key = WindowsEvidenceKeyStore().load(key_id)
         approval = sign_regulatory_approval(
             evidence,
-            approver_id=args.approver_id,
+            approver_id=approver_id,
             approver_role=args.role,
             key_id=key_id,
             signing_key=key,
@@ -67,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     ) as exc:
         print("REGULATORY_APPROVAL_BLOCKED: " + str(exc))
         print("Safety lock remains active; no broker order was submitted.")
+        print("Order capability: DISABLED")
         return 2
     print("Regulatory approval written: " + str(destination))
     print("Candidate: " + candidate_id)

@@ -24,6 +24,7 @@ from live_runtime.registration_review import (
 )
 from live_runtime.xm_window_plan import (
     REGULATORY_APPROVAL_SCHEMA_VERSION,
+    XMWindowPlanError,
     verify_candidate_legal_binding,
 )
 
@@ -262,6 +263,90 @@ class RegistrationReviewTests(unittest.TestCase):
         ):
             with self.subTest(field=field), self.assertRaises(RegistrationReviewError):
                 sign_regulatory_approval(**{**base, field: value})
+
+    def test_operator_control_tokens_fail_at_sign_assembly_and_downstream_gates(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = self._evidence(Path(directory))
+        base = {
+            "evidence": evidence,
+            "approver_role": "COMPLIANCE_REVIEW",
+            "key_id": "phillip-compliance-review-v1",
+            "signing_key": COMPLIANCE_KEY,
+            "now_provider": lambda: NOW + timedelta(minutes=1),
+        }
+        for approver_id in (
+            "APPROVE-PHILLIP-COMMODITY-WINDOW-02-COMPLIANCE",
+            "confirm_review",
+            "REJECT.window-02",
+            "cancel",
+        ):
+            with self.subTest(approver_id=approver_id):
+                with self.assertRaisesRegex(
+                    RegistrationReviewError,
+                    "operator control token",
+                ):
+                    sign_regulatory_approval(
+                        **base,
+                        approver_id=approver_id,
+                    )
+
+        with patch(
+            "live_runtime.registration_review.validate_regulatory_approver_id",
+            side_effect=lambda value: str(value),
+        ):
+            legacy_approvals = [
+                sign_regulatory_approval(
+                    evidence,
+                    approver_id="APPROVE-PHILLIP-COMMODITY-COMPLIANCE",
+                    approver_role="COMPLIANCE_REVIEW",
+                    key_id="phillip-compliance-review-v1",
+                    signing_key=COMPLIANCE_KEY,
+                    now_provider=lambda: NOW + timedelta(minutes=5),
+                ),
+                sign_regulatory_approval(
+                    evidence,
+                    approver_id="CONFIRM-PHILLIP-COMMODITY-LEGAL",
+                    approver_role="LEGAL_REVIEW",
+                    key_id="phillip-legal-review-v1",
+                    signing_key=LEGAL_KEY,
+                    now_provider=lambda: NOW + timedelta(minutes=6),
+                ),
+            ]
+
+        with self.assertRaisesRegex(
+            RegistrationReviewError,
+            "operator control token",
+        ):
+            assemble_regulatory_observation(
+                evidence,
+                legacy_approvals,
+                self.candidates,
+                approval_key_provider=KEYS.get,
+                now_provider=lambda: NOW + timedelta(minutes=10),
+            )
+
+        observation = {
+            **deepcopy(evidence),
+            "regulatory_approvals": legacy_approvals,
+        }
+        config = deepcopy(self.candidates)
+        candidate = next(
+            item
+            for item in config["candidates"]
+            if item["candidate_id"] == "phillip-fx"
+        )
+        candidate["regulatory_observation"] = observation
+        with self.assertRaisesRegex(XMWindowPlanError, "identity is invalid"):
+            verify_candidate_legal_binding(
+                {
+                    "candidate_id": "phillip-fx",
+                    "operating_jurisdiction": "JP",
+                    "regulatory_observation_sha256": canonical_sha256(observation),
+                },
+                config,
+                now_provider=lambda: NOW + timedelta(minutes=10),
+                regulatory_approval_key_provider=KEYS.get,
+            )
 
     # AC-4/AC-5: final assembly verifies both signatures, independence and time.
     def test_valid_assembly_is_compatible_with_existing_legal_verifier(self) -> None:

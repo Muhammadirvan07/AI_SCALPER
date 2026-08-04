@@ -21,6 +21,10 @@ SCHEMA_VERSION = "1.0"
 ENTRY_WINDOW_SECONDS = 10
 _HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
 _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
+_OPERATOR_CONTROL_TOKEN_RE = re.compile(
+    r"^(?:approve|confirm|reject|cancel)(?:$|[._-])",
+    re.IGNORECASE,
+)
 _DECISION_SNAPSHOT_SEAL = object()
 _EXECUTION_RECEIPT_SEAL = object()
 _SUBMISSION_CONSUMPTION_PROOF_SEAL = object()
@@ -85,6 +89,13 @@ def require_text(name: str, value: object, *, upper: bool = False) -> str:
     if not normalized:
         raise ValueError(f"{name} is required")
     return normalized.upper() if upper else normalized
+
+
+def is_operator_control_token(value: object) -> bool:
+    """Return whether text is an operator action token, not a human identity."""
+
+    normalized = str(value or "").strip()
+    return _OPERATOR_CONTROL_TOKEN_RE.match(normalized) is not None
 
 
 def require_currency(name: str, value: object) -> str:
@@ -726,6 +737,7 @@ __all__ = [
     "canonical_json",
     "canonical_sha256",
     "canonicalize",
+    "is_operator_control_token",
     "require_finite",
     "require_hash",
     "require_int",

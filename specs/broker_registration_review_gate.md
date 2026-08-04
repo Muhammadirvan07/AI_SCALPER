@@ -37,7 +37,7 @@ demo-auto, promotion, or live trading.
 - FR-1: The system MUST prepare one immutable regulatory evidence body for exactly one broker candidate and operating jurisdiction from tracked candidate facts, a reviewed broker-calendar template, and operator-supplied official source files.
 - FR-2: Each source MUST use an allowlisted HTTPS authority URL and MUST bind authority, entity, registry/result identifier, observed-at UTC, byte length, and a SHA-256 computed from the supplied regular file; caller-supplied content hashes MUST NOT be trusted.
 - FR-3: The evidence body MUST bind the exact candidate ID, legal entity, broker server, environment, binding scope, canonical/broker symbol map, operating jurisdiction, template SHA-256, official source inventory, verification UTC, and safety state.
-- FR-4: The system MUST create exactly two separate approval artifacts with roles `COMPLIANCE_REVIEW` and `LEGAL_REVIEW`; each MUST bind the same evidence-body SHA-256, candidate, legal entity, jurisdiction, approver ID, key ID, and signing UTC.
+- FR-4: The system MUST create exactly two separate approval artifacts with roles `COMPLIANCE_REVIEW` and `LEGAL_REVIEW`; each MUST bind the same evidence-body SHA-256, candidate, legal entity, jurisdiction, approver ID, key ID, and signing UTC. Each approver ID MUST identify the actual reviewer and MUST reject operator control tokens beginning with `APPROVE`, `CONFIRM`, `REJECT`, or `CANCEL`.
 - FR-5: The two approvals MUST have different approver IDs, key IDs, and secret fingerprints, and both signatures MUST verify with HMAC-SHA256 domain `AI_SCALPER/REGULATORY_APPROVAL/V1`.
 - FR-6: Reviewer keys MUST be generated and loaded only through Windows Credential Manager; secret bytes MUST NOT be accepted by CLI, printed, written to repository files, or exported in any artifact.
 - FR-7: Evidence preparation, each approval, and final assembly MUST use create-exclusive canonical JSON writes and MUST reject overwrite, symlink, duplicate-key JSON, non-finite numbers, naive timestamps, and unknown fields.
@@ -86,6 +86,7 @@ Given one verified evidence body and two separately provisioned Windows
 Credential Manager keys
 When the compliance and legal reviewers sign in separate invocations
 Then each immutable approval binds the same evidence hash and its exact role
+And each approver ID identifies the actual reviewer rather than an operator control token
 And neither output contains raw secret material.
 
 ### AC-4: Independence is mandatory (FR-5, FR-8, FR-10)
@@ -151,7 +152,7 @@ And all success and failure paths state that order capability remains disabled.
 - EC-7: Evidence or approval destination already exists or is a symlink → reject without overwrite.
 - EC-8: Credential Manager is unavailable, wrong backend is active, key is missing, or key is shorter than 32 bytes → reject.
 - EC-9: Approval role is unknown, duplicated, or does not match its command input → reject.
-- EC-10: Approver IDs, key IDs, or full key fingerprints are not pairwise distinct → reject.
+- EC-10: Approver IDs are operator control tokens, or approver IDs, key IDs, or full key fingerprints are not pairwise distinct → reject.
 - EC-11: Evidence body, source hash, template hash, candidate binding, or approval signature changes after signing → reject.
 - EC-12: Verified-at or signed-at is naive, future, stale, non-monotonic, or outside the allowed evidence lifetime → reject.
 - EC-13: A valid observation is inserted into the wrong candidate or lane → reject.
@@ -243,7 +244,7 @@ interface RegistrationGateResult {
 
 | Field | Type | Constraints |
 |---|---|---|
-| approver_id | string | Non-empty; distinct across both approvals |
+| approver_id | string | Actual reviewer identity; non-empty; distinct across both approvals; must not begin with `APPROVE`, `CONFIRM`, `REJECT`, or `CANCEL` as a control token |
 | approver_role | enum | Exactly one compliance and one legal reviewer |
 | key_id | string | Windows Credential Manager name; distinct |
 | key fingerprint | SHA-256 | Verification-only; distinct; raw key never stored |

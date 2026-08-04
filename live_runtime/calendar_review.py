@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .account_identity import AccountIdentityError, payload_hmac_sha256
-from .contracts import canonical_sha256, require_utc
+from .contracts import canonical_sha256, is_operator_control_token, require_utc
 from .secure_files import SecureFileError, write_json_exclusive
 from .session_calendar import SessionCalendarError, validate_weekly_m15_sessions
 
@@ -37,10 +37,6 @@ MAX_SOURCE_BYTES = 64 * 1024 * 1024
 MAX_LOT = 0.01
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-_REVIEWER_CONTROL_TOKEN = re.compile(
-    r"^(?:approve|confirm|reject|cancel)(?:$|[._-])",
-    re.IGNORECASE,
-)
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _MANIFEST_FIELDS = frozenset(
     {"schema_version", "candidate_id", "future_exception_completeness", "sources"}
@@ -219,7 +215,7 @@ def validate_calendar_reviewer_id(value: object) -> str:
     """Return one reviewer identity, rejecting operator control tokens."""
 
     reviewer_id = _identifier(value, "reviewer_id")
-    if _REVIEWER_CONTROL_TOKEN.match(reviewer_id) is not None:
+    if is_operator_control_token(reviewer_id):
         raise CalendarReviewError(
             "reviewer_id must identify a reviewer, not an operator control token"
         )

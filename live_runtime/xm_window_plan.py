@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 
 from .account_identity import AccountIdentityError, payload_hmac_sha256
 from .benchmark import REQUIRED_SYMBOLS
-from .contracts import canonical_sha256, require_utc
+from .contracts import canonical_sha256, is_operator_control_token, require_utc
 from .secure_files import write_json_exclusive
 
 
@@ -334,7 +334,12 @@ def _verify_dual_regulatory_approvals(
         approver_id = str(approval.get("approver_id") or "").strip()
         key_id = str(approval.get("key_id") or "").strip()
         role = str(approval.get("approver_role") or "").strip().upper()
-        if not approver_id or not key_id or role not in _REQUIRED_APPROVAL_ROLES:
+        if (
+            not approver_id
+            or is_operator_control_token(approver_id)
+            or not key_id
+            or role not in _REQUIRED_APPROVAL_ROLES
+        ):
             raise XMWindowPlanError("regulatory approval identity is invalid")
         signed_at = _fresh_regulatory_timestamp(
             approval.get("signed_at_utc"),

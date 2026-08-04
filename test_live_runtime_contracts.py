@@ -11,6 +11,7 @@ from live_runtime.contracts import (
     TradeIntent,
     _mint_decision_snapshot,
     _mint_execution_receipt,
+    is_operator_control_token,
 )
 from test_fixtures.execution_receipt import mint_submission_consumption_proof
 
@@ -96,6 +97,19 @@ def trade_intent(**changes: object) -> TradeIntent:
 
 
 class ContractTests(unittest.TestCase):
+    def test_operator_control_tokens_are_recognized_without_blocking_identities(self) -> None:
+        for value in (
+            "APPROVE-PHILLIP-COMMODITY",
+            "confirm_review",
+            "Reject.window-02",
+            "cancel",
+        ):
+            with self.subTest(value=value):
+                self.assertTrue(is_operator_control_token(value))
+        for value in ("muhammad-irvan", "legal-reviewer", "approval-officer"):
+            with self.subTest(value=value):
+                self.assertFalse(is_operator_control_token(value))
+
     def test_contracts_are_frozen_and_normalized(self) -> None:
         spec = broker_spec(symbol="eurusd", broker_symbol="eurusd.a")
         self.assertEqual(spec.symbol, "EURUSD")

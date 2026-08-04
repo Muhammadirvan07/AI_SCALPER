@@ -23,6 +23,10 @@ The four tools are intentionally local and read-only:
 
 The two roles are `COMPLIANCE_REVIEW` and `LEGAL_REVIEW`. They must use
 different approver IDs, different key names, and different secret material.
+Each approver ID must be the stable identity of the actual reviewer. Never put
+an approval/confirmation phrase in `--approver-id`; values beginning with
+`APPROVE`, `CONFIRM`, `REJECT`, or `CANCEL` are rejected before evidence or
+Credential Manager access.
 The software detects those cryptographic differences, but cannot prove that
 the people are organizationally independent or professionally qualified.
 That remains an external governance gate.
