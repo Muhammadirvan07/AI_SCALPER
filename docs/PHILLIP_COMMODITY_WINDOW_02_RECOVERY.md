@@ -161,19 +161,154 @@ if ($LASTEXITCODE -ne 0) {
 Get-FileHash "$reviewRoot\*.json" -Algorithm SHA256
 ```
 
-## 4. Remaining external artifacts
+## 4. Reviewed external artifact state on 4 August 2026
+
+The first Window 02 calendar approval used the confirmation token as its
+reviewer ID. It is rejected history and must not be copied, renamed, or used as
+authority. The corrected R2 calendar review has:
+
+- reviewer `muhammad-irvan`;
+- calendar version `phillip-commodity-window-02-v1`;
+- review artifact SHA-256
+  `0cf22f0cb386e8336248ba288137a21de8b4fcb35b750b8e77fcd46274e71822`;
+- observation start `2026-08-16T16:00:00Z`;
+- `live_allowed=false` and `order_capability=DISABLED`.
+
+The corrected R2 regulatory review has:
+
+- Compliance reviewer `muhammad-irvan`;
+- Legal reviewer `maulana-putra`;
+- evidence bundle SHA-256
+  `b9bed0b48b175a2fb7eefebfd50700e94f782515afbb6dd4890cbc389a3b39f3`;
+- calendar template SHA-256
+  `147425d9d336f80735344324f6c2ba5e8c751cb4646d2a4d2b426890b778285c`;
+- regulatory observation SHA-256
+  `de0a570c463155e302c422e6029faa9903076927d43dcefc0b1eaa1c7fa50e9f`;
+- `live_allowed=false` and `order_capability=DISABLED`.
+
+The R2 files are authoritative only when the complete signature and lane
+verification succeeds. A matching displayed hash alone is not approval.
+
+## 5. Build the non-mutating rollover review pack
+
+After checking out the release commit containing the Window 02 rollover
+tooling, use a normal PowerShell session. This command discovers the corrected
+R2 files by their reviewed identities so the earlier rejected artifacts cannot
+be selected accidentally.
+
+```powershell
+cd C:\AI_SCALPER
+.\.venv\Scripts\Activate.ps1
+
+$discovery = (
+  "C:\AI_SCALPER\runtime_state\broker_discovery\" +
+  "phillip-commodity-window-01-v3.json"
+)
+$calendarRoot = (
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-calendar-review"
+)
+$regulatoryRoot = (
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-regulatory-review"
+)
+$outputRoot = (
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-rollover-review"
+)
+$output = Join-Path $outputRoot "window-02-rollover-review-v1.json"
+
+if (git status --porcelain) {
+  git status --short
+  throw "Git worktree must be clean before rollover review."
+}
+
+if (-not (Test-Path $discovery -PathType Leaf)) {
+  throw "Exact discovery-v3 receipt is missing."
+}
+
+$regulatory = @(
+  Get-ChildItem $regulatoryRoot -File -Filter "*.json" |
+    Where-Object {
+      (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -eq
+      "de0a570c463155e302c422e6029faa9903076927d43dcefc0b1eaa1c7fa50e9f"
+    }
+)
+if ($regulatory.Count -ne 1) {
+  throw "Corrected R2 regulatory observation is not unique."
+}
+
+$calendar = @(
+  Get-ChildItem $calendarRoot -File -Filter "*.json" |
+    Where-Object {
+      try {
+        $payload = Get-Content $_.FullName -Raw | ConvertFrom-Json
+        (
+          $payload.schema_version -eq "prewindow-calendar-review-v1" -and
+          $payload.review_artifact_sha256 -eq
+          "0cf22f0cb386e8336248ba288137a21de8b4fcb35b750b8e77fcd46274e71822"
+        )
+      }
+      catch {
+        $false
+      }
+    }
+)
+if ($calendar.Count -ne 1) {
+  throw "Corrected R2 calendar review is not unique."
+}
+
+if (Test-Path $outputRoot) {
+  throw "Rollover review root already exists; preserve existing evidence."
+}
+New-Item -ItemType Directory -Path $outputRoot | Out-Null
+
+python -B .\prepare_phillip_commodity_window_02_rollover_review.py `
+  --candidate phillip-commodity `
+  --discovery $discovery `
+  --regulatory-observation $($regulatory[0].FullName) `
+  --calendar-review $($calendar[0].FullName) `
+  --output $output
+
+if ($LASTEXITCODE -ne 0) {
+  throw "Window 02 rollover review preparation failed."
+}
+
+python -B .\verify_phillip_commodity_window_02_rollover_review.py `
+  --input $output
+
+if ($LASTEXITCODE -ne 0) {
+  throw "Window 02 rollover review static verification failed."
+}
+
+Get-FileHash $output -Algorithm SHA256
+```
+
+Successful output must report all of the following:
+
+- `Manual rollover required: true`;
+- `Configuration mutated: false`;
+- `Registration enabled: true` (the existing Window 01 state is preserved);
+- `Contract registration: NOT_PERFORMED`;
+- `Scheduler mutation: NOT_PERFORMED`;
+- `Broker mutation: NOT_PERFORMED`;
+- `Order capability: DISABLED`.
+
+The pack proposes exactly three replacements and one creation: the candidate
+config, profile config, Windows release allowlist, and new signed Window 02
+template. The allowlist delta adds only the new signed template so a future
+release cannot omit its active calendar. The pack does not apply any of them.
+
+## 6. Remaining gates after the review pack
 
 Before active configuration can roll over, Window 02 still requires:
 
-1. fresh regulatory evidence bound to the unsigned Window 02 template;
-2. distinct Compliance and Legal approvals for that evidence;
-3. an assembled regulatory observation;
-4. review of the exact candidate/profile/template after-images;
-5. a clean Git commit and tree containing those after-images;
-6. a newly registered immutable contract such as
-   `phillip-commodity-window-02-diagnostic-v1`;
-7. a new frozen read-only worker/task whose principal has read access to both
-   the contract and snapshot before the first automatic boundary.
+1. project-owner review of the exact pack and explicit approval to apply its
+   four after-images;
+2. a clean Git commit and tree containing only those reviewed after-images;
+3. a newly registered immutable
+   `phillip-commodity-window-02-diagnostic-v1` contract;
+4. a new frozen read-only worker/task whose principal has read access to both
+   the contract and snapshot before the first automatic boundary;
+5. automatic-run and post-window acceptance evidence.
 
-Do not enable or install the replacement scheduler until all seven items are
-complete.  The old V6 task must remain disabled.
+Do not apply the pack, register the replacement contract, or install the
+replacement scheduler without the next explicit approval. The old V6 task
+must remain disabled.
