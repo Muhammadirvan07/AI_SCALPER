@@ -10,6 +10,7 @@ from live_runtime.calendar_review import (
     calendar_review_key_name,
     load_calendar_review_evidence,
     sign_calendar_review_approval,
+    validate_calendar_reviewer_id,
     write_calendar_review_artifact_exclusive,
 )
 from live_runtime.evidence_credentials import (
@@ -35,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
+        reviewer_id = validate_calendar_reviewer_id(args.reviewer_id)
         evidence = load_calendar_review_evidence(_repo_path(args.evidence))
         candidate_id = str(evidence.get("candidate_id") or "")
         if candidate_id != str(args.candidate).strip().lower():
@@ -43,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         key = WindowsEvidenceKeyStore().load(key_id)
         approval = sign_calendar_review_approval(
             evidence,
-            reviewer_id=args.reviewer_id,
+            reviewer_id=reviewer_id,
             key_id=key_id,
             signing_key=key,
         )

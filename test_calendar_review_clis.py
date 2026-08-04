@@ -201,6 +201,35 @@ class CalendarReviewCLITests(unittest.TestCase):
         self.assertIn("Reviewer role: CALENDAR_REVIEW", output.getvalue())
         self.assertIn("Secret material: NOT_EXPORTED", output.getvalue())
 
+    def test_sign_cli_rejects_operator_control_token_as_reviewer_id(self) -> None:
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence_path = root / "evidence.json"
+            evidence_path.write_text("{}", encoding="utf-8")
+            destination = root / "approval.json"
+            with (
+                patch.object(sign_cli, "WindowsEvidenceKeyStore") as store,
+                patch.object(
+                    sign_cli,
+                    "write_calendar_review_artifact_exclusive",
+                ) as writer,
+                redirect_stdout(output),
+            ):
+                result = sign_cli.main(
+                    [
+                        "--candidate", "phillip-commodity",
+                        "--reviewer-id",
+                        "APPROVE-PHILLIP-COMMODITY-WINDOW-02-CALENDAR",
+                        "--evidence", str(evidence_path),
+                        "--output", str(destination),
+                    ]
+                )
+        self.assertEqual(2, result)
+        store.assert_not_called()
+        writer.assert_not_called()
+        self.assertIn("operator control token", output.getvalue())
+
     def test_assemble_cli_uses_vault_provider_without_patching_template(self) -> None:
         profile = SimpleNamespace(
             candidate_id="phillip-fx",

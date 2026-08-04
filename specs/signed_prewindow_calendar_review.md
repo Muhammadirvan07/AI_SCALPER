@@ -51,7 +51,7 @@ not attest that future notices do not exist.
 - FR-3: Phillip FX evidence MUST include regular FX session and DST-transition sources; Phillip commodity evidence MUST include the commodity XAU session source. Additional official special-hours sources MAY be included.
 - FR-4: The evidence body MUST bind candidate, broker legal name/server, jurisdiction, exact canonical-to-broker symbol map, server timezone, calendar version, observation window, amendment policy, weekly M15 sessions, the still-unattested special-hours claim, and a deterministic schedule-claim SHA-256.
 - FR-5: Evidence preparation MUST reject a template that already claims `special_hours_review.attested=true`, because this workflow does not issue post-window completeness.
-- FR-6: A calendar reviewer MUST create one role-scoped HMAC-SHA256 approval with role `CALENDAR_REVIEW`; it MUST bind the exact evidence hash, candidate, schedule claim, reviewer ID, key ID, and signed-at UTC.
+- FR-6: A calendar reviewer MUST create one role-scoped HMAC-SHA256 approval with role `CALENDAR_REVIEW`; it MUST bind the exact evidence hash, candidate, schedule claim, reviewer ID, key ID, and signed-at UTC. The reviewer ID MUST identify the human reviewer and MUST NOT be an operator control token beginning with `APPROVE`, `CONFIRM`, `REJECT`, or `CANCEL`.
 - FR-7: The calendar-review key MUST be generated and loaded only through Windows Credential Manager; raw secret bytes MUST NOT be accepted by a CLI, printed, exported, or persisted in review artifacts.
 - FR-8: Final assembly MUST re-read and verify the evidence and approval, require approval at or after evidence verification, enforce a maximum 30-day review age, and output one immutable `prewindow-calendar-review-v1` artifact.
 - FR-9: The assembled artifact MUST retain `special_hours_review.attested=false`, MUST state `future_exception_completeness=false`, and MUST state that the prospective amendment chain and post-window completeness attestation remain required.
@@ -282,7 +282,7 @@ hash.
 
 | Field | Type | Constraints |
 |---|---|---|
-| reviewer ID / role | strings | Valid ID; exact role `CALENDAR_REVIEW` |
+| reviewer ID / role | strings | Valid human ID that is not an operator control token; exact role `CALENDAR_REVIEW` |
 | key ID | string | Derived candidate-scoped Credential Manager key name |
 | signed at | UTC instant | At/after evidence, fresh, before observation start |
 | signature | HMAC-SHA256 | Domain-separated over all other approval fields |

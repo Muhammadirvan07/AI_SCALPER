@@ -37,6 +37,10 @@ MAX_SOURCE_BYTES = 64 * 1024 * 1024
 MAX_LOT = 0.01
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_REVIEWER_CONTROL_TOKEN = re.compile(
+    r"^(?:approve|confirm|reject|cancel)(?:$|[._-])",
+    re.IGNORECASE,
+)
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _MANIFEST_FIELDS = frozenset(
     {"schema_version", "candidate_id", "future_exception_completeness", "sources"}
@@ -209,6 +213,17 @@ def _identifier(value: object, field: str, *, lower: bool = False) -> str:
     if _IDENTIFIER.fullmatch(normalized) is None:
         raise CalendarReviewError(f"{field} is invalid")
     return normalized.lower() if lower else normalized
+
+
+def validate_calendar_reviewer_id(value: object) -> str:
+    """Return one reviewer identity, rejecting operator control tokens."""
+
+    reviewer_id = _identifier(value, "reviewer_id")
+    if _REVIEWER_CONTROL_TOKEN.match(reviewer_id) is not None:
+        raise CalendarReviewError(
+            "reviewer_id must identify a reviewer, not an operator control token"
+        )
+    return reviewer_id
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -654,7 +669,7 @@ def sign_calendar_review_approval(
     now = _trusted_now(now_provider)
     _validate_evidence(evidence, now=now)
     candidate_id = str(evidence["candidate_id"])
-    reviewer = _identifier(reviewer_id, "reviewer_id")
+    reviewer = validate_calendar_reviewer_id(reviewer_id)
     expected_key_id = calendar_review_key_name(candidate_id)
     if key_id != expected_key_id:
         raise CalendarReviewError("calendar review key ID is invalid")
@@ -697,7 +712,7 @@ def _verify_approval(
         or approval.get("schedule_claim_sha256") != evidence.get("schedule_claim_sha256")
     ):
         raise CalendarReviewError("calendar review approval binding mismatch")
-    _identifier(approval.get("reviewer_id"), "reviewer_id")
+    validate_calendar_reviewer_id(approval.get("reviewer_id"))
     key_id = str(approval.get("key_id") or "")
     if key_id != calendar_review_key_name(str(evidence["candidate_id"])):
         raise CalendarReviewError("calendar review approval key ID mismatch")
@@ -826,7 +841,7 @@ def verify_prewindow_calendar_review_shape(
         or _SHA256.fullmatch(signature) is None
     ):
         raise CalendarReviewError("calendar review approval shape is invalid")
-    _identifier(approval.get("reviewer_id"), "reviewer_id")
+    validate_calendar_reviewer_id(approval.get("reviewer_id"))
     _utc(approval.get("signed_at_utc"), "signed_at_utc")
     if (
         template.get("candidate_id") != candidate_id
@@ -874,6 +889,7 @@ __all__ = [
     "prepare_calendar_review_evidence",
     "schedule_claim_sha256",
     "sign_calendar_review_approval",
+    "validate_calendar_reviewer_id",
     "verify_prewindow_calendar_review",
     "verify_prewindow_calendar_review_shape",
     "write_calendar_review_artifact_exclusive",

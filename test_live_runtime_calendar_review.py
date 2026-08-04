@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from live_runtime.calendar_review import (
     CalendarReviewError,
@@ -15,9 +16,12 @@ from live_runtime.calendar_review import (
     load_calendar_source_manifest,
     prepare_calendar_review_evidence,
     sign_calendar_review_approval,
+    validate_calendar_reviewer_id,
     verify_prewindow_calendar_review,
+    verify_prewindow_calendar_review_shape,
     write_calendar_review_artifact_exclusive,
 )
+from live_runtime.contracts import canonical_sha256
 
 
 ROOT = Path(__file__).resolve().parent
@@ -148,6 +152,69 @@ def approved_review(
 
 
 class CalendarReviewTests(unittest.TestCase):
+    def test_operator_control_tokens_are_not_reviewer_identities(self) -> None:
+        for value in (
+            "APPROVE-PHILLIP-COMMODITY-WINDOW-02-CALENDAR",
+            "approve-phillip-commodity-window-02-calendar",
+            "CONFIRM-CALENDAR-REVIEW",
+            "reject.calendar.review",
+            "CANCEL_calendar_review",
+        ):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    CalendarReviewError,
+                    "operator control token",
+                ):
+                    validate_calendar_reviewer_id(value)
+
+    def test_static_review_verifier_rejects_control_token_reviewer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            template, _, review = approved_review(Path(directory))
+        review["calendar_review_approval"]["reviewer_id"] = (
+            "APPROVE-PHILLIP-COMMODITY-WINDOW-02-CALENDAR"
+        )
+        body = {
+            key: value
+            for key, value in review.items()
+            if key != "review_artifact_sha256"
+        }
+        review["review_artifact_sha256"] = canonical_sha256(body)
+        with self.assertRaisesRegex(
+            CalendarReviewError,
+            "operator control token",
+        ):
+            verify_prewindow_calendar_review_shape(review, template=template)
+
+    def test_runtime_rejects_legacy_signed_control_token_reviewer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            template = template_for("phillip-commodity")
+            evidence = prepare(root, "phillip-commodity", template=template)
+        key_id = calendar_review_key_name("phillip-commodity")
+        control_token = "APPROVE-PHILLIP-COMMODITY-WINDOW-02-CALENDAR"
+        with patch(
+            "live_runtime.calendar_review.validate_calendar_reviewer_id",
+            return_value=control_token,
+        ):
+            legacy_approval = sign_calendar_review_approval(
+                evidence,
+                reviewer_id=control_token,
+                key_id=key_id,
+                signing_key=KEY,
+                now_provider=lambda: NOW,
+            )
+        with self.assertRaisesRegex(
+            CalendarReviewError,
+            "operator control token",
+        ):
+            assemble_prewindow_calendar_review(
+                evidence,
+                legacy_approval,
+                template=template,
+                approval_key_provider={key_id: KEY}.get,
+                now_provider=lambda: NOW,
+            )
+
     def test_fx_evidence_is_derived_from_exact_source_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             evidence = prepare(Path(directory))

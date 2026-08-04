@@ -114,6 +114,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $reviewerId = Read-Host "Enter the actual calendar reviewer ID"
+if (
+  [string]::IsNullOrWhiteSpace($reviewerId) -or
+  $reviewerId -match "^(?i:approve|confirm|reject|cancel)(?:$|[._-])"
+) {
+  throw "Reviewer ID must identify the human reviewer, not a control token."
+}
 $confirmation = Read-Host (
   "Type APPROVE-PHILLIP-COMMODITY-WINDOW-02-CALENDAR"
 )
