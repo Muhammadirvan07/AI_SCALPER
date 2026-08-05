@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 from windows_operator import verify_phillip_commodity_window_02_contract as verifier
 
@@ -172,6 +173,7 @@ class PhillipCommodityWindow02ContractVerifierTests(unittest.TestCase):
             verifier.EXPECTED_CONTRACT_FILE_SHA256,
         )
         self.assertEqual(9, len(verifier.EXPECTED_INVENTORY))
+        self.assertEqual(8, len(verifier.EXPECTED_GENESIS_INVENTORY))
         self.assertEqual(
             (
                 1,
@@ -183,6 +185,63 @@ class PhillipCommodityWindow02ContractVerifierTests(unittest.TestCase):
             (19601, verifier.EXPECTED_CONTRACT_FILE_SHA256),
             verifier.EXPECTED_INVENTORY["contract.json"],
         )
+
+    def test_production_path_promotes_genesis_to_operational_inventory(self) -> None:
+        (self.contract_root / ".contract-write.lock").unlink()
+        genesis = self._inventory()
+        operational = {
+            ".contract-write.lock": (
+                1,
+                "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+            ),
+            **genesis,
+        }
+
+        def authority(*_args):
+            (self.contract_root / ".contract-write.lock").write_bytes(b"\0")
+            return self._authority()
+
+        with (
+            mock.patch.object(verifier, "EXPECTED_GENESIS_INVENTORY", genesis),
+            mock.patch.object(verifier, "EXPECTED_INVENTORY", operational),
+        ):
+            result = verifier.verify(
+                self.args,
+                git_identity_provider=lambda _root: (
+                    verifier.EXPECTED_WORKER_COMMIT,
+                    verifier.EXPECTED_WORKER_TREE,
+                ),
+                authority_provider=authority,
+            )
+        self.assertEqual(9, result["artifact_files_verified"])
+        self.assertEqual(b"\0", (self.contract_root / ".contract-write.lock").read_bytes())
+
+    def test_production_path_requires_operational_lock_after_authority(self) -> None:
+        (self.contract_root / ".contract-write.lock").unlink()
+        genesis = self._inventory()
+        operational = {
+            ".contract-write.lock": (
+                1,
+                "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+            ),
+            **genesis,
+        }
+        with (
+            mock.patch.object(verifier, "EXPECTED_GENESIS_INVENTORY", genesis),
+            mock.patch.object(verifier, "EXPECTED_INVENTORY", operational),
+            self.assertRaisesRegex(
+                verifier.Window02ContractVerificationError,
+                r"missing=\['\.contract-write\.lock'\]",
+            ),
+        ):
+            verifier.verify(
+                self.args,
+                git_identity_provider=lambda _root: (
+                    verifier.EXPECTED_WORKER_COMMIT,
+                    verifier.EXPECTED_WORKER_TREE,
+                ),
+                authority_provider=lambda *_args: self._authority(),
+            )
 
     def test_authenticates_valid_empty_window_02_projection(self) -> None:
         result = self._verify()

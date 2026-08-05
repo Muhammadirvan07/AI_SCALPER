@@ -388,3 +388,20 @@ operational inventory while keeping the eight registered genesis artifacts
 individually byte-bound. Inventory failures now report explicit missing and
 unexpected relative paths. V4 uses fresh create-exclusive `-r4` paths; all
 V1--V3 outputs remain untouched.
+
+## 11. Final source audit and V5 remediation
+
+Before V4 was executed on Windows, the complete transfer-to-health path was
+audited again. V4 still assumed the persistent lock had already been created,
+which made it specific to the current retry history rather than valid for both
+legitimate contract entry states. The health checker also had two direct
+Python invocations that could still be promoted to terminating
+`NativeCommandError` by Windows PowerShell 5.1 before their exit codes were
+interpreted.
+
+V5 authenticates either the exact eight-file genesis inventory or exact
+nine-file operational inventory before authority, invokes the frozen verifier,
+then requires the exact nine-file inventory and unchanged contract bytes.
+Every installer and health Git/Python call now resets and captures a fresh
+native exit code with PowerShell 5.1-safe stderr handling. Fresh `-r5` paths
+preserve all V1--V4 forensic output.

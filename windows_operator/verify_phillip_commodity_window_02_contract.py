@@ -44,11 +44,7 @@ EXPECTED_DEPENDENCY_LOCK_SHA256 = (
     "34087f736724e7d92591f7886f565b15"
     "436c59de0d4e80a59e42b04f2851d862"
 )
-EXPECTED_INVENTORY: Mapping[str, tuple[int, str]] = {
-    ".contract-write.lock": (
-        1,
-        "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
-    ),
+EXPECTED_GENESIS_INVENTORY: Mapping[str, tuple[int, str]] = {
     "anchors/raw_ticks/XAUUSD/000000.json": (
         764,
         "0954b53a613c2b893da65313cb3cc077d3f3b340405a22f7714295a861112e96",
@@ -78,6 +74,13 @@ EXPECTED_INVENTORY: Mapping[str, tuple[int, str]] = {
         571,
         "7be98a026bd4a702f17efc70ecadf6d34b7696effb800697c7557603d118ad4a",
     ),
+}
+EXPECTED_INVENTORY: Mapping[str, tuple[int, str]] = {
+    ".contract-write.lock": (
+        1,
+        "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+    ),
+    **EXPECTED_GENESIS_INVENTORY,
 }
 EXPECTED_FORWARD_PROJECTION_KEYS = frozenset(
     {
@@ -495,7 +498,22 @@ def verify(
         "Window 02 contract root",
     )
     inventory = EXPECTED_INVENTORY if expected_inventory is None else expected_inventory
-    observed = _verify_inventory(contract_root, inventory)
+    if expected_inventory is None:
+        # The authoritative frozen verifier creates this one-byte kernel-lock
+        # carrier on its first successful call and intentionally keeps it.
+        # Authenticate either legitimate pre-call state, then require the
+        # exact operational state after the authoritative call.  This makes a
+        # clean install and an idempotent retry equally valid without allowing
+        # any unbound artifact.
+        lock_carrier = contract_root / ".contract-write.lock"
+        pre_authority_inventory = (
+            EXPECTED_INVENTORY
+            if lock_carrier.exists()
+            else EXPECTED_GENESIS_INVENTORY
+        )
+    else:
+        pre_authority_inventory = inventory
+    observed = _verify_inventory(contract_root, pre_authority_inventory)
     contract_bytes = observed.get("contract.json")
     if contract_bytes is None:
         raise Window02ContractVerificationError("contract.json is unavailable")
@@ -508,6 +526,12 @@ def verify(
         lock_path,
     )
     forward = _validate_authority(authority)
+    if expected_inventory is None:
+        observed = _verify_inventory(contract_root, EXPECTED_INVENTORY)
+        if observed.get("contract.json") != contract_bytes:
+            raise Window02ContractVerificationError(
+                "contract.json changed during authoritative verification"
+            )
     receipt = authority["dependency_receipt"]
     assert isinstance(receipt, Mapping)
     evidence_root = forward.get("evidence_root_sha256")

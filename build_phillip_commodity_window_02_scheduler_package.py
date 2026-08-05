@@ -43,7 +43,9 @@ FIRST_SCHEDULED_START_LOCAL = "2026-08-17T06:45:00+09:00"
 FIRST_NEXT_RUN_LOCAL = "2026-08-17T06:45:00"
 SCHEDULE_END_LOCAL = "2026-10-13T00:16:00+09:00"
 TASK_NAME = "AI_SCALPER-PhillipCommodityWindow02-ReadOnlyShadow"
-TRANSPORT_REVISION = "WINDOW02.V4"
+TRANSPORT_REVISION = "WINDOW02.V5"
+INITIAL_ARTIFACT_FILE_COUNT = 8
+OPERATIONAL_ARTIFACT_FILE_COUNT = 9
 EXTRACTION_INVENTORY_MODE = "WINDOWS_POWERSHELL_5_1_FLAT_EXACT_V1"
 TEMPLATE_PATHS = (
     "windows_operator/PhillipCommodityTaskContract.ps1",
@@ -291,6 +293,10 @@ if (
   $manifest.worker.signing_key_id -ne "{SIGNING_KEY_ID}" -or
   $manifest.worker.dependency_lock_sha256 -ne
     "{DEPENDENCY_LOCK_SHA256}" -or
+  [int]$manifest.worker.initial_artifact_file_count -ne
+    {INITIAL_ARTIFACT_FILE_COUNT} -or
+  [int]$manifest.worker.operational_artifact_file_count -ne
+    {OPERATIONAL_ARTIFACT_FILE_COUNT} -or
   $manifest.schedule.first_scheduled_start_utc -ne
     "{FIRST_SCHEDULED_START_UTC}" -or
   $manifest.schedule.start_boundary -ne
@@ -410,7 +416,8 @@ def _worker_binding() -> dict[str, object]:
         "build_identity_sha256": BUILD_IDENTITY_SHA256,
         "signing_key_id": SIGNING_KEY_ID,
         "dependency_lock_sha256": DEPENDENCY_LOCK_SHA256,
-        "initial_artifact_file_count": 8,
+        "initial_artifact_file_count": INITIAL_ARTIFACT_FILE_COUNT,
+        "operational_artifact_file_count": OPERATIONAL_ARTIFACT_FILE_COUNT,
     }
 
 

@@ -84,7 +84,7 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
         self.assertEqual(1, len(task.findall("t:Actions/t:Exec", namespace)))
 
     def test_installer_verifies_before_register_and_enables_only_after_check(self) -> None:
-        verify_at = self.installer.index("$contractVerification = (")
+        verify_at = self.installer.index("$contractVerification =")
         register_at = self.installer.index("Register-ScheduledTask")
         enable_at = self.installer.index("Enable-ScheduledTask")
         registered_check_at = self.installer.index(
@@ -133,6 +133,7 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
             end = source.index("\n}\n", start) + 3
             wrapper = source[start:end]
             self.assertIn('$ErrorActionPreference = "Continue"', wrapper)
+            self.assertIn("$LASTEXITCODE = $null", wrapper)
             self.assertIn("$records = @(& git @Arguments 2>&1)", wrapper)
             self.assertIn("$exitCode = $LASTEXITCODE", wrapper)
             self.assertIn(
@@ -147,26 +148,38 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
 
     def test_retry_revision_uses_fresh_create_exclusive_paths(self) -> None:
         expected_paths = (
-            "da319001-phillip-commodity-window-02-shadow-source-r4",
-            "phillip-commodity-window-02-da319001-runtime-r4",
-            "phillip-commodity-window-02-da319001-audit-exports-r4",
-            "phillip-commodity-window-02-task-review-r4",
+            "da319001-phillip-commodity-window-02-shadow-source-r5",
+            "phillip-commodity-window-02-da319001-runtime-r5",
+            "phillip-commodity-window-02-da319001-audit-exports-r5",
+            "phillip-commodity-window-02-task-review-r5",
         )
         for source in (self.installer, self.health):
             for path in expected_paths:
                 self.assertIn(path, source)
 
     def test_contract_preflight_captures_native_exit_before_projection(self) -> None:
-        start = self.installer.index("$verificationOutput = @()")
-        end = self.installer.index("$contractVerification = (", start)
-        preflight = self.installer[start:end]
-        self.assertIn('$ErrorActionPreference = "Continue"', preflight)
-        self.assertIn("$verificationExitCode = $LASTEXITCODE", preflight)
-        self.assertIn(
-            "$ErrorActionPreference = $previousErrorActionPreference",
-            preflight,
+        start = self.installer.index(
+            "$verificationOutput = Invoke-CheckedNativeProcess"
         )
-        self.assertIn("if ($verificationExitCode -ne 0)", preflight)
+        end = self.installer.index("$contractVerification =", start)
+        preflight = self.installer[start:end]
+        self.assertIn("-FilePath $ReleasePython", preflight)
+        self.assertIn('-Operation "Window 02 contract preflight"', preflight)
+        self.assertNotIn("& $ReleasePython", preflight)
+
+    def test_native_process_wrapper_is_ps51_safe_and_used_everywhere(self) -> None:
+        for source in (self.installer, self.health):
+            start = source.index("function Invoke-CheckedNativeProcess")
+            end = source.index("\n}\n", start) + 3
+            wrapper = source[start:end]
+            self.assertIn('$ErrorActionPreference = "Continue"', wrapper)
+            self.assertIn("$LASTEXITCODE = $null", wrapper)
+            self.assertIn("$records = @(& $FilePath @Arguments 2>&1)", wrapper)
+            self.assertIn("$exitCode = $LASTEXITCODE", wrapper)
+            self.assertIn("if ($exitCode -ne 0)", wrapper)
+            self.assertNotIn("& $ReleasePython", source)
+        self.assertEqual(1, self.installer.count("Invoke-CheckedNativeProcess `"))
+        self.assertEqual(2, self.health.count("Invoke-CheckedNativeProcess `"))
 
     def test_health_is_read_only_and_allows_missing_prestart_journal(self) -> None:
         for command in (

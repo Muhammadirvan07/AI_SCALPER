@@ -164,3 +164,20 @@ nine files even though registration created eight immutable genesis files.
 keeps every genesis artifact byte-bound, and emits missing/unexpected relative
 paths for any inventory mismatch. Its retry paths end in `-r4`; V1--V3 output
 is preserved and never overwritten.
+
+## Transport revision V5
+
+The final repository-side audit identified two avoidable state assumptions in
+V4. It required the operational lock to exist before the first authoritative
+call, although a clean registration legitimately starts with eight files, and
+the health checker still invoked Python directly under Windows PowerShell
+5.1's native-stderr promotion behavior.
+
+`WINDOW02.V5` performs a two-phase inventory proof. Before authority it accepts
+only the exact eight-file genesis state or the exact nine-file operational
+state. After the frozen verifier returns, it always requires the exact
+nine-file operational state and unchanged `contract.json` bytes. Installer and
+health native calls reset and capture a fresh `LASTEXITCODE`, temporarily
+capture native stderr without terminating, restore the caller preference, and
+only then parse output. V5 uses fresh create-exclusive `-r5` paths and leaves
+V1--V4 evidence untouched.

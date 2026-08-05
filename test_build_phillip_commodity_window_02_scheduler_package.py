@@ -132,8 +132,16 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
             builder.DEPENDENCY_LOCK_SHA256,
             manifest["worker"]["dependency_lock_sha256"],
         )
+        self.assertEqual(
+            builder.INITIAL_ARTIFACT_FILE_COUNT,
+            manifest["worker"]["initial_artifact_file_count"],
+        )
+        self.assertEqual(
+            builder.OPERATIONAL_ARTIFACT_FILE_COUNT,
+            manifest["worker"]["operational_artifact_file_count"],
+        )
         self.assertEqual(builder.TASK_NAME, manifest["new_task_name"])
-        self.assertEqual("WINDOW02.V4", manifest["transport_revision"])
+        self.assertEqual("WINDOW02.V5", manifest["transport_revision"])
         self.assertEqual(builder._schedule(), manifest["schedule"])
         self.assertEqual("PROHIBITED", manifest["safety"]["manual_start"])
         self.assertEqual("DISABLED", manifest["safety"]["order_capability"])
@@ -194,6 +202,14 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
         self.assertIn("$_.PSIsContainer", helper_text)
         self.assertNotIn("Get-ChildItem -File", helper_text)
         self.assertIn("operator root already exists; preserve it", helper_text)
+        self.assertIn(
+            "$manifest.worker.initial_artifact_file_count",
+            helper_text,
+        )
+        self.assertIn(
+            "$manifest.worker.operational_artifact_file_count",
+            helper_text,
+        )
         self.assertIn("TaskSchedulerMutation = \"NOT_PERFORMED\"", helper_text)
         self.assertNotIn("Start-ScheduledTask", helper_text)
 

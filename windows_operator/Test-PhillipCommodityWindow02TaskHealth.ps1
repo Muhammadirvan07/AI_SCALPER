@@ -6,7 +6,7 @@ param(
   [Parameter()]
   [string]$RuntimeRepo = (
     "C:\AI_SCALPER_RELEASES\" +
-    "da319001-phillip-commodity-window-02-shadow-source-r4"
+    "da319001-phillip-commodity-window-02-shadow-source-r5"
   ),
 
   [Parameter()]
@@ -67,17 +67,17 @@ $priorTaskNames = @(
 
 $runtimeStateRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-runtime-r4"
+  "phillip-commodity-window-02-da319001-runtime-r5"
 )
 $journal = Join-Path $runtimeStateRoot (
   "phillip-commodity-shadow-cycles-window-02.sqlite3"
 )
 $auditRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-audit-exports-r4"
+  "phillip-commodity-window-02-da319001-audit-exports-r5"
 )
 $taskReviewRoot = (
-  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r4"
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r5"
 )
 $reviewXmlPath = Join-Path $taskReviewRoot "$TaskName.review.xml"
 $registeredDisabledXmlPath = Join-Path $taskReviewRoot (
@@ -140,6 +140,7 @@ function Invoke-CheckedGit {
     # Windows PowerShell 5.1 surfaces native stderr as ErrorRecord objects.
     # Capture Git progress without allowing benign stderr to terminate health.
     $ErrorActionPreference = "Continue"
+    $LASTEXITCODE = $null
     $records = @(& git @Arguments 2>&1)
     $exitCode = $LASTEXITCODE
   }
@@ -153,6 +154,45 @@ function Invoke-CheckedGit {
   }
   if ($exitCode -ne 0) {
     throw "$Operation failed with exit code $exitCode."
+  }
+  return $output
+}
+
+function Invoke-CheckedNativeProcess {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$FilePath,
+
+    [Parameter(Mandatory = $true)]
+    [string[]]$Arguments,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Operation
+  )
+  $records = @()
+  $exitCode = $null
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    # Windows PowerShell 5.1 promotes native stderr to ErrorRecord. Native
+    # success is decided only by the freshly captured process exit code.
+    $ErrorActionPreference = "Continue"
+    $LASTEXITCODE = $null
+    $records = @(& $FilePath @Arguments 2>&1)
+    $exitCode = $LASTEXITCODE
+  }
+  finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  $outputLines = @($records | ForEach-Object { $_.ToString() })
+  $output = ($outputLines -join [Environment]::NewLine).Trim()
+  if ($null -eq $exitCode) {
+    throw "$Operation did not report a native process exit code."
+  }
+  if ($exitCode -ne 0) {
+    if ([string]::IsNullOrWhiteSpace($output)) {
+      throw "$Operation failed with exit code $exitCode."
+    }
+    throw "$Operation failed with exit code $exitCode. Native output: $output"
   }
   return $output
 }
@@ -391,20 +431,16 @@ if ($receipt.frozen_runtime_worktree_lock -ne $worktreeLock) {
 
 $lock = Join-Path $RuntimeRepo "pylock.windows-cp312.toml"
 Assert-RegularNonReparseFile -Path $lock
-$verificationOutput = @(
-  & $ReleasePython -I -S -B `
-    $contractVerifier `
-    --runtime-repo $RuntimeRepo `
-    --artifact-root $artifactRoot `
-    --lock $lock 2>&1
-)
-if ($LASTEXITCODE -ne 0) {
-  $verificationOutput
-  throw "Window 02 contract health verification failed."
-}
-$contractVerification = (
-  $verificationOutput -join [Environment]::NewLine
-) | ConvertFrom-Json
+$verificationOutput = Invoke-CheckedNativeProcess `
+  -FilePath $ReleasePython `
+  -Arguments @(
+    "-I", "-S", "-B", $contractVerifier,
+    "--runtime-repo", $RuntimeRepo,
+    "--artifact-root", $artifactRoot,
+    "--lock", $lock
+  ) `
+  -Operation "Window 02 contract health verification"
+$contractVerification = $verificationOutput | ConvertFrom-Json
 if (
   $contractVerification.status -ne
     "PHILLIP_COMMODITY_WINDOW_02_CONTRACT_AUTHENTICATED" -or
@@ -569,19 +605,18 @@ else {
 
   if ($activeInterval -and -not $startupAllowance) {
     Assert-RegularNonReparseFile -Path $journal
-    $statusOutput = @(
-      & $ReleasePython -I -S -B `
-        (Join-Path $RuntimeRepo "run_broker_shadow_once.py") `
-        --candidate phillip-commodity `
-        --artifact-root $artifactRoot `
-        --journal $journal `
-        --heartbeat-stale-seconds 180 `
-        --status-only 2>&1
-    )
-    if ($LASTEXITCODE -ne 0) {
-      $statusOutput
-      throw "Authenticated Window 02 runtime status is unhealthy."
-    }
+    $statusOutput = Invoke-CheckedNativeProcess `
+      -FilePath $ReleasePython `
+      -Arguments @(
+        "-I", "-S", "-B",
+        (Join-Path $RuntimeRepo "run_broker_shadow_once.py"),
+        "--candidate", "phillip-commodity",
+        "--artifact-root", $artifactRoot,
+        "--journal", $journal,
+        "--heartbeat-stale-seconds", "180",
+        "--status-only"
+      ) `
+      -Operation "Authenticated Window 02 runtime status"
     $runtimeStatus = "AUTHENTICATED_HEALTHY"
   }
 }

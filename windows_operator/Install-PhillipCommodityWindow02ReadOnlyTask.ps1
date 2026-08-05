@@ -6,7 +6,7 @@ param(
   [Parameter()]
   [string]$RuntimeRepo = (
     "C:\AI_SCALPER_RELEASES\" +
-    "da319001-phillip-commodity-window-02-shadow-source-r4"
+    "da319001-phillip-commodity-window-02-shadow-source-r5"
   ),
 
   [Parameter()]
@@ -74,17 +74,17 @@ $priorTaskNames = @(
 
 $runtimeStateRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-runtime-r4"
+  "phillip-commodity-window-02-da319001-runtime-r5"
 )
 $journal = Join-Path $runtimeStateRoot (
   "phillip-commodity-shadow-cycles-window-02.sqlite3"
 )
 $auditRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-audit-exports-r4"
+  "phillip-commodity-window-02-da319001-audit-exports-r5"
 )
 $taskReviewRoot = (
-  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r4"
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r5"
 )
 $reviewXmlPath = Join-Path $taskReviewRoot "$TaskName.review.xml"
 $registeredDisabledXmlPath = Join-Path $taskReviewRoot (
@@ -176,6 +176,7 @@ function Invoke-CheckedGit {
     # so Stop would incorrectly turn a successful native process into a
     # terminating NativeCommandError before LASTEXITCODE can be inspected.
     $ErrorActionPreference = "Continue"
+    $LASTEXITCODE = $null
     $records = @(& git @Arguments 2>&1)
     $exitCode = $LASTEXITCODE
   }
@@ -189,6 +190,45 @@ function Invoke-CheckedGit {
   }
   if ($exitCode -ne 0) {
     throw "$Operation failed with exit code $exitCode."
+  }
+  return $output
+}
+
+function Invoke-CheckedNativeProcess {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$FilePath,
+
+    [Parameter(Mandatory = $true)]
+    [string[]]$Arguments,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Operation
+  )
+  $records = @()
+  $exitCode = $null
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    # Windows PowerShell 5.1 promotes native stderr to ErrorRecord. Native
+    # success is decided only by the freshly captured process exit code.
+    $ErrorActionPreference = "Continue"
+    $LASTEXITCODE = $null
+    $records = @(& $FilePath @Arguments 2>&1)
+    $exitCode = $LASTEXITCODE
+  }
+  finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  $outputLines = @($records | ForEach-Object { $_.ToString() })
+  $output = ($outputLines -join [Environment]::NewLine).Trim()
+  if ($null -eq $exitCode) {
+    throw "$Operation did not report a native process exit code."
+  }
+  if ($exitCode -ne 0) {
+    if ([string]::IsNullOrWhiteSpace($output)) {
+      throw "$Operation failed with exit code $exitCode."
+    }
+    throw "$Operation failed with exit code $exitCode. Native output: $output"
   }
   return $output
 }
@@ -310,10 +350,13 @@ if (
   throw "Package or worker source identity mismatch."
 }
 foreach ($sourceCommit in @($packageSourceCommit, $workerCommit)) {
-  & git -C $Repo merge-base --is-ancestor $sourceCommit "origin/$branch"
-  if ($LASTEXITCODE -ne 0) {
-    throw "Required source commit is not on the official branch."
-  }
+  Invoke-CheckedGit `
+    -Arguments @(
+      "-C", $Repo, "merge-base", "--is-ancestor", $sourceCommit,
+      "origin/$branch"
+    ) `
+    -Operation "Official branch ancestry verification" |
+    Out-Null
 }
 
 foreach ($priorTaskName in $priorTaskNames) {
@@ -381,33 +424,16 @@ Assert-RegularNonReparseFile -Path $worktreeLock
 
 $lock = Join-Path $RuntimeRepo "pylock.windows-cp312.toml"
 Assert-RegularNonReparseFile -Path $lock
-$verificationOutput = @()
-$verificationExitCode = $null
-$previousErrorActionPreference = $ErrorActionPreference
-try {
-  $ErrorActionPreference = "Continue"
-  $verificationOutput = @(
-    & $ReleasePython -I -S -B `
-      $contractVerifier `
-      --runtime-repo $RuntimeRepo `
-      --artifact-root $artifactRoot `
-      --lock $lock 2>&1
-  )
-  $verificationExitCode = $LASTEXITCODE
-}
-finally {
-  $ErrorActionPreference = $previousErrorActionPreference
-}
-if ($null -eq $verificationExitCode) {
-  throw "Window 02 contract preflight did not report an exit code."
-}
-if ($verificationExitCode -ne 0) {
-  $verificationOutput
-  throw "Window 02 contract preflight failed under the limited token."
-}
-$contractVerification = (
-  $verificationOutput -join [Environment]::NewLine
-) | ConvertFrom-Json
+$verificationOutput = Invoke-CheckedNativeProcess `
+  -FilePath $ReleasePython `
+  -Arguments @(
+    "-I", "-S", "-B", $contractVerifier,
+    "--runtime-repo", $RuntimeRepo,
+    "--artifact-root", $artifactRoot,
+    "--lock", $lock
+  ) `
+  -Operation "Window 02 contract preflight"
+$contractVerification = $verificationOutput | ConvertFrom-Json
 if (
   $contractVerification.status -ne
     "PHILLIP_COMMODITY_WINDOW_02_CONTRACT_AUTHENTICATED" -or
