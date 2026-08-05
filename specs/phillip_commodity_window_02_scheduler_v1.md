@@ -1,0 +1,114 @@
+# Spec: Phillip Commodity Window 02 Read-Only Scheduler V1
+
+**Author:** AI_SCALPER Engineering
+
+**Date:** 2026-08-05
+
+**Status:** Approved for implementation
+
+**Authority:** The project owner continued the Window 02 remediation after
+registering and independently displaying the exact immutable contract
+identity and complete eight-file inventory.
+
+## Context
+
+The active Phillip Commodity profile now names
+`phillip-commodity-window-02-diagnostic-v1`. The contract was registered on
+Windows before the observation boundary and is bound to source commit
+`da3190013d86426533019d6927a58181c624b1f8`, source tree
+`9e84a0d7c9a5b3d4213c6abf0fdf1c8770361d10`, snapshot
+`phillip-commodity-dev-pre-window-02-v1`, payload SHA-256
+`cbfd753b0aed2d66af56446adc734ce8d62666e309e91bf74d24b4cc56b613a2`,
+and physical `contract.json` SHA-256
+`ad4fd8853563976483fbffbd3bd97847f7e05c8a4194afd10fa95832e2fe485b`.
+
+The historical V6 task is disabled and remains immutable failed Window 01
+history. Its installer cannot be reused: it requires a V5 proof receipt,
+the `290cc23d` worker, the Window 01 contract, historical audit files, and a
+July 2026 schedule. Window 02 therefore needs a separate source-bound task
+that can prove a valid empty contract before the first automatic run.
+
+## Functional requirements
+
+- FR-1: The transfer package MUST bind the exact registered Window 02
+  contract, all eight initial artifact files, source commit/tree, snapshot,
+  signing-key identifier, registration time, observation start, blind-until,
+  and build-identity hash.
+- FR-2: The worker source MUST be a clean locked detached worktree at commit
+  `da3190013d86426533019d6927a58181c624b1f8` and tree
+  `9e84a0d7c9a5b3d4213c6abf0fdf1c8770361d10`.
+- FR-3: Before task registration, an authoritative verifier MUST validate the
+  dependency lock, current broker profile, Windows Credential Manager key,
+  contract HMAC, snapshot, build identity, calendar chain, empty segment/raw
+  tick state, and exact physical inventory.
+- FR-4: The new task name MUST be
+  `AI_SCALPER-PhillipCommodityWindow02-ReadOnlyShadow`; the historical V4,
+  V5, and V6 task names MUST never be renamed, removed, started, or enabled.
+- FR-5: Any historical task that exists MUST be `Disabled` before the new
+  task can be installed.
+- FR-6: The task MUST run as the current Windows SID with
+  `InteractiveToken` and `LeastPrivilege`, and installation MUST be invoked
+  from a non-elevated PowerShell token so the preflight observes the same
+  read boundary as the scheduled worker.
+- FR-7: The first task boundary MUST be 17 August 2026 06:45 JST
+  (`2026-08-16T21:45:00Z`), weekdays only, ending at
+  `2026-10-13T00:16:00+09:00`. The worker duration MUST be 84,300 seconds.
+  The end boundary is the contract ingestion deadline: 15 minutes of final
+  M15 finalization plus the contract's 60-second ingestion grace after
+  `blind_until_utc`; it is not a new observation-data interval.
+- FR-8: The task MUST be registered disabled, semantically verified, enabled,
+  exported, and semantically verified again. A post-registration failure MUST
+  leave it disabled.
+- FR-9: `AllowStartOnDemand=false`, `StartWhenAvailable=false`, no restart
+  policy, `IgnoreNew`, no hard termination, no idle/battery/network gate, no
+  wake timer, and unlimited task execution time MUST remain exact.
+- FR-10: Installation and health tooling MUST never invoke
+  `Start-ScheduledTask`, unregister/delete a task, import MetaTrader5, contact
+  a broker, or submit an order.
+- FR-11: Pre-start health MUST be valid without a journal. After an automatic
+  attempt, health MUST require correct Task Scheduler timing/result and, while
+  active beyond startup allowance, an authenticated non-stale runtime status.
+- FR-12: Package build and extraction MUST be deterministic,
+  content-addressed, create-exclusive, flat-inventory verified, and preserve
+  partial output for forensic review.
+
+## Exact registered artifact inventory
+
+| Relative path | Bytes | SHA-256 |
+|---|---:|---|
+| `anchors/raw_ticks/XAUUSD/000000.json` | 764 | `0954b53a613c2b893da65313cb3cc077d3f3b340405a22f7714295a861112e96` |
+| `anchors/segments/XAUUSD/000000.json` | 763 | `fd9d1bd1c28ae38e4fdf4894cc2a78103346dbf121d8e52532da97a9556090ab` |
+| `calendar_amendments/000000.json` | 697 | `6f8a7f90c4ba4ea3b05b7d17f731c0c4e47c0187522fb14b89923343b68bc865` |
+| `contract.json` | 19601 | `ad4fd8853563976483fbffbd3bd97847f7e05c8a4194afd10fa95832e2fe485b` |
+| `heads/calendar_amendments.json` | 697 | `6f8a7f90c4ba4ea3b05b7d17f731c0c4e47c0187522fb14b89923343b68bc865` |
+| `heads/raw_ticks/XAUUSD.json` | 764 | `0954b53a613c2b893da65313cb3cc077d3f3b340405a22f7714295a861112e96` |
+| `heads/segments/XAUUSD.json` | 763 | `fd9d1bd1c28ae38e4fdf4894cc2a78103346dbf121d8e52532da97a9556090ab` |
+| `seal.json` | 571 | `7be98a026bd4a702f17efc70ecadf6d34b7696effb800697c7557603d118ad4a` |
+
+## Safety invariants
+
+- `validation_profile=DIAGNOSTIC`
+- `promotion_profile_eligible=false`
+- `live_allowed=false`
+- `order_capability=DISABLED`
+- no manual task start
+- no broker mutation
+- no credential export
+- no reuse of V5/V6 proof or journal evidence
+- dependency lock SHA-256
+  `34087f736724e7d92591f7886f565b15436c59de0d4e80a59e42b04f2851d862`
+
+## Acceptance criteria
+
+1. Two builds from the same tracked commit produce byte-identical archives.
+2. Tampered contract fields, bytes, inventory, HMAC authority, snapshot,
+   build identity, dependency environment, source commit, source tree, task
+   XML, prior-task state, or schedule fail before task enablement.
+3. A valid install creates only the locked worktree, new private runtime and
+   review directories, installation evidence, and the exact new Scheduled
+   Task; it never starts the task.
+4. Pre-start health reports the task `Ready`, the first automatic boundary,
+   the exact contract identity, and `OrderCapability=DISABLED`.
+5. Focused tests, historical V5/V6 tests, full normal and optimized suites,
+   compilation, diff checks, and safety scans pass without changing frozen
+   historical files.

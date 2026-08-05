@@ -312,3 +312,30 @@ Before active configuration can roll over, Window 02 still requires:
 Do not apply the pack, register the replacement contract, or install the
 replacement scheduler without the next explicit approval. The old V6 task
 must remain disabled.
+
+## 7. Verified external state after approved apply
+
+On 5 August 2026, the operator reported a successful reviewed apply and exact
+Window 02 contract registration. The immutable Windows result is:
+
+- contract `phillip-commodity-window-02-diagnostic-v1`;
+- snapshot `phillip-commodity-dev-pre-window-02-v1`;
+- registered at `2026-08-05T07:16:19.157743Z`;
+- observation start `2026-08-16T16:00:00Z`;
+- blind boundary `2026-10-12T15:00:00Z`;
+- contract payload SHA-256
+  `cbfd753b0aed2d66af56446adc734ce8d62666e309e91bf74d24b4cc56b613a2`;
+- physical `contract.json` SHA-256
+  `ad4fd8853563976483fbffbd3bd97847f7e05c8a4194afd10fa95832e2fe485b`;
+- build identity SHA-256
+  `9d64b8c9be0b42bdc991b767a745258774a57f80613e2fd322791d6d18cc6287`;
+- signing-key ID `105e393cd619804e`;
+- exactly eight initial contract artifacts; and
+- historical V6 task state `Disabled`.
+
+This supersedes the pending apply/registration items in section 6. The next
+gate is the separate Window 02 scheduler package described in
+`PHILLIP_COMMODITY_WINDOW_02_SCHEDULER.md`. It creates a new task named
+`AI_SCALPER-PhillipCommodityWindow02-ReadOnlyShadow`; it must not start or
+modify the historical V6 task. Automatic-run and post-window acceptance
+remain pending, and order capability remains `DISABLED`.
