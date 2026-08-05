@@ -154,13 +154,13 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
         self.assertNotEqual(fx.key_name, commodity.key_name)
         self.assertNotEqual(fx.contract_id, commodity.contract_id)
         self.assertEqual(
-            "phillip-commodity-window-01-diagnostic-v5",
+            "phillip-commodity-window-02-diagnostic-v1",
             commodity.contract_id,
         )
         self.assertFalse(fx.registration_enabled)
         self.assertTrue(commodity.registration_enabled)
         self.assertEqual(
-            "DIAGNOSTIC_EVIDENCE_REGISTRATION_ENABLED_BY_MANUAL_REVIEW",
+            "DIAGNOSTIC_EVIDENCE_REGISTRATION_ROLLED_TO_WINDOW_02_BY_MANUAL_REVIEW",
             commodity.status,
         )
         with self.assertRaisesRegex(BrokerEvidenceProfileError, "external gates"):
@@ -224,7 +224,7 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
         }
         for filename in (
             "phillip_fx_calendar_window_01.template.json",
-            "phillip_commodity_calendar_window_01.template.json",
+            "phillip_commodity_calendar_window_02.template.json",
         ):
             with self.subTest(filename=filename):
                 scaffold = json.loads(
@@ -235,6 +235,12 @@ class BrokerEvidenceProfileTests(unittest.TestCase):
                 self.assertEqual(
                     expected_registration[candidate_id],
                     profiles_by_candidate[candidate_id]["registration_enabled"],
+                )
+                self.assertEqual(
+                    filename,
+                    Path(
+                        profiles_by_candidate[candidate_id]["template_path"]
+                    ).name,
                 )
                 without_policy = dict(scaffold)
                 without_policy["schema_version"] = "broker-calendar-plan-template-v1"

@@ -1524,14 +1524,51 @@ class RunXMShadowOnceStartupGuardTests(unittest.TestCase):
         )
         self.assertEqual(896.5, observed_duration["seconds"])
 
-    def test_worker_contract_binding_accepts_only_registered_commodity_v5(self):
+    def test_worker_contract_namespace_accepts_only_reviewed_versions(self):
+        for contract_id in (
+            "phillip-commodity-window-01-diagnostic-v5",
+            "phillip-commodity-window-02-diagnostic-v1",
+        ):
+            with self.subTest(contract_id=contract_id):
+                self.assertEqual(
+                    contract_id,
+                    run_xm_shadow_once._validate_worker_contract_id(
+                        "phillip-commodity",
+                        contract_id,
+                    ),
+                )
+
+        for contract_id in (
+            "phillip-commodity-window-02-diagnostic-v2",
+            "phillip-commodity-window-02-diagnostic-v1-suffix",
+            "PHILLIP-COMMODITY-WINDOW-02-DIAGNOSTIC-V1",
+        ):
+            with self.subTest(contract_id=contract_id), self.assertRaisesRegex(
+                RuntimeError,
+                "reviewed diagnostic namespace",
+            ):
+                run_xm_shadow_once._validate_worker_contract_id(
+                    "phillip-commodity",
+                    contract_id,
+                )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "approved only for phillip-commodity",
+        ):
+            run_xm_shadow_once._validate_worker_contract_id(
+                "phillip-fx",
+                "phillip-commodity-window-02-diagnostic-v1",
+            )
+
+    def test_worker_contract_binding_uses_active_registered_commodity_profile(self):
         profile = (
             Path(run_xm_shadow_once.__file__).resolve().parent
             / "config"
             / "broker_evidence_profiles.v1.json"
         )
         self.assertEqual(
-            "phillip-commodity-window-01-diagnostic-v5",
+            "phillip-commodity-window-02-diagnostic-v1",
             run_xm_shadow_once._worker_contract_id(
                 "phillip-commodity",
                 profile,

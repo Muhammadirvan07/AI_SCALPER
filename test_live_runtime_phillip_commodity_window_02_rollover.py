@@ -14,9 +14,13 @@ from live_runtime.evidence_bootstrap import DISCOVERY_RECEIPT_DOMAIN
 from live_runtime.phillip_commodity_window_02_rollover import (
     CURRENT_CONTRACT_ID,
     CURRENT_DISCOVERY_KEY_NAME,
+    CURRENT_PROFILE_STATUS,
+    CURRENT_SNAPSHOT_ID,
+    CURRENT_TEMPLATE_PATH,
     PROPOSED_CONTRACT_ID,
     PROPOSED_PROFILE_STATUS,
     PROPOSED_SNAPSHOT_ID,
+    PROPOSED_TEMPLATE_PATH,
     RolloverReviewError,
     build_phillip_commodity_window_02_rollover_review,
     verify_phillip_commodity_window_02_rollover_review,
@@ -73,6 +77,21 @@ class PhillipCommodityWindow02RolloverReviewTests(unittest.TestCase):
         self.release_allowlist = _json(
             ROOT / "config/windows_release_allowlist.v1.json"
         )
+        historical_profile = next(
+            item
+            for item in self.profiles["profiles"]
+            if item["candidate_id"] == "phillip-commodity"
+        )
+        historical_profile.update(
+            {
+                "snapshot_id": CURRENT_SNAPSHOT_ID,
+                "contract_id": CURRENT_CONTRACT_ID,
+                "template_path": CURRENT_TEMPLATE_PATH,
+                "registration_enabled": True,
+                "status": CURRENT_PROFILE_STATUS,
+            }
+        )
+        self.release_allowlist["files"].remove(PROPOSED_TEMPLATE_PATH)
         self.template = _json(
             ROOT
             / "config/phillip_commodity_calendar_window_02.review-template.json"

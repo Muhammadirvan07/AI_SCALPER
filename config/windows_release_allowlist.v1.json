@@ -39,6 +39,7 @@
     "config/fbs_calendar_window_01.template.json",
     "config/phillip_commodity_calendar_window_01.template.json",
     "config/phillip_commodity_calendar_window_02.review-template.json",
+    "config/phillip_commodity_calendar_window_02.template.json",
     "config/phillip_fx_calendar_window_01.template.json",
     "config/windows_release_allowlist.v1.json",
     "config/xm_calendar_window_02.template.json",

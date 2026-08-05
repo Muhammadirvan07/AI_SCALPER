@@ -1,0 +1,209 @@
+{
+  "blind_until_utc": "2026-10-12T15:00:00Z",
+  "broker_legal_name": "Phillip Securities Japan, Ltd.",
+  "broker_server": "PhillipSecuritiesJP-PROD",
+  "broker_symbols": {
+    "XAUUSD": "XAUUSD.ps01"
+  },
+  "calendar_amendment_policy": {
+    "completeness_attestation_required": true,
+    "minimum_lead_seconds": 900,
+    "mode": "CLOSURE_ONLY_PROSPECTIVE_V1",
+    "source_document_required": true
+  },
+  "calendar_version": "phillip-commodity-window-02-v1",
+  "candidate_id": "phillip-commodity",
+  "execution_enabled": false,
+  "expected_complete_sessions": 40,
+  "live_allowed": false,
+  "max_lot": 0.01,
+  "observation_start_at_utc": "2026-08-16T16:00:00Z",
+  "operating_jurisdiction": "JP",
+  "prewindow_calendar_review": {
+    "amendment_chain_required": true,
+    "blind_until_utc": "2026-10-12T15:00:00Z",
+    "broker_legal_name": "Phillip Securities Japan, Ltd.",
+    "broker_server": "PhillipSecuritiesJP-PROD",
+    "broker_symbols": {
+      "XAUUSD": "XAUUSD.ps01"
+    },
+    "calendar_amendment_policy": {
+      "completeness_attestation_required": true,
+      "minimum_lead_seconds": 900,
+      "mode": "CLOSURE_ONLY_PROSPECTIVE_V1",
+      "source_document_required": true
+    },
+    "calendar_review_approval": {
+      "candidate_id": "phillip-commodity",
+      "evidence_bundle_sha256": "02b15868b940b9493f5496ecc9b41050bf667fddeaeae8e9f3b678444649b074",
+      "key_id": "phillip-commodity-prewindow-calendar-review-v1",
+      "reviewer_id": "muhammad-irvan",
+      "reviewer_role": "CALENDAR_REVIEW",
+      "schedule_claim_sha256": "e7c1aae0be45c9feb81f4b6db9c60b564639ae184f893cb72f432f2c689276ea",
+      "schema_version": "prewindow-calendar-approval-v1",
+      "signature_hmac_sha256": "a53edee2771666fdf10c77d6049ea6903159c40ccce15782a956f40adf0d465c",
+      "signed_at_utc": "2026-08-04T11:23:36Z"
+    },
+    "calendar_version": "phillip-commodity-window-02-v1",
+    "candidate_id": "phillip-commodity",
+    "evidence_bundle_sha256": "02b15868b940b9493f5496ecc9b41050bf667fddeaeae8e9f3b678444649b074",
+    "execution_enabled": false,
+    "future_exception_completeness": false,
+    "live_allowed": false,
+    "max_lot": 0.01,
+    "observation_start_at_utc": "2026-08-16T16:00:00Z",
+    "official_sources": [
+      {
+        "captured_content_bytes": 511037,
+        "captured_content_sha256": "6e6f5de3bf18d54270534a2ac3bd2929f37cb8c7e4061d56dd601bfdf30b9d9b",
+        "observed_at_utc": "2026-07-25T06:31:47Z",
+        "published_on": "2026-06-01",
+        "source_id": "xau-important-notes-2026-06",
+        "source_role": "COMMODITY_XAU_SESSION_SCHEDULE",
+        "url": "https://www.phillip.co.jp/fx/pdf/C-CFD_important_notes.pdf"
+      }
+    ],
+    "operating_jurisdiction": "JP",
+    "post_window_completeness_required": true,
+    "promotion_eligible": false,
+    "review_artifact_sha256": "0cf22f0cb386e8336248ba288137a21de8b4fcb35b750b8e77fcd46274e71822",
+    "safe_to_demo_auto_order": false,
+    "schedule_claim_sha256": "e7c1aae0be45c9feb81f4b6db9c60b564639ae184f893cb72f432f2c689276ea",
+    "schema_version": "prewindow-calendar-review-v1",
+    "server_timezone": "Asia/Tokyo",
+    "special_hours_attested": false,
+    "special_hours_review": {
+      "affected_required_symbols": [],
+      "attested": false,
+      "covered_through_server_date": null,
+      "registered_closures": [],
+      "review_note": "Regular XAU/USD sessions use only fully tradable M15 buckets from Phillip's official commodity CFD important-notes document. The 05:45-07:00 partial/daily-break interval is closed. Window 02 remains read-only and requires prospective special-hours amendments plus post-window completeness evidence.",
+      "source": null,
+      "source_last_updated_date": null,
+      "source_published_date": null
+    },
+    "verified_at_utc": "2026-08-04T03:32:21Z",
+    "weekly_m15_sessions": {
+      "XAUUSD": [
+        {
+          "close_local": "24:00",
+          "open_local": "07:00",
+          "weekday": 0
+        },
+        {
+          "close_local": "05:45",
+          "open_local": "00:00",
+          "weekday": 1
+        },
+        {
+          "close_local": "24:00",
+          "open_local": "07:00",
+          "weekday": 1
+        },
+        {
+          "close_local": "05:45",
+          "open_local": "00:00",
+          "weekday": 2
+        },
+        {
+          "close_local": "24:00",
+          "open_local": "07:00",
+          "weekday": 2
+        },
+        {
+          "close_local": "05:45",
+          "open_local": "00:00",
+          "weekday": 3
+        },
+        {
+          "close_local": "24:00",
+          "open_local": "07:00",
+          "weekday": 3
+        },
+        {
+          "close_local": "05:45",
+          "open_local": "00:00",
+          "weekday": 4
+        },
+        {
+          "close_local": "24:00",
+          "open_local": "07:00",
+          "weekday": 4
+        },
+        {
+          "close_local": "05:45",
+          "open_local": "00:00",
+          "weekday": 5
+        }
+      ]
+    }
+  },
+  "safe_to_demo_auto_order": false,
+  "schema_version": "broker-calendar-plan-template-v3",
+  "server_timezone": "Asia/Tokyo",
+  "special_hours_review": {
+    "affected_required_symbols": [],
+    "attested": false,
+    "covered_through_server_date": null,
+    "registered_closures": [],
+    "review_note": "Regular XAU/USD sessions use only fully tradable M15 buckets from Phillip's official commodity CFD important-notes document. The 05:45-07:00 partial/daily-break interval is closed. Window 02 remains read-only and requires prospective special-hours amendments plus post-window completeness evidence.",
+    "source": null,
+    "source_last_updated_date": null,
+    "source_published_date": null
+  },
+  "validation_profile": "DIAGNOSTIC",
+  "weekly_m15_sessions": {
+    "XAUUSD": [
+      {
+        "close_local": "24:00",
+        "open_local": "07:00",
+        "weekday": 0
+      },
+      {
+        "close_local": "05:45",
+        "open_local": "00:00",
+        "weekday": 1
+      },
+      {
+        "close_local": "24:00",
+        "open_local": "07:00",
+        "weekday": 1
+      },
+      {
+        "close_local": "05:45",
+        "open_local": "00:00",
+        "weekday": 2
+      },
+      {
+        "close_local": "24:00",
+        "open_local": "07:00",
+        "weekday": 2
+      },
+      {
+        "close_local": "05:45",
+        "open_local": "00:00",
+        "weekday": 3
+      },
+      {
+        "close_local": "24:00",
+        "open_local": "07:00",
+        "weekday": 3
+      },
+      {
+        "close_local": "05:45",
+        "open_local": "00:00",
+        "weekday": 4
+      },
+      {
+        "close_local": "24:00",
+        "open_local": "07:00",
+        "weekday": 4
+      },
+      {
+        "close_local": "05:45",
+        "open_local": "00:00",
+        "weekday": 5
+      }
+    ]
+  }
+}

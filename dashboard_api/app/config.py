@@ -40,7 +40,7 @@ SOURCE_FILE_NAMES: dict[str, tuple[str, ...]] = {
         "phillip_fx_calendar_window_01.template.json",
     ),
     "phillip_commodity_calendar": (
-        "phillip_commodity_calendar_window_01.template.json",
+        "phillip_commodity_calendar_window_02.template.json",
     ),
     "xm_calendar": ("xm_calendar_window_01.json",),
     "fbs_calendar": ("fbs_calendar_window_01.template.json",),

@@ -534,7 +534,7 @@ class RegistrationReviewTests(unittest.TestCase):
         self.assertFalse(by_candidate["phillip-fx"]["registration_enabled"])
         self.assertTrue(by_candidate["phillip-commodity"]["registration_enabled"])
         self.assertEqual(
-            "DIAGNOSTIC_EVIDENCE_REGISTRATION_ENABLED_BY_MANUAL_REVIEW",
+            "DIAGNOSTIC_EVIDENCE_REGISTRATION_ROLLED_TO_WINDOW_02_BY_MANUAL_REVIEW",
             by_candidate["phillip-commodity"]["status"],
         )
         commodity = next(

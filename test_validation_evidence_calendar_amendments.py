@@ -560,7 +560,7 @@ class CalendarAmendmentAcceptanceTests(unittest.TestCase):
         )
         commodity = json.loads(
             Path(
-                "config/phillip_commodity_calendar_window_01.template.json"
+                "config/phillip_commodity_calendar_window_02.template.json"
             ).read_text(encoding="utf-8")
         )
         fx_sessions = validate_weekly_m15_sessions(
@@ -591,7 +591,7 @@ class CalendarAmendmentAcceptanceTests(unittest.TestCase):
         self.assertFalse(phillip["phillip-fx"]["registration_enabled"])
         self.assertTrue(phillip["phillip-commodity"]["registration_enabled"])
         self.assertEqual(
-            "DIAGNOSTIC_EVIDENCE_REGISTRATION_ENABLED_BY_MANUAL_REVIEW",
+            "DIAGNOSTIC_EVIDENCE_REGISTRATION_ROLLED_TO_WINDOW_02_BY_MANUAL_REVIEW",
             phillip["phillip-commodity"]["status"],
         )
 

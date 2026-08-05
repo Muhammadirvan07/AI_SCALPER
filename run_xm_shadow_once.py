@@ -35,6 +35,12 @@ MIN_WORKER_DURATION_SECONDS = 15 * 60
 MAX_WORKER_DURATION_SECONDS = 24 * 60 * 60
 REPO_ROOT = Path(__file__).resolve().parent
 _CANDIDATE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
+_PHILLIP_COMMODITY_WORKER_CONTRACT_IDS = frozenset(
+    {
+        "phillip-commodity-window-01-diagnostic-v5",
+        "phillip-commodity-window-02-diagnostic-v1",
+    }
+)
 
 
 def _load_local_module(module_name: str, relative_path: str) -> ModuleType:
@@ -693,6 +699,22 @@ def _finalize_invocation(
     return int(exit_code)
 
 
+def _validate_worker_contract_id(candidate_id: str, contract_id: str) -> str:
+    candidate = _candidate_id(candidate_id)
+    if candidate != "phillip-commodity":
+        raise RuntimeError(
+            "bounded worker is approved only for phillip-commodity"
+        )
+    if (
+        not isinstance(contract_id, str)
+        or contract_id not in _PHILLIP_COMMODITY_WORKER_CONTRACT_IDS
+    ):
+        raise RuntimeError(
+            "worker contract must use a reviewed diagnostic namespace"
+        )
+    return contract_id
+
+
 def _worker_contract_id(
     candidate_id: str,
     profile_config: Path,
@@ -715,10 +737,7 @@ def _worker_contract_id(
         )
     except Exception as exc:
         raise RuntimeError("worker profile configuration is invalid") from exc
-    contract_id = str(profile.contract_id)
-    if contract_id != "phillip-commodity-window-01-diagnostic-v5":
-        raise RuntimeError("worker contract must use the immutable v5 namespace")
-    return contract_id
+    return _validate_worker_contract_id(candidate, profile.contract_id)
 
 
 def _worker_one_shot_argv(args: argparse.Namespace) -> list[str]:

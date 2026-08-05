@@ -193,6 +193,19 @@ class RegistrationActivationReviewTests(unittest.TestCase):
         selected_profile["status"] = (
             "BLOCKED_PENDING_SIGNED_REGULATORY_CALENDAR_AND_REGISTRATION_REVIEW"
         )
+        if candidate_id == "phillip-commodity":
+            # Initial activation is an immutable Window 01 workflow. Rebuild
+            # that historical profile explicitly now that Window 02 is active.
+            selected_profile.update(
+                {
+                    "snapshot_id": "phillip-commodity-dev-pre-window-01-v1",
+                    "contract_id": "phillip-commodity-window-01-diagnostic-v5",
+                    "template_path": (
+                        "config/"
+                        "phillip_commodity_calendar_window_01.template.json"
+                    ),
+                }
+            )
 
         template.pop("prewindow_calendar_review", None)
         template["schema_version"] = AMENDABLE_TEMPLATE_SCHEMA_VERSION

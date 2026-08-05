@@ -122,12 +122,12 @@
         "broker_symbols": {
           "XAUUSD": "XAUUSD.ps01"
         },
-        "calendar_template_sha256": "ad1f02731e952bdca22e709d7ba44469ff09409f1fd8266c650da50b2dc08eb0",
+        "calendar_template_sha256": "147425d9d336f80735344324f6c2ba5e8c751cb4646d2a4d2b426890b778285c",
         "candidate_id": "phillip-commodity",
         "decision": "DIAGNOSTIC_EVIDENCE_REGISTRATION_REVIEW_ONLY",
         "entity": "Phillip Securities Japan, Ltd.",
         "environment": "DEMO",
-        "evidence_bundle_sha256": "a9724c2169a3f2de62772863a5e45a87c6225e525beb5293668d88eb859d5d3f",
+        "evidence_bundle_sha256": "b9bed0b48b175a2fb7eefebfd50700e94f782515afbb6dd4890cbc389a3b39f3",
         "execution_enabled": false,
         "independent_registry_sources": [
           {
@@ -155,30 +155,30 @@
             "approver_role": "COMPLIANCE_REVIEW",
             "broker_legal_name": "Phillip Securities Japan, Ltd.",
             "candidate_id": "phillip-commodity",
-            "evidence_bundle_sha256": "a9724c2169a3f2de62772863a5e45a87c6225e525beb5293668d88eb859d5d3f",
+            "evidence_bundle_sha256": "b9bed0b48b175a2fb7eefebfd50700e94f782515afbb6dd4890cbc389a3b39f3",
             "key_id": "phillip-commodity-compliance-review-v1",
             "operating_jurisdiction": "JP",
             "schema_version": "regulatory-approval-v1",
-            "signature_hmac_sha256": "1694a3c45f1bef2e706e3fef29c5a49df29b9a0c36bd86f257f67372bd953ba1",
-            "signed_at_utc": "2026-07-25T06:55:23Z"
+            "signature_hmac_sha256": "a9b4a806d3b67859f21b0a6ac011b13d9c5f0a08ec593177ae27ee68b6c6cd25",
+            "signed_at_utc": "2026-08-04T12:34:33Z"
           },
           {
             "approver_id": "maulana-putra",
             "approver_role": "LEGAL_REVIEW",
             "broker_legal_name": "Phillip Securities Japan, Ltd.",
             "candidate_id": "phillip-commodity",
-            "evidence_bundle_sha256": "a9724c2169a3f2de62772863a5e45a87c6225e525beb5293668d88eb859d5d3f",
+            "evidence_bundle_sha256": "b9bed0b48b175a2fb7eefebfd50700e94f782515afbb6dd4890cbc389a3b39f3",
             "key_id": "phillip-commodity-legal-review-v1",
             "operating_jurisdiction": "JP",
             "schema_version": "regulatory-approval-v1",
-            "signature_hmac_sha256": "3ea26d45fa59f85bb1ab10623f7fd2f9747a313005cc161ffd7d17e754f2f871",
-            "signed_at_utc": "2026-07-25T06:55:47Z"
+            "signature_hmac_sha256": "943d73ed7320605e62411ae5701661ea063e16d85f98bda02784ce4c9c6dae56",
+            "signed_at_utc": "2026-08-04T12:37:32Z"
           }
         ],
         "safe_to_demo_auto_order": false,
         "schema_version": "regulatory-evidence-v1",
         "verification_status": "VERIFIED_ELIGIBLE_SIGNED_REVIEW",
-        "verified_at_utc": "2026-07-21T14:42:09Z"
+        "verified_at_utc": "2026-08-04T11:28:26Z"
       },
       "account_identifier_stored": false
     },
