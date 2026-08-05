@@ -6,7 +6,7 @@ param(
   [Parameter()]
   [string]$RuntimeRepo = (
     "C:\AI_SCALPER_RELEASES\" +
-    "da319001-phillip-commodity-window-02-shadow-source-r2"
+    "da319001-phillip-commodity-window-02-shadow-source-r3"
   ),
 
   [Parameter()]
@@ -74,17 +74,17 @@ $priorTaskNames = @(
 
 $runtimeStateRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-runtime-r2"
+  "phillip-commodity-window-02-da319001-runtime-r3"
 )
 $journal = Join-Path $runtimeStateRoot (
   "phillip-commodity-shadow-cycles-window-02.sqlite3"
 )
 $auditRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-audit-exports-r2"
+  "phillip-commodity-window-02-da319001-audit-exports-r3"
 )
 $taskReviewRoot = (
-  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r2"
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r3"
 )
 $reviewXmlPath = Join-Path $taskReviewRoot "$TaskName.review.xml"
 $registeredDisabledXmlPath = Join-Path $taskReviewRoot (
@@ -381,14 +381,27 @@ Assert-RegularNonReparseFile -Path $worktreeLock
 
 $lock = Join-Path $RuntimeRepo "pylock.windows-cp312.toml"
 Assert-RegularNonReparseFile -Path $lock
-$verificationOutput = @(
-  & $ReleasePython -I -S -B `
-    $contractVerifier `
-    --runtime-repo $RuntimeRepo `
-    --artifact-root $artifactRoot `
-    --lock $lock 2>&1
-)
-if ($LASTEXITCODE -ne 0) {
+$verificationOutput = @()
+$verificationExitCode = $null
+$previousErrorActionPreference = $ErrorActionPreference
+try {
+  $ErrorActionPreference = "Continue"
+  $verificationOutput = @(
+    & $ReleasePython -I -S -B `
+      $contractVerifier `
+      --runtime-repo $RuntimeRepo `
+      --artifact-root $artifactRoot `
+      --lock $lock 2>&1
+  )
+  $verificationExitCode = $LASTEXITCODE
+}
+finally {
+  $ErrorActionPreference = $previousErrorActionPreference
+}
+if ($null -eq $verificationExitCode) {
+  throw "Window 02 contract preflight did not report an exit code."
+}
+if ($verificationExitCode -ne 0) {
   $verificationOutput
   throw "Window 02 contract preflight failed under the limited token."
 }

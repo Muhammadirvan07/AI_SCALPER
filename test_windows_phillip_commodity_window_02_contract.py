@@ -102,19 +102,49 @@ class PhillipCommodityWindow02ContractVerifierTests(unittest.TestCase):
             },
             "signing_key_id": verifier.EXPECTED_SIGNING_KEY_ID,
             "forward": {
-                "status": "FORWARD_CONTRACT_VALID",
                 "valid": True,
                 "failures": [],
+                "contract_payload_sha256": (
+                    verifier.EXPECTED_CONTRACT_PAYLOAD_SHA256
+                ),
+                "contract_hmac_sha256": "3" * 64,
+                "chain_heads": {
+                    "segments": {"XAUUSD": {}},
+                    "raw_ticks": {"XAUUSD": {}},
+                    "paired_commits": {},
+                },
+                "coverage": {
+                    "XAUUSD": {
+                        "validation_profile": "DIAGNOSTIC",
+                        "bar_window_observed": False,
+                        "raw_window_observed": False,
+                        "observed_data_complete": False,
+                        "data_complete": False,
+                        "complete": False,
+                        "paired_commit_verified": True,
+                        "session_calendar_verified": True,
+                        "calendar_completeness_satisfied": False,
+                    }
+                },
+                "observed_data_coverage_complete": False,
+                "data_coverage_complete": False,
+                "coverage_complete": False,
+                "validation_profile": "DIAGNOSTIC",
                 "sealed": False,
+                "calendar_completeness_required": True,
+                "calendar_completeness_attested": False,
                 "calendar_completeness_satisfied": False,
                 "calendar_amendment_chain_verified": True,
+                "calendar_amendment_head": {},
                 "session_calendar_verified": True,
                 "paired_commit_verified": True,
                 "segment_counts": {"XAUUSD": 0},
                 "raw_tick_partition_counts": {"XAUUSD": 0},
                 "evidence_root_sha256": "2" * 64,
-                "order_capability": "DISABLED",
-                "live_allowed": False,
+                "local_anchor_model": "SIGNED_HEAD_AND_APPEND_HISTORY_V1",
+                "off_host_object_lock_verified": False,
+                "external_key_custody_verified": False,
+                "external_tick_sequence_authenticity_verified": False,
             },
         }
 
@@ -194,9 +224,22 @@ class PhillipCommodityWindow02ContractVerifierTests(unittest.TestCase):
         ):
             self._verify()
 
-    def test_rejects_authoritative_safety_drift(self) -> None:
+    def test_rejects_authoritative_profile_drift(self) -> None:
         authority = self._authority()
-        authority["forward"]["order_capability"] = "ENABLED"  # type: ignore[index]
+        authority["forward"]["validation_profile"] = "LIVE_GRADE"  # type: ignore[index]
+        with self.assertRaisesRegex(
+            verifier.Window02ContractVerificationError,
+            "projection mismatch",
+        ):
+            self._verify(authority)
+
+    def test_rejects_cli_projection_in_place_of_frozen_library_shape(self) -> None:
+        authority = self._authority()
+        forward = authority["forward"]  # type: ignore[assignment]
+        del forward["observed_data_coverage_complete"]
+        forward["status"] = "FORWARD_CONTRACT_VALID"
+        forward["order_capability"] = "DISABLED"
+        forward["live_allowed"] = False
         with self.assertRaisesRegex(
             verifier.Window02ContractVerificationError,
             "projection mismatch",

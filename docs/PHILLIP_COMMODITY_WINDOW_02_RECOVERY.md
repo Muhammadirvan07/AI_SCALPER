@@ -359,3 +359,17 @@ temporarily preventing benign native `stderr` from terminating the wrapper.
 It uses fresh create-exclusive `-r2` worktree, runtime, audit, and task-review
 paths. It does not delete or overwrite V1 output, register or start a task
 during transfer, contact the broker, or enable order capability.
+
+## 9. Scheduler transfer V2 diagnostic and V3 remediation
+
+Windows verified `WINDOW02.V2` and successfully passed the Git worktree stage.
+The installer then stopped before task registration with
+`authoritative contract projection mismatch`. Source inspection at the exact
+frozen worker commit confirmed that the verifier fixture expected three
+CLI-only fields absent from the library return mapping.
+
+V3 binds the exact raw `verify_forward_evidence()` key set from the frozen
+worker and validates only fields actually authenticated by that API. The
+disabled order/live projection remains hardcoded after successful contract
+authentication. Its create-exclusive worktree, runtime, audit, and review
+paths end in `-r3`; V1/V2 paths remain untouched.

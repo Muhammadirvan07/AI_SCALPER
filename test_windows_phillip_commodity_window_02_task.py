@@ -147,14 +147,26 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
 
     def test_retry_revision_uses_fresh_create_exclusive_paths(self) -> None:
         expected_paths = (
-            "da319001-phillip-commodity-window-02-shadow-source-r2",
-            "phillip-commodity-window-02-da319001-runtime-r2",
-            "phillip-commodity-window-02-da319001-audit-exports-r2",
-            "phillip-commodity-window-02-task-review-r2",
+            "da319001-phillip-commodity-window-02-shadow-source-r3",
+            "phillip-commodity-window-02-da319001-runtime-r3",
+            "phillip-commodity-window-02-da319001-audit-exports-r3",
+            "phillip-commodity-window-02-task-review-r3",
         )
         for source in (self.installer, self.health):
             for path in expected_paths:
                 self.assertIn(path, source)
+
+    def test_contract_preflight_captures_native_exit_before_projection(self) -> None:
+        start = self.installer.index("$verificationOutput = @()")
+        end = self.installer.index("$contractVerification = (", start)
+        preflight = self.installer[start:end]
+        self.assertIn('$ErrorActionPreference = "Continue"', preflight)
+        self.assertIn("$verificationExitCode = $LASTEXITCODE", preflight)
+        self.assertIn(
+            "$ErrorActionPreference = $previousErrorActionPreference",
+            preflight,
+        )
+        self.assertIn("if ($verificationExitCode -ne 0)", preflight)
 
     def test_health_is_read_only_and_allows_missing_prestart_journal(self) -> None:
         for command in (

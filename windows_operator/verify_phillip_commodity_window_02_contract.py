@@ -75,6 +75,35 @@ EXPECTED_INVENTORY: Mapping[str, tuple[int, str]] = {
         "7be98a026bd4a702f17efc70ecadf6d34b7696effb800697c7557603d118ad4a",
     ),
 }
+EXPECTED_FORWARD_PROJECTION_KEYS = frozenset(
+    {
+        "valid",
+        "failures",
+        "segment_counts",
+        "raw_tick_partition_counts",
+        "contract_payload_sha256",
+        "contract_hmac_sha256",
+        "chain_heads",
+        "coverage",
+        "observed_data_coverage_complete",
+        "data_coverage_complete",
+        "coverage_complete",
+        "validation_profile",
+        "session_calendar_verified",
+        "calendar_amendment_chain_verified",
+        "calendar_amendment_head",
+        "calendar_completeness_required",
+        "calendar_completeness_attested",
+        "calendar_completeness_satisfied",
+        "paired_commit_verified",
+        "evidence_root_sha256",
+        "sealed",
+        "local_anchor_model",
+        "off_host_object_lock_verified",
+        "external_key_custody_verified",
+        "external_tick_sequence_authenticity_verified",
+    }
+)
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
@@ -357,26 +386,63 @@ def _validate_authority(authority: Mapping[str, object]) -> dict[str, object]:
             "authoritative verification projection is invalid"
         )
     failures = forward.get("failures")
+    coverage = forward.get("coverage")
+    chain_heads = forward.get("chain_heads")
+    xau_coverage = (
+        coverage.get("XAUUSD") if isinstance(coverage, Mapping) else None
+    )
+    contract_hmac = forward.get("contract_hmac_sha256")
     if (
-        getattr(profile, "key_name", None) != EXPECTED_KEY_NAME
+        set(forward) != EXPECTED_FORWARD_PROJECTION_KEYS
+        or getattr(profile, "key_name", None) != EXPECTED_KEY_NAME
         or getattr(profile, "snapshot_id", None) != EXPECTED_SNAPSHOT_ID
         or getattr(profile, "contract_id", None) != EXPECTED_CONTRACT_ID
         or getattr(profile, "template_path", None)
         != "config/phillip_commodity_calendar_window_02.template.json"
         or authority.get("signing_key_id") != EXPECTED_SIGNING_KEY_ID
-        or forward.get("status") != "FORWARD_CONTRACT_VALID"
         or forward.get("valid") is not True
         or not isinstance(failures, list)
         or failures != []
+        or forward.get("contract_payload_sha256")
+        != EXPECTED_CONTRACT_PAYLOAD_SHA256
+        or not isinstance(contract_hmac, str)
+        or len(contract_hmac) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in contract_hmac
+        )
+        or not isinstance(chain_heads, Mapping)
+        or not isinstance(coverage, Mapping)
+        or set(coverage) != {"XAUUSD"}
+        or not isinstance(xau_coverage, Mapping)
+        or forward.get("validation_profile") != "DIAGNOSTIC"
         or forward.get("sealed") is not False
+        or forward.get("observed_data_coverage_complete") is not False
+        or forward.get("data_coverage_complete") is not False
+        or forward.get("coverage_complete") is not False
+        or forward.get("calendar_completeness_required") is not True
+        or forward.get("calendar_completeness_attested") is not False
         or forward.get("calendar_completeness_satisfied") is not False
         or forward.get("calendar_amendment_chain_verified") is not True
         or forward.get("session_calendar_verified") is not True
         or forward.get("paired_commit_verified") is not True
         or forward.get("segment_counts") != {"XAUUSD": 0}
         or forward.get("raw_tick_partition_counts") != {"XAUUSD": 0}
-        or forward.get("order_capability") != "DISABLED"
-        or forward.get("live_allowed") is not False
+        or forward.get("local_anchor_model")
+        != "SIGNED_HEAD_AND_APPEND_HISTORY_V1"
+        or forward.get("off_host_object_lock_verified") is not False
+        or forward.get("external_key_custody_verified") is not False
+        or forward.get("external_tick_sequence_authenticity_verified")
+        is not False
+        or xau_coverage.get("validation_profile") != "DIAGNOSTIC"
+        or xau_coverage.get("bar_window_observed") is not False
+        or xau_coverage.get("raw_window_observed") is not False
+        or xau_coverage.get("observed_data_complete") is not False
+        or xau_coverage.get("data_complete") is not False
+        or xau_coverage.get("complete") is not False
+        or xau_coverage.get("paired_commit_verified") is not True
+        or xau_coverage.get("session_calendar_verified") is not True
+        or xau_coverage.get("calendar_completeness_satisfied") is not False
     ):
         raise Window02ContractVerificationError(
             "authoritative contract projection mismatch"

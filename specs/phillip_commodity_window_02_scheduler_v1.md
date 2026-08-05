@@ -130,3 +130,19 @@ PowerShell 5.1 converted that informational stream into a terminating
 to `Continue`, restores the caller preference in `finally`, and evaluates the
 captured `LASTEXITCODE`. The retry uses paths ending in `-r2`; no V1 partial
 output is removed, reused, or overwritten.
+
+## Transport revision V3
+
+V2 reached the authoritative contract verifier and failed before task
+registration. The frozen `verify_forward_evidence()` library returns its raw
+authenticated mapping; it intentionally does not return the CLI-only fields
+`status`, `order_capability`, or `live_allowed`. The V1/V2 verifier fixture had
+synthesized those three fields and therefore tested a shape the production
+library never emits.
+
+`WINDOW02.V3` pins the exact top-level key set returned by the frozen worker,
+validates its diagnostic profile, HMAC form, empty coverage, calendar state,
+chain state, external-custody locks, and evidence root, then derives the
+hardcoded disabled safety projection only after authentication succeeds. V3
+also captures the verifier's native process exit before parsing JSON and uses
+fresh create-exclusive paths ending in `-r3`. V1/V2 outputs remain immutable.
