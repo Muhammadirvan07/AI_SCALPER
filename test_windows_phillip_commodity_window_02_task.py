@@ -133,7 +133,7 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
             end = source.index("\n}\n", start) + 3
             wrapper = source[start:end]
             self.assertIn('$ErrorActionPreference = "Continue"', wrapper)
-            self.assertIn("$LASTEXITCODE = $null", wrapper)
+            self.assertNotIn("$LASTEXITCODE =", wrapper)
             self.assertIn("$records = @(& git @Arguments 2>&1)", wrapper)
             self.assertIn("$exitCode = $LASTEXITCODE", wrapper)
             self.assertIn(
@@ -148,10 +148,10 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
 
     def test_retry_revision_uses_fresh_create_exclusive_paths(self) -> None:
         expected_paths = (
-            "da319001-phillip-commodity-window-02-shadow-source-r5",
-            "phillip-commodity-window-02-da319001-runtime-r5",
-            "phillip-commodity-window-02-da319001-audit-exports-r5",
-            "phillip-commodity-window-02-task-review-r5",
+            "da319001-phillip-commodity-window-02-shadow-source-r6",
+            "phillip-commodity-window-02-da319001-runtime-r6",
+            "phillip-commodity-window-02-da319001-audit-exports-r6",
+            "phillip-commodity-window-02-task-review-r6",
         )
         for source in (self.installer, self.health):
             for path in expected_paths:
@@ -173,7 +173,7 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
             end = source.index("\n}\n", start) + 3
             wrapper = source[start:end]
             self.assertIn('$ErrorActionPreference = "Continue"', wrapper)
-            self.assertIn("$LASTEXITCODE = $null", wrapper)
+            self.assertNotIn("$LASTEXITCODE =", wrapper)
             self.assertIn("$records = @(& $FilePath @Arguments 2>&1)", wrapper)
             self.assertIn("$exitCode = $LASTEXITCODE", wrapper)
             self.assertIn("if ($exitCode -ne 0)", wrapper)
@@ -259,6 +259,12 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
 
 
 class PhillipCommodityWindow02PowerShellSyntaxTests(unittest.TestCase):
+    @staticmethod
+    def _function_source(source: str, name: str) -> str:
+        start = source.index(f"function {name}")
+        end = source.index("\n}\n", start) + 3
+        return source[start:end]
+
     def test_powershell_sources_parse_without_errors(self) -> None:
         if POWERSHELL is None:
             self.skipTest("PowerShell is unavailable")
@@ -274,6 +280,50 @@ class PhillipCommodityWindow02PowerShellSyntaxTests(unittest.TestCase):
             "$path, [ref]$tokens, [ref]$parseErrors) | Out-Null; "
             "$errors += @($parseErrors) }; "
             "if ($errors.Count -ne 0) { $errors | Format-List; exit 2 }"
+        )
+        completed = subprocess.run(
+            [
+                POWERSHELL,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                command,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            0,
+            completed.returncode,
+            msg=f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+        )
+
+    def test_native_wrappers_observe_real_process_exit_code(self) -> None:
+        if POWERSHELL is None:
+            self.skipTest("PowerShell is unavailable")
+        command = "\n".join(
+            (
+                '$ErrorActionPreference = "Stop"',
+                self._function_source(
+                    INSTALLER.read_text(encoding="utf-8"),
+                    "Invoke-CheckedGit",
+                ),
+                self._function_source(
+                    INSTALLER.read_text(encoding="utf-8"),
+                    "Invoke-CheckedNativeProcess",
+                ),
+                "$gitPath = (Get-Command -Name git -CommandType Application "
+                "-ErrorAction Stop).Path",
+                "$gitOutput = Invoke-CheckedGit -Arguments @('--version') "
+                "-Operation 'Git wrapper canary'",
+                "$nativeOutput = Invoke-CheckedNativeProcess "
+                "-FilePath $gitPath -Arguments @('--version') "
+                "-Operation 'Native wrapper canary'",
+                "if ([string]::IsNullOrWhiteSpace($gitOutput) -or "
+                "[string]::IsNullOrWhiteSpace($nativeOutput)) { exit 3 }",
+            )
         )
         completed = subprocess.run(
             [

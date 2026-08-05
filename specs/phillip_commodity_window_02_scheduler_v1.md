@@ -177,7 +177,20 @@ the health checker still invoked Python directly under Windows PowerShell
 only the exact eight-file genesis state or the exact nine-file operational
 state. After the frozen verifier returns, it always requires the exact
 nine-file operational state and unchanged `contract.json` bytes. Installer and
-health native calls reset and capture a fresh `LASTEXITCODE`, temporarily
-capture native stderr without terminating, restore the caller preference, and
-only then parse output. V5 uses fresh create-exclusive `-r5` paths and leaves
-V1--V4 evidence untouched.
+health native calls capture `LASTEXITCODE` immediately after the process,
+temporarily capture native stderr without terminating, restore the caller
+preference, and only then parse output. V5 uses fresh create-exclusive `-r5`
+paths and leaves V1--V4 evidence untouched.
+
+## Transport revision V6
+
+The verified V5 transfer exposed a Windows PowerShell 5.1 scope error before
+any worktree or task mutation. Assigning `$null` to the automatic
+`$LASTEXITCODE` variable inside a function created a local shadow, so the
+wrapper could not read the exit status written by Git in its parent scope.
+
+`WINDOW02.V6` prohibits assignments to `$LASTEXITCODE` in every Git/Python
+wrapper, while retaining stderr capture and an immediate exit-code read after
+the known executable returns. Regression tests enforce this invariant for the
+installer and health checker. V6 uses fresh create-exclusive `-r6` paths and
+preserves all V1--V5 evidence.

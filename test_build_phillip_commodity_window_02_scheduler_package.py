@@ -141,7 +141,7 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
             manifest["worker"]["operational_artifact_file_count"],
         )
         self.assertEqual(builder.TASK_NAME, manifest["new_task_name"])
-        self.assertEqual("WINDOW02.V5", manifest["transport_revision"])
+        self.assertEqual("WINDOW02.V6", manifest["transport_revision"])
         self.assertEqual(builder._schedule(), manifest["schedule"])
         self.assertEqual("PROHIBITED", manifest["safety"]["manual_start"])
         self.assertEqual("DISABLED", manifest["safety"]["order_capability"])

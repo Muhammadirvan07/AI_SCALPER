@@ -4,17 +4,19 @@ This package installs a new least-privilege, read-only Scheduled Task for the
 registered Window 02 diagnostic contract. It does not reuse, enable, rename,
 start, or delete the historical V6 task.
 
-This is transport revision `WINDOW02.V5`. It supersedes the unexecuted V4
-package after an end-to-end source audit. Preserve all earlier operator and
-worktree directories. V5 uses new runtime, audit, and task-review paths ending
-in `-r5`.
+This is transport revision `WINDOW02.V6`. Windows verified the V5 transfer,
+but its installer stopped on the first Git inspection because assigning to the
+automatic `$LASTEXITCODE` variable inside a function created a local Windows
+PowerShell 5.1 scope shadow. Preserve all earlier operator and worktree
+directories. V6 uses new runtime, audit, and task-review paths ending in `-r6`.
 
-V5 accepts either exact legitimate contract state at entry: the eight-file
+V6 retains V5's exact two-phase contract proof: it accepts either legitimate
+contract state at entry, the eight-file
 registration genesis or the nine-file operational inventory containing the
 authenticated one-byte `.contract-write.lock`. It then runs the frozen
 authoritative verifier and requires the exact nine-file operational inventory
-afterward. All native Git and Python calls in installation and health are
-evaluated by fresh exit code under Windows PowerShell 5.1-safe stderr capture.
+afterward. All native Git and Python calls capture stderr safely and read the
+native exit code immediately without assigning to the automatic variable.
 
 ## Bound identity
 
@@ -188,10 +190,11 @@ boundary.
 
 - If extraction fails, preserve the partial operator root and all three
   transfer files.
-- Preserve the V1, V2, V3, and any V4 worktrees. Their paths end in
+- Preserve the V1, V2, V3, and any V4/V5 worktrees. Their paths end in
   `shadow-source`, `shadow-source-r2`, `shadow-source-r3`, and
-  `shadow-source-r4`. The V5 installer uses the separate `shadow-source-r5`
-  path and never repairs or removes an earlier worktree in place.
+  `shadow-source-r4`/`shadow-source-r5`. The V6 installer uses the separate
+  `shadow-source-r6` path and never repairs or removes an earlier worktree in
+  place.
 - If source, dependency, contract, snapshot, HMAC, ACL, or profile
   verification fails, do not register a task manually.
 - If failure occurs after task registration, the installer attempts a

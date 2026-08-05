@@ -6,7 +6,7 @@ param(
   [Parameter()]
   [string]$RuntimeRepo = (
     "C:\AI_SCALPER_RELEASES\" +
-    "da319001-phillip-commodity-window-02-shadow-source-r5"
+    "da319001-phillip-commodity-window-02-shadow-source-r6"
   ),
 
   [Parameter()]
@@ -67,17 +67,17 @@ $priorTaskNames = @(
 
 $runtimeStateRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-runtime-r5"
+  "phillip-commodity-window-02-da319001-runtime-r6"
 )
 $journal = Join-Path $runtimeStateRoot (
   "phillip-commodity-shadow-cycles-window-02.sqlite3"
 )
 $auditRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-audit-exports-r5"
+  "phillip-commodity-window-02-da319001-audit-exports-r6"
 )
 $taskReviewRoot = (
-  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r5"
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r6"
 )
 $reviewXmlPath = Join-Path $taskReviewRoot "$TaskName.review.xml"
 $registeredDisabledXmlPath = Join-Path $taskReviewRoot (
@@ -140,7 +140,9 @@ function Invoke-CheckedGit {
     # Windows PowerShell 5.1 surfaces native stderr as ErrorRecord objects.
     # Capture Git progress without allowing benign stderr to terminate health.
     $ErrorActionPreference = "Continue"
-    $LASTEXITCODE = $null
+    # Never assign to the automatic LASTEXITCODE variable here. In Windows
+    # PowerShell 5.1, assignment inside a function creates a local shadow that
+    # hides the exit code written by the native process in the parent scope.
     $records = @(& git @Arguments 2>&1)
     $exitCode = $LASTEXITCODE
   }
@@ -176,7 +178,9 @@ function Invoke-CheckedNativeProcess {
     # Windows PowerShell 5.1 promotes native stderr to ErrorRecord. Native
     # success is decided only by the freshly captured process exit code.
     $ErrorActionPreference = "Continue"
-    $LASTEXITCODE = $null
+    # Never assign to the automatic LASTEXITCODE variable here. In Windows
+    # PowerShell 5.1, assignment inside a function creates a local shadow that
+    # hides the exit code written by the native process in the parent scope.
     $records = @(& $FilePath @Arguments 2>&1)
     $exitCode = $LASTEXITCODE
   }

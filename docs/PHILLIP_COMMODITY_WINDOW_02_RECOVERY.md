@@ -402,6 +402,22 @@ interpreted.
 V5 authenticates either the exact eight-file genesis inventory or exact
 nine-file operational inventory before authority, invokes the frozen verifier,
 then requires the exact nine-file inventory and unchanged contract bytes.
-Every installer and health Git/Python call now resets and captures a fresh
-native exit code with PowerShell 5.1-safe stderr handling. Fresh `-r5` paths
-preserve all V1--V4 forensic output.
+Every installer and health Git/Python call captures native output and exit
+status with PowerShell 5.1-safe stderr handling. Fresh `-r5` paths preserve all
+V1--V4 forensic output.
+
+## 12. V5 target diagnostic and V6 remediation
+
+Windows verified the complete `WINDOW02.V5` transfer, then stopped on its first
+Git inspection before creating a worktree or registering a task. V5 assigned
+`$null` to the automatic `$LASTEXITCODE` variable inside each native wrapper.
+Windows PowerShell 5.1 function scoping made that assignment a local shadow,
+so the wrapper read its own `null` value rather than the exit code written by
+Git in the parent scope.
+
+`WINDOW02.V6` removes every assignment to the automatic variable. The wrappers
+continue to tolerate native stderr, capture output, read `$LASTEXITCODE`
+immediately after the known executable returns, and restore the caller's error
+preference. Static regression tests prohibit any future assignment in both
+installer and health wrappers. V6 uses fresh create-exclusive `-r6` paths and
+preserves all V1--V5 forensic output.
