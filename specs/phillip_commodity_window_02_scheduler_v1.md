@@ -71,6 +71,11 @@ that can prove a valid empty contract before the first automatic run.
 - FR-12: Package build and extraction MUST be deterministic,
   content-addressed, create-exclusive, flat-inventory verified, and preserve
   partial output for forensic review.
+- FR-13: Git process wrappers MUST tolerate informational native `stderr`
+  emitted by Git under Windows PowerShell 5.1 and MUST decide success only
+  from the captured native exit code. A retry package MUST use fresh `-r2`
+  worktree, runtime, audit, and task-review paths rather than overwrite the
+  first transfer's partial worktree.
 
 ## Exact registered artifact inventory
 
@@ -112,3 +117,16 @@ that can prove a valid empty contract before the first automatic run.
 5. Focused tests, historical V5/V6 tests, full normal and optimized suites,
    compilation, diff checks, and safety scans pass without changing frozen
    historical files.
+
+## Transport revision V2
+
+The first `WINDOW02.V1` transfer extracted successfully on Windows, but its
+installer stopped after Git printed the successful worktree progress message
+`Preparing worktree (detached HEAD da31900)` to native `stderr`. Windows
+PowerShell 5.1 converted that informational stream into a terminating
+`NativeCommandError` because the installer is intentionally fail-fast.
+
+`WINDOW02.V2` captures Git output with native-error promotion temporarily set
+to `Continue`, restores the caller preference in `finally`, and evaluates the
+captured `LASTEXITCODE`. The retry uses paths ending in `-r2`; no V1 partial
+output is removed, reused, or overwritten.

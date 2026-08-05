@@ -339,3 +339,23 @@ gate is the separate Window 02 scheduler package described in
 `AI_SCALPER-PhillipCommodityWindow02-ReadOnlyShadow`; it must not start or
 modify the historical V6 task. Automatic-run and post-window acceptance
 remain pending, and order capability remains `DISABLED`.
+
+## 8. Scheduler transfer V1 diagnostic and V2 remediation
+
+Windows verified the complete `WINDOW02.V1` transfer, package source
+`ad180d960d8848cb176616bbd44e8c673352eb2c`, frozen worker, contract payload,
+and all six operator members. Task Scheduler and broker mutation were not
+performed during extraction.
+
+Installation then stopped while creating the frozen worktree because Git's
+normal `Preparing worktree (detached HEAD da31900)` progress was written to
+native `stderr`. Windows PowerShell 5.1 promoted that informational stream to
+`NativeCommandError` under the installer's fail-fast preference. The Git
+operation may have left a valid but unlocked partial V1 worktree; it remains
+for forensic review.
+
+The V2 remediation evaluates Git success by captured native exit code while
+temporarily preventing benign native `stderr` from terminating the wrapper.
+It uses fresh create-exclusive `-r2` worktree, runtime, audit, and task-review
+paths. It does not delete or overwrite V1 output, register or start a task
+during transfer, contact the broker, or enable order capability.

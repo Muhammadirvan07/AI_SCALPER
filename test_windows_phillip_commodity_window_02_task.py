@@ -127,6 +127,35 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
         self.assertIn("--worker-duration-seconds $workerDurationSeconds", self.installer)
         self.assertIn("$workerDurationSeconds = 84300", self.installer)
 
+    def test_git_wrapper_accepts_benign_native_stderr_on_windows_powershell(self) -> None:
+        for source in (self.installer, self.health):
+            start = source.index("function Invoke-CheckedGit")
+            end = source.index("\n}\n", start) + 3
+            wrapper = source[start:end]
+            self.assertIn('$ErrorActionPreference = "Continue"', wrapper)
+            self.assertIn("$records = @(& git @Arguments 2>&1)", wrapper)
+            self.assertIn("$exitCode = $LASTEXITCODE", wrapper)
+            self.assertIn(
+                "$ErrorActionPreference = $previousErrorActionPreference",
+                wrapper,
+            )
+            self.assertIn("if ($exitCode -ne 0)", wrapper)
+            self.assertNotIn(
+                "(& git @Arguments 2>&1 | Out-String).Trim()",
+                wrapper,
+            )
+
+    def test_retry_revision_uses_fresh_create_exclusive_paths(self) -> None:
+        expected_paths = (
+            "da319001-phillip-commodity-window-02-shadow-source-r2",
+            "phillip-commodity-window-02-da319001-runtime-r2",
+            "phillip-commodity-window-02-da319001-audit-exports-r2",
+            "phillip-commodity-window-02-task-review-r2",
+        )
+        for source in (self.installer, self.health):
+            for path in expected_paths:
+                self.assertIn(path, source)
+
     def test_health_is_read_only_and_allows_missing_prestart_journal(self) -> None:
         for command in (
             "Start-ScheduledTask",

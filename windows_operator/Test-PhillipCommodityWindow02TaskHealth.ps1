@@ -6,7 +6,7 @@ param(
   [Parameter()]
   [string]$RuntimeRepo = (
     "C:\AI_SCALPER_RELEASES\" +
-    "da319001-phillip-commodity-window-02-shadow-source"
+    "da319001-phillip-commodity-window-02-shadow-source-r2"
   ),
 
   [Parameter()]
@@ -67,17 +67,17 @@ $priorTaskNames = @(
 
 $runtimeStateRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-runtime"
+  "phillip-commodity-window-02-da319001-runtime-r2"
 )
 $journal = Join-Path $runtimeStateRoot (
   "phillip-commodity-shadow-cycles-window-02.sqlite3"
 )
 $auditRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-audit-exports"
+  "phillip-commodity-window-02-da319001-audit-exports-r2"
 )
 $taskReviewRoot = (
-  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review"
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r2"
 )
 $reviewXmlPath = Join-Path $taskReviewRoot "$TaskName.review.xml"
 $registeredDisabledXmlPath = Join-Path $taskReviewRoot (
@@ -133,9 +133,26 @@ function Invoke-CheckedGit {
     [Parameter(Mandatory = $true)]
     [string]$Operation
   )
-  $output = (& git @Arguments 2>&1 | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0) {
-    throw "$Operation failed with exit code $LASTEXITCODE."
+  $records = @()
+  $exitCode = $null
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    # Windows PowerShell 5.1 surfaces native stderr as ErrorRecord objects.
+    # Capture Git progress without allowing benign stderr to terminate health.
+    $ErrorActionPreference = "Continue"
+    $records = @(& git @Arguments 2>&1)
+    $exitCode = $LASTEXITCODE
+  }
+  finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  $outputLines = @($records | ForEach-Object { $_.ToString() })
+  $output = ($outputLines -join [Environment]::NewLine).Trim()
+  if ($null -eq $exitCode) {
+    throw "$Operation did not report a native process exit code."
+  }
+  if ($exitCode -ne 0) {
+    throw "$Operation failed with exit code $exitCode."
   }
   return $output
 }

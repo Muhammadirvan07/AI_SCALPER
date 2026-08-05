@@ -4,6 +4,11 @@ This package installs a new least-privilege, read-only Scheduled Task for the
 registered Window 02 diagnostic contract. It does not reuse, enable, rename,
 start, or delete the historical V6 task.
 
+This is transport revision `WINDOW02.V2`. It is the create-exclusive retry for
+the PowerShell 5.1 native-`stderr` failure observed after the verified V1
+transfer. Preserve the earlier operator and worktree directories. V2 uses new
+runtime, audit, and task-review paths ending in `-r2`.
+
 ## Bound identity
 
 - package source commit: `__PACKAGE_SOURCE_COMMIT__`
@@ -176,6 +181,10 @@ boundary.
 
 - If extraction fails, preserve the partial operator root and all three
   transfer files.
+- Preserve the V1 partial worktree
+  `C:\AI_SCALPER_RELEASES\da319001-phillip-commodity-window-02-shadow-source`.
+  The V2 installer uses the separate path ending in `-r2` and never repairs or
+  removes the earlier worktree in place.
 - If source, dependency, contract, snapshot, HMAC, ACL, or profile
   verification fails, do not register a task manually.
 - If failure occurs after task registration, the installer attempts a
