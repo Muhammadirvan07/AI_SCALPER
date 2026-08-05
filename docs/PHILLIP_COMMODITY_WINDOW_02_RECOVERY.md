@@ -373,3 +373,18 @@ worker and validates only fields actually authenticated by that API. The
 disabled order/live projection remains hardcoded after successful contract
 authentication. Its create-exclusive worktree, runtime, audit, and review
 paths end in `-r3`; V1/V2 paths remain untouched.
+
+## 10. Scheduler transfer V3 diagnostic and V4 remediation
+
+Windows verified `WINDOW02.V3`, and its corrected projection verifier reached
+the physical contract inventory check. It stopped before task registration
+because V2's successful call into the frozen `verify_forward_evidence()` API
+had created the API's intentional persistent `.contract-write.lock`. The V3
+verifier still required the pristine eight-file registration inventory and
+therefore misclassified that authenticated operational lock as drift.
+
+V4 adds the exact one-byte NUL lock artifact and its SHA-256 to the expected
+operational inventory while keeping the eight registered genesis artifacts
+individually byte-bound. Inventory failures now report explicit missing and
+unexpected relative paths. V4 uses fresh create-exclusive `-r4` paths; all
+V1--V3 outputs remain untouched.

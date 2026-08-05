@@ -6,7 +6,7 @@ param(
   [Parameter()]
   [string]$RuntimeRepo = (
     "C:\AI_SCALPER_RELEASES\" +
-    "da319001-phillip-commodity-window-02-shadow-source-r3"
+    "da319001-phillip-commodity-window-02-shadow-source-r4"
   ),
 
   [Parameter()]
@@ -67,17 +67,17 @@ $priorTaskNames = @(
 
 $runtimeStateRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-runtime-r3"
+  "phillip-commodity-window-02-da319001-runtime-r4"
 )
 $journal = Join-Path $runtimeStateRoot (
   "phillip-commodity-shadow-cycles-window-02.sqlite3"
 )
 $auditRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-audit-exports-r3"
+  "phillip-commodity-window-02-da319001-audit-exports-r4"
 )
 $taskReviewRoot = (
-  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r3"
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r4"
 )
 $reviewXmlPath = Join-Path $taskReviewRoot "$TaskName.review.xml"
 $registeredDisabledXmlPath = Join-Path $taskReviewRoot (
@@ -302,7 +302,7 @@ if (
   $receipt.build_identity_sha256 -ne $expectedBuildIdentitySha256 -or
   $receipt.signing_key_id -ne $expectedSigningKeyId -or
   $receipt.dependency_lock_sha256 -ne $expectedDependencyLockSha256 -or
-  [int]$receipt.contract_artifact_files_verified -ne 8 -or
+  [int]$receipt.contract_artifact_files_verified -ne 9 -or
   $receipt.task_contract_sha256 -ne $taskContractSha256 -or
   $receipt.contract_verifier_sha256 -ne $contractVerifierSha256 -or
   $receipt.health_checker_sha256 -ne $healthCheckerSha256 -or

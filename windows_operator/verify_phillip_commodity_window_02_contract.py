@@ -45,6 +45,10 @@ EXPECTED_DEPENDENCY_LOCK_SHA256 = (
     "436c59de0d4e80a59e42b04f2851d862"
 )
 EXPECTED_INVENTORY: Mapping[str, tuple[int, str]] = {
+    ".contract-write.lock": (
+        1,
+        "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+    ),
     "anchors/raw_ticks/XAUUSD/000000.json": (
         764,
         "0954b53a613c2b893da65313cb3cc077d3f3b340405a22f7714295a861112e96",
@@ -257,12 +261,20 @@ def _verify_inventory(
             expected_directories.add(parent.as_posix())
             parent = parent.parent
     if observed_directories != expected_directories:
+        missing = sorted(expected_directories - observed_directories)
+        unexpected = sorted(observed_directories - expected_directories)
         raise Window02ContractVerificationError(
-            "contract directory inventory mismatch"
+            "contract directory inventory mismatch; "
+            f"missing={missing}; unexpected={unexpected}"
         )
-    if set(observed) != set(expected_inventory):
+    observed_paths = set(observed)
+    expected_paths = set(expected_inventory)
+    if observed_paths != expected_paths:
+        missing = sorted(expected_paths - observed_paths)
+        unexpected = sorted(observed_paths - expected_paths)
         raise Window02ContractVerificationError(
-            "contract artifact inventory mismatch"
+            "contract artifact inventory mismatch; "
+            f"missing={missing}; unexpected={unexpected}"
         )
     for relative, (size_bytes, expected_sha256) in expected_inventory.items():
         value = observed[relative]

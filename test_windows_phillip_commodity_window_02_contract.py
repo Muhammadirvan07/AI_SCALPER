@@ -27,6 +27,7 @@ class PhillipCommodityWindow02ContractVerifierTests(unittest.TestCase):
             / verifier.EXPECTED_CONTRACT_ID
         )
         self.contract_root.mkdir(parents=True)
+        (self.contract_root / ".contract-write.lock").write_bytes(b"\0")
         self.contract = {
             "contract_id": verifier.EXPECTED_CONTRACT_ID,
             "snapshot_id": verifier.EXPECTED_SNAPSHOT_ID,
@@ -170,7 +171,14 @@ class PhillipCommodityWindow02ContractVerifierTests(unittest.TestCase):
             "ad4fd8853563976483fbffbd3bd97847f7e05c8a4194afd10fa95832e2fe485b",
             verifier.EXPECTED_CONTRACT_FILE_SHA256,
         )
-        self.assertEqual(8, len(verifier.EXPECTED_INVENTORY))
+        self.assertEqual(9, len(verifier.EXPECTED_INVENTORY))
+        self.assertEqual(
+            (
+                1,
+                "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+            ),
+            verifier.EXPECTED_INVENTORY[".contract-write.lock"],
+        )
         self.assertEqual(
             (19601, verifier.EXPECTED_CONTRACT_FILE_SHA256),
             verifier.EXPECTED_INVENTORY["contract.json"],
@@ -183,7 +191,7 @@ class PhillipCommodityWindow02ContractVerifierTests(unittest.TestCase):
             result["status"],
         )
         self.assertEqual(verifier.EXPECTED_CONTRACT_ID, result["contract_id"])
-        self.assertEqual(8, result["artifact_files_verified"])
+        self.assertEqual(9, result["artifact_files_verified"])
         self.assertEqual(0, result["initial_segment_count"])
         self.assertEqual(0, result["initial_raw_tick_partition_count"])
         self.assertEqual("DISABLED", result["order_capability"])
@@ -214,6 +222,48 @@ class PhillipCommodityWindow02ContractVerifierTests(unittest.TestCase):
             "directory inventory mismatch",
         ):
             self._verify()
+
+    def test_rejects_missing_persistent_contract_lock_with_path_diff(self) -> None:
+        (self.contract_root / ".contract-write.lock").unlink()
+        inventory = self._inventory()
+        inventory[".contract-write.lock"] = (
+            1,
+            "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+        )
+        with self.assertRaisesRegex(
+            verifier.Window02ContractVerificationError,
+            r"missing=\['\.contract-write\.lock'\]",
+        ):
+            verifier.verify(
+                self.args,
+                expected_inventory=inventory,
+                git_identity_provider=lambda _root: (
+                    verifier.EXPECTED_WORKER_COMMIT,
+                    verifier.EXPECTED_WORKER_TREE,
+                ),
+                authority_provider=lambda *_args: self._authority(),
+            )
+
+    def test_rejects_unexpected_artifact_with_path_diff(self) -> None:
+        (self.contract_root / "unexpected.json").write_text(
+            "{}\n",
+            encoding="utf-8",
+        )
+        inventory = self._inventory()
+        del inventory["unexpected.json"]
+        with self.assertRaisesRegex(
+            verifier.Window02ContractVerificationError,
+            r"unexpected=\['unexpected\.json'\]",
+        ):
+            verifier.verify(
+                self.args,
+                expected_inventory=inventory,
+                git_identity_provider=lambda _root: (
+                    verifier.EXPECTED_WORKER_COMMIT,
+                    verifier.EXPECTED_WORKER_TREE,
+                ),
+                authority_provider=lambda *_args: self._authority(),
+            )
 
     def test_rejects_contract_identity_even_when_physical_hash_is_rebound(self) -> None:
         self.contract["contract_id"] = "phillip-commodity-window-02-diagnostic-v2"

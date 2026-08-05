@@ -90,6 +90,12 @@ that can prove a valid empty contract before the first automatic run.
 | `heads/segments/XAUUSD.json` | 763 | `fd9d1bd1c28ae38e4fdf4894cc2a78103346dbf121d8e52532da97a9556090ab` |
 | `seal.json` | 571 | `7be98a026bd4a702f17efc70ecadf6d34b7696effb800697c7557603d118ad4a` |
 
+After the first authoritative verification, the frozen validation library
+intentionally persists `.contract-write.lock` as one NUL byte. Its SHA-256 is
+`6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d`.
+Retry installers MUST bind this ninth operational artifact exactly; it is not
+observation evidence and does not change any genesis artifact.
+
 ## Safety invariants
 
 - `validation_profile=DIAGNOSTIC`
@@ -146,3 +152,15 @@ chain state, external-custody locks, and evidence root, then derives the
 hardcoded disabled safety projection only after authentication succeeds. V3
 also captures the verifier's native process exit before parsing JSON and uses
 fresh create-exclusive paths ending in `-r3`. V1/V2 outputs remain immutable.
+
+## Transport revision V4
+
+V3 reached physical inventory validation only after V2 had invoked the frozen
+verification API. That API uses `.contract-write.lock` as an intentionally
+persistent kernel-lock carrier, so the post-V2 operational directory contains
+nine files even though registration created eight immutable genesis files.
+
+`WINDOW02.V4` authenticates the one-byte lock carrier by exact size and hash,
+keeps every genesis artifact byte-bound, and emits missing/unexpected relative
+paths for any inventory mismatch. Its retry paths end in `-r4`; V1--V3 output
+is preserved and never overwritten.

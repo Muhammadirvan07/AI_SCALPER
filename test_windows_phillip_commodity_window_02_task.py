@@ -147,10 +147,10 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
 
     def test_retry_revision_uses_fresh_create_exclusive_paths(self) -> None:
         expected_paths = (
-            "da319001-phillip-commodity-window-02-shadow-source-r3",
-            "phillip-commodity-window-02-da319001-runtime-r3",
-            "phillip-commodity-window-02-da319001-audit-exports-r3",
-            "phillip-commodity-window-02-task-review-r3",
+            "da319001-phillip-commodity-window-02-shadow-source-r4",
+            "phillip-commodity-window-02-da319001-runtime-r4",
+            "phillip-commodity-window-02-da319001-audit-exports-r4",
+            "phillip-commodity-window-02-task-review-r4",
         )
         for source in (self.installer, self.health):
             for path in expected_paths:

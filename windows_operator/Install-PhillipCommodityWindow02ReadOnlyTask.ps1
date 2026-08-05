@@ -6,7 +6,7 @@ param(
   [Parameter()]
   [string]$RuntimeRepo = (
     "C:\AI_SCALPER_RELEASES\" +
-    "da319001-phillip-commodity-window-02-shadow-source-r3"
+    "da319001-phillip-commodity-window-02-shadow-source-r4"
   ),
 
   [Parameter()]
@@ -74,17 +74,17 @@ $priorTaskNames = @(
 
 $runtimeStateRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-runtime-r3"
+  "phillip-commodity-window-02-da319001-runtime-r4"
 )
 $journal = Join-Path $runtimeStateRoot (
   "phillip-commodity-shadow-cycles-window-02.sqlite3"
 )
 $auditRoot = (
   "C:\AI_SCALPER_PRIVATE\" +
-  "phillip-commodity-window-02-da319001-audit-exports-r3"
+  "phillip-commodity-window-02-da319001-audit-exports-r4"
 )
 $taskReviewRoot = (
-  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r3"
+  "C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r4"
 )
 $reviewXmlPath = Join-Path $taskReviewRoot "$TaskName.review.xml"
 $registeredDisabledXmlPath = Join-Path $taskReviewRoot (
@@ -424,7 +424,7 @@ if (
   $contractVerification.signing_key_id -ne $expectedSigningKeyId -or
   $contractVerification.dependency_lock_sha256 -ne
     $expectedDependencyLockSha256 -or
-  [int]$contractVerification.artifact_files_verified -ne 8 -or
+  [int]$contractVerification.artifact_files_verified -ne 9 -or
   [int]$contractVerification.initial_segment_count -ne 0 -or
   [int]$contractVerification.initial_raw_tick_partition_count -ne 0 -or
   $contractVerification.order_capability -ne "DISABLED" -or

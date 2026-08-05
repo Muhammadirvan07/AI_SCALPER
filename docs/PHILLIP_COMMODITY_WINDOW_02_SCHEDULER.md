@@ -4,10 +4,10 @@ This package installs a new least-privilege, read-only Scheduled Task for the
 registered Window 02 diagnostic contract. It does not reuse, enable, rename,
 start, or delete the historical V6 task.
 
-This is transport revision `WINDOW02.V3`. It is the create-exclusive retry for
-the two fail-closed pre-registration diagnostics observed after verified V1
-and V2 transfers. Preserve all earlier operator and worktree directories. V3
-uses new runtime, audit, and task-review paths ending in `-r3`.
+This is transport revision `WINDOW02.V4`. It is the create-exclusive retry for
+the three fail-closed pre-registration diagnostics observed after verified V1,
+V2, and V3 transfers. Preserve all earlier operator and worktree directories.
+V4 uses new runtime, audit, and task-review paths ending in `-r4`.
 
 ## Bound identity
 
@@ -181,10 +181,10 @@ boundary.
 
 - If extraction fails, preserve the partial operator root and all three
   transfer files.
-- Preserve the V1 and V2 partial worktrees. Their paths end in
-  `shadow-source` and `shadow-source-r2`. The V3 installer uses the separate
-  `shadow-source-r3` path and never repairs or removes an earlier worktree in
-  place.
+- Preserve the V1, V2, and V3 partial worktrees. Their paths end in
+  `shadow-source`, `shadow-source-r2`, and `shadow-source-r3`. The V4 installer
+  uses the separate `shadow-source-r4` path and never repairs or removes an
+  earlier worktree in place.
 - If source, dependency, contract, snapshot, HMAC, ACL, or profile
   verification fails, do not register a task manually.
 - If failure occurs after task registration, the installer attempts a
