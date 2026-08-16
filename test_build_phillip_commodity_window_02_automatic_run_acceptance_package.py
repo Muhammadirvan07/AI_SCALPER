@@ -241,6 +241,11 @@ class Window02AutomaticRunAcceptanceBuilderTests(unittest.TestCase):
         self.assertIn("$WatchTimeoutSeconds", invocation)
         self.assertIn('"verify-toolkit-archive"', readiness)
         self.assertIn('"verify-toolkit-archive"', invocation)
+        self.assertIn('-PropertyName "AllowDemandStart"', readiness)
+        self.assertNotIn(
+            '$task.Settings.PSObject.Properties["AllowStartOnDemand"]',
+            readiness,
+        )
         self.assertIn(
             "PHILLIP_COMMODITY_WINDOW_02_AUTOMATIC_RUN_ACCEPTANCE_WATCHING",
             invocation,

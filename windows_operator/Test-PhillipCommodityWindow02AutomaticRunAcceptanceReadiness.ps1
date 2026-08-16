@@ -142,6 +142,25 @@ function Get-ExactRootTask {
   return $matches[0]
 }
 
+function Get-EffectiveTaskSetting {
+  param(
+    [Parameter(Mandatory = $true)][object]$Settings,
+    [Parameter(Mandatory = $true)][string]$PropertyName
+  )
+  $cimProperty = $Settings.PSObject.Properties["CimInstanceProperties"]
+  if ($null -ne $cimProperty -and $null -ne $cimProperty.Value) {
+    $entry = $cimProperty.Value[$PropertyName]
+    if ($null -ne $entry) {
+      return [PSCustomObject]@{ Found = $true; Value = $entry.Value }
+    }
+  }
+  $direct = $Settings.PSObject.Properties[$PropertyName]
+  if ($null -ne $direct) {
+    return [PSCustomObject]@{ Found = $true; Value = $direct.Value }
+  }
+  return [PSCustomObject]@{ Found = $false; Value = $null }
+}
+
 function Assert-ReceiptAcl {
   param([Parameter(Mandatory = $true)][object]$Receipt)
   $acl = Get-Acl -LiteralPath $installationReceiptPath -ErrorAction Stop
@@ -301,8 +320,14 @@ $taskInfo = Get-ScheduledTaskInfo `
   -TaskName $taskName `
   -TaskPath "\" `
   -ErrorAction Stop
-$allowProperty = $task.Settings.PSObject.Properties["AllowStartOnDemand"]
-if ($null -eq $allowProperty -or [bool]$allowProperty.Value -ne $false) {
+$allowDemandStart = Get-EffectiveTaskSetting `
+  -Settings $task.Settings `
+  -PropertyName "AllowDemandStart"
+if (
+  -not $allowDemandStart.Found -or
+  -not ($allowDemandStart.Value -is [bool]) -or
+  [bool]$allowDemandStart.Value -ne $false
+) {
   throw "Window 02 task must retain AllowStartOnDemand=false."
 }
 if ([string]$task.State -eq "Disabled") {
