@@ -18,6 +18,14 @@ authoritative verifier and requires the exact nine-file operational inventory
 afterward. All native Git and Python calls capture stderr safely and read the
 native exit code immediately without assigning to the automatic variable.
 
+The persistent root-level `.shadow-worker.lock` and `.shadow-cycle.lock`
+files are runtime synchronization sidecars, not contract evidence. Health
+verification accepts either sidecar only at its exact allowlisted path and
+only as a stable, one-byte, regular non-reparse file. It verifies metadata
+without opening the carrier because an active Windows byte-range lock may
+legitimately deny reads. These sidecars do not change the nine-file verified
+artifact count, and every other unexpected path still fails closed.
+
 ## Bound identity
 
 - package source commit: `__PACKAGE_SOURCE_COMMIT__`

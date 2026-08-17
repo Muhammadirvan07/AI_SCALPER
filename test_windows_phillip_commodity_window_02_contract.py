@@ -81,8 +81,11 @@ class PhillipCommodityWindow02ContractVerifierTests(unittest.TestCase):
         result: dict[str, tuple[int, str]] = {}
         for path in self.contract_root.rglob("*"):
             if path.is_file():
+                relative = path.relative_to(self.contract_root).as_posix()
+                if relative in verifier.OPTIONAL_OPERATIONAL_FENCE_FILES:
+                    continue
                 value = path.read_bytes()
-                result[path.relative_to(self.contract_root).as_posix()] = (
+                result[relative] = (
                     len(value),
                     hashlib.sha256(value).hexdigest(),
                 )
@@ -255,6 +258,54 @@ class PhillipCommodityWindow02ContractVerifierTests(unittest.TestCase):
         self.assertEqual(0, result["initial_raw_tick_partition_count"])
         self.assertEqual("DISABLED", result["order_capability"])
         self.assertFalse(result["live_allowed"])
+
+    def test_accepts_operational_shadow_fences_without_reading_them(self) -> None:
+        for relative in verifier.OPTIONAL_OPERATIONAL_FENCE_FILES:
+            (self.contract_root / relative).write_bytes(b"\0")
+
+        original = verifier._read_stable_bytes
+
+        def read_contract_artifact(path: Path, label: str) -> bytes:
+            relative = path.relative_to(self.contract_root.resolve()).as_posix()
+            self.assertNotIn(
+                relative,
+                verifier.OPTIONAL_OPERATIONAL_FENCE_FILES,
+            )
+            return original(path, label)
+
+        with mock.patch.object(
+            verifier,
+            "_read_stable_bytes",
+            side_effect=read_contract_artifact,
+        ):
+            result = self._verify()
+        self.assertEqual(9, result["artifact_files_verified"])
+
+    def test_rejects_malformed_operational_shadow_fences(self) -> None:
+        for relative in verifier.OPTIONAL_OPERATIONAL_FENCE_FILES:
+            with self.subTest(relative=relative):
+                path = self.contract_root / relative
+                path.write_bytes(b"")
+                with self.assertRaisesRegex(
+                    verifier.Window02ContractVerificationError,
+                    "stable one-byte regular non-reparse file",
+                ):
+                    self._verify()
+                path.unlink()
+
+    def test_rejects_symlinked_operational_shadow_fence(self) -> None:
+        target = self.root / "shadow-worker-lock-target"
+        target.write_bytes(b"\0")
+        path = self.contract_root / ".shadow-worker.lock"
+        try:
+            path.symlink_to(target)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks are unavailable")
+        with self.assertRaisesRegex(
+            verifier.Window02ContractVerificationError,
+            "regular non-reparse file",
+        ):
+            self._verify()
 
     def test_rejects_physical_artifact_drift(self) -> None:
         inventory = self._inventory()

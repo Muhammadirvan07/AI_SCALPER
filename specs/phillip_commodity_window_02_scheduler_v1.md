@@ -96,6 +96,14 @@ intentionally persists `.contract-write.lock` as one NUL byte. Its SHA-256 is
 Retry installers MUST bind this ninth operational artifact exactly; it is not
 observation evidence and does not change any genesis artifact.
 
+The worker may also persist the exact root-level `.shadow-worker.lock` and
+`.shadow-cycle.lock` synchronization carriers. They are optional operational
+sidecars, not registered evidence, and are excluded from the eight/nine-file
+artifact count. If present, the verifier MUST require each exact allowlisted
+path to be a stable, one-byte, regular non-reparse file without opening it:
+an active Windows byte-range lock may legitimately deny content reads. This
+exception MUST NOT apply to any other path, directory, or contract artifact.
+
 ## Safety invariants
 
 - `validation_profile=DIAGNOSTIC`

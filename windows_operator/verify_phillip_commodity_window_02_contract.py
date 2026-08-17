@@ -82,6 +82,17 @@ EXPECTED_INVENTORY: Mapping[str, tuple[int, str]] = {
     ),
     **EXPECTED_GENESIS_INVENTORY,
 }
+# These process/cycle fence carriers live beside the evidence files but are
+# not evidence.  An active Windows byte-range lock can legitimately prevent
+# opening them, so inventory verification authenticates their metadata
+# without reading their contents.  Keep this allowlist root-relative and
+# exact: every other file remains subject to the frozen evidence inventory.
+OPTIONAL_OPERATIONAL_FENCE_FILES = frozenset(
+    {
+        ".shadow-cycle.lock",
+        ".shadow-worker.lock",
+    }
+)
 EXPECTED_FORWARD_PROJECTION_KEYS = frozenset(
     {
         "valid",
@@ -181,6 +192,32 @@ def _read_stable_bytes(path: Path, label: str) -> bytes:
     return value
 
 
+def _verify_operational_fence(path: Path, label: str) -> None:
+    safe = _regular(path, label)
+    try:
+        before = safe.lstat()
+        after = safe.lstat()
+    except OSError as exc:
+        raise Window02ContractVerificationError(
+            f"{label} metadata is unavailable"
+        ) from exc
+    for metadata in (before, after):
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or _has_reparse_attribute(metadata)
+            or metadata.st_size != 1
+        ):
+            raise Window02ContractVerificationError(
+                f"{label} must be a stable one-byte regular non-reparse file"
+            )
+    for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns"):
+        if getattr(before, field) != getattr(after, field):
+            raise Window02ContractVerificationError(
+                f"{label} changed while metadata was being verified"
+            )
+
+
 def _reject_constant(value: str) -> object:
     raise ValueError(f"non-finite JSON constant is prohibited: {value}")
 
@@ -250,6 +287,12 @@ def _verify_inventory(
     observed_directories: set[str] = set()
     for item in contract_root.rglob("*"):
         relative = item.relative_to(contract_root).as_posix()
+        if relative in OPTIONAL_OPERATIONAL_FENCE_FILES:
+            _verify_operational_fence(
+                item,
+                f"operational fence {relative}",
+            )
+            continue
         if item.is_dir():
             _directory(item, f"contract directory {relative}")
             observed_directories.add(relative)
