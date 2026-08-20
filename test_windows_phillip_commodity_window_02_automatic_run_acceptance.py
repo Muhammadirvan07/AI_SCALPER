@@ -413,7 +413,16 @@ class Window02AutomaticRunAcceptanceFixture(unittest.TestCase):
             "ExpectedActiveInterval": str(active),
             "StartupAllowance": "False",
             "RuntimeStatus": runtime,
-            "PackageSourceCommit": acceptance.SCHEDULER_PACKAGE_COMMIT,
+            "PackageSourceCommit": acceptance.HEALTH_OPERATOR_PACKAGE_COMMIT,
+            "PackageSourceTree": acceptance.HEALTH_OPERATOR_PACKAGE_TREE,
+            "OperatorContractVerifierSHA256": (
+                acceptance.HEALTH_OPERATOR_CONTRACT_VERIFIER_SHA256
+            ),
+            "OperatorHealthCheckerSHA256": (
+                acceptance.HEALTH_OPERATOR_HEALTH_CHECKER_SHA256
+            ),
+            "InstalledPackageSourceCommit": acceptance.SCHEDULER_PACKAGE_COMMIT,
+            "InstalledPackageSourceTree": acceptance.SCHEDULER_PACKAGE_TREE,
             "FrozenWorkerCommit": acceptance.WORKER_COMMIT,
             "FrozenWorkerTree": acceptance.WORKER_TREE,
             "Contract": acceptance.CONTRACT_ID,

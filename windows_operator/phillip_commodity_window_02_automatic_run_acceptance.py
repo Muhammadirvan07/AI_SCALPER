@@ -18,9 +18,19 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 
-BRANCH = "agent/live-grade-phase3"
+BRANCH = "codex/phillip-v6-observability"
 SCHEDULER_PACKAGE_COMMIT = "6bdd426ba02818bf3e3669a68820c027b3f6f25a"
 SCHEDULER_PACKAGE_TREE = "82a3c509d52d1bf92088d218aa81be1a25b15b24"
+HEALTH_OPERATOR_PACKAGE_COMMIT = "84f6ea1c4f47bef5d46b0126d2507e63ba433318"
+HEALTH_OPERATOR_PACKAGE_TREE = "bc5097f266cc10698524763207d7fac64319a238"
+HEALTH_OPERATOR_CONTRACT_VERIFIER_SHA256 = (
+    "d867736db3d5130feef5a49efd55d625"
+    "756dffa2acf04e82c8da7cb5d9e72094"
+)
+HEALTH_OPERATOR_HEALTH_CHECKER_SHA256 = (
+    "7cccfb9469687110abac0173534c0611"
+    "7cf36f685d5bce10a861d6bc705293d8"
+)
 WORKER_COMMIT = "da3190013d86426533019d6927a58181c624b1f8"
 WORKER_TREE = "9e84a0d7c9a5b3d4213c6abf0fdf1c8770361d10"
 CONTRACT_ID = "phillip-commodity-window-02-diagnostic-v1"
@@ -1199,6 +1209,11 @@ HEALTH_FIELDS = {
     "StartupAllowance",
     "RuntimeStatus",
     "PackageSourceCommit",
+    "PackageSourceTree",
+    "OperatorContractVerifierSHA256",
+    "OperatorHealthCheckerSHA256",
+    "InstalledPackageSourceCommit",
+    "InstalledPackageSourceTree",
     "FrozenWorkerCommit",
     "FrozenWorkerTree",
     "Contract",
@@ -1252,7 +1267,14 @@ def _validate_health_transcript(
         != ("true" if phase == "start" else "false")
         or fields["StartupAllowance"].casefold() != "false"
         or fields["RuntimeStatus"] != expected_runtime
-        or fields["PackageSourceCommit"] != SCHEDULER_PACKAGE_COMMIT
+        or fields["PackageSourceCommit"] != HEALTH_OPERATOR_PACKAGE_COMMIT
+        or fields["PackageSourceTree"] != HEALTH_OPERATOR_PACKAGE_TREE
+        or fields["OperatorContractVerifierSHA256"]
+        != HEALTH_OPERATOR_CONTRACT_VERIFIER_SHA256
+        or fields["OperatorHealthCheckerSHA256"]
+        != HEALTH_OPERATOR_HEALTH_CHECKER_SHA256
+        or fields["InstalledPackageSourceCommit"] != SCHEDULER_PACKAGE_COMMIT
+        or fields["InstalledPackageSourceTree"] != SCHEDULER_PACKAGE_TREE
         or fields["FrozenWorkerCommit"] != WORKER_COMMIT
         or fields["FrozenWorkerTree"] != WORKER_TREE
         or fields["Contract"] != CONTRACT_ID

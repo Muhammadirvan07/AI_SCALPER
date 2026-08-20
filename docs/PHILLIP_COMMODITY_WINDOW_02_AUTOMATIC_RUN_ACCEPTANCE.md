@@ -18,6 +18,12 @@ Acceptance is evidence of scheduler and read-only shadow-worker operation. It
 does not enable live trading or satisfy the later blinded evaluation and
 promotion gates.
 
+The toolkit keeps the installed V6 receipt immutable while invoking the
+operator-only V7 health remediation from
+`C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-scheduler-operator-84f6ea1c`.
+The V7 operator identity, corrected lock verifier, and health-script hashes are
+validated independently from the installed V6 scheduler identity.
+
 ## Package
 
 Only one transfer file is required:

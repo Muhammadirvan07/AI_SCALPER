@@ -242,6 +242,18 @@ class Window02AutomaticRunAcceptanceBuilderTests(unittest.TestCase):
         self.assertIn('"verify-toolkit-archive"', readiness)
         self.assertIn('"verify-toolkit-archive"', invocation)
         self.assertIn('-PropertyName "AllowDemandStart"', readiness)
+        self.assertIn(
+            "phillip-commodity-window-02-scheduler-operator-84f6ea1c",
+            readiness,
+        )
+        self.assertIn(
+            "7cccfb9469687110abac0173534c0611",
+            readiness,
+        )
+        self.assertIn(
+            "phillip-commodity-window-02-scheduler-operator-84f6ea1c",
+            invocation,
+        )
         self.assertNotIn(
             '$task.Settings.PSObject.Properties["AllowStartOnDemand"]',
             readiness,
