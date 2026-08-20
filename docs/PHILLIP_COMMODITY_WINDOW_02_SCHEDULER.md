@@ -1,22 +1,16 @@
 # Phillip Commodity Window 02 Scheduler
 
-This package installs a new least-privilege, read-only Scheduled Task for the
-registered Window 02 diagnostic contract. It does not reuse, enable, rename,
-start, or delete the historical V6 task.
+This is transport revision `WINDOW02.V7`, an operator-only health remediation
+for the already installed least-privilege Window 02 task. It does not install,
+register, enable, disable, rename, start, stop, or delete any Scheduled Task.
+The installed `WINDOW02.V6` task definition, frozen worker, runtime, journal,
+audit root, task-review evidence, and installation receipt remain immutable.
 
-This is transport revision `WINDOW02.V6`. Windows verified the V5 transfer,
-but its installer stopped on the first Git inspection because assigning to the
-automatic `$LASTEXITCODE` variable inside a function created a local Windows
-PowerShell 5.1 scope shadow. Preserve all earlier operator and worktree
-directories. V6 uses new runtime, audit, and task-review paths ending in `-r6`.
-
-V6 retains V5's exact two-phase contract proof: it accepts either legitimate
-contract state at entry, the eight-file
-registration genesis or the nine-file operational inventory containing the
-authenticated one-byte `.contract-write.lock`. It then runs the frozen
-authoritative verifier and requires the exact nine-file operational inventory
-afterward. All native Git and Python calls capture stderr safely and read the
-native exit code immediately without assigning to the automatic variable.
+V7 replaces only the extracted operator verifier and health checker. The
+health checker separately binds the installed V6 package commit/tree and the
+new V7 package commit/tree. It continues to authenticate the exact V6
+installation receipt, task XML, frozen `r6` worker, contract, dependency lock,
+runtime status, and audit paths before reporting health.
 
 The persistent root-level `.shadow-worker.lock` and `.shadow-cycle.lock`
 files are runtime synchronization sidecars, not contract evidence. Health
@@ -58,14 +52,14 @@ Copy these three sibling files into one new Windows transfer directory:
 Do not rename them. Do not place them inside an earlier V6 transfer or
 operator directory.
 
-## Pre-install checks
+## Pre-remediation checks
 
 Run in a normal, non-Administrator PowerShell session under the same Windows
 account that owns the Phillip evidence key:
 
 ```powershell
 $repo = "C:\AI_SCALPER"
-$branch = "agent/live-grade-phase3"
+$branch = "codex/phillip-v6-observability"
 $packageCommit = "__PACKAGE_SOURCE_COMMIT__"
 $packageTree = "__PACKAGE_SOURCE_TREE__"
 $workerCommit = "da3190013d86426533019d6927a58181c624b1f8"
@@ -75,7 +69,7 @@ Set-Location $repo
 
 if (git status --porcelain) {
   git status --short
-  throw "Repository must be clean before Window 02 installation."
+  throw "Repository must be clean before Window 02 remediation."
 }
 
 git fetch --no-tags origin $branch
@@ -115,6 +109,17 @@ if ($unsafe.Count -ne 0) {
 }
 
 $historical | Select-Object TaskName, State
+
+$window02 = @(
+  Get-ScheduledTask `
+    -TaskName "AI_SCALPER-PhillipCommodityWindow02-ReadOnlyShadow" `
+    -ErrorAction SilentlyContinue |
+    Where-Object { $_.TaskPath -eq "\" }
+)
+if ($window02.Count -ne 1) {
+  throw "The installed Window 02 task is not unique at the root path."
+}
+$window02 | Select-Object TaskName, State
 ```
 
 ## Verify and extract
@@ -156,7 +161,7 @@ TaskSchedulerMutation : NOT_PERFORMED
 OrderCapability       : DISABLED
 ```
 
-## Install without manual start
+## Verify the remediated operator without task mutation
 
 The exact operator root is:
 
@@ -166,28 +171,20 @@ $operatorRoot = (
   "__OPERATOR_ROOT_NAME__"
 )
 
-& "$operatorRoot\Install-PhillipCommodityWindow02ReadOnlyTask.ps1"
-
-if (-not $?) {
-  throw "Window 02 task installation failed."
-}
-
 & "$operatorRoot\Test-PhillipCommodityWindow02TaskHealth.ps1"
 
 if (-not $?) {
-  throw "Window 02 pre-start health verification failed."
+  throw "Window 02 V7 operator health verification failed."
 }
 ```
 
-Expected installation and pre-start health statuses:
+Expected health status:
 
 ```text
-PHILLIP_COMMODITY_WINDOW_02_TASK_INSTALLED_VERIFIED
 PHILLIP_COMMODITY_WINDOW_02_TASK_HEALTHY
-TaskState       : Ready
-SchedulePhase   : PRE_START
-NextRunTime     : 8/17/2026 6:45:00 AM
-OrderCapability : DISABLED
+InstalledPackageSourceCommit : 6bdd426ba02818bf3e3669a68820c027b3f6f25a
+OrderCapability              : DISABLED
+TaskSchedulerMutation        : NOT_PERFORMED
 ```
 
 Do not run `Start-ScheduledTask`. The task XML has
@@ -198,20 +195,18 @@ boundary.
 
 - If extraction fails, preserve the partial operator root and all three
   transfer files.
-- Preserve the V1, V2, V3, and any V4/V5 worktrees. Their paths end in
-  `shadow-source`, `shadow-source-r2`, `shadow-source-r3`, and
-  `shadow-source-r4`/`shadow-source-r5`. The V6 installer uses the separate
-  `shadow-source-r6` path and never repairs or removes an earlier worktree in
-  place.
-- If source, dependency, contract, snapshot, HMAC, ACL, or profile
-  verification fails, do not register a task manually.
-- If failure occurs after task registration, the installer attempts a
-  fail-closed disable. Confirm the new task is `Disabled` and preserve the
-  task-review directory.
+- Preserve every V1--V6 worktree, runtime, audit, task-review, receipt, and
+  operator directory. V7 reads the exact `r6` installation evidence and never
+  repairs or replaces it.
+- If source, dependency, contract, snapshot, HMAC, ACL, profile, task XML, or
+  receipt verification fails, preserve the output and do not mutate the task.
+- V7 has no task-registration or rollback path because it performs no
+  Task Scheduler mutation.
 - Never delete, rename, enable, or start a historical task to repair Window
   02.
 - Never overwrite the worktree, runtime, audit, task-review, operator, or
   transfer directory after a failed attempt.
 
-Escalate with the complete console output, operator-root inventory, task
-state, and installation receipt path. Secret material must not be exported.
+Escalate with the complete console output, V7 operator-root inventory, task
+state, and existing V6 installation receipt path. Secret material must not be
+exported.

@@ -23,7 +23,6 @@ POWERSHELL = (
 EXPECTED_MEMBERS = sorted(
     [
         "PhillipCommodityTaskContract.ps1",
-        "Install-PhillipCommodityWindow02ReadOnlyTask.ps1",
         "Test-PhillipCommodityWindow02TaskHealth.ps1",
         "verify_phillip_commodity_window_02_contract.py",
         "PHILLIP_COMMODITY_WINDOW_02_SCHEDULER.md",
@@ -141,7 +140,19 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
             manifest["worker"]["operational_artifact_file_count"],
         )
         self.assertEqual(builder.TASK_NAME, manifest["new_task_name"])
-        self.assertEqual("WINDOW02.V6", manifest["transport_revision"])
+        self.assertEqual("WINDOW02.V7", manifest["transport_revision"])
+        self.assertEqual(
+            "OPERATOR_ONLY_EXISTING_TASK",
+            manifest["remediation_mode"],
+        )
+        self.assertEqual(
+            builder.INSTALLED_PACKAGE_COMMIT,
+            manifest["installed_scheduler"]["package_source_commit"],
+        )
+        self.assertEqual(
+            builder.INSTALLED_PACKAGE_TREE,
+            manifest["installed_scheduler"]["package_source_tree"],
+        )
         self.assertEqual(builder._schedule(), manifest["schedule"])
         self.assertEqual("PROHIBITED", manifest["safety"]["manual_start"])
         self.assertEqual("DISABLED", manifest["safety"]["order_capability"])
@@ -151,9 +162,6 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
         archive, result = self._build("inventory")
         with zipfile.ZipFile(archive) as package:
             self.assertEqual(EXPECTED_MEMBERS, sorted(package.namelist()))
-            installer = package.read(
-                "Install-PhillipCommodityWindow02ReadOnlyTask.ps1"
-            ).decode("utf-8")
             health = package.read(
                 "Test-PhillipCommodityWindow02TaskHealth.ps1"
             ).decode("utf-8")
@@ -166,22 +174,26 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
                     "PHILLIP_COMMODITY_WINDOW_02_OPERATOR_ARTIFACTS.json"
                 )
             )
-        self.assertEqual(6, result["member_count"])
+        self.assertEqual(5, result["member_count"])
         self.assertEqual(
-            "NOT_PERFORMED_DURING_BUILD",
+            "NOT_PERFORMED",
             artifacts["safety"]["task_scheduler_mutation"],
         )
-        for rendered in (installer, health):
+        for rendered in (health,):
             self.assertNotIn("__PACKAGE_SOURCE_COMMIT__", rendered)
             self.assertNotIn("__PACKAGE_SOURCE_TREE__", rendered)
             self.assertNotIn("__TASK_CONTRACT_SHA256__", rendered)
             self.assertNotIn("__CONTRACT_VERIFIER_SHA256__", rendered)
             self.assertNotIn("__HEALTH_CHECKER_SHA256__", rendered)
-            self.assertIn(hashlib.sha256(contract).hexdigest(), rendered)
-            self.assertIn(hashlib.sha256(verifier).hexdigest(), rendered)
+            self.assertIn(hashlib.sha256(contract).hexdigest(), health)
+            self.assertIn(hashlib.sha256(verifier).hexdigest(), health)
         self.assertIn(
-            hashlib.sha256(health.encode("utf-8")).hexdigest(),
-            installer,
+            builder.INSTALLED_CONTRACT_VERIFIER_SHA256,
+            health.replace('" +\n  "', ""),
+        )
+        self.assertIn(
+            builder.INSTALLED_HEALTH_CHECKER_SHA256,
+            health.replace('" +\n  "', ""),
         )
 
     def test_helper_embeds_flat_exact_inventory(self) -> None:
@@ -265,7 +277,6 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
             combined = "\n".join(
                 package.read(name).decode("utf-8", errors="replace")
                 for name in (
-                    "Install-PhillipCommodityWindow02ReadOnlyTask.ps1",
                     "Test-PhillipCommodityWindow02TaskHealth.ps1",
                     "verify_phillip_commodity_window_02_contract.py",
                 )
@@ -273,7 +284,12 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
         self.assertNotIn("order_send", combined)
         self.assertNotIn("start-scheduledtask", combined)
         self.assertNotIn("unregister-scheduledtask", combined)
-        self.assertIn('order_capability = "disabled"', combined)
+        self.assertNotIn("register-scheduledtask", combined)
+        self.assertNotIn("enable-scheduledtask", combined)
+        self.assertNotIn("disable-scheduledtask", combined)
+        self.assertNotIn("stop-scheduledtask", combined)
+        self.assertIn("order_capability", combined)
+        self.assertIn('"disabled"', combined)
 
 
 if __name__ == "__main__":

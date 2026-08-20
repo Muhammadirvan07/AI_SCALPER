@@ -202,3 +202,20 @@ wrapper, while retaining stderr capture and an immediate exit-code read after
 the known executable returns. Regression tests enforce this invariant for the
 installer and health checker. V6 uses fresh create-exclusive `-r6` paths and
 preserves all V1--V5 evidence.
+
+## Transport revision V7
+
+The first automatic Window 02 worker created the persistent root-level
+`.shadow-worker.lock` and `.shadow-cycle.lock` synchronization carriers. The
+installed V6 health checker delegated to a contract verifier that treated
+those runtime sidecars as unexpected contract evidence, so an otherwise valid
+active worker could not pass health or automatic-run acceptance.
+
+`WINDOW02.V7` is an operator-only remediation. It packages the corrected
+metadata-only sidecar verifier and a health checker that binds both the exact
+installed V6 package identity and the new V7 operator package identity. It
+continues to verify the immutable V6 installation receipt, task XML, frozen
+`r6` worker, journal, audit root, contract, and dependency lock. V7 contains no
+installer and performs no task registration, enablement, disablement, start,
+stop, deletion, worker replacement, broker mutation, or order submission.
+Every V1--V6 artifact remains immutable historical evidence.

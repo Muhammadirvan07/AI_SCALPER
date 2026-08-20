@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-BRANCH = "agent/live-grade-phase3"
+BRANCH = "codex/phillip-v6-observability"
 WORKER_COMMIT = "da3190013d86426533019d6927a58181c624b1f8"
 WORKER_TREE = "9e84a0d7c9a5b3d4213c6abf0fdf1c8770361d10"
 CONTRACT_ID = "phillip-commodity-window-02-diagnostic-v1"
@@ -43,13 +43,22 @@ FIRST_SCHEDULED_START_LOCAL = "2026-08-17T06:45:00+09:00"
 FIRST_NEXT_RUN_LOCAL = "2026-08-17T06:45:00"
 SCHEDULE_END_LOCAL = "2026-10-13T00:16:00+09:00"
 TASK_NAME = "AI_SCALPER-PhillipCommodityWindow02-ReadOnlyShadow"
-TRANSPORT_REVISION = "WINDOW02.V6"
+TRANSPORT_REVISION = "WINDOW02.V7"
+INSTALLED_PACKAGE_COMMIT = "6bdd426ba02818bf3e3669a68820c027b3f6f25a"
+INSTALLED_PACKAGE_TREE = "82a3c509d52d1bf92088d218aa81be1a25b15b24"
+INSTALLED_CONTRACT_VERIFIER_SHA256 = (
+    "fcc6f8f2f17bea60a6eba131664e30ae"
+    "348a0be53d5358cd5dcbde7b7cce45eb"
+)
+INSTALLED_HEALTH_CHECKER_SHA256 = (
+    "a90194d6bca0d0e0eef57eda2df5e629"
+    "c361a0a1c5c431089478e36667b3e4c1"
+)
 INITIAL_ARTIFACT_FILE_COUNT = 8
 OPERATIONAL_ARTIFACT_FILE_COUNT = 9
 EXTRACTION_INVENTORY_MODE = "WINDOWS_POWERSHELL_5_1_FLAT_EXACT_V1"
 TEMPLATE_PATHS = (
     "windows_operator/PhillipCommodityTaskContract.ps1",
-    "windows_operator/Install-PhillipCommodityWindow02ReadOnlyTask.ps1",
     "windows_operator/Test-PhillipCommodityWindow02TaskHealth.ps1",
     "windows_operator/verify_phillip_commodity_window_02_contract.py",
     "docs/PHILLIP_COMMODITY_WINDOW_02_SCHEDULER.md",
@@ -281,6 +290,7 @@ if (
   $manifest.archive.sha256 -ne $expectedArchiveSha256 -or
   $manifest.source.commit -ne $expectedCommit -or
   $manifest.source.tree -ne $expectedTree -or
+  $manifest.source.branch -ne "{BRANCH}" -or
   $manifest.operator_root -ne $expectedOperatorRoot -or
   $manifest.worker.source_commit -ne "{WORKER_COMMIT}" -or
   $manifest.worker.source_tree -ne "{WORKER_TREE}" -or
@@ -293,6 +303,15 @@ if (
   $manifest.worker.signing_key_id -ne "{SIGNING_KEY_ID}" -or
   $manifest.worker.dependency_lock_sha256 -ne
     "{DEPENDENCY_LOCK_SHA256}" -or
+  $manifest.installed_scheduler.package_source_commit -ne
+    "{INSTALLED_PACKAGE_COMMIT}" -or
+  $manifest.installed_scheduler.package_source_tree -ne
+    "{INSTALLED_PACKAGE_TREE}" -or
+  $manifest.installed_scheduler.contract_verifier_sha256 -ne
+    "{INSTALLED_CONTRACT_VERIFIER_SHA256}" -or
+  $manifest.installed_scheduler.health_checker_sha256 -ne
+    "{INSTALLED_HEALTH_CHECKER_SHA256}" -or
+  $manifest.remediation_mode -ne "OPERATOR_ONLY_EXISTING_TASK" -or
   [int]$manifest.worker.initial_artifact_file_count -ne
     {INITIAL_ARTIFACT_FILE_COUNT} -or
   [int]$manifest.worker.operational_artifact_file_count -ne
@@ -309,7 +328,7 @@ if (
   $manifest.safety.live_allowed -ne $false -or
   $manifest.safety.safe_to_demo_auto_order -ne $false -or
   $manifest.safety.task_scheduler_mutation -ne
-    "NOT_PERFORMED_DURING_BUILD" -or
+    "NOT_PERFORMED" -or
   $manifest.safety.broker_mutation -ne "NOT_PERFORMED"
 ) {{
   throw "Window 02 transfer manifest identity or safety mismatch."
@@ -431,6 +450,23 @@ def _schedule() -> dict[str, object]:
     }
 
 
+def _installed_scheduler_binding() -> dict[str, object]:
+    return {
+        "package_source_commit": INSTALLED_PACKAGE_COMMIT,
+        "package_source_tree": INSTALLED_PACKAGE_TREE,
+        "contract_verifier_sha256": INSTALLED_CONTRACT_VERIFIER_SHA256,
+        "health_checker_sha256": INSTALLED_HEALTH_CHECKER_SHA256,
+        "task_review_root": (
+            r"C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-task-review-r6"
+        ),
+        "runtime_repo": (
+            r"C:\AI_SCALPER_RELEASES\da319001-"
+            r"phillip-commodity-window-02-shadow-source-r6"
+        ),
+        "mutation": "PROHIBITED",
+    }
+
+
 def build_package(source_root: Path, output: Path) -> dict[str, object]:
     source_root = source_root.resolve()
     output = output.resolve()
@@ -455,7 +491,7 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         for relative in TEMPLATE_PATHS
     }
     task_contract = sources[TEMPLATE_PATHS[0]]
-    verifier = sources[TEMPLATE_PATHS[3]]
+    verifier = sources[TEMPLATE_PATHS[2]]
     task_contract_sha256 = hashlib.sha256(task_contract).hexdigest()
     verifier_sha256 = hashlib.sha256(verifier).hexdigest()
     operator_root_name = (
@@ -470,7 +506,7 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         package_name=output.name,
         operator_root_name=operator_root_name,
     )
-    rendered_health = _render(sources[TEMPLATE_PATHS[2]], **provisional_render)
+    rendered_health = _render(sources[TEMPLATE_PATHS[1]], **provisional_render)
     health_checker_sha256 = hashlib.sha256(rendered_health).hexdigest()
     render = {
         **provisional_render,
@@ -479,17 +515,13 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
     members = [
         Member("PhillipCommodityTaskContract.ps1", task_contract),
         Member(
-            "Install-PhillipCommodityWindow02ReadOnlyTask.ps1",
-            _render(sources[TEMPLATE_PATHS[1]], **render),
-        ),
-        Member(
             "Test-PhillipCommodityWindow02TaskHealth.ps1",
             rendered_health,
         ),
         Member("verify_phillip_commodity_window_02_contract.py", verifier),
         Member(
             "PHILLIP_COMMODITY_WINDOW_02_SCHEDULER.md",
-            _render(sources[TEMPLATE_PATHS[4]], **render),
+            _render(sources[TEMPLATE_PATHS[3]], **render),
         ),
     ]
     artifacts = {
@@ -498,6 +530,8 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         "execution_status": "PREPARED_NOT_EXECUTED_ON_WINDOWS",
         "package_source": {"branch": BRANCH, "commit": commit, "tree": tree},
         "worker": _worker_binding(),
+        "installed_scheduler": _installed_scheduler_binding(),
+        "remediation_mode": "OPERATOR_ONLY_EXISTING_TASK",
         "new_task_name": TASK_NAME,
         "historical_tasks": [
             {
@@ -520,7 +554,7 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
             "live_allowed": False,
             "safe_to_demo_auto_order": False,
             "manual_start": "PROHIBITED",
-            "task_scheduler_mutation": "NOT_PERFORMED_DURING_BUILD",
+            "task_scheduler_mutation": "NOT_PERFORMED",
             "broker_mutation": "NOT_PERFORMED",
         },
     }
@@ -546,6 +580,8 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
         },
         "source": {"branch": BRANCH, "commit": commit, "tree": tree},
         "worker": _worker_binding(),
+        "installed_scheduler": _installed_scheduler_binding(),
+        "remediation_mode": "OPERATOR_ONLY_EXISTING_TASK",
         "new_task_name": TASK_NAME,
         "schedule": _schedule(),
         "operator_root": rf"C:\AI_SCALPER_PRIVATE\{operator_root_name}",
@@ -556,7 +592,7 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
             "live_allowed": False,
             "safe_to_demo_auto_order": False,
             "manual_start": "PROHIBITED",
-            "task_scheduler_mutation": "NOT_PERFORMED_DURING_BUILD",
+            "task_scheduler_mutation": "NOT_PERFORMED",
             "broker_mutation": "NOT_PERFORMED",
         },
     }

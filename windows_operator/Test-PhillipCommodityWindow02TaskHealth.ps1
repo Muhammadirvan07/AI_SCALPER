@@ -32,6 +32,20 @@ $ErrorActionPreference = "Stop"
 
 $packageSourceCommit = "__PACKAGE_SOURCE_COMMIT__"
 $packageSourceTree = "__PACKAGE_SOURCE_TREE__"
+$installedPackageSourceCommit = (
+  "6bdd426ba02818bf3e3669a68820c027b3f6f25a"
+)
+$installedPackageSourceTree = (
+  "82a3c509d52d1bf92088d218aa81be1a25b15b24"
+)
+$installedContractVerifierSha256 = (
+  "fcc6f8f2f17bea60a6eba131664e30ae" +
+  "348a0be53d5358cd5dcbde7b7cce45eb"
+)
+$installedHealthCheckerSha256 = (
+  "a90194d6bca0d0e0eef57eda2df5e629" +
+  "c361a0a1c5c431089478e36667b3e4c1"
+)
 $workerCommit = "da3190013d86426533019d6927a58181c624b1f8"
 $workerTree = "9e84a0d7c9a5b3d4213c6abf0fdf1c8770361d10"
 $contractId = "phillip-commodity-window-02-diagnostic-v1"
@@ -335,8 +349,8 @@ if (
     "2026-08-16T21:45:00Z"
   ) -or
   $installedAt -gt [DateTimeOffset]::UtcNow -or
-  $receipt.package_source_commit -ne $packageSourceCommit -or
-  $receipt.package_source_tree -ne $packageSourceTree -or
+  $receipt.package_source_commit -ne $installedPackageSourceCommit -or
+  $receipt.package_source_tree -ne $installedPackageSourceTree -or
   $receipt.worker_source_commit -ne $workerCommit -or
   $receipt.worker_source_tree -ne $workerTree -or
   $receipt.worker_contract_id -ne $contractId -or
@@ -348,8 +362,9 @@ if (
   $receipt.dependency_lock_sha256 -ne $expectedDependencyLockSha256 -or
   [int]$receipt.contract_artifact_files_verified -ne 9 -or
   $receipt.task_contract_sha256 -ne $taskContractSha256 -or
-  $receipt.contract_verifier_sha256 -ne $contractVerifierSha256 -or
-  $receipt.health_checker_sha256 -ne $healthCheckerSha256 -or
+  $receipt.contract_verifier_sha256 -ne
+    $installedContractVerifierSha256 -or
+  $receipt.health_checker_sha256 -ne $installedHealthCheckerSha256 -or
   $receipt.start_boundary -ne "2026-08-17T06:45:00+09:00" -or
   $receipt.end_boundary -ne "2026-10-13T00:16:00+09:00" -or
   [int]$receipt.worker_duration_seconds -ne $workerDurationSeconds -or
@@ -640,6 +655,11 @@ else {
   StartupAllowance = $startupAllowance
   RuntimeStatus = $runtimeStatus
   PackageSourceCommit = $packageSourceCommit
+  PackageSourceTree = $packageSourceTree
+  OperatorContractVerifierSHA256 = $contractVerifierSha256
+  OperatorHealthCheckerSHA256 = $healthCheckerSha256
+  InstalledPackageSourceCommit = $installedPackageSourceCommit
+  InstalledPackageSourceTree = $installedPackageSourceTree
   FrozenWorkerCommit = $runtimeHead
   FrozenWorkerTree = $runtimeTree
   Contract = $contractId

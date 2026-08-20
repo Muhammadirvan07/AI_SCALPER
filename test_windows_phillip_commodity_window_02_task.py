@@ -250,6 +250,42 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
         self.assertIn("$currentIdentity.User.Value", self.health)
         self.assertIn("$receipt.preserved_tasks", self.health)
 
+    def test_v7_health_preserves_v6_receipt_and_uses_new_verifier(self) -> None:
+        self.assertIn(
+            '"6bdd426ba02818bf3e3669a68820c027b3f6f25a"',
+            self.health,
+        )
+        self.assertIn(
+            '"82a3c509d52d1bf92088d218aa81be1a25b15b24"',
+            self.health,
+        )
+        self.assertIn(
+            "$receipt.package_source_commit -ne "
+            "$installedPackageSourceCommit",
+            self.health,
+        )
+        self.assertIn(
+            "$receipt.contract_verifier_sha256 -ne\n"
+            "    $installedContractVerifierSha256",
+            self.health,
+        )
+        self.assertIn(
+            "$contractVerifierSha256 -ne $expectedContractVerifierSha256",
+            self.health,
+        )
+        self.assertIn(
+            "InstalledPackageSourceCommit = $installedPackageSourceCommit",
+            self.health,
+        )
+        self.assertIn(
+            "OperatorContractVerifierSHA256 = $contractVerifierSha256",
+            self.health,
+        )
+        self.assertIn(
+            "OperatorHealthCheckerSHA256 = $healthCheckerSha256",
+            self.health,
+        )
+
     def test_executable_scripts_keep_order_capability_disabled(self) -> None:
         combined = (self.installer + "\n" + self.health).lower()
         self.assertNotIn("order_send", combined)
