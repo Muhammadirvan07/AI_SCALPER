@@ -36,7 +36,15 @@ paper_forward_runs.json
 active_pairs_backtest_draft.json
 strategy_walk_forward_report.json
 forward_performance_audit_report.json
-.codex/
+.codex/*
+!.codex/skills/
+.codex/skills/*
+!.codex/skills/ai-scalper-live-grade-core/
+!.codex/skills/ai-scalper-live-grade-core/**
+!.codex/skills/ai-scalper-windows-evidence-ops/
+!.codex/skills/ai-scalper-windows-evidence-ops/**
+!.codex/skills/ai-scalper-dashboard-runtime/
+!.codex/skills/ai-scalper-dashboard-runtime/**
 .agents/
 skills-lock.json
 AI_SCALPER_CHATGPT_MEMORY_AND_SKILL_PACK.md
