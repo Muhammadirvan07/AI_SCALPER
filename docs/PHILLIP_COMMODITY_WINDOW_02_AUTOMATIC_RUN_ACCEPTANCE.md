@@ -19,10 +19,16 @@ does not enable live trading or satisfy the later blinded evaluation and
 promotion gates.
 
 The toolkit keeps the installed V6 receipt immutable while invoking the
-operator-only V7 health remediation from
-`C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-scheduler-operator-84f6ea1c`.
-The V7 operator identity, corrected lock verifier, and health-script hashes are
+operator-only V8 health remediation from
+`C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-scheduler-operator-7416ce02`.
+The V8 operator identity, corrected lock verifier, missed-schedule verifier,
+and health-script hashes are
 validated independently from the installed V6 scheduler identity.
+
+V8 can classify an earlier missed boundary only when the exact Task Scheduler
+Event 153 is verified and the next eligible boundary remains intact. That
+classification permits readiness for a future boundary; it can never satisfy
+automatic start or completion acceptance.
 
 ## Package
 
@@ -79,6 +85,10 @@ Readiness requires the exact installed scheduler/worker/contract identities,
 `AllowStartOnDemand=false`, an enabled Task Scheduler Operational log, one
 exact Phillip Commodity MT5 process, and the existing health checker to pass.
 It performs no scheduler or broker mutation.
+
+After a verified missed boundary, use the next scheduled weekday boundary
+(for example `2026-08-24T06:45:00+09:00`) as `-TargetBoundary`. Do not reuse
+the missed timestamp and do not start the task manually.
 
 If readiness reports `READINESS_RECEIPT_ACL_REJECTED`, stop there and preserve
 the output. The installed receipt does not yet have the reviewed ownership and

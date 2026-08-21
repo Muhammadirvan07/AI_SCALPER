@@ -13,7 +13,7 @@ param(
   [Parameter()]
   [string]$SchedulerOperatorRoot = (
     "C:\AI_SCALPER_PRIVATE\" +
-    "phillip-commodity-window-02-scheduler-operator-84f6ea1c"
+    "phillip-commodity-window-02-scheduler-operator-7416ce02"
   ),
 
   [Parameter()]
@@ -45,8 +45,8 @@ $toolkitSourceCommit = "__TOOLKIT_SOURCE_COMMIT__"
 $toolkitSourceTree = "__TOOLKIT_SOURCE_TREE__"
 $expectedToolSHA256 = "__ACCEPTANCE_TOOL_SHA256__"
 $expectedHealthSHA256 = (
-  "7cccfb9469687110abac0173534c0611" +
-  "7cf36f685d5bce10a861d6bc705293d8"
+  "27ea33b4d87d7b69b4c58fe91412bd77" +
+  "4f584a22205cca305fb5246f0ce5eb3a"
 )
 $taskName = "AI_SCALPER-PhillipCommodityWindow02-ReadOnlyShadow"
 $priorTaskNames = @(
@@ -410,6 +410,27 @@ if (
 ) {
   throw "Installed Window 02 health projection mismatch."
 }
+$historicalBoundaryMatch = [regex]::Match(
+  $healthText,
+  "(?m)^HistoricalBoundaryStatus\s*:\s*(\S+)\s*$"
+)
+if (-not $historicalBoundaryMatch.Success) {
+  throw "Installed Window 02 historical-boundary projection is missing."
+}
+$historicalBoundaryStatus = $historicalBoundaryMatch.Groups[1].Value
+if ($historicalBoundaryStatus -notin @(
+  "NOT_APPLICABLE",
+  "MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY"
+)) {
+  throw "Installed Window 02 historical-boundary projection mismatch."
+}
+if (
+  $historicalBoundaryStatus -eq
+    "MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY" -and
+  $nowUtc -ge $targetUtc
+) {
+  throw "Historical missed-boundary evidence cannot accept a current run."
+}
 
 [PSCustomObject]@{
   Status = "PHILLIP_COMMODITY_WINDOW_02_AUTOMATIC_RUN_ACCEPTANCE_READY"
@@ -423,6 +444,11 @@ if (
   NextRunTime = $taskInfo.NextRunTime
   TargetBoundaryLocal = [string]$boundary.local
   TargetBoundaryUtc = [string]$boundary.utc
+  HistoricalBoundaryStatus = $historicalBoundaryStatus
+  HistoricalMissedBoundaryVerified = (
+    $historicalBoundaryStatus -eq
+      "MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY"
+  )
   OperationalLogEnabled = [bool]$log.IsEnabled
   CommodityMT5ProcessId = [int]$terminalProcesses[0].ProcessId
   ToolkitSourceCommit = $toolkitSourceCommit

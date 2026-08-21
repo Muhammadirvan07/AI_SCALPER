@@ -17,7 +17,7 @@ param(
   [Parameter()]
   [string]$SchedulerOperatorRoot = (
     "C:\AI_SCALPER_PRIVATE\" +
-    "phillip-commodity-window-02-scheduler-operator-84f6ea1c"
+    "phillip-commodity-window-02-scheduler-operator-7416ce02"
   ),
 
   [Parameter()]

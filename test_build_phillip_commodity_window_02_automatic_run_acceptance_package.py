@@ -243,16 +243,24 @@ class Window02AutomaticRunAcceptanceBuilderTests(unittest.TestCase):
         self.assertIn('"verify-toolkit-archive"', invocation)
         self.assertIn('-PropertyName "AllowDemandStart"', readiness)
         self.assertIn(
-            "phillip-commodity-window-02-scheduler-operator-84f6ea1c",
+            "phillip-commodity-window-02-scheduler-operator-7416ce02",
             readiness,
         )
         self.assertIn(
-            "7cccfb9469687110abac0173534c0611",
+            "27ea33b4d87d7b69b4c58fe91412bd77",
             readiness,
         )
         self.assertIn(
-            "phillip-commodity-window-02-scheduler-operator-84f6ea1c",
+            "phillip-commodity-window-02-scheduler-operator-7416ce02",
             invocation,
+        )
+        self.assertIn(
+            "MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY",
+            readiness,
+        )
+        self.assertIn(
+            "Historical missed-boundary evidence cannot accept a current run.",
+            readiness,
         )
         self.assertNotIn(
             '$task.Settings.PSObject.Properties["AllowStartOnDemand"]',
