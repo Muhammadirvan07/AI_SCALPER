@@ -243,15 +243,15 @@ class Window02AutomaticRunAcceptanceBuilderTests(unittest.TestCase):
         self.assertIn('"verify-toolkit-archive"', invocation)
         self.assertIn('-PropertyName "AllowDemandStart"', readiness)
         self.assertIn(
-            "phillip-commodity-window-02-scheduler-operator-7416ce02",
+            "phillip-commodity-window-02-scheduler-operator-d2410517",
             readiness,
         )
         self.assertIn(
-            "27ea33b4d87d7b69b4c58fe91412bd77",
+            "a893952d0dde5566305ca4e5603bada2",
             readiness,
         )
         self.assertIn(
-            "phillip-commodity-window-02-scheduler-operator-7416ce02",
+            "phillip-commodity-window-02-scheduler-operator-d2410517",
             invocation,
         )
         self.assertIn(

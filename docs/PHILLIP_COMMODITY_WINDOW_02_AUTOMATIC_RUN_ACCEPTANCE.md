@@ -19,13 +19,13 @@ does not enable live trading or satisfy the later blinded evaluation and
 promotion gates.
 
 The toolkit keeps the installed V6 receipt immutable while invoking the
-operator-only V8 health remediation from
-`C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-scheduler-operator-7416ce02`.
-The V8 operator identity, corrected lock verifier, missed-schedule verifier,
+operator-only V9 health remediation from
+`C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-scheduler-operator-d2410517`.
+The V9 operator identity, corrected lock verifier, missed-schedule verifier,
 and health-script hashes are
 validated independently from the installed V6 scheduler identity.
 
-V8 can classify an earlier missed boundary only when the exact Task Scheduler
+V9 can classify an earlier missed boundary only when the exact Task Scheduler
 Event 153 is verified and the next eligible boundary remains intact. That
 classification permits readiness for a future boundary; it can never satisfy
 automatic start or completion acceptance.

@@ -13,7 +13,7 @@ param(
   [Parameter()]
   [string]$SchedulerOperatorRoot = (
     "C:\AI_SCALPER_PRIVATE\" +
-    "phillip-commodity-window-02-scheduler-operator-7416ce02"
+    "phillip-commodity-window-02-scheduler-operator-d2410517"
   ),
 
   [Parameter()]
@@ -45,8 +45,8 @@ $toolkitSourceCommit = "__TOOLKIT_SOURCE_COMMIT__"
 $toolkitSourceTree = "__TOOLKIT_SOURCE_TREE__"
 $expectedToolSHA256 = "__ACCEPTANCE_TOOL_SHA256__"
 $expectedHealthSHA256 = (
-  "27ea33b4d87d7b69b4c58fe91412bd77" +
-  "4f584a22205cca305fb5246f0ce5eb3a"
+  "a893952d0dde5566305ca4e5603bada2" +
+  "1975809a9fa570f5e2baa2600e464080"
 )
 $taskName = "AI_SCALPER-PhillipCommodityWindow02-ReadOnlyShadow"
 $priorTaskNames = @(

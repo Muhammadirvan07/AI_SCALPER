@@ -42,9 +42,9 @@ The installed scheduler identity is package commit
 `cbfd753b0aed2d66af56446adc734ce8d62666e309e91bf74d24b4cc56b613a2`.
 These values are immutable inputs to this specification.
 
-The acceptance toolkit is additionally bound to the V8 operator-only health
-remediation at commit `7416ce02c0559033d0976d44f604e7f8155b134c` and tree
-`2e0dd3d851fd69e3a96e526f809f02ae3ecc4c60`. A fail-closed Event 153
+The acceptance toolkit is additionally bound to the V9 operator-only health
+remediation at commit `d24105123ebbcffbd37effc538fccfb4943b64b5` and tree
+`73478211f75e2c10dc5f5a763bc5a7e9fe40def6`. A fail-closed Event 153
 classification for an earlier missed schedule MAY establish readiness for a
 strictly future eligible boundary. It MUST NOT be accepted as evidence that a
 task started or completed.
@@ -140,7 +140,7 @@ task started or completed.
   `PHILLIP_COMMODITY_WINDOW_02_AUTOMATIC_RUN_COMPLETION_VERIFIED`; a start
   archive MUST NOT claim process completion, and a completion archive MUST NOT
   claim off-host custody, promotion, or live-trading readiness.
-- FR-23: Readiness MAY consume the exact V8 historical status
+- FR-23: Readiness MAY consume the exact V9 historical status
   `MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY` only while the requested
   target is strictly in the future. Start and completion acceptance MUST still
   require their own correlated Task Scheduler events and runtime evidence.
