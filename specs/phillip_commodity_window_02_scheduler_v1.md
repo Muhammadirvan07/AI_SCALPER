@@ -219,3 +219,33 @@ continues to verify the immutable V6 installation receipt, task XML, frozen
 installer and performs no task registration, enablement, disablement, start,
 stop, deletion, worker replacement, broker mutation, or order submission.
 Every V1--V6 artifact remains immutable historical evidence.
+
+## Transport revision V8
+
+The `2026-08-21T06:45:00+09:00` boundary was unavailable to the interactive
+task token. Windows later recorded `LastTaskResult=0x800710E0` and Operational
+Event 153 (`MissedTaskRejected`) for the exact root task when the host/session
+became available. V7 correctly rejected health during that still-active missed
+interval, but its gap-phase check treated the non-boundary `LastRunTime` as
+permanent drift and therefore could not arm acceptance for the next automatic
+boundary.
+
+`WINDOW02.V8` remains operator-only. During a schedule gap only, it may classify
+the previous boundary as `MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY` when
+all of these exact conditions hold:
+
+- task state is `Ready` and normalized result is exactly `0x800710E0`;
+- `LastRunTime` is after the derived previous scheduled boundary;
+- `NextRunTime` equals the derived next weekday `06:45` boundary;
+- the enabled Operational log contains exactly one correlated exact-task event
+  within 120 seconds of `LastRunTime`;
+- that event is provider `Microsoft-Windows-TaskScheduler`, channel
+  `Microsoft-Windows-TaskScheduler/Operational`, ID `153`, EventData name
+  `MissedTaskRejected`, and contains exactly one `TaskName` data node;
+- no event 100, 102, 107, or 110 for the exact task exists in that correlation
+  interval.
+
+The exception is prohibited during the active interval, startup allowance,
+pre-start, and expired phases. It never converts a missed boundary into
+automatic-run acceptance. All source, task XML, receipt, ACL, dependency,
+contract, runtime, sidecar, safety, and no-mutation checks remain mandatory.

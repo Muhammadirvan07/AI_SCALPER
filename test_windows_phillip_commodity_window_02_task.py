@@ -250,7 +250,7 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
         self.assertIn("$currentIdentity.User.Value", self.health)
         self.assertIn("$receipt.preserved_tasks", self.health)
 
-    def test_v7_health_preserves_v6_receipt_and_uses_new_verifier(self) -> None:
+    def test_v8_health_preserves_v6_receipt_and_uses_new_verifier(self) -> None:
         self.assertIn(
             '"6bdd426ba02818bf3e3669a68820c027b3f6f25a"',
             self.health,
@@ -285,6 +285,23 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
             "OperatorHealthCheckerSHA256 = $healthCheckerSha256",
             self.health,
         )
+
+    def test_v8_missed_boundary_exception_is_exact_and_gap_only(self) -> None:
+        self.assertIn('$schedulePhase.Phase -ne "GAP"', self.health)
+        self.assertIn("[uint32]2147946720", self.health)
+        self.assertIn('"MissedTaskRejected"', self.health)
+        self.assertIn("$matching.Count -ne 1", self.health)
+        self.assertIn("$matching[0].EventId -ne $missedTaskEventId", self.health)
+        self.assertIn(
+            "$taskInfo.NextRunTime -ne $nextExpectedBoundary",
+            self.health,
+        )
+        self.assertIn(
+            '"MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY"',
+            self.health,
+        )
+        for contradictory_id in (100, 102, 107, 110):
+            self.assertIn(str(contradictory_id), self.health)
 
     def test_executable_scripts_keep_order_capability_disabled(self) -> None:
         combined = (self.installer + "\n" + self.health).lower()

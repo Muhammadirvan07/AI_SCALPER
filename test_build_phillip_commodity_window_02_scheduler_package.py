@@ -140,7 +140,7 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
             manifest["worker"]["operational_artifact_file_count"],
         )
         self.assertEqual(builder.TASK_NAME, manifest["new_task_name"])
-        self.assertEqual("WINDOW02.V7", manifest["transport_revision"])
+        self.assertEqual("WINDOW02.V8", manifest["transport_revision"])
         self.assertEqual(
             "OPERATOR_ONLY_EXISTING_TASK",
             manifest["remediation_mode"],
@@ -195,6 +195,13 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
             builder.INSTALLED_HEALTH_CHECKER_SHA256,
             health.replace('" +\n  "', ""),
         )
+        self.assertIn("MissedTaskRejected", health)
+        self.assertIn("MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY", health)
+        self.assertIn("$eventData.Count -ne 1", health)
+        self.assertIn("$data.Count -ne 1", health)
+        self.assertIn("$matching.Count -ne 1", health)
+        self.assertIn("$taskInfo.NextRunTime -ne $nextExpectedBoundary", health)
+        self.assertIn("Get-WinEvent -FilterHashtable", health)
 
     def test_helper_embeds_flat_exact_inventory(self) -> None:
         archive, _ = self._build("helper")

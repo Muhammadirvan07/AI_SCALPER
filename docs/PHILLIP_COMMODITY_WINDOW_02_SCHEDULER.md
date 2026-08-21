@@ -1,14 +1,14 @@
 # Phillip Commodity Window 02 Scheduler
 
-This is transport revision `WINDOW02.V7`, an operator-only health remediation
+This is transport revision `WINDOW02.V8`, an operator-only health remediation
 for the already installed least-privilege Window 02 task. It does not install,
 register, enable, disable, rename, start, stop, or delete any Scheduled Task.
 The installed `WINDOW02.V6` task definition, frozen worker, runtime, journal,
 audit root, task-review evidence, and installation receipt remain immutable.
 
-V7 replaces only the extracted operator verifier and health checker. The
+V8 replaces only the extracted operator verifier and health checker. The
 health checker separately binds the installed V6 package commit/tree and the
-new V7 package commit/tree. It continues to authenticate the exact V6
+new V8 package commit/tree. It continues to authenticate the exact V6
 installation receipt, task XML, frozen `r6` worker, contract, dependency lock,
 runtime status, and audit paths before reporting health.
 
@@ -19,6 +19,16 @@ only as a stable, one-byte, regular non-reparse file. It verifies metadata
 without opening the carrier because an active Windows byte-range lock may
 legitimately deny reads. These sidecars do not change the nine-file verified
 artifact count, and every other unexpected path still fails closed.
+
+V8 also recognizes one exact historical Windows missed-schedule state only
+during the gap before the next weekday boundary. It requires task state
+`Ready`, result `0x800710E0`, the exact derived next `06:45` run time, and one
+correlated Operational Event 153 whose XML is exactly
+`MissedTaskRejected` for this root task. Any automatic-start/completion/manual
+event in the same interval, duplicate/malformed event data, missing log, active
+interval, or next-boundary drift still fails closed. This classification is
+readiness for a future scheduler attempt; it is never acceptance of the missed
+boundary.
 
 ## Bound identity
 
@@ -174,7 +184,7 @@ $operatorRoot = (
 & "$operatorRoot\Test-PhillipCommodityWindow02TaskHealth.ps1"
 
 if (-not $?) {
-  throw "Window 02 V7 operator health verification failed."
+  throw "Window 02 V8 operator health verification failed."
 }
 ```
 
@@ -195,18 +205,18 @@ boundary.
 
 - If extraction fails, preserve the partial operator root and all three
   transfer files.
-- Preserve every V1--V6 worktree, runtime, audit, task-review, receipt, and
-  operator directory. V7 reads the exact `r6` installation evidence and never
+- Preserve every V1--V7 worktree, runtime, audit, task-review, receipt, and
+  operator directory. V8 reads the exact `r6` installation evidence and never
   repairs or replaces it.
 - If source, dependency, contract, snapshot, HMAC, ACL, profile, task XML, or
   receipt verification fails, preserve the output and do not mutate the task.
-- V7 has no task-registration or rollback path because it performs no
+- V8 has no task-registration or rollback path because it performs no
   Task Scheduler mutation.
 - Never delete, rename, enable, or start a historical task to repair Window
   02.
 - Never overwrite the worktree, runtime, audit, task-review, operator, or
   transfer directory after a failed attempt.
 
-Escalate with the complete console output, V7 operator-root inventory, task
+Escalate with the complete console output, V8 operator-root inventory, task
 state, and existing V6 installation receipt path. Secret material must not be
 exported.

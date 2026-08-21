@@ -73,6 +73,12 @@ $firstScheduledStart = [datetime]::Parse("2026-08-17T06:45:00")
 $scheduleEndBoundary = [datetime]::Parse("2026-10-13T00:16:00")
 $workerDurationSeconds = 84300
 $startupAllowanceSeconds = 300
+$operationalLog = "Microsoft-Windows-TaskScheduler/Operational"
+$taskSchedulerProvider = "Microsoft-Windows-TaskScheduler"
+$missedTaskEventId = 153
+$requestRefusedResult = [uint32]2147946720
+$missedEventCorrelationSeconds = 120
+$automaticEventIds = @(100, 102, 107, 110, 153)
 $priorTaskNames = @(
   "AI_SCALPER-PhillipCommodityV4-ReadOnlyShadow",
   "AI_SCALPER-PhillipCommodityV5-ReadOnlyShadow",
@@ -239,6 +245,170 @@ function Get-ExactRootTask {
     throw "Task is unavailable at the root path: $Name"
   }
   return $matches[0]
+}
+
+function Get-EventDataValue {
+  param(
+    [Parameter(Mandatory = $true)]
+    [xml]$EventXml,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+  $namespace = New-Object System.Xml.XmlNamespaceManager(
+    $EventXml.NameTable
+  )
+  $namespace.AddNamespace(
+    "event", "http://schemas.microsoft.com/win/2004/08/events/event"
+  )
+  $nodes = @(
+    $EventXml.SelectNodes(
+      "/event:Event/event:EventData/event:Data[@Name='$Name']",
+      $namespace
+    )
+  )
+  if ($nodes.Count -gt 1) {
+    throw "Task Scheduler event has duplicate $Name data."
+  }
+  if ($nodes.Count -eq 0) {
+    return $null
+  }
+  return [string]$nodes[0].InnerText
+}
+
+function Convert-LocalTaskTimeToUtc {
+  param(
+    [Parameter(Mandatory = $true)]
+    [datetime]$Value
+  )
+  $tokyo = [TimeZoneInfo]::FindSystemTimeZoneById("Tokyo Standard Time")
+  $unspecified = [DateTime]::SpecifyKind(
+    $Value,
+    [DateTimeKind]::Unspecified
+  )
+  return [TimeZoneInfo]::ConvertTimeToUtc($unspecified, $tokyo)
+}
+
+function Get-NextWeekdayScheduledStart {
+  param(
+    [Parameter(Mandatory = $true)]
+    [datetime]$PreviousStart,
+
+    [Parameter(Mandatory = $true)]
+    [datetime]$EndBoundary
+  )
+  $candidate = $PreviousStart.AddDays(1)
+  while ($candidate.DayOfWeek -in @(
+    [DayOfWeek]::Saturday,
+    [DayOfWeek]::Sunday
+  )) {
+    $candidate = $candidate.AddDays(1)
+  }
+  if ($candidate -ge $EndBoundary) {
+    return $null
+  }
+  return $candidate
+}
+
+function Get-VerifiedMissedScheduleEvidence {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Name,
+
+    [Parameter(Mandatory = $true)]
+    [datetime]$LastScheduledStart,
+
+    [Parameter(Mandatory = $true)]
+    [datetime]$LastRunTime,
+
+    [Parameter(Mandatory = $true)]
+    [uint32]$LastTaskResult,
+
+    [Parameter(Mandatory = $true)]
+    [string]$TaskState
+  )
+  if (
+    $TaskState -ne "Ready" -or
+    $LastTaskResult -ne $requestRefusedResult -or
+    $LastRunTime -lt $LastScheduledStart
+  ) {
+    throw "Historical missed-schedule state is not eligible for review."
+  }
+  $log = Get-WinEvent -ListLog $operationalLog -ErrorAction Stop
+  if ($null -eq $log -or [bool]$log.IsEnabled -ne $true) {
+    throw "Task Scheduler Operational log must already be enabled."
+  }
+  $lastRunUtc = Convert-LocalTaskTimeToUtc -Value $LastRunTime
+  $filter = @{
+    LogName = $operationalLog
+    Id = $automaticEventIds
+    StartTime = $lastRunUtc.AddSeconds(-$missedEventCorrelationSeconds)
+    EndTime = $lastRunUtc.AddSeconds($missedEventCorrelationSeconds)
+  }
+  $matching = @(
+    foreach ($event in @(
+      Get-WinEvent -FilterHashtable $filter -ErrorAction SilentlyContinue
+    )) {
+      $rawXml = [string]$event.ToXml()
+      [xml]$parsed = $rawXml
+      $taskPath = Get-EventDataValue -EventXml $parsed -Name "TaskName"
+      if ($taskPath -ne "\$Name") {
+        continue
+      }
+      $namespace = New-Object System.Xml.XmlNamespaceManager(
+        $parsed.NameTable
+      )
+      $namespace.AddNamespace(
+        "event", "http://schemas.microsoft.com/win/2004/08/events/event"
+      )
+      $eventData = @(
+        $parsed.SelectNodes("/event:Event/event:EventData", $namespace)
+      )
+      $data = @(
+        $parsed.SelectNodes(
+          "/event:Event/event:EventData/event:Data",
+          $namespace
+        )
+      )
+      if (
+        [int]$event.Id -notin $automaticEventIds -or
+        [string]$event.ProviderName -ne $taskSchedulerProvider -or
+        [string]$event.LogName -ne $operationalLog -or
+        $null -eq $event.TimeCreated -or
+        $null -eq $event.RecordId -or
+        $eventData.Count -ne 1 -or
+        [string]$eventData[0].GetAttribute("Name") -ne
+          "MissedTaskRejected" -or
+        $data.Count -ne 1 -or
+        [string]$data[0].GetAttribute("Name") -ne "TaskName"
+      ) {
+        throw "Correlated Task Scheduler event projection is invalid."
+      }
+      [PSCustomObject]@{
+        EventId = [int]$event.Id
+        RecordId = [long]$event.RecordId
+        TimeCreatedUtc = $event.TimeCreated.ToUniversalTime()
+      }
+    }
+  )
+  if (
+    $matching.Count -ne 1 -or
+    $matching[0].EventId -ne $missedTaskEventId -or
+    [Math]::Abs(
+      ($matching[0].TimeCreatedUtc - $lastRunUtc).TotalSeconds
+    ) -gt $missedEventCorrelationSeconds
+  ) {
+    throw "Exact historical missed-schedule evidence is unavailable."
+  }
+  return [PSCustomObject]@{
+    Status = "MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY"
+    EventRecordId = $matching[0].RecordId
+    EventTimeUtc = $matching[0].TimeCreatedUtc.ToString(
+      "yyyy-MM-ddTHH:mm:ss.fffffffZ",
+      [Globalization.CultureInfo]::InvariantCulture
+    )
+    ScheduledStart = $LastScheduledStart
+  }
 }
 
 if ((Get-TimeZone).Id -ne "Tokyo Standard Time") {
@@ -569,6 +739,10 @@ $activeInterval = [bool]$schedulePhase.ActiveInterval
 $startupAllowance = [bool]$schedulePhase.StartupAllowance
 $lastScheduledStart = $schedulePhase.LastScheduledStart
 $runtimeStatus = "NOT_YET_REQUIRED"
+$historicalBoundaryStatus = "NOT_APPLICABLE"
+$missedBoundaryEventRecordId = $null
+$missedBoundaryEventAtUtc = $null
+$nextExpectedBoundary = $null
 
 if ($task.State -eq "Disabled") {
   throw "Window 02 scheduled task is disabled."
@@ -611,13 +785,39 @@ else {
   }
 
   if (-not $startupAllowance) {
-    if (
+    $lastRunAligned = -not (
       $taskInfo.LastRunTime -lt $lastScheduledStart.AddMinutes(-1) -or
       $taskInfo.LastRunTime -gt $lastScheduledStart.AddMinutes(5)
-    ) {
-      throw "Last Window 02 task start is outside its scheduler boundary."
+    )
+    if (-not $lastRunAligned) {
+      if ($schedulePhase.Phase -ne "GAP") {
+        throw "Last Window 02 task start is outside its scheduler boundary."
+      }
+      $nextExpectedBoundary = Get-NextWeekdayScheduledStart `
+        -PreviousStart $lastScheduledStart `
+        -EndBoundary $scheduleEndBoundary
+      if (
+        $null -eq $nextExpectedBoundary -or
+        $taskInfo.NextRunTime -ne $nextExpectedBoundary
+      ) {
+        throw "Next Window 02 scheduler boundary is unavailable or drifted."
+      }
+      $missedEvidence = Get-VerifiedMissedScheduleEvidence `
+        -Name $TaskName `
+        -LastScheduledStart $lastScheduledStart `
+        -LastRunTime $taskInfo.LastRunTime `
+        -LastTaskResult ([uint32]$taskInfo.LastTaskResult) `
+        -TaskState ([string]$task.State)
+      $historicalBoundaryStatus = [string]$missedEvidence.Status
+      $missedBoundaryEventRecordId = [long]$missedEvidence.EventRecordId
+      $missedBoundaryEventAtUtc = [string]$missedEvidence.EventTimeUtc
     }
-    if (-not $activeInterval -and $taskInfo.LastTaskResult -ne 0) {
+    if (
+      -not $activeInterval -and
+      $taskInfo.LastTaskResult -ne 0 -and
+      $historicalBoundaryStatus -ne
+        "MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY"
+    ) {
       throw "Last completed Window 02 worker returned a nonzero result."
     }
   }
@@ -654,6 +854,10 @@ else {
   ExpectedActiveInterval = $activeInterval
   StartupAllowance = $startupAllowance
   RuntimeStatus = $runtimeStatus
+  HistoricalBoundaryStatus = $historicalBoundaryStatus
+  MissedBoundaryEventRecordId = $missedBoundaryEventRecordId
+  MissedBoundaryEventAtUtc = $missedBoundaryEventAtUtc
+  NextExpectedBoundary = $nextExpectedBoundary
   PackageSourceCommit = $packageSourceCommit
   PackageSourceTree = $packageSourceTree
   OperatorContractVerifierSHA256 = $contractVerifierSha256
