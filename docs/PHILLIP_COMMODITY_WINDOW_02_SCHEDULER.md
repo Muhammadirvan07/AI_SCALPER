@@ -1,12 +1,12 @@
 # Phillip Commodity Window 02 Scheduler
 
-This is transport revision `WINDOW02.V8`, an operator-only health remediation
+This is transport revision `WINDOW02.V9`, an operator-only health remediation
 for the already installed least-privilege Window 02 task. It does not install,
 register, enable, disable, rename, start, stop, or delete any Scheduled Task.
 The installed `WINDOW02.V6` task definition, frozen worker, runtime, journal,
 audit root, task-review evidence, and installation receipt remain immutable.
 
-V8 replaces only the extracted operator verifier and health checker. The
+V9 replaces only the extracted operator verifier and health checker. The
 health checker separately binds the installed V6 package commit/tree and the
 new V8 package commit/tree. It continues to authenticate the exact V6
 installation receipt, task XML, frozen `r6` worker, contract, dependency lock,
@@ -20,13 +20,15 @@ without opening the carrier because an active Windows byte-range lock may
 legitimately deny reads. These sidecars do not change the nine-file verified
 artifact count, and every other unexpected path still fails closed.
 
-V8 also recognizes one exact historical Windows missed-schedule state only
-during the gap before the next weekday boundary. It requires task state
+V9 recognizes one exact historical Windows missed-schedule state during the
+missed boundary's active interval or the following gap. It requires task state
 `Ready`, result `0x800710E0`, the exact derived next `06:45` run time, and one
 correlated Operational Event 153 whose XML is exactly
 `MissedTaskRejected` for this root task. Any automatic-start/completion/manual
-event in the same interval, duplicate/malformed event data, missing log, active
-interval, or next-boundary drift still fails closed. This classification is
+event in the same interval, duplicate/malformed event data, missing log,
+startup allowance, or next-boundary drift still fails closed. An active
+interval with verified missed evidence does not require a nonexistent journal
+or runtime heartbeat. This classification is
 readiness for a future scheduler attempt; it is never acceptance of the missed
 boundary.
 

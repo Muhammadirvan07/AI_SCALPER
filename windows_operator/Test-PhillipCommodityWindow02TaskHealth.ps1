@@ -761,36 +761,13 @@ else {
     $taskInfo.LastRunTime -ge $lastScheduledStart.AddMinutes(-1) -and
     $taskInfo.LastRunTime -le $now.AddMinutes(1)
   )
-  if ($activeInterval) {
-    if ($startupAllowance) {
-      if ($task.State -eq "Running" -and -not $attemptedThisBoundary) {
-        throw "Window 02 running state lacks the current boundary start."
-      }
-      if ($task.State -eq "Queued" -and $attemptedThisBoundary) {
-        throw "Window 02 queued state follows a recorded start attempt."
-      }
-      if ($task.State -eq "Ready" -and $attemptedThisBoundary) {
-        throw "Window 02 worker exited during startup allowance."
-      }
-      if ($task.State -notin @("Running", "Queued", "Ready")) {
-        throw "Window 02 task state is invalid during startup allowance."
-      }
-    }
-    elseif ($task.State -ne "Running") {
-      throw "Window 02 task is not Running during its active interval."
-    }
-  }
-  elseif ($task.State -ne "Ready") {
-    throw "Window 02 task is not Ready outside its active interval."
-  }
-
   if (-not $startupAllowance) {
     $lastRunAligned = -not (
       $taskInfo.LastRunTime -lt $lastScheduledStart.AddMinutes(-1) -or
       $taskInfo.LastRunTime -gt $lastScheduledStart.AddMinutes(5)
     )
     if (-not $lastRunAligned) {
-      if ($schedulePhase.Phase -ne "GAP") {
+      if ($schedulePhase.Phase -notin @("ACTIVE", "GAP")) {
         throw "Last Window 02 task start is outside its scheduler boundary."
       }
       $nextExpectedBoundary = Get-NextWeekdayScheduledStart `
@@ -812,6 +789,35 @@ else {
       $missedBoundaryEventRecordId = [long]$missedEvidence.EventRecordId
       $missedBoundaryEventAtUtc = [string]$missedEvidence.EventTimeUtc
     }
+  }
+  if ($activeInterval) {
+    if ($startupAllowance) {
+      if ($task.State -eq "Running" -and -not $attemptedThisBoundary) {
+        throw "Window 02 running state lacks the current boundary start."
+      }
+      if ($task.State -eq "Queued" -and $attemptedThisBoundary) {
+        throw "Window 02 queued state follows a recorded start attempt."
+      }
+      if ($task.State -eq "Ready" -and $attemptedThisBoundary) {
+        throw "Window 02 worker exited during startup allowance."
+      }
+      if ($task.State -notin @("Running", "Queued", "Ready")) {
+        throw "Window 02 task state is invalid during startup allowance."
+      }
+    }
+    elseif (
+      $historicalBoundaryStatus -ne
+        "MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY" -and
+      $task.State -ne "Running"
+    ) {
+      throw "Window 02 task is not Running during its active interval."
+    }
+  }
+  elseif ($task.State -ne "Ready") {
+    throw "Window 02 task is not Ready outside its active interval."
+  }
+
+  if (-not $startupAllowance) {
     if (
       -not $activeInterval -and
       $taskInfo.LastTaskResult -ne 0 -and
@@ -822,7 +828,12 @@ else {
     }
   }
 
-  if ($activeInterval -and -not $startupAllowance) {
+  if (
+    $activeInterval -and
+    -not $startupAllowance -and
+    $historicalBoundaryStatus -ne
+      "MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY"
+  ) {
     Assert-RegularNonReparseFile -Path $journal
     $statusOutput = Invoke-CheckedNativeProcess `
       -FilePath $ReleasePython `

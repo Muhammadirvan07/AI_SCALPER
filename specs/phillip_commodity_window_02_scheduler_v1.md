@@ -249,3 +249,19 @@ The exception is prohibited during the active interval, startup allowance,
 pre-start, and expired phases. It never converts a missed boundary into
 automatic-run acceptance. All source, task XML, receipt, ACL, dependency,
 contract, runtime, sidecar, safety, and no-mutation checks remain mandatory.
+
+## Transport revision V9
+
+Windows may publish the exact Event 153 only after the missed boundary's
+five-minute startup allowance while the 84,300-second active interval is still
+open. `WINDOW02.V9` therefore permits the same fully verified
+`MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY` classification during either
+`ACTIVE` or `GAP`. It remains prohibited during startup allowance, pre-start,
+and expired phases.
+
+When that exact classification succeeds during `ACTIVE`, health MUST NOT
+require a running worker, journal, or runtime heartbeat that the rejected task
+could not have produced. All Event 153 correlation, contradictory-event,
+task-state, result, next-boundary, identity, ACL, dependency, contract, and
+no-mutation requirements remain mandatory. The classification is readiness
+for the next boundary only and MUST NOT satisfy start or completion acceptance.

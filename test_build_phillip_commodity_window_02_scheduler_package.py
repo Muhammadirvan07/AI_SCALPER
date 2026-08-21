@@ -140,7 +140,7 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
             manifest["worker"]["operational_artifact_file_count"],
         )
         self.assertEqual(builder.TASK_NAME, manifest["new_task_name"])
-        self.assertEqual("WINDOW02.V8", manifest["transport_revision"])
+        self.assertEqual("WINDOW02.V9", manifest["transport_revision"])
         self.assertEqual(
             "OPERATOR_ONLY_EXISTING_TASK",
             manifest["remediation_mode"],

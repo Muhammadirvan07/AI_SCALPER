@@ -192,7 +192,9 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
         ):
             self.assertNotIn(command, self.health)
         active_gate = self.health.index(
-            "if ($activeInterval -and -not $startupAllowance)"
+            "if (\n"
+            "    $activeInterval -and\n"
+            "    -not $startupAllowance -and"
         )
         journal_requirement = self.health.index(
             "Assert-RegularNonReparseFile -Path $journal"
@@ -250,7 +252,7 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
         self.assertIn("$currentIdentity.User.Value", self.health)
         self.assertIn("$receipt.preserved_tasks", self.health)
 
-    def test_v8_health_preserves_v6_receipt_and_uses_new_verifier(self) -> None:
+    def test_v9_health_preserves_v6_receipt_and_uses_new_verifier(self) -> None:
         self.assertIn(
             '"6bdd426ba02818bf3e3669a68820c027b3f6f25a"',
             self.health,
@@ -286,8 +288,11 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
             self.health,
         )
 
-    def test_v8_missed_boundary_exception_is_exact_and_gap_only(self) -> None:
-        self.assertIn('$schedulePhase.Phase -ne "GAP"', self.health)
+    def test_v9_missed_boundary_exception_is_exact_and_phase_bounded(self) -> None:
+        self.assertIn(
+            '$schedulePhase.Phase -notin @("ACTIVE", "GAP")',
+            self.health,
+        )
         self.assertIn("[uint32]2147946720", self.health)
         self.assertIn('"MissedTaskRejected"', self.health)
         self.assertIn("$matching.Count -ne 1", self.health)
@@ -298,6 +303,18 @@ class PhillipCommodityWindow02TaskStaticTests(unittest.TestCase):
         )
         self.assertIn(
             '"MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY"',
+            self.health,
+        )
+        self.assertIn(
+            "$historicalBoundaryStatus -ne\n"
+            '        "MISSED_SCHEDULE_VERIFIED_NEXT_BOUNDARY_READY" -and\n'
+            '      $task.State -ne "Running"',
+            self.health,
+        )
+        self.assertIn(
+            "$activeInterval -and\n"
+            "    -not $startupAllowance -and\n"
+            "    $historicalBoundaryStatus -ne",
             self.health,
         )
         for contradictory_id in (100, 102, 107, 110):
