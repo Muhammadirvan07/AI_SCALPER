@@ -46,6 +46,7 @@ forward_performance_audit_report.json
 !.codex/skills/ai-scalper-dashboard-runtime/
 !.codex/skills/ai-scalper-dashboard-runtime/**
 .agents/
+.continue/
 skills-lock.json
 AI_SCALPER_CHATGPT_MEMORY_AND_SKILL_PACK.md
 AI_SCALPER_FULL_PROJECT_CONTEXT_*/
