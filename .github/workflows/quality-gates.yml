@@ -101,6 +101,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -109,12 +114,16 @@ jobs:
       - name: Clean frontend installation
         working-directory: frontend-dashboard
         run: npm ci
+      - name: Install clean E2E backend dependencies
+        run: python -m pip install --disable-pip-version-check --no-input -r backend/requirements.txt
       - name: Install lockfile-pinned Playwright browser
         working-directory: frontend-dashboard
         run: npx playwright install --with-deps chromium
       - name: Frontend unit, lint, types, build, E2E, and audit
         env:
           AI_SCALPER_FRONTEND_DEPS_PREINSTALLED: "1"
+          VITE_API_BASE_URL: http://127.0.0.1:8000/api/v1
+          VITE_WS_URL: ws://127.0.0.1:8000/api/v1/ws
         run: python scripts/verify_repository.py frontend
 
   dependency-security:
