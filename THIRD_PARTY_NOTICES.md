@@ -25,7 +25,6 @@ Inventory summary: Python 3.12, 63 Python distributions (1 without declared lice
 | cffi | 2.1.1 | MIT-0 | https://cffi.readthedocs.io/ |
 | charset-normalizer | 3.5.1 | MIT | https://github.com/jawah/charset_normalizer/blob/master/CHANGELOG.md |
 | click | 8.4.2 | BSD-3-Clause | https://click.palletsprojects.com/page/changes/ |
-| colorama | 0.4.6 | OSI Approved :: BSD License | https://github.com/tartley/colorama |
 | coverage | 7.15.4 | Apache-2.0 | https://coverage.readthedocs.io/en/7.15.4 |
 | curl_cffi | 0.16.2 | MIT | https://github.com/lexiforest/curl_cffi |
 | defusedxml | 0.7.1 | PSFL | https://github.com/tiran/defusedxml |
@@ -77,6 +76,7 @@ Inventory summary: Python 3.12, 63 Python distributions (1 without declared lice
 | tzdata | 2026.3 | Apache-2.0 | https://github.com/python/tzdata/issues |
 | urllib3 | 2.7.0 | MIT | https://github.com/urllib3/urllib3/blob/main/CHANGES.rst |
 | uvicorn | 0.35.0 | BSD-3-Clause | https://www.uvicorn.org/release-notes |
+| uvloop | 0.22.1 | MIT License | https://github.com/MagicStack/uvloop |
 | watchfiles | 1.2.0 | MIT | https://github.com/samuelcolvin/watchfiles/releases |
 | websockets | 15.0.1 | BSD-3-Clause | https://github.com/python-websockets/websockets |
 | yfinance | 0.2.66 | Apache | https://github.com/ranaroussi/yfinance |
