@@ -1518,7 +1518,7 @@ def _require_output_absent(path: Path) -> None:
 
 def _remove_created_output(
     path: Path,
-    created_identity: tuple[int, int] | None,
+    created_identity: tuple[int, int, int, int, int, int] | None,
 ) -> None:
     if created_identity is None:
         return
@@ -1528,7 +1528,15 @@ def _remove_created_output(
         return
     if (
         not stat.S_ISREG(observed.st_mode)
-        or (observed.st_dev, observed.st_ino) != created_identity
+        or (
+            observed.st_dev,
+            observed.st_ino,
+            observed.st_mode,
+            observed.st_size,
+            observed.st_mtime_ns,
+            observed.st_ctime_ns,
+        )
+        != created_identity
     ):
         return
     try:
@@ -1556,11 +1564,18 @@ def _write_archive(
         except OSError as exc:
             raise PostRunAcceptanceError("OUTPUT_PARENT_REJECTED") from exc
         _directory(parent, "OUTPUT_PARENT_REJECTED")
-    created_identity: tuple[int, int] | None = None
+    created_identity: tuple[int, int, int, int, int, int] | None = None
     try:
         with path.open("xb") as handle:
             created = os.fstat(handle.fileno())
-            created_identity = (created.st_dev, created.st_ino)
+            created_identity = (
+                created.st_dev,
+                created.st_ino,
+                created.st_mode,
+                created.st_size,
+                created.st_mtime_ns,
+                created.st_ctime_ns,
+            )
             with zipfile.ZipFile(
                 handle,
                 mode="w",
@@ -1571,6 +1586,15 @@ def _write_archive(
                     archive.writestr(_zip_info(name), members[name])
             handle.flush()
             os.fsync(handle.fileno())
+            completed = os.fstat(handle.fileno())
+            created_identity = (
+                completed.st_dev,
+                completed.st_ino,
+                completed.st_mode,
+                completed.st_size,
+                completed.st_mtime_ns,
+                completed.st_ctime_ns,
+            )
     except Exception:
         _remove_created_output(path, created_identity)
         raise
@@ -1804,7 +1828,7 @@ def collect_acceptance(
     bundle["bundle_identity_sha256"] = _sha256(_canonical_json(bundle))
     evidence[BUNDLE_MANIFEST] = _pretty_json(bundle)
     output_path = output.absolute()
-    created_identity: tuple[int, int] | None = None
+    created_identity: tuple[int, int, int, int, int, int] | None = None
     try:
         created_identity = _write_archive(
             output_path,
@@ -2316,14 +2340,30 @@ def _write_document_exclusive(path: Path, value: bytes) -> None:
         except OSError as exc:
             raise PostRunAcceptanceError("OUTPUT_PARENT_REJECTED") from exc
         _directory(parent, "OUTPUT_PARENT_REJECTED")
-    created_identity: tuple[int, int] | None = None
+    created_identity: tuple[int, int, int, int, int, int] | None = None
     try:
         with path.open("xb") as handle:
             created = os.fstat(handle.fileno())
-            created_identity = (created.st_dev, created.st_ino)
+            created_identity = (
+                created.st_dev,
+                created.st_ino,
+                created.st_mode,
+                created.st_size,
+                created.st_mtime_ns,
+                created.st_ctime_ns,
+            )
             handle.write(value)
             handle.flush()
             os.fsync(handle.fileno())
+            completed = os.fstat(handle.fileno())
+            created_identity = (
+                completed.st_dev,
+                completed.st_ino,
+                completed.st_mode,
+                completed.st_size,
+                completed.st_mtime_ns,
+                completed.st_ctime_ns,
+            )
     except Exception:
         _remove_created_output(path, created_identity)
         raise
@@ -2609,7 +2649,7 @@ def prepare_custody_request(
     }
     manifest["request_identity_sha256"] = _sha256(_canonical_json(manifest))
     output_path = output.absolute()
-    created_identity: tuple[int, int] | None = None
+    created_identity: tuple[int, int, int, int, int, int] | None = None
     try:
         created_identity = _write_archive(
             output_path,
