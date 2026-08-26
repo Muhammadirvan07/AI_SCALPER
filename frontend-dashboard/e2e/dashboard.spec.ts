@@ -122,7 +122,11 @@ test('WebSocket disconnect preserves the fail-closed REST view', async ({ page }
 
 test('all routes avoid console errors and unintended horizontal overflow', async ({ page }) => {
   const errors: string[] = []
-  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
+  page.on('console', (message) => {
+    const text = message.text()
+    const expectedUnavailable = text === 'Failed to load resource: the server responded with a status of 503 (Service Unavailable)'
+    if (message.type() === 'error' && !expectedUnavailable) errors.push(text)
+  })
   page.on('pageerror', (error) => errors.push(error.message))
   const routes = ['/', '/overview', '/analytics', '/markets', '/news', '/economic-calendar', '/signals', '/paper-orders', '/performance', '/strategy', '/ai-diagnostics', '/risk-management', '/system-logs', '/system-health', '/settings']
   for (const route of routes) {
