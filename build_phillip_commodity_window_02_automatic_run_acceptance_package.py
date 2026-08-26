@@ -95,10 +95,25 @@ def _tracked_source(root: Path, relative: str) -> bytes:
     )
     if expected.returncode != 0:
         raise ToolkitBuildError(f"source is not tracked at HEAD: {relative}")
-    observed = path.read_bytes()
-    if observed != expected.stdout:
+    drift = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "diff",
+            "--quiet",
+            "--no-ext-diff",
+            "HEAD",
+            "--",
+            relative,
+        ],
+        check=False,
+    )
+    if drift.returncode == 1:
         raise ToolkitBuildError(f"tracked source drift: {relative}")
-    return observed
+    if drift.returncode != 0:
+        raise ToolkitBuildError(f"tracked source verification failed: {relative}")
+    return expected.stdout
 
 
 def _sha256(value: bytes) -> str:
@@ -133,7 +148,12 @@ def _member_row(path: str, value: bytes) -> dict[str, object]:
 
 
 def _render_wrapper(
-    value: bytes, *, commit: str, tree: str, tool_sha256: str
+    value: bytes,
+    *,
+    commit: str,
+    tree: str,
+    tool_sha256: str,
+    scheduler_operator_root: str,
 ) -> bytes:
     try:
         text = value.decode("utf-8")
@@ -143,6 +163,7 @@ def _render_wrapper(
         "__TOOLKIT_SOURCE_COMMIT__": commit,
         "__TOOLKIT_SOURCE_TREE__": tree,
         "__ACCEPTANCE_TOOL_SHA256__": tool_sha256,
+        "__SCHEDULER_OPERATOR_ROOT__": scheduler_operator_root,
     }
     for token, replacement in replacements.items():
         if text.count(token) != 1:
@@ -230,10 +251,18 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
     }
     if _git(source_root, "status", "--porcelain=v1", "--untracked-files=all"):
         raise ToolkitBuildError("source worktree must be clean")
+    scheduler_commit = acceptance.HEALTH_OPERATOR_PACKAGE_COMMIT
+    if not re.fullmatch(r"[0-9a-f]{40}", scheduler_commit):
+        raise ToolkitBuildError("installed scheduler commit identity is invalid")
+    scheduler_operator_root = acceptance.HEALTH_OPERATOR_ROOT
     tool_sha = _sha256(tracked[TOOL_PATH])
     for path in sorted(name for name in SOURCE_PATHS if name.endswith(".ps1")):
         tracked[path] = _render_wrapper(
-            tracked[path], commit=commit, tree=tree, tool_sha256=tool_sha
+            tracked[path],
+            commit=commit,
+            tree=tree,
+            tool_sha256=tool_sha,
+            scheduler_operator_root=scheduler_operator_root,
         )
     rows = [_member_row(path, tracked[path]) for path in sorted(tracked)]
     manifest: dict[str, object] = {

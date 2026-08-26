@@ -11,14 +11,12 @@ param(
   [ValidateSet("Watch", "CollectStart", "CollectCompletion")]
   [string]$Mode = "Watch",
 
-  [Parameter()]
-  [string]$TargetBoundaryLocal = "2026-08-17T06:45:00+09:00",
+  [Parameter(Mandatory = $true)]
+  [ValidateNotNullOrEmpty()]
+  [string]$TargetBoundaryLocal,
 
   [Parameter()]
-  [string]$SchedulerOperatorRoot = (
-    "C:\AI_SCALPER_PRIVATE\" +
-    "phillip-commodity-window-02-scheduler-operator-d2410517"
-  ),
+  [string]$SchedulerOperatorRoot = "__SCHEDULER_OPERATOR_ROOT__",
 
   [Parameter()]
   [string]$Repo = "C:\AI_SCALPER",
@@ -838,6 +836,9 @@ if ($Mode -eq "CollectCompletion") {
 
 Assert-Readiness
 $boundaryAt = [DateTimeOffset]::Parse([string]$boundary.utc)
+if ($boundaryAt -le [DateTimeOffset]::UtcNow) {
+  throw "TargetBoundaryLocal must be strictly future in Watch mode."
+}
 $startEligibleAt = $boundaryAt.AddSeconds(300)
 $expectedEnd = [DateTimeOffset]::Parse(
   [string]$boundary.expected_worker_end_utc

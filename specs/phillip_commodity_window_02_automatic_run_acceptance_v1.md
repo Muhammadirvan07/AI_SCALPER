@@ -49,6 +49,14 @@ classification for an earlier missed schedule MAY establish readiness for a
 strictly future eligible boundary. It MUST NOT be accepted as evidence that a
 task started or completed.
 
+The scheduler operator root MUST be derived from the first eight hexadecimal
+characters of that exact scheduler package commit. The scheduler archive
+suffix, scheduler transfer manifest `operator_root`, extraction-helper root,
+and both rendered acceptance entry-point defaults MUST agree. A caller MUST
+provide `TargetBoundaryLocal`; Watch mode MUST reject a missing or non-future
+boundary. Collection modes retain the exact observed boundary and MAY run
+after it solely to collect evidence.
+
 ## Functional Requirements
 
 - FR-1: The toolkit MUST bind the exact installed scheduler package commit,
@@ -71,7 +79,7 @@ task started or completed.
   submit an order.
 - FR-6: Collection MUST require an explicit target boundary expressed as a
   canonical RFC 3339 timestamp with `+09:00`, at 06:45 JST on an eligible
-  weekday, no earlier than `2026-08-17T06:45:00+09:00`, and before the
+  weekday, strictly future when Watch mode starts, and before the
   scheduler end boundary `2026-10-13T00:16:00+09:00`.
 - FR-7: Watch mode MUST poll local read-only state for one target boundary,
   collect the start archive once eligible, continue monitoring the same task
@@ -397,7 +405,7 @@ call an HTTP method/path such as `GET /api/acceptance` or
 
 ```powershell
 & .\Test-PhillipCommodityWindow02AutomaticRunAcceptanceReadiness.ps1 `
-  -TargetBoundary "2026-08-17T06:45:00+09:00"
+  -TargetBoundary "<EXACT_FUTURE_NEXT_RUN_TIME_LOCAL>"
 ```
 
 Exit zero returns a formatted object with status
@@ -409,7 +417,7 @@ precondition exits nonzero and produces no archive.
 ```powershell
 & .\Invoke-PhillipCommodityWindow02AutomaticRunAcceptance.ps1 `
   -Mode Watch `
-  -TargetBoundary "2026-08-17T06:45:00+09:00" `
+  -TargetBoundary "<EXACT_FUTURE_NEXT_RUN_TIME_LOCAL>" `
   -OutputRoot "C:\AI_SCALPER_PRIVATE\phillip-window-02-acceptance"
 ```
 

@@ -128,10 +128,25 @@ def _tracked_source(root: Path, relative: str) -> bytes:
     )
     if expected.returncode != 0:
         raise PackageBuildError(f"source is not tracked at HEAD: {relative}")
-    observed = path.read_bytes()
-    if observed != expected.stdout:
+    drift = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "diff",
+            "--quiet",
+            "--no-ext-diff",
+            "HEAD",
+            "--",
+            relative,
+        ],
+        check=False,
+    )
+    if drift.returncode == 1:
         raise PackageBuildError(f"tracked source drift: {relative}")
-    return observed
+    if drift.returncode != 0:
+        raise PackageBuildError(f"tracked source verification failed: {relative}")
+    return expected.stdout
 
 
 def _render(
@@ -486,6 +501,13 @@ def build_package(source_root: Path, output: Path) -> dict[str, object]:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     commit, tree = _source_identity(source_root)
+    expected_archive_name = (
+        "phillip-commodity-window-02-scheduler-" + commit[:8] + ".zip"
+    )
+    if output.name != expected_archive_name:
+        raise PackageBuildError(
+            "output filename suffix must equal the exact source commit prefix"
+        )
     sources = {
         relative: _tracked_source(source_root, relative)
         for relative in TEMPLATE_PATHS
