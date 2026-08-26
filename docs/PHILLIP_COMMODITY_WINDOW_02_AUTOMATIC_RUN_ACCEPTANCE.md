@@ -20,7 +20,7 @@ promotion gates.
 
 The toolkit keeps the installed V6 receipt immutable while invoking the
 operator-only V9 health remediation from
-`C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-scheduler-operator-d2410512`,
+`C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-scheduler-operator-1194212f`,
 derived from the exact scheduler package commit prefix. Both acceptance entry
 points receive this value from the package builder; do not substitute an
 archive filename suffix or an older operator root.

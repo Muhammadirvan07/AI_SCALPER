@@ -43,8 +43,8 @@ The installed scheduler identity is package commit
 These values are immutable inputs to this specification.
 
 The acceptance toolkit is additionally bound to the V9 operator-only health
-remediation at commit `d24105123ebbcffbd37effc538fccfb4943b64b5` and tree
-`73478211f75e2c10dc5f5a763bc5a7e9fe40def6`. A fail-closed Event 153
+remediation at commit `1194212f4ce91be55fe21a506473a4a7dfc0ef88` and tree
+`353fcd162503bb102afe37fbebb28d48d318ceb7`. A fail-closed Event 153
 classification for an earlier missed schedule MAY establish readiness for a
 strictly future eligible boundary. It MUST NOT be accepted as evidence that a
 task started or completed.
