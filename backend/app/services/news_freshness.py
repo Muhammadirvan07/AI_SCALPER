@@ -21,7 +21,7 @@ def classify_news_freshness(
     published_at: datetime | None,
     *,
     now: datetime | None = None,
-    realtime_max_age_hours: int = 72,
+    realtime_max_age_hours: float = 0.5,
     recent_max_age_hours: int = 168,
     clock_skew_tolerance_minutes: int = 5,
 ) -> NewsFreshness:

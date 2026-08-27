@@ -92,7 +92,10 @@ class WindowsEvidenceKeyStore:
 
     def load(self, key_name: str) -> bytes:
         name = self._name(key_name)
-        value = self._backend.get_password(self._service, name)
+        try:
+            value = self._backend.get_password(self._service, name)
+        except Exception as exc:
+            raise EvidenceCredentialError("credential backend read failed") from exc
         if value is None:
             raise EvidenceCredentialError("evidence credential is not provisioned")
         return self._decode(value)
@@ -101,11 +104,21 @@ class WindowsEvidenceKeyStore:
         """Return the existing key or provision one new 256-bit key."""
 
         name = self._name(key_name)
-        existing = self._backend.get_password(self._service, name)
+        try:
+            existing = self._backend.get_password(self._service, name)
+        except Exception as exc:
+            raise EvidenceCredentialError("credential backend read failed") from exc
         if existing is not None:
             return self._decode(existing), False
         generated = secrets.token_bytes(32)
-        self._backend.set_password(self._service, name, "hex:" + generated.hex())
+        try:
+            self._backend.set_password(
+                self._service,
+                name,
+                "hex:" + generated.hex(),
+            )
+        except Exception as exc:
+            raise EvidenceCredentialError("credential backend write failed") from exc
         persisted = self.load(name)
         if persisted != generated:
             raise EvidenceCredentialError("credential verification failed after provisioning")

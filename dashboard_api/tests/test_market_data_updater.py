@@ -10,12 +10,23 @@ from pathlib import Path
 
 import pytest
 
+import market_data_updater
 from market_data_updater import (
     CollectorRunner,
     LockSecurityError,
     MarketDataUpdater,
     SingleInstanceLock,
     UpdaterSettings,
+)
+
+
+requires_posix_fcntl = pytest.mark.skipif(
+    market_data_updater.fcntl is None,
+    reason="POSIX fcntl advisory-lock semantics are unavailable on this host",
+)
+requires_posix_identity = pytest.mark.skipif(
+    not hasattr(os, "getuid"),
+    reason="POSIX user identity APIs are unavailable on this host",
 )
 
 
@@ -39,6 +50,15 @@ def _settings(tmp_path: Path) -> UpdaterSettings:
     )
 
 
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        if sys.platform == "win32" and getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows host does not grant symbolic-link creation capability")
+        raise
+
+
 def test_collector_runner_only_invokes_fixed_safe_collector(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
 
@@ -56,6 +76,7 @@ def test_collector_runner_rejects_unknown_mode(tmp_path: Path) -> None:
         asyncio.run(CollectorRunner(settings).run("live"))
 
 
+@requires_posix_fcntl
 def test_single_instance_lock_prevents_duplicate_process(tmp_path: Path) -> None:
     first = SingleInstanceLock(tmp_path / "updater.lock")
     second = SingleInstanceLock(tmp_path / "updater.lock")
@@ -67,16 +88,18 @@ def test_single_instance_lock_prevents_duplicate_process(tmp_path: Path) -> None
         first.release()
 
 
+@requires_posix_fcntl
 def test_single_instance_lock_rejects_symbolic_link(tmp_path: Path) -> None:
     target = tmp_path / "target.lock"
     target.touch(mode=0o600)
     link = tmp_path / "updater.lock"
-    link.symlink_to(target)
+    _symlink_or_skip(link, target)
 
     with pytest.raises(LockSecurityError, match="aman|link"):
         SingleInstanceLock(link).acquire()
 
 
+@requires_posix_fcntl
 def test_single_instance_lock_rejects_unsafe_file_permission(tmp_path: Path) -> None:
     lock_path = tmp_path / "updater.lock"
     lock_path.touch(mode=0o600)
@@ -86,6 +109,7 @@ def test_single_instance_lock_rejects_unsafe_file_permission(tmp_path: Path) -> 
         SingleInstanceLock(lock_path).acquire()
 
 
+@requires_posix_fcntl
 def test_single_instance_lock_rejects_unsafe_runtime_directory(tmp_path: Path) -> None:
     runtime = tmp_path / "shared"
     runtime.mkdir(mode=0o700)
@@ -95,6 +119,8 @@ def test_single_instance_lock_rejects_unsafe_runtime_directory(tmp_path: Path) -
         SingleInstanceLock(runtime / "updater.lock").acquire()
 
 
+@requires_posix_fcntl
+@requires_posix_identity
 def test_single_instance_lock_rejects_owner_mismatch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -106,13 +132,14 @@ def test_single_instance_lock_rejects_owner_mismatch(
         SingleInstanceLock(tmp_path / "updater.lock").acquire()
 
 
+@requires_posix_fcntl
 def test_single_instance_lock_fallback_still_rejects_symlink(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "target.lock"
     target.touch(mode=0o600)
     link = tmp_path / "updater.lock"
-    link.symlink_to(target)
+    _symlink_or_skip(link, target)
     monkeypatch.setattr("market_data_updater._O_NOFOLLOW", 0)
 
     with pytest.raises(LockSecurityError, match="Symbolic link"):
@@ -130,6 +157,7 @@ def test_single_instance_lock_fails_closed_without_platform_locking(
     assert not (tmp_path / "updater.lock").exists()
 
 
+@requires_posix_fcntl
 def test_single_instance_lock_closes_descriptor_after_flock_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -154,6 +182,7 @@ def test_single_instance_lock_closes_descriptor_after_flock_error(
     assert len(closed) == 1
 
 
+@requires_posix_fcntl
 def test_single_instance_lock_release_closes_handle_and_allows_reacquire(tmp_path: Path) -> None:
     path = tmp_path / "updater.lock"
     first = SingleInstanceLock(path)
@@ -196,7 +225,7 @@ def test_environment_keeps_virtualenv_python_symlink(
     venv_bin = tmp_path / ".venv" / "bin"
     venv_bin.mkdir(parents=True)
     python_link = venv_bin / "python"
-    python_link.symlink_to(Path(sys.executable))
+    _symlink_or_skip(python_link, Path(sys.executable))
     (tmp_path / "data_collector.py").write_text("pass\n", encoding="utf-8")
     monkeypatch.setenv("AI_SCALPER_ROOT", str(tmp_path))
     monkeypatch.delenv("AI_SCALPER_COLLECTOR_PYTHON", raising=False)
@@ -214,7 +243,7 @@ def test_environment_uses_private_xdg_runtime_directory(
     root = tmp_path / "repo"
     venv_bin = root / ".venv" / "bin"
     venv_bin.mkdir(parents=True)
-    (venv_bin / "python").symlink_to(Path(sys.executable))
+    _symlink_or_skip(venv_bin / "python", Path(sys.executable))
     (root / "data_collector.py").write_text("pass\n", encoding="utf-8")
     runtime = tmp_path / "runtime"
     runtime.mkdir(mode=0o700)

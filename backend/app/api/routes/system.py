@@ -4,16 +4,35 @@ from fastapi import APIRouter, Request
 
 from app.api.dependencies import Container, cached
 from app.api.responses import success
+from app.services.ai_advisory_status_service import build_ai_advisory_status
 
 router = APIRouter(tags=["System"])
+
+
+def _ai_advisory_status(container: Container):
+    return build_ai_advisory_status(
+        container.settings,
+        news_meta=container.news.meta("latest"),
+        calendar_meta=container.economic_calendar.meta(),
+        calendar_sources=(
+            container.economic_calendar.repository.providers.statuses()
+        ),
+    )
 
 
 @router.get("/system/status", summary="Backend and engine component status")
 async def system_status(request: Request, container: Container):
     async def load():
-        return container.system.payload(container.system.health())
+        data = container.system.health()
+        data["ai_advisory"] = _ai_advisory_status(container)
+        return container.system.payload(data)
 
     return success(await cached(container, "system:status", 1, load), request)
+
+
+@router.get("/system/ai-advisory", summary="Effective read-only AI advisory and evidence status")
+async def ai_advisory_status(request: Request, container: Container):
+    return success(container.system.payload(_ai_advisory_status(container)), request)
 
 
 @router.get("/system/components", summary="Per-component health and heartbeat")

@@ -293,6 +293,20 @@ def calculate_trade_result(decision, entry, stop_loss, take_profit, high, low):
     return None
 
 
+def evaluate_bar_then_update_trailing(
+    decision, entry, atr, bar_close, stop_loss, take_profit, high, low, risk_model
+):
+    """Evaluate the existing stop before using this bar's close for the next bar."""
+    result = calculate_trade_result(
+        decision, entry, stop_loss, take_profit, high, low
+    )
+    if result is not None:
+        return result, stop_loss
+    return None, update_trailing_stop(
+        decision, entry, atr, bar_close, stop_loss, risk_model
+    )
+
+
 def run_backtest(symbol, verbose=True):
     data_path = f"data/{symbol}.csv"
     df = pd.read_csv(data_path)
@@ -395,40 +409,45 @@ def run_backtest(symbol, verbose=True):
             take_profit = entry - risk_model["tp_distance"]
 
         trade_result = None
+        exit_index = None
+        timeout_profit_amount = 0.0
 
         for j in range(i + 1, min(i + MAX_HOLD_CANDLES, len(df))):
             current_close_forward = df.iloc[j]["Close"]
-
-            stop_loss = update_trailing_stop(
+            high = df.iloc[j]["High"]
+            low = df.iloc[j]["Low"]
+            trade_result, stop_loss = evaluate_bar_then_update_trailing(
                 decision,
                 entry,
                 atr,
                 current_close_forward,
                 stop_loss,
-                risk_model,
-            )
-
-            high = df.iloc[j]["High"]
-            low = df.iloc[j]["Low"]
-
-            trade_result = calculate_trade_result(
-                decision,
-                entry,
-                stop_loss,
                 take_profit,
                 high,
                 low,
+                risk_model,
             )
 
             if trade_result is not None:
+                exit_index = j
                 break
 
         if trade_result is None:
             stats["timeout_trades"] += 1
-            continue
+            trade_result = "TIMEOUT"
+            exit_index = j
+            initial_risk_distance = float(risk_model["sl_distance"])
+            direction = 1.0 if decision == "BUY" else -1.0
+            timeout_r = (
+                direction * (float(current_close_forward) - float(entry))
+                / initial_risk_distance
+                if initial_risk_distance > 0
+                else 0.0
+            )
+            timeout_profit_amount = RISK_PER_TRADE * timeout_r
 
         stats["trades"] += 1
-        last_trade_index = i
+        last_trade_index = exit_index
 
         if trade_result == "WIN":
             stats["wins"] += 1
@@ -461,6 +480,15 @@ def run_backtest(symbol, verbose=True):
 
         elif trade_result == "BREAKEVEN":
             stats["trailing_stop_hits"] += 1
+
+        elif trade_result == "TIMEOUT":
+            if timeout_profit_amount >= 0:
+                stats["gross_profit"] += timeout_profit_amount
+                stats["total_win_amount"] += timeout_profit_amount
+            else:
+                stats["gross_loss"] += abs(timeout_profit_amount)
+                stats["total_loss_amount"] += abs(timeout_profit_amount)
+            balance += timeout_profit_amount
 
         else:
             stats["losses"] += 1

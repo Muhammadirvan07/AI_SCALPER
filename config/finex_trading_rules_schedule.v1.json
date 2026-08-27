@@ -1,0 +1,64 @@
+{
+  "schema_version": "finex-trading-rules-schedule-v1",
+  "candidate_id": "finex",
+  "source": {
+    "url": "https://finex.co.id/media/docs/trading-rules-finex.pdf",
+    "captured_file": "runtime_evidence/finex_calendar_sources/finex_trading_rules_finex_20260827.pdf",
+    "captured_sha256": "e3b694ba814071d4504ef8a0af51a12dc90fe8009bcc79406d430c01e906a725",
+    "document_time_reference": "WIB",
+    "document_timezone": "Asia/Jakarta"
+  },
+  "rules_as_published": {
+    "summer": {
+      "foreign_exchange": {
+        "symbols": ["AUDUSD", "EURUSD", "USDJPY"],
+        "open_local": "04:00",
+        "close_local": "03:55",
+        "trading_days": "MONDAY_THROUGH_FRIDAY",
+        "close_is_next_day": true
+      },
+      "commodities": {
+        "symbols": ["XAUUSD"],
+        "open_local": "05:05",
+        "close_local": "03:55",
+        "trading_days": "MONDAY_THROUGH_FRIDAY",
+        "close_is_next_day": true
+      },
+      "xau_daily_break": {
+        "symbols": ["XAUUSD"],
+        "start_local": "03:55",
+        "end_local": "05:00"
+      }
+    },
+    "winter": {
+      "foreign_exchange": {
+        "symbols": ["AUDUSD", "EURUSD", "USDJPY"],
+        "open_local": "05:00",
+        "close_local": "04:55",
+        "trading_days": "MONDAY_THROUGH_FRIDAY",
+        "close_is_next_day": true
+      },
+      "commodities": {
+        "symbols": ["XAUUSD"],
+        "open_local": "06:05",
+        "close_local": "04:55",
+        "trading_days": "MONDAY_THROUGH_FRIDAY",
+        "close_is_next_day": true
+      },
+      "xau_daily_break": {
+        "symbols": ["XAUUSD"],
+        "start_local": "04:55",
+        "end_local": "06:00"
+      }
+    }
+  },
+  "window_projection": {
+    "calendar_version": "finex-window-01-v2",
+    "season": "SUMMER",
+    "server_timezone": "Etc/GMT-3",
+    "wib_to_server_offset_minutes": -240,
+    "m15_policy": "ONLY_FULLY_OPEN_CANDLES",
+    "special_hours_complete": false,
+    "execution_enabled": false
+  }
+}

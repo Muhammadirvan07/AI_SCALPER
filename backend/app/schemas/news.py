@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import Field, HttpUrl, field_validator
+from pydantic import Field, FiniteFloat, HttpUrl, field_validator
 
 from app.schemas.common import ApiMeta, SchemaModel
+
+
+PositiveFiniteFloat = Annotated[FiniteFloat, Field(gt=0)]
 
 
 class SentimentLabel(StrEnum):
@@ -224,7 +227,7 @@ class NewsListData(SchemaModel):
     unknown_article_count: int = 0
     oldest_article_at: datetime | None = None
     latest_article_at: datetime | None = None
-    freshness_threshold_hours: dict[str, int] = Field(default_factory=dict)
+    freshness_threshold_hours: dict[str, PositiveFiniteFloat] = Field(default_factory=dict)
 
 
 class NewsApiMeta(ApiMeta):
@@ -237,7 +240,7 @@ class NewsApiMeta(ApiMeta):
     fallback_applied: bool = False
     requested_freshness: str | None = None
     effective_freshness: str | None = None
-    freshness_threshold_hours: dict[str, int] = Field(default_factory=dict)
+    freshness_threshold_hours: dict[str, PositiveFiniteFloat] = Field(default_factory=dict)
 
 
 class CalendarListData(SchemaModel):

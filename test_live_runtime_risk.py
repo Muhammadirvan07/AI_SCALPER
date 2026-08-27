@@ -260,6 +260,41 @@ class RiskGovernorTests(unittest.TestCase):
                 self.assertFalse(result.allowed)
                 self.assertIn(expected_reason, result.reason_codes)
 
+    def test_broker_spec_must_be_fresh_and_not_from_the_future(self) -> None:
+        stale = evaluate_risk(
+            intent(lot=0.002),
+            broker(captured_at=NOW - timedelta(microseconds=1)),
+            context(),
+        )
+        self.assertFalse(stale.allowed)
+        self.assertIn("BROKER_SPEC_STALE", stale.reason_codes)
+
+        future = evaluate_risk(
+            intent(lot=0.002),
+            broker(captured_at=NOW + timedelta(seconds=2)),
+            context(),
+        )
+        self.assertFalse(future.allowed)
+        self.assertIn("BROKER_SPEC_FUTURE", future.reason_codes)
+
+    def test_order_modes_require_the_exact_broker_environment(self) -> None:
+        demo_on_live = evaluate_risk(
+            intent(mode="DEMO", lot=0.002),
+            broker(environment="LIVE"),
+            context(mode="DEMO"),
+        )
+        self.assertFalse(demo_on_live.allowed)
+        self.assertIn("BROKER_ENVIRONMENT_MISMATCH", demo_on_live.reason_codes)
+
+        live_on_read_only = evaluate_risk(
+            intent(mode="LIVE", lot=0.002),
+            broker(environment="LIVE_READ_ONLY"),
+            context(mode="LIVE"),
+        )
+        self.assertFalse(live_on_read_only.allowed)
+        self.assertIn("BROKER_ENVIRONMENT_MISMATCH", live_on_read_only.reason_codes)
+        self.assertIn("LIVE_MODE_LOCKED", live_on_read_only.reason_codes)
+
     def test_margin_is_limited_to_ten_percent_of_equity(self) -> None:
         result = evaluate_risk(
             intent(),

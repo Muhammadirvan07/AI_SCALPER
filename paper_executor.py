@@ -2,6 +2,7 @@ import csv
 import json
 import math
 import os
+import tempfile
 from datetime import datetime, timezone
 
 from executor_config import (
@@ -528,8 +529,17 @@ def create_shadow_probe_order(signal):
     }
 
 def save_json(path, data):
-    with open(path, "w") as f:
-        json.dump(data, f, indent=4)
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, temporary_path = tempfile.mkstemp(prefix=".paper-executor-", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.unlink(temporary_path)
 
 
 def utc_now_iso():
@@ -992,6 +1002,28 @@ def get_signal_risk_usd(signal):
     return safe_float(get_first_value(signal, ["risk_usd", "risk_amount"], 0))
 
 
+def get_signal_lot(signal):
+    return safe_float(get_first_value(signal, ["lot", "lot_size"], 0))
+
+
+def calculate_signal_stop_risk_usd(signal):
+    """Independently recompute paper stop exposure for the approved EURUSD lane.
+
+    This deliberately fails closed for every symbol without a reviewed cash-risk
+    model. Broker-aware sizing remains authoritative for any future expansion.
+    """
+    symbol = str(signal.get("symbol", "") or "").strip().upper()
+    if symbol != "EURUSD":
+        return None
+    entry = get_signal_entry(signal)
+    stop = get_signal_sl(signal)
+    lot = get_signal_lot(signal)
+    if entry <= 0 or stop <= 0 or lot <= 0 or entry == stop:
+        return None
+    stop_pips = abs(entry - stop) / 0.0001
+    return round(stop_pips * 0.10 * (lot / 0.01), 8)
+
+
 def get_signal_strategy(signal):
     return str(get_first_value(signal, ["strategy", "selected_strategy"], "UNKNOWN") or "UNKNOWN")
 
@@ -1013,9 +1045,10 @@ def validate_signal(signal, executed_ids, paper_orders, phase4_rules=None):
     strategy_performance_min_score = get_strategy_performance_min_score(strategy)
     action = get_signal_action(signal)
     phase4_reasons, phase4_guard_info = validate_phase4_executor_guard(signal, phase4_rules)
-    lot = safe_float(signal.get("lot", 0))
+    lot = get_signal_lot(signal)
     score = get_signal_score(signal)
     risk_usd = get_signal_risk_usd(signal)
+    computed_risk_usd = calculate_signal_stop_risk_usd(signal)
     signal_id = signal.get("signal_id")
 
     entry = get_signal_entry(signal)
@@ -1086,12 +1119,21 @@ def validate_signal(signal, executed_ids, paper_orders, phase4_rules=None):
             f"Score {score} below {symbol} profile minimum {symbol_profile['min_score']}."
         )
 
-    if risk_usd > MAX_RISK_PER_TRADE_USD:
+    if computed_risk_usd is None:
+        reasons.append("Independent stop-risk calculation is unavailable for this signal.")
+    elif abs(risk_usd - computed_risk_usd) > 0.005:
+        reasons.append(
+            f"Declared risk ${risk_usd:.4f} does not match independently computed "
+            f"stop risk ${computed_risk_usd:.4f}."
+        )
+
+    authoritative_risk_usd = computed_risk_usd if computed_risk_usd is not None else float("inf")
+    if authoritative_risk_usd > MAX_RISK_PER_TRADE_USD:
         reasons.append(f"Risk ${risk_usd} exceeds global max ${MAX_RISK_PER_TRADE_USD}.")
 
-    if risk_usd > symbol_profile["max_risk_usd"]:
+    if authoritative_risk_usd > symbol_profile["max_risk_usd"]:
         reasons.append(
-            f"Risk ${risk_usd} exceeds {symbol} profile max ${symbol_profile['max_risk_usd']}."
+            f"Computed risk ${authoritative_risk_usd} exceeds {symbol} profile max ${symbol_profile['max_risk_usd']}."
         )
 
     if BLOCK_IF_SIGNAL_EXPIRED and is_expired(signal):
@@ -1122,7 +1164,7 @@ def create_paper_order(signal, phase4_guard_info=None):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "symbol": symbol,
         "type": action,
-        "lot": safe_float(signal.get("lot", 0)),
+        "lot": get_signal_lot(signal),
         "entry": get_signal_entry(signal),
         "sl": get_signal_sl(signal),
         "tp": get_signal_tp(signal),
@@ -1132,7 +1174,7 @@ def create_paper_order(signal, phase4_guard_info=None):
         "score_boost": signal.get("score_boost", {}),
         "phase4_quality_guard": signal.get("phase4_quality_guard", phase4_guard_info or {}),
         "executor_phase4_quality_guard": phase4_guard_info or {},
-        "risk_usd": get_signal_risk_usd(signal),
+        "risk_usd": calculate_signal_stop_risk_usd(signal),
         "symbol_risk_profile": symbol_profile,
         "status": "PAPER_OPEN",
         "paper_observation_only": signal.get("status") == PAPER_OBSERVATION_ONLY_STATUS,

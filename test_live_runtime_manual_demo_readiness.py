@@ -244,6 +244,13 @@ class ManualDemoReadinessTests(unittest.TestCase):
         self.assertFalse(policy["safe_to_demo_auto_order"])
         self.assertEqual("DISABLED", policy["order_capability"])
         self.assertEqual(0.01, policy["max_lot"])
+        self.assertIn("finex", policy["candidate_gates"])
+        self.assertTrue(
+            all(
+                value is False
+                for value in policy["candidate_gates"]["finex"].values()
+            )
+        )
 
         release = load_json_object_strict(
             ROOT / "config" / "windows_release_allowlist.v1.json"

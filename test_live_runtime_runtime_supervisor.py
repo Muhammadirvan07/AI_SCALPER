@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import closing
+
 from dataclasses import FrozenInstanceError, replace
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -1363,7 +1365,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
         assert checkpoint is not None
         self.assertTrue(checkpoint.critical_latched)
         self.assertEqual("RECONCILIATION_NOT_CLEAN", checkpoint.critical_reason)
-        with sqlite3.connect(self.root / "supervisor.sqlite3") as connection:
+        with closing(sqlite3.connect(self.root / "supervisor.sqlite3")) as connection:
             critical = connection.execute(
                 "SELECT critical_latched, critical_reason FROM supervisor_critical_state"
             ).fetchone()
@@ -1399,7 +1401,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
             external_before.content_sha256,
             external_after.content_sha256,
         )
-        with sqlite3.connect(self.root / "supervisor.sqlite3") as connection:
+        with closing(sqlite3.connect(self.root / "supervisor.sqlite3")) as connection:
             critical = connection.execute(
                 "SELECT critical_latched FROM supervisor_critical_state"
             ).fetchone()[0]
@@ -1440,7 +1442,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
             competing_head.content_sha256,
             self.fixture.external_supervisor_checkpoint.content_sha256,
         )
-        with sqlite3.connect(self.root / "supervisor.sqlite3") as connection:
+        with closing(sqlite3.connect(self.root / "supervisor.sqlite3")) as connection:
             critical = connection.execute(
                 "SELECT critical_latched FROM supervisor_critical_state"
             ).fetchone()[0]
@@ -1492,7 +1494,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
             ),
             sum(item.row_count for item in competing_head.append_heads),
         )
-        with sqlite3.connect(root / "supervisor.sqlite3") as connection:
+        with closing(sqlite3.connect(root / "supervisor.sqlite3")) as connection:
             critical = connection.execute(
                 "SELECT critical_latched FROM supervisor_critical_state"
             ).fetchone()[0]
@@ -1506,9 +1508,9 @@ class RuntimeSupervisorTests(unittest.TestCase):
         supervisor.start(owner_id="runtime-journal-rollback")
         journal_database = root / "execution.sqlite3"
         old_database = root / "execution-old.sqlite3"
-        with sqlite3.connect(journal_database) as source, sqlite3.connect(
+        with closing(sqlite3.connect(journal_database)) as source, closing(sqlite3.connect(
             old_database
-        ) as target:
+        )) as target:
             source.backup(target)
 
         fixture.journal.create_intent(
@@ -1530,9 +1532,9 @@ class RuntimeSupervisorTests(unittest.TestCase):
             Path(f"{journal_database}-shm"),
         ):
             candidate.unlink(missing_ok=True)
-        with sqlite3.connect(old_database) as source, sqlite3.connect(
+        with closing(sqlite3.connect(old_database)) as source, closing(sqlite3.connect(
             journal_database
-        ) as target:
+        )) as target:
             source.backup(target)
 
         with self.assertRaises(RuntimeSupervisorCriticalError):
@@ -1577,7 +1579,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
             competing_risk_head.event_sequence,
             fixture.checkpoint.event_sequence,
         )
-        with sqlite3.connect(root / "supervisor.sqlite3") as connection:
+        with closing(sqlite3.connect(root / "supervisor.sqlite3")) as connection:
             critical = connection.execute(
                 "SELECT critical_latched FROM supervisor_critical_state"
             ).fetchone()[0]
@@ -1592,9 +1594,9 @@ class RuntimeSupervisorTests(unittest.TestCase):
         restored_sequence = fixture.checkpoint.event_sequence
         risk_database = root / "risk.sqlite3"
         old_database = root / "risk-seq1.sqlite3"
-        with sqlite3.connect(risk_database) as source, sqlite3.connect(
+        with closing(sqlite3.connect(risk_database)) as source, closing(sqlite3.connect(
             old_database
-        ) as target:
+        )) as target:
             source.backup(target)
 
         fixture.risk_ledger.append_entry(
@@ -1618,9 +1620,9 @@ class RuntimeSupervisorTests(unittest.TestCase):
             Path(f"{risk_database}-shm"),
         ):
             candidate.unlink(missing_ok=True)
-        with sqlite3.connect(old_database) as source, sqlite3.connect(
+        with closing(sqlite3.connect(old_database)) as source, closing(sqlite3.connect(
             risk_database
-        ) as target:
+        )) as target:
             source.backup(target)
 
         with self.assertRaises(RuntimeSupervisorCriticalError):
@@ -1636,7 +1638,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
         database = self.root / "supervisor.sqlite3"
         backup = self.root / "supervisor-old.sqlite3"
         supervisor = self.fixture.supervisor()
-        with sqlite3.connect(database) as source, sqlite3.connect(backup) as target:
+        with closing(sqlite3.connect(database)) as source, closing(sqlite3.connect(backup)) as target:
             source.backup(target)
         supervisor.start(owner_id="runtime-a")
         supervisor.stop()
@@ -1649,7 +1651,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
             Path(f"{database}-shm"),
         ):
             candidate.unlink(missing_ok=True)
-        with sqlite3.connect(backup) as source, sqlite3.connect(database) as target:
+        with closing(sqlite3.connect(backup)) as source, closing(sqlite3.connect(database)) as target:
             source.backup(target)
 
         with self.assertRaisesRegex(
@@ -1661,7 +1663,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
             external_high_water.content_sha256,
             self.fixture.external_supervisor_checkpoint.content_sha256,
         )
-        with sqlite3.connect(database) as connection:
+        with closing(sqlite3.connect(database)) as connection:
             critical = connection.execute(
                 "SELECT critical_latched FROM supervisor_critical_state"
             ).fetchone()[0]
@@ -1705,7 +1707,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
         with self.assertRaises(RuntimeSupervisorCriticalError):
             supervisor.run_cycle()
 
-        with sqlite3.connect(self.root / "supervisor.sqlite3") as connection:
+        with closing(sqlite3.connect(self.root / "supervisor.sqlite3")) as connection:
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
                     """
@@ -1721,7 +1723,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
         supervisor = self.fixture.supervisor()
         supervisor.start(owner_id="runtime-a")
         supervisor.stop()
-        with sqlite3.connect(self.root / "supervisor.sqlite3") as connection:
+        with closing(sqlite3.connect(self.root / "supervisor.sqlite3")) as connection:
             connection.execute("DROP TRIGGER supervisor_receipts_no_update")
             connection.execute(
                 "UPDATE supervisor_cycle_receipts SET payload_json='{}' WHERE sequence=1"
@@ -1941,7 +1943,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
             fixture.last_news_receipt.previous_receipt_sha256,
             receipt.news_guard_previous_sha256,
         )
-        with sqlite3.connect(manual_root / "supervisor.sqlite3") as connection:
+        with closing(sqlite3.connect(manual_root / "supervisor.sqlite3")) as connection:
             predispatch_payload = json.loads(
                 connection.execute(
                     "SELECT payload_json FROM supervisor_cycle_receipts WHERE sequence=2"
@@ -2494,7 +2496,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
             supervisor.start(owner_id="runtime-review-mismatch")
 
         self.assertEqual(1, fixture.stage.validation_calls)
-        with sqlite3.connect(root / "supervisor.sqlite3") as connection:
+        with closing(sqlite3.connect(root / "supervisor.sqlite3")) as connection:
             statuses = tuple(
                 json.loads(row[0])["status"]
                 for row in connection.execute(
@@ -2786,7 +2788,7 @@ class RuntimeSupervisorTests(unittest.TestCase):
         supervisor.start(owner_id="runtime-private-binding")
         supervisor.stop()
 
-        with sqlite3.connect(self.root / "supervisor.sqlite3") as connection:
+        with closing(sqlite3.connect(self.root / "supervisor.sqlite3")) as connection:
             identity = connection.execute(
                 "SELECT binding_json FROM supervisor_identity"
             ).fetchone()[0]

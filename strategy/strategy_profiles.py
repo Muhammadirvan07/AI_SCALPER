@@ -12,6 +12,9 @@ from dataclasses import dataclass, replace
 RUNTIME_ALLOWED_STRATEGIES = frozenset(
     {"BREAKOUT", "MEAN_REVERSION", "MOMENTUM_PULLBACK"}
 )
+KNOWN_CURRENCY_CODES = frozenset(
+    {"AUD", "CAD", "CHF", "EUR", "GBP", "JPY", "NZD", "USD"}
+)
 
 
 @dataclass(frozen=True)
@@ -137,7 +140,17 @@ def get_strategy_profile(
     normalized_timeframe = str(timeframe or "").strip().upper()
     if normalized_timeframe not in {"M5", "M15"}:
         raise ValueError("strategy timeframe must be M5 or M15")
-    profile = SYMBOL_PROFILES.get(canonical_symbol, FX_PROFILE)
+    profile = SYMBOL_PROFILES.get(canonical_symbol)
+    if profile is None:
+        is_known_fx_pair = (
+            len(canonical_symbol) == 6
+            and canonical_symbol[:3] in KNOWN_CURRENCY_CODES
+            and canonical_symbol[3:] in KNOWN_CURRENCY_CODES
+            and canonical_symbol[:3] != canonical_symbol[3:]
+        )
+        if not is_known_fx_pair:
+            raise ValueError(f"unsupported strategy symbol: {canonical_symbol}")
+        profile = FX_PROFILE
     if normalized_timeframe == "M5":
         if profile.asset_class != "CRYPTO":
             raise ValueError("M5 challenger profile is restricted to crypto")

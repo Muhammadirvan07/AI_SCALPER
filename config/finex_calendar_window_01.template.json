@@ -1,0 +1,69 @@
+{
+  "schema_version": "broker-calendar-plan-template-v2",
+  "candidate_id": "finex",
+  "broker_legal_name": "PT. Finex Bisnis Solusi Futures",
+  "broker_server": "FinexBisnisSolusi-Demo",
+  "operating_jurisdiction": "ID",
+  "broker_symbols": {
+    "XAUUSD": "XAUUSD",
+    "EURUSD": "EURUSD",
+    "USDJPY": "USDJPY",
+    "AUDUSD": "AUDUSD"
+  },
+  "server_timezone": "Etc/GMT-3",
+  "calendar_version": "finex-window-01-v2",
+  "observation_start_at_utc": "2026-08-31T12:00:00Z",
+  "blind_until_utc": "2026-10-26T12:00:00Z",
+  "expected_complete_sessions": 40,
+  "validation_profile": "DIAGNOSTIC",
+  "execution_enabled": false,
+  "live_allowed": false,
+  "safe_to_demo_auto_order": false,
+  "max_lot": 0.01,
+  "calendar_amendment_policy": {
+    "mode": "CLOSURE_ONLY_PROSPECTIVE_V1",
+    "minimum_lead_seconds": 900,
+    "completeness_attestation_required": true,
+    "source_document_required": true
+  },
+  "weekly_m15_sessions": {
+    "AUDUSD": [
+      {"weekday": 0, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 1, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 2, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 3, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 4, "open_local": "00:00", "close_local": "23:45"}
+    ],
+    "EURUSD": [
+      {"weekday": 0, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 1, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 2, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 3, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 4, "open_local": "00:00", "close_local": "23:45"}
+    ],
+    "USDJPY": [
+      {"weekday": 0, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 1, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 2, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 3, "open_local": "00:00", "close_local": "23:45"},
+      {"weekday": 4, "open_local": "00:00", "close_local": "23:45"}
+    ],
+    "XAUUSD": [
+      {"weekday": 0, "open_local": "01:15", "close_local": "23:45"},
+      {"weekday": 1, "open_local": "01:15", "close_local": "23:45"},
+      {"weekday": 2, "open_local": "01:15", "close_local": "23:45"},
+      {"weekday": 3, "open_local": "01:15", "close_local": "23:45"},
+      {"weekday": 4, "open_local": "01:15", "close_local": "23:45"}
+    ]
+  },
+  "special_hours_review": {
+    "attested": false,
+    "source": "https://finex.co.id/trading/instruments?tab=forex",
+    "source_published_date": null,
+    "source_last_updated_date": null,
+    "covered_through_server_date": "2026-10-26",
+    "affected_required_symbols": [],
+    "registered_closures": [],
+    "review_note": "Trading Rules FINEX is projected conservatively to full M15 candles in summer server time: FX 00:00-23:45 and XAU 01:15-23:45. FINEX live chat stated at 2026-08-27T10:20:00Z that no special schedule was currently available and future changes would be sent to the registered email. Future exception completeness therefore remains false and this diagnostic window remains non-registerable until independent review and prospective email monitoring are complete."
+  }
+}

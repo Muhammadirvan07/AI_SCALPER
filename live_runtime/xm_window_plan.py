@@ -71,6 +71,45 @@ _REQUIRED_APPROVAL_ROLES = frozenset({"COMPLIANCE_REVIEW", "LEGAL_REVIEW"})
 _HARD_DENIED_JP_CANDIDATES = frozenset({"xm"})
 _HARD_DENIED_JP_ENTITIES = frozenset({"tradexfin limited"})
 
+
+def _verified_ed25519_regulatory_observation(
+    observation: Mapping[str, object],
+    *,
+    candidate_id: str,
+    broker_legal_name: str,
+    jurisdiction: str,
+    now: datetime,
+) -> Mapping[str, object] | None:
+    from .registration_review_ed25519 import (
+        OBSERVATION_SCHEMA,
+        RegulatoryEd25519Error,
+        verify_dual_observation,
+    )
+
+    if observation.get("schema_version") != OBSERVATION_SCHEMA:
+        return None
+    try:
+        verified = verify_dual_observation(
+            observation,
+            now_provider=lambda: now,
+        )
+    except RegulatoryEd25519Error as exc:
+        raise XMWindowPlanError(
+            "Ed25519 regulatory observation verification failed"
+        ) from exc
+    if (
+        verified.get("candidate_id") != candidate_id
+        or verified.get("broker_legal_name") != broker_legal_name
+        or verified.get("entity") != broker_legal_name
+        or verified.get("operating_jurisdiction") != jurisdiction
+        or verified.get("legal_eligible") is not True
+        or verified.get("activation_eligible") is not False
+        or verified.get("authorization_granted") is not False
+        or verified.get("order_capability") != "DISABLED"
+    ):
+        raise XMWindowPlanError("Ed25519 regulatory lane binding mismatch")
+    return verified
+
 _DYNAMIC_FIELDS = frozenset({
     "captured_at_utc",
     "discovery_receipt_sha256",
@@ -414,6 +453,15 @@ def _verified_regulatory_observation(
     broker_legal_name = str(
         candidate.get("broker_legal_name_observed") or ""
     ).strip()
+    asymmetric = _verified_ed25519_regulatory_observation(
+        observation,
+        candidate_id=candidate_id,
+        broker_legal_name=broker_legal_name,
+        jurisdiction=normalized_jurisdiction,
+        now=now,
+    )
+    if asymmetric is not None:
+        return asymmetric
     entity = str(observation.get("entity") or "").strip()
     if (
         normalized_jurisdiction == "JP"

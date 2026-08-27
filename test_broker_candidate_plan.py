@@ -15,9 +15,9 @@ class BrokerCandidatePlanTests(unittest.TestCase):
             item["candidate_id"]: item for item in plan["candidates"]
         }
 
-        self.assertEqual("phillip", plan["operational_priority"]["selected_target_broker"])
+        self.assertEqual("finex", plan["operational_priority"]["selected_target_broker"])
         self.assertEqual(
-            ["phillip-fx", "phillip-commodity"],
+            ["finex"],
             plan["operational_priority"]["selected_target_bindings"],
         )
         self.assertIn(
@@ -65,11 +65,11 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         fbs = candidates["fbs"]
 
         self.assertEqual(
-            "PHILLIP_JAPAN_DUAL_SHADOW_ACTIVE_EVIDENCE_DISCOVERY_PREPARED",
+            "FINEX_SELECTED_READ_ONLY_DISCOVERY_CAPTURED_PROMOTION_BLOCKED",
             plan["status"],
         )
         self.assertEqual(
-            "phillip",
+            "finex",
             plan["operational_priority"]["selected_target_broker"],
         )
         self.assertEqual(
@@ -113,7 +113,7 @@ class BrokerCandidatePlanTests(unittest.TestCase):
             regulatory["independent_registry_sources"][0]["url"],
         )
 
-    def test_finex_remains_future_indonesia_path_without_current_unlock(self) -> None:
+    def test_finex_is_selected_read_only_without_current_unlock(self) -> None:
         plan = json.loads(PLAN.read_text(encoding="utf-8"))
         finex = next(
             item for item in plan["candidates"] if item["candidate_id"] == "finex"
@@ -122,7 +122,12 @@ class BrokerCandidatePlanTests(unittest.TestCase):
         self.assertTrue(regulatory["independent_registry_verification"])
         self.assertEqual("47/BAPPEBTI/SI/04/2013", regulatory["license"])
         self.assertFalse(regulatory["legal_eligible"])
-        self.assertFalse(finex["read_only_discovery_allowed"])
+        self.assertTrue(finex["read_only_discovery_allowed"])
+        self.assertEqual("SELECTED_TARGET_PREPARATION", finex["role"])
+        self.assertEqual(
+            "READ_ONLY_DISCOVERY_V3_CAPTURED_DIAGNOSTIC_ONLY_CALENDAR_AND_ELIGIBILITY_PENDING",
+            finex["binding_status"],
+        )
 
     def test_fbs_discovery_remains_blocked_pending_review(self) -> None:
         from mt5_readonly_discovery import _candidate

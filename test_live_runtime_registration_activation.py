@@ -341,7 +341,12 @@ class RegistrationActivationReviewTests(unittest.TestCase):
             )
 
         profile = deepcopy(self.profiles)
-        profile["profiles"][0]["registration_enabled"] = True
+        selected_profile = next(
+            item
+            for item in profile["profiles"]
+            if item["candidate_id"] == "phillip-fx"
+        )
+        selected_profile["registration_enabled"] = True
         with self.assertRaisesRegex(RegistrationActivationError, "disabled"):
             build_registration_activation_review_pack(
                 **{**self._valid_arguments(), "profile_config": profile}

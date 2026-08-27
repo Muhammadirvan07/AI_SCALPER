@@ -1008,7 +1008,14 @@ class MT5Adapter:
         if not bool(self.mt5.initialize(**kwargs)):
             raise MT5UnavailableError(f"MT5 initialize failed: {self.mt5.last_error()}")
         self._initialized = True
-        self.assert_account_binding()
+        try:
+            self.assert_account_binding()
+        except Exception:
+            try:
+                self.mt5.shutdown()
+            finally:
+                self._initialized = False
+            raise
 
     def shutdown(self) -> None:
         if self._initialized and self.mt5 is not None:

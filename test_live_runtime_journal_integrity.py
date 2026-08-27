@@ -1,3 +1,4 @@
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sqlite3
@@ -188,7 +189,7 @@ class ExecutionJournalCheckpointTests(unittest.TestCase):
     def test_restored_old_database_cannot_follow_newer_external_checkpoint(self):
         external = self.checkpoint()
         backup = self.path.with_name("execution-old.sqlite3")
-        with sqlite3.connect(self.path) as source, sqlite3.connect(backup) as target:
+        with closing(sqlite3.connect(self.path)) as source, closing(sqlite3.connect(backup)) as target:
             source.backup(target)
 
         self.journal.transition("intent-1", "RISK_APPROVED", occurred_at=NOW)
@@ -201,7 +202,7 @@ class ExecutionJournalCheckpointTests(unittest.TestCase):
             Path(f"{self.path}-shm"),
         ):
             candidate.unlink(missing_ok=True)
-        with sqlite3.connect(backup) as source, sqlite3.connect(self.path) as target:
+        with closing(sqlite3.connect(backup)) as source, closing(sqlite3.connect(self.path)) as target:
             source.backup(target)
 
         with self.assertRaises(JournalCheckpointVerificationError):
@@ -215,7 +216,7 @@ class ExecutionJournalCheckpointTests(unittest.TestCase):
             lease_seconds=1,
             now=NOW,
         )
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             old_lease = connection.execute(
                 "SELECT * FROM executor_lease WHERE singleton=1"
             ).fetchone()
@@ -232,7 +233,7 @@ class ExecutionJournalCheckpointTests(unittest.TestCase):
         self.assertEqual(first_token + 1, second_token)
         self.assertEqual(second_token, current.executor_fence_high_water)
 
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             connection.execute(
                 """
                 UPDATE executor_lease
@@ -241,6 +242,7 @@ class ExecutionJournalCheckpointTests(unittest.TestCase):
                 """,
                 tuple(old_lease[1:]),
             )
+            connection.commit()
 
         with self.assertRaisesRegex(
             JournalIntegrityError,

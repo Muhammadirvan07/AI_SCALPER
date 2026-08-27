@@ -40,6 +40,7 @@ from live_runtime.decision_core import (
     evaluate_decision_core,
 )
 from market_data_quality import keep_completed_candles
+from strategy.promotion_candidate import build_promotion_candidate_evidence
 from strategy.strategy_profiles import get_strategy_profile, normalize_symbol
 
 
@@ -50,7 +51,7 @@ MIN_PROFITABLE_SEGMENTS_LIVE_REVIEW = 2
 MIN_DEVELOPMENT_PROFIT_FACTOR_LIVE_REVIEW = 1.20
 MIN_ROLLING_PROFIT_FACTOR_LIVE_REVIEW = 1.15
 MAX_DRAWDOWN_PERCENT_LIVE_REVIEW = 8.0
-VALIDATION_SCHEMA_VERSION = "2.2"
+VALIDATION_SCHEMA_VERSION = "2.3"
 STRATEGY_RULE_CONTRACT_VERSION = (
     "2026-07-15-structured-score-bounded-pullback-direction-choppy-v2"
 )
@@ -73,11 +74,11 @@ CALLER_PREFIX_MATCHED_TAIL_ROLE = (
 VALIDATION_SNAPSHOT_CONTRACT_VERSION = "EXTERNAL_IMMUTABLE_ARCHIVE_REQUIRED_V1"
 
 
-def normalize_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
+def normalize_ohlcv(df: pd.DataFrame, *, timeframe: str = "15min") -> pd.DataFrame:
     if not isinstance(df, pd.DataFrame):
         raise TypeError("replay input must be a pandas DataFrame")
 
-    df, _ = keep_completed_candles(df)
+    df, _ = keep_completed_candles(df, timeframe=timeframe)
     required = ("Open", "High", "Low", "Close")
     missing = [column for column in required if column not in df.columns]
     if missing:
@@ -121,8 +122,8 @@ def normalize_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
-def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    data = normalize_ohlcv(df)
+def add_indicators(df: pd.DataFrame, *, timeframe: str = "15min") -> pd.DataFrame:
+    data = normalize_ohlcv(df, timeframe=timeframe)
     close = data["Close"]
     high = data["High"]
     low = data["Low"]
@@ -1137,11 +1138,12 @@ def validate_symbol_dataframe(
     source_metadata: dict | None = None,
     verify_selector_parity: bool = False,
     validation_contract: dict | None = None,
+    timeframe: str = "15min",
 ) -> dict:
     symbol = normalize_symbol(symbol)
     profile = get_strategy_profile(symbol)
     source_metadata = source_metadata or get_data_source_metadata(symbol)
-    data = add_indicators(df)
+    data = add_indicators(df, timeframe=timeframe)
     validation_boundaries = _resolve_validation_boundaries(
         data,
         symbol,
@@ -1425,6 +1427,32 @@ def validate_symbol_dataframe(
         }
     )
 
+    config_sha256 = _profile_fingerprint(profile)
+    data_sha256 = _data_fingerprint(data)
+    promotion_candidate_evidence = build_promotion_candidate_evidence(
+        symbol=symbol,
+        strategy=(
+            selected_report["strategy"]
+            if selected_report
+            else profile.preferred_strategy
+        ),
+        timeframe=timeframe,
+        config_sha256=config_sha256,
+        data_sha256=data_sha256,
+        evidence_source_sha256=data_sha256,
+        # Selector agreement is not full Decision/entry/fill/exit parity and
+        # must never be upgraded into runtime parity by this diagnostic.
+        runtime_parity_verified=False,
+        runtime_parity_receipt_sha256=None,
+        # The current tail and rolling folds are development diagnostics, not
+        # independently archived future-holdout or promotion fold evidence.
+        future_holdout_verified=False,
+        fold_count=0,
+        positive_fold_count=0,
+        broker_forward_trades=0,
+        broker_forward_weeks=0,
+    )
+
     return {
         "schema_version": VALIDATION_SCHEMA_VERSION,
         "symbol": symbol,
@@ -1435,7 +1463,7 @@ def validate_symbol_dataframe(
         ),
         "rows": int(len(df)),
         "clean_rows": int(len(data)),
-        "timeframe_assumption": "15m",
+        "timeframe_assumption": timeframe,
         "data_source": source_metadata,
         "asset_class": profile.asset_class,
         "allowed_strategies": sorted(profile.allowed_strategies),
@@ -1462,14 +1490,14 @@ def validate_symbol_dataframe(
             "fold_count": len(rolling_splits),
             "used_for_promotion": False,
         },
-        "config_sha256": _profile_fingerprint(profile),
+        "config_sha256": config_sha256,
         "strategy_rule_contract_version": STRATEGY_RULE_CONTRACT_VERSION,
         "indicator_contract_version": INDICATOR_CONTRACT_VERSION,
         "replay_execution_contract_version": REPLAY_EXECUTION_CONTRACT_VERSION,
         "validation_snapshot_contract_version": (
             VALIDATION_SNAPSHOT_CONTRACT_VERSION
         ),
-        "data_sha256": _data_fingerprint(data),
+        "data_sha256": data_sha256,
         "estimated_round_trip_cost_bps": profile.estimated_round_trip_cost_bps,
         "entry_model": "signal close then next candle open",
         "position_model": "single non-overlapping position per strategy",
@@ -1500,6 +1528,7 @@ def validate_symbol_dataframe(
             selector_signal_parity.get("selector_signal_parity_verified", False)
         ),
         "runtime_parity_verified": False,
+        "promotion_candidate_evidence": promotion_candidate_evidence,
         "promotion_eligible": False,
         "live_allowed": False,
         "safe_to_demo_auto_order": False,

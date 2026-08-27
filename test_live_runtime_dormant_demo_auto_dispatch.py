@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 from contextlib import nullcontext
 from dataclasses import replace
 from datetime import timedelta
@@ -559,7 +560,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.assertTrue(outcome.execution_sent)
         self.assertEqual(1, adapter.preflight_calls)
         self.assertEqual(1, adapter.submit_calls)
-        with sqlite3.connect(self.session_store.database) as connection:
+        with closing(sqlite3.connect(self.session_store.database)) as connection:
             state = connection.execute(
                 """SELECT state FROM demo_auto_session_dispatch_reservations
                    WHERE intent_id=?""",
@@ -576,7 +577,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         ):
             with self.assertRaises(KeyboardInterrupt):
                 self._execute(adapter)
-        with sqlite3.connect(self.session_store.database) as connection:
+        with closing(sqlite3.connect(self.session_store.database)) as connection:
             before = connection.execute(
                 """SELECT intent_id, state
                    FROM demo_auto_session_dispatch_reservations"""
@@ -587,7 +588,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         settlements = self.session_store.recover_dispatch_reservations(self.journal)
         self.assertEqual(1, len(settlements))
         self.assertEqual("ABORTED_BEFORE_SEND", settlements[0].settlement_state)
-        with sqlite3.connect(self.session_store.database) as connection:
+        with closing(sqlite3.connect(self.session_store.database)) as connection:
             after = connection.execute(
                 """SELECT state, settlement_journal_state
                    FROM demo_auto_session_dispatch_reservations
@@ -616,7 +617,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.assertEqual("UNCERTAIN", outcome.state)
         self.assertTrue(outcome.reconciliation_required)
         self.assertEqual(1, adapter.submit_calls)
-        with sqlite3.connect(self.session_store.database) as connection:
+        with closing(sqlite3.connect(self.session_store.database)) as connection:
             state = connection.execute(
                 """SELECT state FROM demo_auto_session_dispatch_reservations
                    WHERE intent_id=?""",
@@ -679,7 +680,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         settlements = self.session_store.recover_dispatch_reservations(self.journal)
         self.assertEqual(1, len(settlements))
         self.assertEqual("RECONCILED", settlements[0].settlement_state)
-        with sqlite3.connect(self.session_store.database) as connection:
+        with closing(sqlite3.connect(self.session_store.database)) as connection:
             state = connection.execute(
                 """SELECT state FROM demo_auto_session_dispatch_reservations
                    WHERE intent_id=?""",
@@ -701,7 +702,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
             outcome.reason_codes,
         )
         self.assertTrue(self.journal.kill_switch_status()["latched"])
-        with sqlite3.connect(self.session_store.database) as connection:
+        with closing(sqlite3.connect(self.session_store.database)) as connection:
             before = connection.execute(
                 """SELECT state FROM demo_auto_session_dispatch_reservations
                    WHERE intent_id=?""",
@@ -710,7 +711,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.assertEqual("ACTIVE", before)
         settlements = self.session_store.recover_dispatch_reservations(self.journal)
         self.assertEqual("COMPLETED", settlements[0].settlement_state)
-        with sqlite3.connect(self.session_store.database) as connection:
+        with closing(sqlite3.connect(self.session_store.database)) as connection:
             after = connection.execute(
                 """SELECT state FROM demo_auto_session_dispatch_reservations
                    WHERE intent_id=?""",
@@ -733,7 +734,7 @@ class DormantDemoAutoDispatchTests(unittest.TestCase):
         self.assertFalse(final_transition["details"]["broker_submit_called"])
         self.assertFalse(final_transition["details"]["reconciliation_required"])
         self.assertFalse(final_transition["details"]["retry_allowed"])
-        with sqlite3.connect(self.session_store.database) as connection:
+        with closing(sqlite3.connect(self.session_store.database)) as connection:
             reservation = connection.execute(
                 """SELECT state, settlement_evidence_sha256,
                           settlement_journal_state

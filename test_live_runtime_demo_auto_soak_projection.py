@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import timedelta
@@ -615,7 +616,7 @@ class DemoAutoSoakProjectionTests(unittest.TestCase):
 
     def test_local_tamper_and_external_rollback_fail_closed(self):
         self._activate()
-        with sqlite3.connect(self.projection_path) as connection:
+        with closing(sqlite3.connect(self.projection_path)) as connection:
             with self.assertRaises(sqlite3.DatabaseError):
                 connection.execute(
                     "UPDATE projection_events SET upstream_sha256=? WHERE sequence=1",

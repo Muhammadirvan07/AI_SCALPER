@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -354,7 +355,7 @@ class DemoAutoSessionCapabilityTest(unittest.TestCase):
             lease,
             expected_intent_id=verification.intent_id,
         )
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection:
             connection.execute(
                 """UPDATE demo_auto_session_dispatch_reservations
                    SET reservation_hmac_sha256=? WHERE intent_id=?""",
@@ -537,8 +538,8 @@ class DemoAutoSessionCapabilityTest(unittest.TestCase):
 
     def test_database_rollback_below_external_head_is_rejected(self) -> None:
         created = self._create()
-        with sqlite3.connect(self.database) as source, sqlite3.connect(
-            self.root / "historical.sqlite3"
+        with closing(sqlite3.connect(self.database)) as source, closing(
+            sqlite3.connect(self.root / "historical.sqlite3")
         ) as target:
             source.backup(target)
         self._renew(created)
@@ -548,9 +549,9 @@ class DemoAutoSessionCapabilityTest(unittest.TestCase):
         ):
             sidecar.unlink(missing_ok=True)
         self.database.unlink()
-        with sqlite3.connect(self.root / "historical.sqlite3") as source, sqlite3.connect(
-            self.database
-        ) as target:
+        with closing(
+            sqlite3.connect(self.root / "historical.sqlite3")
+        ) as source, closing(sqlite3.connect(self.database)) as target:
             source.backup(target)
         with self.assertRaisesRegex(
             DemoAutoSessionReplayError, "differs from local head"
@@ -608,7 +609,7 @@ class DemoAutoSessionCapabilityTest(unittest.TestCase):
 
     def test_sqlite_profile_and_append_only_triggers_are_enforced(self) -> None:
         self._create()
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection:
             self.assertEqual("wal", connection.execute("PRAGMA journal_mode").fetchone()[0])
             connection.execute("PRAGMA synchronous=FULL")
             self.assertEqual(2, connection.execute("PRAGMA synchronous").fetchone()[0])

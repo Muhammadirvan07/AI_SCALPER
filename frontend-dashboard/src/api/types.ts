@@ -327,6 +327,22 @@ export interface SystemStatusData {
   last_successful_read: string | null
   error_count: number
   components: Record<string, string>
+  ai_advisory: AIAdvisoryStatusData
+}
+
+export interface AIAdvisoryStatusData {
+  requested: boolean
+  effective_mode: 'DISABLED' | 'BLOCKED_EVIDENCE' | 'OPENAI_ADVISORY' | 'FALLBACK_DETERMINISTIC' | 'BLOCKED_CONFIGURATION'
+  model: string
+  credential_configured: boolean
+  deterministic_fallback_enabled: boolean
+  news_ready: boolean
+  economic_calendar_ready: boolean
+  blockers: string[]
+  advisory_only: true
+  execution_scope: 'PAPER_ONLY'
+  live_allowed: false
+  order_capability: 'DISABLED'
 }
 
 export interface SystemComponent {

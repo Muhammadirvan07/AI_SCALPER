@@ -1,0 +1,24 @@
+{
+  "schema_version": "finex-calendar-email-monitor-contract-v1",
+  "candidate_id": "finex",
+  "calendar_version": "finex-window-01-v2",
+  "monitoring_channel": "FINEX_REGISTERED_EMAIL",
+  "observation_start_at_utc": "2026-08-31T12:00:00Z",
+  "blind_until_utc": "2026-10-26T12:00:00Z",
+  "max_checkpoint_gap_hours": 168,
+  "max_checkpoint_recording_lag_hours": 24,
+  "accepted_export_suffixes": [
+    ".eml",
+    ".html",
+    ".json",
+    ".mhtml",
+    ".pdf"
+  ],
+  "required_query_scope": "ALL_FINEX_TRADING_HOURS_HOLIDAY_AND_MARKET_CLOSURE_NOTICES",
+  "final_independent_review_required": true,
+  "execution_enabled": false,
+  "live_allowed": false,
+  "safe_to_demo_auto_order": false,
+  "authorization_granted": false,
+  "order_capability": "DISABLED"
+}

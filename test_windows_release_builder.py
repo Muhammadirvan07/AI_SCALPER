@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -347,7 +348,14 @@ class WindowsReleaseBuilderTests(unittest.TestCase):
             target = root / "target.py"
             target.write_text("VALUE = 2\n", encoding="utf-8")
             link = root / "linked.py"
-            link.symlink_to(target.name)
+            try:
+                link.symlink_to(target.name)
+            except OSError as exc:
+                if sys.platform == "win32" and exc.winerror == 1314:
+                    self.skipTest(
+                        "Windows account lacks symbolic-link creation privilege"
+                    )
+                raise
             payload = json.loads(allowlist.read_text(encoding="utf-8"))
             payload["files"].append("linked.py")
             allowlist.write_text(json.dumps(payload), encoding="utf-8")

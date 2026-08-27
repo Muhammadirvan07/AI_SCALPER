@@ -16,6 +16,7 @@ export const endpoints = {
   quality: '/quality',
   health: '/health',
   systemStatus: '/system/status',
+  systemAiAdvisory: '/system/ai-advisory',
   systemComponents: '/system/components',
   activity: '/activity',
   logs: '/logs',

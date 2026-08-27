@@ -59,9 +59,9 @@
       "operator_entry_point": "Test-FINEXReadOnlyPreflight.ps1",
       "default_extraction_root": "C:\\AI_SCALPER_PRIVATE\\finex-read-only-preparation-v1",
       "eligibility": {
-        "operating_jurisdiction": "JP",
-        "status": "PREPARATION_ONLY_ELIGIBILITY_PENDING",
-        "discovery_allowed": false,
+        "operating_jurisdiction": "ID",
+        "status": "INDONESIA_READ_ONLY_DISCOVERY_APPROVED_PROMOTION_BLOCKED",
+        "discovery_allowed": true,
         "contract_registration_allowed": false,
         "task_installation_allowed": false
       },
@@ -69,7 +69,7 @@
         "read_only_preflight_allowed": true,
         "mt5_initialization_allowed": true,
         "credential_access_allowed": false,
-        "evidence_creation_allowed": false
+        "evidence_creation_allowed": true
       },
       "instrument_claims": {
         "reviewed_categories": [

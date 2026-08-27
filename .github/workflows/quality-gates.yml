@@ -13,6 +13,7 @@ concurrency:
 
 env:
   PYTHONNOUSERSITE: "1"
+  OPENAI_DECISION_ENABLED: "false"
   AI_SCALPER_LIVE_ALLOWED: "false"
   AI_SCALPER_SAFE_TO_DEMO_AUTO_ORDER: "false"
   AI_SCALPER_ORDER_CAPABILITY: "DISABLED"
@@ -175,3 +176,52 @@ jobs:
           python-version: "3.12"
       - name: Build, compare, and verify two atomic base suites
         run: python scripts/verify_repository.py release
+
+  windows-platform-smoke:
+    needs: repository-validation
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Parse repository and verify fail-closed safety contracts on Windows
+        shell: pwsh
+        run: python scripts/verify_repository.py repository-validation
+
+  quality-gates-summary:
+    if: always()
+    needs:
+      - repository-validation
+      - root-tests
+      - backend-quality
+      - dashboard-api
+      - frontend
+      - dependency-security
+      - release-verifier
+      - windows-platform-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every quality gate
+        env:
+          GATE_RESULTS: ${{ toJson(needs) }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+
+          results = {
+              name: details.get("result")
+              for name, details in json.loads(os.environ["GATE_RESULTS"]).items()
+          }
+          failed = {name: result for name, result in results.items() if result != "success"}
+          print(json.dumps(results, sort_keys=True))
+          if failed:
+              print(f"Required quality gates did not succeed: {failed}", file=sys.stderr)
+              raise SystemExit(1)
+          PY
