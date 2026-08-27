@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -21,6 +22,7 @@ DEFAULT_LOSS_USD = -0.25
 MAX_HOLDING_CANDLES = 48
 TIMEOUT_RESULT = "TIMEOUT"
 TIMEOUT_STATUS = "PAPER_TIMEOUT"
+CENSORED_STALE_DATA_STATUS = "PAPER_CENSORED_STALE_DATA"
 
 # If market data stops updating after an order is created, the paper runner can look stuck.
 # This safe timeout prevents one stale PAPER_OPEN order from blocking the whole forward loop forever.
@@ -45,8 +47,17 @@ def load_json(path, default):
 
 
 def save_json(path, data):
-    with open(path, "w") as f:
-        json.dump(data, f, indent=4)
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, temporary_path = tempfile.mkstemp(prefix=".paper-monitor-", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.unlink(temporary_path)
 
 
 def parse_datetime(value):
@@ -286,14 +297,14 @@ def check_order_result(order, df):
 
         if order_age_minutes is not None and order_age_minutes >= STALE_ORDER_SAFE_TIMEOUT_MINUTES:
             return build_result_info(
-                status=TIMEOUT_STATUS,
-                result=TIMEOUT_RESULT,
-                close_price=last_market_close,
-                closed_at=last_market_candle_at or utc_now().isoformat(),
+                status=CENSORED_STALE_DATA_STATUS,
+                result=None,
+                close_price=None,
+                closed_at=utc_now().isoformat(),
                 note=(
-                    f"Safe stale-data timeout reached after {order_age_minutes:.1f} minutes. "
-                    "No candle newer than order creation was available, so the order was closed "
-                    "to prevent the paper forward runner from being blocked forever."
+                    f"Stale-data censoring reached after {order_age_minutes:.1f} minutes. "
+                    "No post-entry candle exists, so no economic outcome or PnL was inferred "
+                    "from the pre-entry market snapshot."
                 ),
                 holding_candles=0,
                 last_market_candle_at=last_market_candle_at,
@@ -452,7 +463,11 @@ def update_order(order, result_info):
     order["close_price"] = result_info["close_price"]
     order["closed_at"] = result_info["closed_at"]
     order["actual_rr"] = round(calculate_actual_rr(order), 4)
-    order["profit_usd"] = calculate_profit(order, result_info["result"], result_info["close_price"])
+    order["profit_usd"] = (
+        None
+        if result_info["status"] == CENSORED_STALE_DATA_STATUS
+        else calculate_profit(order, result_info["result"], result_info["close_price"])
+    )
     order["monitor_note"] = result_info["note"]
     order["holding_candles"] = result_info.get("holding_candles", order.get("holding_candles", 0))
     order["last_checked_at"] = result_info.get("last_checked_at")
@@ -471,6 +486,10 @@ def build_report(orders):
     wins = sum(1 for order in orders if order.get("result") == "WIN")
     losses = sum(1 for order in orders if order.get("result") == "LOSS")
     timeouts = sum(1 for order in orders if order.get("result") == TIMEOUT_RESULT)
+    censored = sum(
+        1 for order in orders
+        if order.get("status") == CENSORED_STALE_DATA_STATUS
+    )
     open_orders = sum(1 for order in orders if order.get("status") == "PAPER_OPEN")
     stale_open_orders = sum(
         1
@@ -519,6 +538,7 @@ def build_report(orders):
         "wins": wins,
         "losses": losses,
         "timeouts": timeouts,
+        "censored_stale_data_orders": censored,
         "winrate_percent": round(winrate, 2),
         "gross_profit_usd": round(gross_profit, 2),
         "gross_loss_usd": round(gross_loss, 2),

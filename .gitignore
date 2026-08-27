@@ -58,3 +58,6 @@ ai_handoff/CLAUDE_NEXT_TASK.md
 ai_handoff/ai_background_review_summary.json
 paper_probe_*.json
 recovery_evaluation_report.json
+openai_advisory_audit.jsonl
+periodic_backtest_1y_report.json
+graphify-out/

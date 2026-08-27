@@ -1,11 +1,11 @@
 {
   "schema_version": "broker-candidate-plan-v1",
-  "status": "PHILLIP_JAPAN_DUAL_SHADOW_ACTIVE_EVIDENCE_DISCOVERY_PREPARED",
+  "status": "FINEX_SELECTED_READ_ONLY_DISCOVERY_CAPTURED_PROMOTION_BLOCKED",
   "execution_enabled": false,
   "credentials_allowed": false,
   "operational_priority": {
-    "selected_target_broker": "phillip",
-    "selected_target_bindings": ["phillip-fx", "phillip-commodity"],
+    "selected_target_broker": "finex",
+    "selected_target_bindings": ["finex"],
     "preflight_allowed_bindings": ["fbs", "phillip-fx", "phillip-commodity"],
     "primary_shadow_broker": "fbs",
     "standby_preparation_broker": "finex",
@@ -416,22 +416,39 @@
     {
       "candidate_id": "finex",
       "display_name": "FINEX",
-      "role": "STANDBY_PREPARATION_NO_NEW_OBSERVATION",
+      "broker_legal_name_observed": "PT. Finex Bisnis Solusi Futures",
+      "role": "SELECTED_TARGET_PREPARATION",
       "environment": "DEMO",
       "server": "FinexBisnisSolusi-Demo",
       "server_endpoint_observed": "prod-mt5-demo1.fnx.xmt.mx:443",
       "account_type": "Demo Reguler",
       "leverage": "500:1",
       "account_currency": "USD",
-      "read_only_discovery_allowed": false,
-      "binding_status": "ACCOUNT_AND_FOUR_SYMBOL_SCREENSHOT_FACTS_COMPLETE_API_ATTESTATION_AND_ELIGIBILITY_PENDING",
+      "read_only_discovery_allowed": true,
+      "binding_status": "READ_ONLY_DISCOVERY_V3_CAPTURED_DIAGNOSTIC_ONLY_CALENDAR_AND_ELIGIBILITY_PENDING",
+      "server_time_model": {
+        "timezone": "Etc/GMT-3",
+        "calendar_version": "finex-window-01-v2",
+        "calendar_hash_status": "PENDING_EXACT_SYMBOL_SESSIONS_AND_HOLIDAYS"
+      },
+      "discovery_receipt": {
+        "schema_version": "mt5-read-only-discovery-v3",
+        "captured_at_utc": "2026-08-27T13:33:20.727554Z",
+        "payload_sha256": "9d375763682fdf309fc4e588bb82dbfe97c4b1d3a7cade7751becc0dc5fabfc0",
+        "receipt_path": "runtime_evidence/finex_mt5_readonly_discovery_refresh_20260827.json",
+        "diagnostic_only": true,
+        "validation_evidence": false,
+        "promotion_eligible": false,
+        "safe_to_demo_auto_order": false,
+        "live_allowed": false
+      },
       "broker_symbols_observed": {
         "XAUUSD": "XAUUSD",
         "EURUSD": "EURUSD",
         "USDJPY": "USDJPY",
         "AUDUSD": "AUDUSD"
       },
-      "instrument_specification_status": "FOUR_SYMBOL_SCREENSHOT_CAPTURE_API_ATTESTATION_PENDING",
+      "instrument_specification_status": "FOUR_SYMBOL_API_CAPTURE_COMPLETE_DIAGNOSTIC_ONLY",
       "instrument_specifications_observed": {
         "XAUUSD": {
           "broker_symbol": "XAUUSD",
@@ -534,8 +551,8 @@
         "source": "https://bappebti.go.id/pialang_berjangka/detail/133",
         "broker_claim_observed": false,
         "independent_registry_verification": true,
-        "verified_at_utc": "2026-07-16T10:51:10Z",
-        "verification_status": "BROKER_REGISTRATION_VERIFIED_OPERATING_ELIGIBILITY_PENDING",
+        "verified_at_utc": "2026-08-27T00:00:00Z",
+        "verification_status": "BROKER_REGISTRATION_REVERIFIED_ACCOUNT_ELIGIBILITY_PENDING",
         "independent_registry_sources": [
           {
             "authority": "Bappebti",
@@ -544,12 +561,12 @@
           }
         ],
         "japan_residency_eligibility": "PENDING_JAPAN_REGULATORY_REVIEW",
-        "indonesia_return_eligibility": "PENDING_PERSONAL_AND_ACCOUNT_ELIGIBILITY_AFTER_RETURN",
+        "indonesia_return_eligibility": "OPERATING_LOCATION_ID_OPERATOR_CONFIRMED_PERSONAL_AND_ACCOUNT_ELIGIBILITY_PENDING",
         "legal_eligible": false,
-        "decision": "SELECTED_BY_OPERATOR_PREPARE_ONLY_NO_CURRENT_JAPAN_OPERATION"
+        "decision": "SELECTED_BY_OPERATOR_FOR_INDONESIA_DEMO_PREPARATION_NO_EXECUTION_AUTHORITY"
       },
       "account_identifier_stored": false
     }
   ],
-  "notes": "Phillip Securities Japan is split into isolated FX and commodity demo lanes. Sanitized binding, read-only preflight, and diagnostic shadow are observed for both lanes. Candidate-namespaced discovery-v3 capture is approved only through an explicit terminal64.exe path; forward contract registration remains blocked pending dual signed regulatory approval plus exact independently attested session and holiday calendars. FBS remains diagnostic-only and is project-blocked for discovery evidence, orders, promotion, and live use while operating from Japan because of the official Japan FSA unregistered-operator warning. FINEX remains the future-Indonesia preparation path; current-Japan operation and personal eligibility after return are not approved. XM remains blocked. Do not guess or store credentials here."
+  "notes": "FINEX is the selected Indonesia demo-preparation target. Its Bappebti registration was reverified on 2026-08-27, but terminal installation, exact demo account binding, API instrument attestation, personal account eligibility, soak evidence, promotion, and execution authority remain pending. Phillip, FBS, and XM historical evidence remains isolated and does not authorize FINEX. Do not guess or store credentials here."
 }

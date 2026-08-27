@@ -43,11 +43,19 @@ The installed scheduler identity is package commit
 These values are immutable inputs to this specification.
 
 The acceptance toolkit is additionally bound to the V9 operator-only health
-remediation at commit `d24105123ebbcffbd37effc538fccfb4943b64b5` and tree
-`73478211f75e2c10dc5f5a763bc5a7e9fe40def6`. A fail-closed Event 153
+remediation at commit `1194212f4ce91be55fe21a506473a4a7dfc0ef88` and tree
+`353fcd162503bb102afe37fbebb28d48d318ceb7`. A fail-closed Event 153
 classification for an earlier missed schedule MAY establish readiness for a
 strictly future eligible boundary. It MUST NOT be accepted as evidence that a
 task started or completed.
+
+The scheduler operator root MUST be derived from the first eight hexadecimal
+characters of that exact scheduler package commit. The scheduler archive
+suffix, scheduler transfer manifest `operator_root`, extraction-helper root,
+and both rendered acceptance entry-point defaults MUST agree. A caller MUST
+provide `TargetBoundaryLocal`; Watch mode MUST reject a missing or non-future
+boundary. Collection modes retain the exact observed boundary and MAY run
+after it solely to collect evidence.
 
 ## Functional Requirements
 
@@ -71,7 +79,7 @@ task started or completed.
   submit an order.
 - FR-6: Collection MUST require an explicit target boundary expressed as a
   canonical RFC 3339 timestamp with `+09:00`, at 06:45 JST on an eligible
-  weekday, no earlier than `2026-08-17T06:45:00+09:00`, and before the
+  weekday, strictly future when Watch mode starts, and before the
   scheduler end boundary `2026-10-13T00:16:00+09:00`.
 - FR-7: Watch mode MUST poll local read-only state for one target boundary,
   collect the start archive once eligible, continue monitoring the same task
@@ -397,7 +405,7 @@ call an HTTP method/path such as `GET /api/acceptance` or
 
 ```powershell
 & .\Test-PhillipCommodityWindow02AutomaticRunAcceptanceReadiness.ps1 `
-  -TargetBoundary "2026-08-17T06:45:00+09:00"
+  -TargetBoundary "<EXACT_FUTURE_NEXT_RUN_TIME_LOCAL>"
 ```
 
 Exit zero returns a formatted object with status
@@ -409,7 +417,7 @@ precondition exits nonzero and produces no archive.
 ```powershell
 & .\Invoke-PhillipCommodityWindow02AutomaticRunAcceptance.ps1 `
   -Mode Watch `
-  -TargetBoundary "2026-08-17T06:45:00+09:00" `
+  -TargetBoundary "<EXACT_FUTURE_NEXT_RUN_TIME_LOCAL>" `
   -OutputRoot "C:\AI_SCALPER_PRIVATE\phillip-window-02-acceptance"
 ```
 

@@ -17,6 +17,7 @@ import mt5_readonly_discovery
 import prepare_broker_window
 import register_calendar_amendment as amendment_cli
 import register_broker_forward_contract
+import verify_broker_discovery_receipt as discovery_verify_cli
 from live_runtime.broker_window_plan import (
     AMENDABLE_PLAN_SCHEMA_VERSION,
     SIGNED_REVIEW_PLAN_SCHEMA_VERSION,
@@ -116,6 +117,51 @@ class BrokerEvidenceCLITests(unittest.TestCase):
         self.assertEqual(2, result)
         self.assertIn("MT5_DISCOVERY_GATE_BLOCKED", output.getvalue())
         self.assertIn("no broker order", output.getvalue())
+
+    def test_discovery_verifier_uses_candidate_vault_key_and_stays_disabled(self) -> None:
+        output = io.StringIO()
+        profile = SimpleNamespace(
+            candidate_id="finex",
+            key_name="finex-demo-discovery-v1",
+        )
+        receipt = {
+            "candidate_id": "finex",
+            "payload_sha256": "a" * 64,
+        }
+        with (
+            patch.object(
+                discovery_verify_cli,
+                "load_broker_evidence_profile",
+                return_value=profile,
+            ),
+            patch.object(
+                discovery_verify_cli,
+                "read_json_object",
+                return_value=receipt,
+            ),
+            patch.object(discovery_verify_cli, "WindowsEvidenceKeyStore") as store,
+            patch.object(
+                discovery_verify_cli,
+                "verify_discovery_receipt",
+            ) as verify,
+            redirect_stdout(output),
+        ):
+            store.return_value.load.return_value = b"k" * 32
+            result = discovery_verify_cli.main(
+                [
+                    "--candidate",
+                    "finex",
+                    "--receipt",
+                    "runtime_evidence/receipt.json",
+                ]
+            )
+        self.assertEqual(0, result)
+        store.return_value.load.assert_called_once_with(
+            "finex-demo-discovery-v1"
+        )
+        verify.assert_called_once_with(receipt, b"k" * 32)
+        self.assertIn("Discovery receipt: VERIFIED", output.getvalue())
+        self.assertIn("Order capability: DISABLED", output.getvalue())
 
     def test_plan_preparation_is_not_circularly_blocked_by_registration(self) -> None:
         output = io.StringIO()

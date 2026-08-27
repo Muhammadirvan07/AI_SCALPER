@@ -8,7 +8,7 @@ disable, or modify a scheduled task; it cannot submit a broker order.
 
 The first reviewed boundary is:
 
-- local: `2026-08-17T06:45:00+09:00` (Tokyo Standard Time)
+- historical local, never reuse: `2026-08-17T06:45:00+09:00` (Tokyo Standard Time)
 - UTC: `2026-08-16T21:45:00Z`
 - bounded worker duration: `84300` seconds
 - expected completion: `2026-08-18T06:10:00+09:00`
@@ -20,7 +20,10 @@ promotion gates.
 
 The toolkit keeps the installed V6 receipt immutable while invoking the
 operator-only V9 health remediation from
-`C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-scheduler-operator-d2410517`.
+`C:\AI_SCALPER_PRIVATE\phillip-commodity-window-02-scheduler-operator-1194212f`,
+derived from the exact scheduler package commit prefix. Both acceptance entry
+points receive this value from the package builder; do not substitute an
+archive filename suffix or an older operator root.
 The V9 operator identity, corrected lock verifier, missed-schedule verifier,
 and health-script hashes are
 validated independently from the installed V6 scheduler identity.
@@ -74,7 +77,7 @@ Run this before leaving the watcher active:
 & "$operatorRoot\Test-PhillipCommodityWindow02AutomaticRunAcceptanceReadiness.ps1" `
   -ToolkitArchive $zip `
   -ExpectedToolkitArchiveSHA256 $expectedZipSHA256 `
-  -TargetBoundary "2026-08-17T06:45:00+09:00"
+  -TargetBoundary "<EXACT_FUTURE_NEXT_RUN_TIME_LOCAL>"
 ```
 
 The expected status is:
@@ -87,7 +90,7 @@ exact Phillip Commodity MT5 process, and the existing health checker to pass.
 It performs no scheduler or broker mutation.
 
 After a verified missed boundary, use the next scheduled weekday boundary
-(for example `2026-08-24T06:45:00+09:00`) as `-TargetBoundary`. Do not reuse
+(in canonical ISO 8601 form with `+09:00`) as `-TargetBoundary`. Do not reuse
 the missed timestamp and do not start the task manually.
 
 If readiness reports `READINESS_RECEIPT_ACL_REJECTED`, stop there and preserve
@@ -105,7 +108,7 @@ running through completion:
   -ToolkitArchive $zip `
   -ExpectedToolkitArchiveSHA256 $expectedZipSHA256 `
   -Mode Watch `
-  -TargetBoundaryLocal "2026-08-17T06:45:00+09:00" `
+  -TargetBoundaryLocal "<EXACT_FUTURE_NEXT_RUN_TIME_LOCAL>" `
   -WatchPollSeconds 30
 ```
 
@@ -137,7 +140,7 @@ start phase during the active interval:
   -ToolkitArchive $zip `
   -ExpectedToolkitArchiveSHA256 $expectedZipSHA256 `
   -Mode CollectStart `
-  -TargetBoundaryLocal "2026-08-17T06:45:00+09:00"
+  -TargetBoundaryLocal "<EXACT_OBSERVED_BOUNDARY_LOCAL>"
 ```
 
 If the start ZIP exists and the worker later completed, collect completion:
@@ -150,7 +153,7 @@ $startHash = (Get-FileHash -LiteralPath $startZip -Algorithm SHA256).Hash.ToLowe
   -ToolkitArchive $zip `
   -ExpectedToolkitArchiveSHA256 $expectedZipSHA256 `
   -Mode CollectCompletion `
-  -TargetBoundaryLocal "2026-08-17T06:45:00+09:00" `
+  -TargetBoundaryLocal "<EXACT_OBSERVED_BOUNDARY_LOCAL>" `
   -StartArchive $startZip `
   -ExpectedStartArchiveSHA256 $startHash
 ```

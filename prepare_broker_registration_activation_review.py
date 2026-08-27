@@ -28,6 +28,10 @@ from live_runtime.registration_review import (
     RegistrationReviewError,
     load_regulatory_observation,
 )
+from live_runtime.registration_review_ed25519 import (
+    OBSERVATION_SCHEMA as ED25519_REGULATORY_OBSERVATION_SCHEMA,
+    verify_dual_observation,
+)
 from live_runtime.secure_files import SecureFileError
 
 
@@ -62,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--candidate",
         required=True,
-        choices=("phillip-fx", "phillip-commodity"),
+        choices=("finex", "phillip-fx", "phillip-commodity"),
     )
     parser.add_argument("--discovery", type=Path, required=True)
     parser.add_argument("--regulatory-observation", type=Path, required=True)
@@ -81,9 +85,15 @@ def main(argv: list[str] | None = None) -> int:
         profiles = load_json_object_strict(PROFILE_CONFIG)
         template = load_json_object_strict(REPO_ROOT / profile.template_path)
         discovery = load_json_object_strict(_input_path(args.discovery))
-        regulatory = load_regulatory_observation(
-            _input_path(args.regulatory_observation)
-        )
+        regulatory_path = _input_path(args.regulatory_observation)
+        regulatory_candidate = load_json_object_strict(regulatory_path)
+        if (
+            regulatory_candidate.get("schema_version")
+            == ED25519_REGULATORY_OBSERVATION_SCHEMA
+        ):
+            regulatory = verify_dual_observation(regulatory_candidate)
+        else:
+            regulatory = load_regulatory_observation(regulatory_path)
         calendar_review = load_prewindow_calendar_review(
             _input_path(args.calendar_review)
         )

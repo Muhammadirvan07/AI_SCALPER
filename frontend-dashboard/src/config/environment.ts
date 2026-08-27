@@ -1,3 +1,5 @@
+import { validateLoopbackServiceUrl } from './loopbackOrigins'
+
 type ViteEnvironment = Partial<
   Record<
     | 'VITE_API_BASE_URL'
@@ -12,13 +14,13 @@ const viteEnvironment = ((import.meta as ImportMeta & { env?: ViteEnvironment })
 
 const requiredValue = (key: 'VITE_API_BASE_URL' | 'VITE_WS_URL', fallback: string) => {
   const value = viteEnvironment[key]?.trim()
-  if (value) return value.replace(/\/$/, '')
+  if (value) return validateLoopbackServiceUrl(key, value)
   if (viteEnvironment.DEV) {
     throw new Error(
       `Konfigurasi ${key} belum tersedia. Salin .env.example ke .env.local sebelum menjalankan dashboard.`,
     )
   }
-  return fallback
+  return validateLoopbackServiceUrl(key, fallback)
 }
 
 export const environment = Object.freeze({

@@ -120,6 +120,16 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
             self._git("rev-parse", "HEAD^{tree}"),
             manifest["source"]["tree"],
         )
+        expected_suffix = manifest["source"]["commit"][:8]
+        self.assertEqual(
+            f"phillip-commodity-window-02-scheduler-{expected_suffix}.zip",
+            first.name,
+        )
+        self.assertEqual(
+            "C:\\AI_SCALPER_PRIVATE\\"
+            f"phillip-commodity-window-02-scheduler-operator-{expected_suffix}",
+            manifest["operator_root"],
+        )
         self.assertEqual(builder.WORKER_COMMIT, manifest["worker"]["source_commit"])
         self.assertEqual(builder.WORKER_TREE, manifest["worker"]["source_tree"])
         self.assertEqual(builder.CONTRACT_ID, manifest["worker"]["contract_id"])
@@ -277,6 +287,17 @@ class PhillipCommodityWindow02SchedulerPackageTests(unittest.TestCase):
         output = Path(self.temp.name) / "window-02.zip"
         with self.assertRaisesRegex(builder.PackageBuildError, "reviewed Window 02"):
             builder.build_package(self.source, output)
+
+    def test_rejects_archive_suffix_not_bound_to_source_commit(self) -> None:
+        output = Path(self.temp.name) / (
+            "phillip-commodity-window-02-scheduler-deadbeef.zip"
+        )
+        with self.assertRaisesRegex(
+            builder.PackageBuildError,
+            "exact source commit prefix",
+        ):
+            builder.build_package(self.source, output)
+        self.assertFalse(output.exists())
 
     def test_generated_executable_members_preserve_safety_boundary(self) -> None:
         archive, _ = self._build("safety")

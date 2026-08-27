@@ -40,6 +40,11 @@ from .registration_review import (
     assemble_regulatory_observation,
     regulatory_review_key_name,
 )
+from .registration_review_ed25519 import (
+    OBSERVATION_SCHEMA as ED25519_REGULATORY_OBSERVATION_SCHEMA,
+    RegulatoryEd25519Error,
+    verify_dual_observation,
+)
 from .secure_files import SecureFileError, write_json_exclusive
 from .xm_window_plan import XMWindowPlanError, verify_candidate_legal_binding
 
@@ -53,6 +58,7 @@ MAX_LOT = 0.01
 _CANDIDATE_CONFIG_PATH = "config/broker_candidates.phase3.json"
 _PROFILE_CONFIG_PATH = "config/broker_evidence_profiles.v1.json"
 _TEMPLATE_PATHS = {
+    "finex": "config/finex_calendar_window_01.template.json",
     "phillip-fx": "config/phillip_fx_calendar_window_01.template.json",
     "phillip-commodity": (
         "config/phillip_commodity_calendar_window_01.template.json"
@@ -406,6 +412,32 @@ def _profile_entry(
 def _validate_regulatory_shape(
     observation: Mapping[str, object], candidate_id: str
 ) -> None:
+    if observation.get("schema_version") == ED25519_REGULATORY_OBSERVATION_SCHEMA:
+        try:
+            verified = verify_dual_observation(observation)
+        except RegulatoryEd25519Error as exc:
+            raise RegistrationActivationError(
+                "Ed25519 regulatory observation is invalid"
+            ) from exc
+        if (
+            verified.get("candidate_id") != candidate_id
+            or verified.get("environment") != "DEMO"
+            or verified.get("binding_scope") not in {"FX", "COMMODITY", "ALL"}
+            or verified.get("operating_jurisdiction") != "ID"
+            or verified.get("legal_eligible") is not True
+            or verified.get("activation_eligible") is not False
+            or verified.get("authorization_granted") is not False
+            or verified.get("order_capability") != "DISABLED"
+            or verified.get("execution_enabled") is not False
+            or verified.get("live_allowed") is not False
+            or verified.get("safe_to_demo_auto_order") is not False
+            or verified.get("promotion_eligible") is not False
+            or verified.get("max_lot") != MAX_LOT
+        ):
+            raise RegistrationActivationError(
+                "Ed25519 regulatory observation binding is invalid"
+            )
+        return
     if set(observation) != set(_REGULATORY_OBSERVATION_FIELDS):
         raise RegistrationActivationError("regulatory observation fields are invalid")
     evidence_body = {
@@ -635,8 +667,10 @@ def _resolve_review_keys(
     discovery_key: bytes,
     regulatory_key_provider: Callable[[str], bytes | None],
     calendar_key_provider: Callable[[str], bytes | None],
+    *,
+    require_regulatory: bool = True,
 ) -> dict[str, bytes]:
-    names_and_providers = (
+    regulatory_names_and_providers = (
         (
             regulatory_review_key_name(candidate_id, "COMPLIANCE_REVIEW"),
             regulatory_key_provider,
@@ -645,8 +679,10 @@ def _resolve_review_keys(
             regulatory_review_key_name(candidate_id, "LEGAL_REVIEW"),
             regulatory_key_provider,
         ),
-        (calendar_review_key_name(candidate_id), calendar_key_provider),
     )
+    names_and_providers = (
+        regulatory_names_and_providers if require_regulatory else ()
+    ) + ((calendar_review_key_name(candidate_id), calendar_key_provider),)
     resolved: dict[str, bytes] = {}
     try:
         for name, provider in names_and_providers:
@@ -668,7 +704,8 @@ def _resolve_review_keys(
         hashlib.sha256(key).hexdigest()
         for key in (discovery_key, *resolved.values())
     }
-    if len(fingerprints) != 4:
+    expected_fingerprints = 4 if require_regulatory else 2
+    if len(fingerprints) != expected_fingerprints:
         raise RegistrationActivationError(
             "discovery, compliance, legal, and calendar credentials must be distinct"
         )
@@ -702,6 +739,10 @@ def build_registration_activation_review_pack(
         discovery_signing_key,
         regulatory_key_provider,
         calendar_key_provider,
+        require_regulatory=(
+            regulatory_observation.get("schema_version")
+            != ED25519_REGULATORY_OBSERVATION_SCHEMA
+        ),
     )
     base_candidates = deepcopy(dict(_mapping(candidate_config, "candidate config")))
     base_profiles = deepcopy(dict(_mapping(profile_config, "profile config")))
@@ -737,30 +778,40 @@ def build_registration_activation_review_pack(
         discovery=discovery_copy,
     )
     _validate_regulatory_shape(regulatory_copy, candidate_id)
-    for approval in regulatory_copy["regulatory_approvals"]:
-        role = str(approval.get("approver_role") or "").upper()
-        if approval.get("key_id") != regulatory_review_key_name(candidate_id, role):
-            raise RegistrationActivationError(
-                "regulatory review key is not candidate-scoped"
+    if regulatory_copy.get("schema_version") == ED25519_REGULATORY_OBSERVATION_SCHEMA:
+        try:
+            rebuilt_regulatory = verify_dual_observation(
+                regulatory_copy, now_provider=lambda: now
             )
-    evidence = {
-        key: deepcopy(value)
-        for key, value in regulatory_copy.items()
-        if key != "regulatory_approvals"
-    }
-    try:
-        rebuilt_regulatory = assemble_regulatory_observation(
-            evidence,
-            regulatory_copy["regulatory_approvals"],
-            base_candidates,
-            approval_key_provider=review_keys.get,
-            now_provider=lambda: now,
-            template=base_template,
-        )
-    except (RegistrationReviewError, XMWindowPlanError, TypeError, ValueError) as exc:
-        raise RegistrationActivationError(
-            "regulatory observation verification failed"
-        ) from exc
+        except RegulatoryEd25519Error as exc:
+            raise RegistrationActivationError(
+                "Ed25519 regulatory observation verification failed"
+            ) from exc
+    else:
+        for approval in regulatory_copy["regulatory_approvals"]:
+            role = str(approval.get("approver_role") or "").upper()
+            if approval.get("key_id") != regulatory_review_key_name(candidate_id, role):
+                raise RegistrationActivationError(
+                    "regulatory review key is not candidate-scoped"
+                )
+        evidence = {
+            key: deepcopy(value)
+            for key, value in regulatory_copy.items()
+            if key != "regulatory_approvals"
+        }
+        try:
+            rebuilt_regulatory = assemble_regulatory_observation(
+                evidence,
+                regulatory_copy["regulatory_approvals"],
+                base_candidates,
+                approval_key_provider=review_keys.get,
+                now_provider=lambda: now,
+                template=base_template,
+            )
+        except (RegistrationReviewError, XMWindowPlanError, TypeError, ValueError) as exc:
+            raise RegistrationActivationError(
+                "regulatory observation verification failed"
+            ) from exc
     if canonical_sha256(rebuilt_regulatory) != canonical_sha256(regulatory_copy):
         raise RegistrationActivationError("regulatory observation is not canonical")
 
@@ -989,6 +1040,7 @@ def verify_registration_activation_review_pack(
     base_candidate = _candidate_entry(base_candidates, candidate_id)
     base_profile = _profile_entry(base_profiles, candidate_id)
     expected_scope = {
+        "finex": "ALL",
         "phillip-fx": "FX",
         "phillip-commodity": "COMMODITY",
     }[candidate_id]

@@ -1,9 +1,10 @@
 import hashlib
 import json
+from openai_decision_advisor import apply_openai_advisory
 import re
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -12411,7 +12412,7 @@ def build_mt5_order_payload(trade_decision):
         trade_decision.get("target_risk_amount", trade_decision.get("risk_amount"))
     )
 
-    created_at = datetime.now()
+    created_at = datetime.now(UTC)
     expires_at = created_at + timedelta(minutes=SIGNAL_EXPIRY_MINUTES)
 
     return {
@@ -16525,6 +16526,7 @@ def run_decision_cycle():
 
     trade_plan = generate_trade_plan()
     trade_plan = block_trade_plan_if_paper_order_open(trade_plan)
+    trade_plan = apply_openai_advisory(trade_plan)
     print_trade_plan(trade_plan)
     save_trade_signals(trade_plan)
     decision_health_snapshot = save_phase5m_decision_health_snapshot(trade_plan)

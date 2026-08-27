@@ -8,13 +8,11 @@ param(
   [string]$ExpectedToolkitArchiveSHA256,
 
   [Parameter(Mandatory = $true)]
+  [ValidateNotNullOrEmpty()]
   [string]$TargetBoundary,
 
   [Parameter()]
-  [string]$SchedulerOperatorRoot = (
-    "C:\AI_SCALPER_PRIVATE\" +
-    "phillip-commodity-window-02-scheduler-operator-d2410517"
-  ),
+  [string]$SchedulerOperatorRoot = "__SCHEDULER_OPERATOR_ROOT__",
 
   [Parameter()]
   [string]$Repo = "C:\AI_SCALPER",

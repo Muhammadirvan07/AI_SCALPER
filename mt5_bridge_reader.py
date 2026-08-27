@@ -200,9 +200,24 @@ def parse_datetime(value):
         return None
 
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except (TypeError, ValueError):
         return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def validate_signal_timestamps(order):
+    created_at = parse_datetime(order.get("created_at"))
+    expires_at = parse_datetime(order.get("expires_at"))
+    if created_at is None:
+        return False, "Signal created_at must be an explicit timezone-aware timestamp."
+    if expires_at is None:
+        return False, "Signal expires_at must be an explicit timezone-aware timestamp."
+    if expires_at <= created_at:
+        return False, "Signal expiry must be later than creation time."
+    return True, "Signal timestamps are UTC-aware and ordered."
 
 
 def is_signal_expired(order):
@@ -211,8 +226,7 @@ def is_signal_expired(order):
     if expires_at is None:
         return True
 
-    current_time = datetime.now(timezone.utc) if expires_at.tzinfo else datetime.now()
-    return current_time > expires_at
+    return datetime.now(timezone.utc) > expires_at
 
 
 def is_signal_already_executed(order, executed_payload):
@@ -225,6 +239,10 @@ def is_signal_already_executed(order, executed_payload):
 def validate_order(order, executed_payload, final_guard):
     if order.get("status") != "PENDING_EXECUTION":
         return False, "Signal status is not PENDING_EXECUTION."
+
+    timestamps_valid, timestamp_reason = validate_signal_timestamps(order)
+    if not timestamps_valid:
+        return False, timestamp_reason
 
     symbol_allowed, symbol_reason = is_order_symbol_allowed_by_final_guard(order, final_guard)
     if not symbol_allowed:

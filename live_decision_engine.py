@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 
 from active_pair_filter import scan_active_pairs
+from openai_decision_advisor import apply_openai_advisory
 from decision_engine import (
     build_trade_decision,
     build_mt5_order_payload,
@@ -267,7 +268,7 @@ def main():
             print("python decision_engine.py")
             return
 
-    trade_plan = generate_live_trade_plan()
+    trade_plan = apply_openai_advisory(generate_live_trade_plan(), require_enabled=True)
     elapsed_seconds = time.time() - started_at
 
     print_live_trade_plan(trade_plan, elapsed_seconds)

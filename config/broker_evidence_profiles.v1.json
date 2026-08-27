@@ -6,6 +6,15 @@
   "max_lot": 0.01,
   "profiles": [
     {
+      "candidate_id": "finex",
+      "key_name": "finex-demo-discovery-v1",
+      "snapshot_id": "finex-id-demo-pre-soak-v1",
+      "contract_id": "finex-id-demo-read-only-v1",
+      "template_path": "config/finex_calendar_window_01.template.json",
+      "registration_enabled": false,
+      "status": "READ_ONLY_DISCOVERY_APPROVED_PROMOTION_AND_EXECUTION_BLOCKED"
+    },
+    {
       "candidate_id": "phillip-fx",
       "key_name": "phillip-fx-window-01-v1",
       "snapshot_id": "phillip-fx-dev-pre-window-01-v1",

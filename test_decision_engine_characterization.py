@@ -1,6 +1,7 @@
 import hashlib
 import json
 import unittest
+from datetime import datetime
 from unittest.mock import mock_open, patch
 
 import decision_engine as engine
@@ -611,6 +612,11 @@ class DecisionEngineCharacterizationTests(unittest.TestCase):
         self.assertEqual(payload["lot"], 0.01)
         self.assertAlmostEqual(payload["target_risk_amount"], 0.25)
         self.assertAlmostEqual(payload["actual_risk_amount"], 0.20)
+        created_at = datetime.fromisoformat(payload["created_at"])
+        expires_at = datetime.fromisoformat(payload["expires_at"])
+        self.assertIsNotNone(created_at.utcoffset())
+        self.assertIsNotNone(expires_at.utcoffset())
+        self.assertGreater(expires_at, created_at)
 
         self.assertIsNone(engine.build_mt5_order_payload({"status": "WAIT"}))
         self.assertIsNone(engine.build_mt5_order_payload(ready_decision("GBPUSD")))

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { LOOPBACK_API_ORIGINS, LOOPBACK_WS_ORIGINS } from './src/config/loopbackOrigins'
 
 const contentSecurityPolicy = (allowViteDevelopmentPreamble: boolean) => [
   "default-src 'self'",
@@ -9,7 +10,14 @@ const contentSecurityPolicy = (allowViteDevelopmentPreamble: boolean) => [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",
-  "connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 ws://127.0.0.1:8000 ws://localhost:8000 ws://127.0.0.1:5173 ws://localhost:5173 ws://127.0.0.1:4173 ws://localhost:4173",
+  [
+    "connect-src 'self'",
+    ...LOOPBACK_API_ORIGINS,
+    ...LOOPBACK_WS_ORIGINS,
+    ...(allowViteDevelopmentPreamble
+      ? ['ws://127.0.0.1:5173', 'ws://localhost:5173']
+      : []),
+  ].join(' '),
   "frame-src 'none'",
   "child-src 'none'",
   "object-src 'none'",

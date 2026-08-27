@@ -116,9 +116,14 @@ class Window02AutomaticRunAcceptanceBuilderTests(unittest.TestCase):
             self.assertNotIn("__TOOLKIT_SOURCE_COMMIT__", wrapper)
             self.assertNotIn("__TOOLKIT_SOURCE_TREE__", wrapper)
             self.assertNotIn("__ACCEPTANCE_TOOL_SHA256__", wrapper)
+            self.assertNotIn("__SCHEDULER_OPERATOR_ROOT__", wrapper)
             self.assertIn(commit, wrapper)
             self.assertIn(tree, wrapper)
             self.assertIn(hashlib.sha256(tool).hexdigest(), wrapper)
+            self.assertIn(
+                manifest["installed_scheduler"]["operator_root"],
+                wrapper,
+            )
 
     def test_rejects_tracked_source_drift_collision_and_bad_filename(self) -> None:
         relative = next(iter(builder.SOURCE_PATHS.values()))
@@ -217,6 +222,7 @@ class Window02AutomaticRunAcceptanceBuilderTests(unittest.TestCase):
     def test_operator_surface_matches_the_approved_specification(self) -> None:
         archive, _ = self._build("operator-surface")
         with zipfile.ZipFile(archive) as package:
+            manifest = json.loads(package.read(builder.TOOLKIT_MANIFEST))
             readiness = package.read(
                 "Test-PhillipCommodityWindow02AutomaticRunAcceptanceReadiness.ps1"
             ).decode("utf-8")
@@ -242,8 +248,18 @@ class Window02AutomaticRunAcceptanceBuilderTests(unittest.TestCase):
         self.assertIn('"verify-toolkit-archive"', readiness)
         self.assertIn('"verify-toolkit-archive"', invocation)
         self.assertIn('-PropertyName "AllowDemandStart"', readiness)
+        expected_scheduler_root = (
+            "C:\\AI_SCALPER_PRIVATE\\"
+            "phillip-commodity-window-02-scheduler-operator-"
+            + acceptance.HEALTH_OPERATOR_PACKAGE_COMMIT[:8]
+        )
+        self.assertEqual(acceptance.HEALTH_OPERATOR_ROOT, expected_scheduler_root)
+        self.assertEqual(
+            expected_scheduler_root,
+            manifest["installed_scheduler"]["operator_root"],
+        )
         self.assertIn(
-            "phillip-commodity-window-02-scheduler-operator-d2410517",
+            f'[string]$SchedulerOperatorRoot = "{expected_scheduler_root}"',
             readiness,
         )
         self.assertIn(
@@ -251,7 +267,12 @@ class Window02AutomaticRunAcceptanceBuilderTests(unittest.TestCase):
             readiness,
         )
         self.assertIn(
-            "phillip-commodity-window-02-scheduler-operator-d2410517",
+            f'[string]$SchedulerOperatorRoot = "{expected_scheduler_root}"',
+            invocation,
+        )
+        self.assertNotIn('TargetBoundaryLocal = "2026-', invocation)
+        self.assertIn(
+            "TargetBoundaryLocal must be strictly future in Watch mode.",
             invocation,
         )
         self.assertIn(

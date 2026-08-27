@@ -118,6 +118,14 @@ _SOURCE_ROLES = frozenset(
     }
 )
 _REQUIRED_ROLES = {
+    "finex": frozenset(
+        {
+            "REGULAR_FX_SESSION_SCHEDULE",
+            "DST_TRANSITION_NOTICE",
+            "COMMODITY_XAU_SESSION_SCHEDULE",
+            "KNOWN_SPECIAL_HOURS_NOTICE",
+        }
+    ),
     "phillip-fx": frozenset(
         {"REGULAR_FX_SESSION_SCHEDULE", "DST_TRANSITION_NOTICE"}
     ),
@@ -331,7 +339,7 @@ def _validate_template_safety_and_lane(
         != candidate.get("broker_legal_name_observed")
         or template.get("broker_server") != candidate.get("server")
         or candidate.get("broker_symbols_observed") != dict(symbols)
-        or template.get("operating_jurisdiction") != "JP"
+        or template.get("operating_jurisdiction") not in {"JP", "ID"}
     ):
         raise CalendarReviewError("candidate and template lane binding mismatch")
     if (
@@ -457,7 +465,12 @@ def _validate_source_url(value: object) -> str:
         or parsed.password is not None
         or port is not None
         or parsed.fragment
-        or not (host == "phillip.co.jp" or host.endswith(".phillip.co.jp"))
+        or not (
+            host == "phillip.co.jp"
+            or host.endswith(".phillip.co.jp")
+            or host == "finex.co.id"
+            or host.endswith(".finex.co.id")
+        )
         or not parsed.path.startswith("/")
         or parsed.path == "/"
     ):

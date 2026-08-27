@@ -47,6 +47,7 @@ SAFE_TO_DEMO_AUTO_ORDER = False
 _RISK_DECISION_SEAL = object()
 _USD_RISK_CAP_CONVERSION_SEAL = object()
 MAX_RISK_CONVERSION_AGE_SECONDS = 1.0
+MAX_BROKER_SPEC_AGE_SECONDS = 1.0
 IDENTITY_CONVERSION_SHA256 = "0" * 64
 
 
@@ -518,6 +519,25 @@ def evaluate_risk(
     _append(reasons, not server_matches, "SERVER_MISMATCH")
     _append(reasons, intent.symbol != broker.symbol, "BROKER_SYMBOL_MISMATCH")
 
+    broker_spec_age = (context.evaluated_at - broker.captured_at).total_seconds()
+    _append(reasons, broker_spec_age < 0, "BROKER_SPEC_FUTURE")
+    _append(
+        reasons,
+        broker_spec_age > MAX_BROKER_SPEC_AGE_SECONDS,
+        "BROKER_SPEC_STALE",
+    )
+    expected_broker_environment = {
+        "DEMO": "DEMO",
+        "DEMO_AUTO": "DEMO",
+        "LIVE": "LIVE",
+    }.get(intent.mode)
+    _append(
+        reasons,
+        expected_broker_environment is not None
+        and broker.environment != expected_broker_environment,
+        "BROKER_ENVIRONMENT_MISMATCH",
+    )
+
     _append(reasons, not context.news_clear, "NEWS_WINDOW_BLOCKED")
     _append(reasons, not context.rollover_clear, "ROLLOVER_WINDOW_BLOCKED")
     _append(
@@ -705,6 +725,7 @@ __all__ = [
     "IDENTITY_CONVERSION_SHA256",
     "LIVE_ALLOWED",
     "LOSS_LATCH_COUNT",
+    "MAX_BROKER_SPEC_AGE_SECONDS",
     "MAX_RISK_CONVERSION_AGE_SECONDS",
     "MAX_ENTRIES_PER_DAY",
     "MAX_MARGIN_FRACTION",

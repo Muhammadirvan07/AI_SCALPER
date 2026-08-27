@@ -155,19 +155,20 @@ def dashboard_api_tests() -> None:
 
 
 def frontend_quality() -> None:
-    if shutil.which("npm") is None:
+    npm = shutil.which("npm.cmd" if os.name == "nt" else "npm")
+    if npm is None:
         raise VerificationError("npm is required for the frontend gate")
     commands = [
-        ("npm", "run", "test:unit"),
-        ("npm", "run", "lint"),
-        ("npm", "run", "typecheck"),
-        ("npm", "run", "build"),
-        ("npm", "run", "check:bundle"),
-        ("npm", "run", "test:e2e"),
-        ("npm", "audit", "--audit-level=high"),
+        (npm, "run", "test:unit"),
+        (npm, "run", "lint"),
+        (npm, "run", "typecheck"),
+        (npm, "run", "build"),
+        (npm, "run", "check:bundle"),
+        (npm, "run", "test:e2e"),
+        (npm, "audit", "--audit-level=high"),
     ]
     if os.environ.get("AI_SCALPER_FRONTEND_DEPS_PREINSTALLED") != "1":
-        commands.insert(0, ("npm", "ci"))
+        commands.insert(0, (npm, "ci"))
     for command in commands:
         run(*command, cwd=FRONTEND)
 

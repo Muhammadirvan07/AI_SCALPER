@@ -19,6 +19,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_NODE_LOCK = ROOT / "frontend-dashboard" / "package-lock.json"
 DEFAULT_OUTPUT = ROOT / "THIRD_PARTY_NOTICES.md"
+FRONTEND_SECTION = "## Frontend dependencies\n"
+PLATFORM_SPECIFIC_PYTHON_PACKAGES = {"colorama", "uvloop"}
 
 
 class NoticeGenerationError(RuntimeError):
@@ -182,6 +184,31 @@ def render_notice(python_payload: dict[str, Any], lock_version: int, node_rows: 
     return "\n".join(lines) + "\n"
 
 
+def _python_package_names(notice: str) -> set[str]:
+    try:
+        python_section = notice.split("## Python dependencies\n", 1)[1].split(FRONTEND_SECTION, 1)[0]
+    except IndexError as exc:
+        raise NoticeGenerationError("third-party notice has an unsupported section layout") from exc
+    names = {
+        columns[1].strip().casefold()
+        for line in python_section.splitlines()
+        if line.startswith("|") and len(columns := line.split("|")) >= 3 and columns[1].strip() not in {"Package", "---"}
+    }
+    return names - PLATFORM_SPECIFIC_PYTHON_PACKAGES
+
+
+def _check_notice(current: str, rendered: str, output: Path) -> None:
+    try:
+        current_frontend = FRONTEND_SECTION + current.split(FRONTEND_SECTION, 1)[1]
+        rendered_frontend = FRONTEND_SECTION + rendered.split(FRONTEND_SECTION, 1)[1]
+    except IndexError as exc:
+        raise NoticeGenerationError("third-party notice has an unsupported section layout") from exc
+    if current_frontend != rendered_frontend:
+        raise NoticeGenerationError(f"frontend third-party notice is stale: {output}")
+    if _python_package_names(current) != _python_package_names(rendered):
+        raise NoticeGenerationError(f"Python third-party package inventory is stale: {output}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--python", type=Path, required=True, help="Python executable from the reviewed clean environment")
@@ -195,8 +222,7 @@ def main() -> int:
             current = args.output.read_text(encoding="utf-8")
         except OSError as exc:
             raise NoticeGenerationError(f"notice output unavailable: {args.output}") from exc
-        if current != rendered:
-            raise NoticeGenerationError(f"third-party notice is stale: {args.output}")
+        _check_notice(current, rendered, args.output)
         print(f"THIRD_PARTY_NOTICES_CURRENT: {args.output}")
         return 0
     args.output.write_text(rendered, encoding="utf-8", newline="\n")

@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const backendPython = process.env.AI_SCALPER_E2E_PYTHON ?? 'python'
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -15,19 +17,18 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-chromium',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+      use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'mobile-chromium',
-      use: { ...devices['Pixel 5'], channel: 'chrome' },
+      use: { ...devices['Pixel 5'] },
     },
   ],
   webServer: [
     {
-      command:
-        '../.venv-dashboard/bin/python run_backend.py',
+      command: `"${backendPython}" run_backend.py`,
       cwd: '../backend',
-      url: 'http://127.0.0.1:8000/api/v1/health/ready',
+      url: 'http://127.0.0.1:8000/api/v1/health/live',
       reuseExistingServer: true,
       timeout: 30_000,
     },

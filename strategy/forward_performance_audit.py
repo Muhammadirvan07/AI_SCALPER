@@ -37,10 +37,11 @@ from execution_policy import (
     validate_execution_symbol,
 )
 from executor_config import DEFAULT_SYMBOL_RISK_PROFILE, SYMBOL_RISK_PROFILES
+from strategy.promotion_candidate import build_promotion_candidate_evidence
 from strategy.strategy_profiles import get_strategy_profile, normalize_symbol
 
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 REPORT_TYPE = "FORWARD_PERFORMANCE_COHORT_AUDIT"
 DEFAULT_SOURCE = Path(__file__).resolve().parents[1] / "paper_orders.json"
 DEFAULT_OUTPUT = Path("forward_performance_audit_report.json")
@@ -55,6 +56,12 @@ CURRENT_MODEL_REQUIRED_FIELDS = (
     "config_hash",
     "fill_model",
     "timeframe",
+)
+PROMOTION_BINDING_REQUIRED_FIELDS = (
+    "config_hash",
+    "data_hash",
+    "timeframe",
+    "runtime_parity_receipt_sha256",
 )
 
 # Independent fail-closed locks.  These are intentionally not derived from a
@@ -424,6 +431,8 @@ def build_forward_performance_audit(
     current_model_cost_rows: list[dict] = []
     current_model_adjusted_profits: list[float] = []
     current_model_signatures: Counter = Counter()
+    promotion_binding_signatures: Counter = Counter()
+    missing_promotion_binding_metadata: Counter = Counter()
     missing_current_model_metadata: Counter = Counter()
     primary_exclusions: Counter = Counter()
     all_exclusions: Counter = Counter()
@@ -522,6 +531,24 @@ def build_forward_performance_audit(
                 profit - cost["estimated_round_trip_cost_usd"]
             )
 
+        missing_promotion_metadata = [
+            field
+            for field in PROMOTION_BINDING_REQUIRED_FIELDS
+            if not str(record.get(field) or "").strip()
+        ]
+        if missing_promotion_metadata:
+            missing_promotion_binding_metadata.update(missing_promotion_metadata)
+        else:
+            promotion_signature = (
+                symbol,
+                strategy,
+                str(record.get("timeframe")).strip(),
+                str(record.get("config_hash")).strip(),
+                str(record.get("data_hash")).strip(),
+                str(record.get("runtime_parity_receipt_sha256")).strip(),
+            )
+            promotion_binding_signatures[promotion_signature] += 1
+
     all_profits = [record.get("profit_usd") for record in records]
     eligible_profits = [record.get("profit_usd") for record in eligible_records]
     symbols = [normalize_symbol(record.get("symbol")) for record in records]
@@ -576,6 +603,75 @@ def build_forward_performance_audit(
         current_model_status = "TAGGED_MODEL_POSITIVE_EXPECTANCY_DIAGNOSTIC_ONLY"
     else:
         current_model_status = "TAGGED_MODEL_POSITIVE_EXPECTANCY_NOT_PROVEN"
+
+    promotion_candidate_error = None
+    promotion_candidate_signature = None
+    if len(promotion_binding_signatures) == 1:
+        promotion_candidate_signature = next(iter(promotion_binding_signatures))
+    try:
+        promotion_candidate_evidence = build_promotion_candidate_evidence(
+            symbol=(promotion_candidate_signature or ("EURUSD",))[0],
+            strategy=(promotion_candidate_signature or (None, "UNKNOWN"))[1],
+            timeframe=(promotion_candidate_signature or (None, None, "M15"))[2],
+            config_sha256=(
+                promotion_candidate_signature[3]
+                if promotion_candidate_signature
+                else None
+            ),
+            data_sha256=(
+                promotion_candidate_signature[4]
+                if promotion_candidate_signature
+                else None
+            ),
+            evidence_source_sha256=source_sha256,
+            # A hash merely claimed by a paper row is not independent parity
+            # verification.  The promotion authority must verify the receipt.
+            runtime_parity_verified=False,
+            runtime_parity_receipt_sha256=(
+                promotion_candidate_signature[5]
+                if promotion_candidate_signature
+                else None
+            ),
+            future_holdout_verified=False,
+            fold_count=0,
+            positive_fold_count=0,
+            broker_forward_trades=0,
+            broker_forward_weeks=0,
+        )
+    except (TypeError, ValueError) as exc:
+        promotion_candidate_error = str(exc)
+        promotion_candidate_evidence = build_promotion_candidate_evidence(
+            symbol="EURUSD",
+            strategy="UNKNOWN",
+            timeframe="M15",
+            config_sha256=None,
+            data_sha256=None,
+            evidence_source_sha256=source_sha256,
+            runtime_parity_verified=False,
+        )
+    promotion_candidate_evidence.update(
+        {
+            "homogeneous_binding_count": len(promotion_binding_signatures),
+            "records_with_complete_binding": sum(
+                promotion_binding_signatures.values()
+            ),
+            "required_record_fields": list(PROMOTION_BINDING_REQUIRED_FIELDS),
+            "missing_binding_field_counts": dict(
+                sorted(missing_promotion_binding_metadata.items())
+            ),
+            "binding_error": promotion_candidate_error,
+        }
+    )
+    if len(promotion_binding_signatures) != 1:
+        promotion_candidate_evidence["binding"] = None
+        promotion_candidate_evidence["binding_sha256"] = None
+        promotion_candidate_evidence["identity_complete"] = False
+        promotion_candidate_evidence["blockers"] = sorted(
+            set(
+                list(promotion_candidate_evidence["blockers"])
+                + ["EXACTLY_ONE_SYMBOL_STRATEGY_TIMEFRAME_BINDING_REQUIRED"]
+            )
+        )
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -703,6 +799,7 @@ def build_forward_performance_audit(
             "safe_to_demo_auto_order": False,
             "promotion_eligible": False,
         },
+        "promotion_candidate_evidence": promotion_candidate_evidence,
         "exclusions": {
             "excluded_records": len(records) - len(eligible_records),
             "primary_reason_counts": dict(sorted(primary_exclusions.items())),

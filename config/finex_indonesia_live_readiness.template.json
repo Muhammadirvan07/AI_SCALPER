@@ -1,0 +1,47 @@
+{
+  "schema_version": "finex-indonesia-supervised-live-readiness-v1",
+  "operating_jurisdiction": "ID",
+  "broker_id": "FINEX",
+  "broker_legal_name": "PT Finex Bisnis Solusi Futures",
+  "demo_server_expected": "FinexBisnisSolusi-Demo",
+  "target_symbols": ["AUDUSD", "EURUSD", "USDJPY", "XAUUSD"],
+  "risk_policy": {
+    "maximum_lot": 0.01,
+    "maximum_risk_percent_per_trade": 0.25,
+    "maximum_daily_loss_percent": 1.0,
+    "maximum_weekly_loss_percent": 2.0,
+    "maximum_open_positions": 1
+  },
+  "soak_policy": {
+    "minimum_clean_days": 30,
+    "minimum_total_closed_fills": 100,
+    "minimum_closed_fills_per_symbol": 20
+  },
+  "regulatory_reference": {
+    "authority": "Bappebti",
+    "business_license": "47/BAPPEBTI/SI/04/2013",
+    "spa_approval": "77/BAPPEBTI/SP/12/2014",
+    "source": "https://bappebti.go.id/pialang_berjangka/detail/133",
+    "reverified_on": "2026-08-27"
+  },
+  "evidence": {
+    "terminal_installed": true,
+    "demo_account_attested": true,
+    "live_broker_eligibility_verified": false,
+    "broker_evidence_unexpired": false,
+    "instrument_specs_verified": false,
+    "conversion_quotes_fresh": false,
+    "strategy_runtime_parity_verified": false,
+    "future_holdout_available": false,
+    "point_in_time_calendar_available": false,
+    "economic_calendar_fresh": false,
+    "risk_controls_verified": false,
+    "human_approval_pipeline_verified": false,
+    "kill_switch_verified": false,
+    "reconciliation_verified": false,
+    "release_identity_verified": false
+  },
+  "authorization_granted": false,
+  "order_capability": "DISABLED",
+  "notes": "Deny-only FINEX demo target. Do not enter credentials or claim account eligibility without independent evidence."
+}

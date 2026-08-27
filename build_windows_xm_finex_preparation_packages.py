@@ -67,7 +67,7 @@ class PackageBuildError(RuntimeError):
 
 
 FileIdentity = tuple[int, int, int, int, int, int]
-CreatedFileIdentity = tuple[int, int]
+CreatedFileIdentity = FileIdentity
 DirectoryIdentity = tuple[int, int, int, int]
 
 
@@ -87,7 +87,7 @@ def _file_identity(metadata: os.stat_result) -> FileIdentity:
 
 
 def _created_file_identity(metadata: os.stat_result) -> CreatedFileIdentity:
-    return (int(metadata.st_dev), int(metadata.st_ino))
+    return _file_identity(metadata)
 
 
 def _directory_identity(metadata: os.stat_result) -> DirectoryIdentity:
@@ -555,6 +555,7 @@ def _write_exclusive(path: Path, value: bytes) -> FileIdentity:
             stream.flush()
             os.fsync(stream.fileno())
             completed_identity = _file_identity(os.fstat(stream.fileno()))
+            created_identity = completed_identity
         _sync_directory(path.parent)
     except PackageBuildError:
         if descriptor is not None:

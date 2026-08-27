@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     news_cache_ttl_seconds: float = Field(default=180, ge=1, le=86400)
     news_request_timeout_seconds: float = Field(default=10, ge=1, le=60)
     news_max_articles_per_provider: int = Field(default=100, ge=1, le=500)
-    news_realtime_max_age_hours: int = Field(default=72, ge=1, le=8760)
+    news_realtime_max_age_hours: float = Field(default=0.5, ge=1 / 60, le=8760)
     news_recent_max_age_hours: int = Field(default=168, ge=1, le=8760)
     news_historical_retention_days: int = Field(default=30, ge=1, le=3650)
     news_default_freshness: Literal["live", "recent", "historical", "all"] = "live"
@@ -96,6 +96,10 @@ class Settings(BaseSettings):
     news_allowed_hosts: str = ""
     news_max_response_bytes: int = Field(default=2 * 1024 * 1024, ge=4096, le=16 * 1024 * 1024)
     news_engine_integration_enabled: bool = False
+    openai_decision_enabled: bool = False
+    openai_decision_model: str = "gpt-5.4-mini"
+    openai_deterministic_fallback_enabled: bool = True
+    openai_api_key: SecretStr = SecretStr("")
     economic_calendar_enabled: bool = True
     economic_calendar_path: Path | None = None
     economic_calendar_refresh_interval_seconds: float = Field(default=900, ge=30, le=86400)

@@ -384,8 +384,8 @@ class PhillipCommodityWindow02PowerShellSyntaxTests(unittest.TestCase):
                     INSTALLER.read_text(encoding="utf-8"),
                     "Invoke-CheckedNativeProcess",
                 ),
-                "$gitPath = (Get-Command -Name git -CommandType Application "
-                "-ErrorAction Stop).Path",
+                "$gitPath = Get-Command -Name git -CommandType Application "
+                "-ErrorAction Stop | Select-Object -First 1 -ExpandProperty Path",
                 "$gitOutput = Invoke-CheckedGit -Arguments @('--version') "
                 "-Operation 'Git wrapper canary'",
                 "$nativeOutput = Invoke-CheckedNativeProcess "

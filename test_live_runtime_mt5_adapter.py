@@ -82,6 +82,7 @@ class FakeMT5:
     TRADE_RETCODE_DONE_PARTIAL = 10010
 
     def __init__(self):
+        self.shutdown_called = False
         self.server = "Broker-Demo"
         self.login = 12345
         self.trade_mode = self.ACCOUNT_TRADE_MODE_DEMO
@@ -110,6 +111,7 @@ class FakeMT5:
         return True
 
     def shutdown(self):
+        self.shutdown_called = True
         return None
 
     def last_error(self):
@@ -582,6 +584,26 @@ class MT5AdapterTests(unittest.TestCase):
         with self.assertRaises(MT5UnavailableError):
             adapter.orders()
         adapter.shutdown()
+
+    def test_initialize_binding_failure_shuts_down_and_resets_adapter(self):
+        module = FakeMT5()
+        module.server = "Wrong-Demo"
+        adapter = MT5Adapter(
+            account_alias="account-alias",
+            broker_legal_name="Example Broker Ltd",
+            expected_login=12345,
+            expected_server="Broker-Demo",
+            environment="DEMO",
+            session_calendar_sha256="d" * 64,
+            symbol_map={"EURUSD": "EURUSD.a"},
+            mt5_module=module,
+            clock_provider=lambda: NOW,
+        )
+        with self.assertRaises(AccountBindingError):
+            adapter.initialize()
+        self.assertTrue(module.shutdown_called)
+        with self.assertRaises(MT5UnavailableError):
+            adapter.orders()
 
     def preflight(self, trade_intent=None):
         trade_intent = trade_intent or intent()
