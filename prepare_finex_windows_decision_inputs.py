@@ -238,6 +238,8 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
                 "session_calendar_key_fingerprint_sha256": fingerprints[
                     "finex-session-calendar-v1"
                 ],
+                "maximum_processing_lag_ms": 1000,
+                "timeframe": "M15",
             }
         )
         feed_lanes.append(
@@ -259,6 +261,7 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
         "custody_key_fingerprint_sha256": fingerprints[
             "finex-decision-cursor-v1"
         ],
+        "schema_version": "brokerless-decision-producer-binding-v2",
     }
     feed_binding = {
         "feed_id": "finex-decision-feed-v1",
@@ -270,6 +273,11 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
             "finex-decision-feed-v1"
         ],
         "lanes": feed_lanes,
+        "order_capability": "DISABLED",
+        "live_allowed": False,
+        "safe_to_demo_auto_order": False,
+        "max_lot": 0.01,
+        "schema_version": "signed-decision-feed-binding-v1",
     }
     ipc_binding = {
         "queue_id": "finex-decision-queue-v1",
@@ -295,6 +303,7 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
         "permit_key_fingerprint_sha256": fingerprints[
             "finex-downstream-permit-v1"
         ],
+        "schema_version": "decision-ipc-binding-v2",
     }
     clock_binding = {
         "provider_id": "finex-decision-clock-v1",
@@ -306,6 +315,7 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
         ],
         "maximum_attestation_age_ms": 10000,
         "maximum_absolute_drift_ms": 1000,
+        "schema_version": "windows-clock-binding-v1",
     }
     references = [
         {
