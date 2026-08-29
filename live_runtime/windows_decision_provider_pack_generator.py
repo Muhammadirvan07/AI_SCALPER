@@ -454,7 +454,9 @@ def _stable_read(
             or before.st_size > maximum_bytes
         ):
             raise DecisionProviderPackError(reason_code)
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(path, flags)
         opened_before = os.fstat(descriptor)
         chunks: list[bytes] = []

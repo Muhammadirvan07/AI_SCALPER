@@ -495,6 +495,19 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
         )
         self.assertFalse(output.exists())
 
+    def test_stable_read_preserves_binary_archive_bytes(self) -> None:
+        payload = b"PK\x03\x04binary\r\nmember\x1a\x00tail"
+        archive = self.root / "binary-archive.zip"
+        archive.write_bytes(payload)
+        self.assertEqual(
+            payload,
+            decision_pack_module._stable_read(
+                archive,
+                maximum_bytes=len(payload),
+                reason_code="BINARY_ARCHIVE_INVALID",
+            ),
+        )
+
     def test_input_and_output_are_secret_free_and_closed(self) -> None:
         payload = self._pack_payload()
         payload["password"] = "do-not-accept"
