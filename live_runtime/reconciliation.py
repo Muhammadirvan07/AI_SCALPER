@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import InitVar, dataclass, replace
+from dataclasses import InitVar, dataclass, fields, replace
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
@@ -614,6 +614,100 @@ def issue_broker_reconciliation_receipt(
         signature_hmac_sha256=signature,
         _seal=_BROKER_RECONCILIATION_RECEIPT_SEAL,
     )
+
+
+def reconciliation_result_from_mapping(
+    value: Mapping[str, object],
+) -> ReconciliationResult:
+    expected = {item.name for item in fields(ReconciliationResult)}
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ValueError("reconciliation result shape is invalid")
+    data = dict(value)
+    for name in (
+        "matched_intents",
+        "uncertain_intents",
+        "closed_intents",
+        "orphan_position_tickets",
+        "orphan_order_tickets",
+        "protection_failures",
+        "volume_failures",
+        "binding_failures",
+    ):
+        raw = data[name]
+        if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
+            raise ValueError("reconciliation result sequence is invalid")
+        data[name] = tuple(raw)
+    return ReconciliationResult(**data)
+
+
+def reconciliation_result_to_mapping(
+    result: ReconciliationResult,
+) -> dict[str, object]:
+    if type(result) is not ReconciliationResult:
+        raise TypeError("exact ReconciliationResult is required")
+    return {
+        "status": result.status,
+        "matched_intents": list(result.matched_intents),
+        "uncertain_intents": list(result.uncertain_intents),
+        "closed_intents": list(result.closed_intents),
+        "orphan_position_tickets": list(result.orphan_position_tickets),
+        "orphan_order_tickets": list(result.orphan_order_tickets),
+        "protection_failures": list(result.protection_failures),
+        "volume_failures": list(result.volume_failures),
+        "binding_failures": list(result.binding_failures),
+        "kill_switch_latched": result.kill_switch_latched,
+    }
+
+
+def broker_reconciliation_receipt_from_mapping(
+    value: Mapping[str, object],
+) -> BrokerReconciliationReceipt:
+    expected = {item.name for item in fields(BrokerReconciliationReceipt)}
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ValueError("broker reconciliation receipt shape is invalid")
+    data = dict(value)
+    for name in (
+        "query_from_utc",
+        "query_to_utc",
+        "source_time_utc",
+        "observed_at_utc",
+    ):
+        raw = data[name]
+        if not isinstance(raw, str):
+            raise ValueError("broker reconciliation timestamp is invalid")
+        text = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            raise ValueError("broker reconciliation timestamp must be timezone-aware")
+        data[name] = parsed.astimezone(UTC)
+    for name in ("order_tickets", "position_tickets", "deal_tickets"):
+        raw = data[name]
+        if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
+            raise ValueError("broker reconciliation tickets are invalid")
+        data[name] = tuple(raw)
+    raw_closed = data["closed_intent_deal_tickets"]
+    if not isinstance(raw_closed, list) or any(
+        not isinstance(item, list)
+        or len(item) != 2
+        or not isinstance(item[0], str)
+        or not isinstance(item[1], list)
+        or any(not isinstance(ticket, str) for ticket in item[1])
+        for item in raw_closed
+    ):
+        raise ValueError("closed-intent deal tickets are invalid")
+    data["closed_intent_deal_tickets"] = tuple(
+        (item[0], tuple(item[1])) for item in raw_closed
+    )
+    try:
+        receipt = BrokerReconciliationReceipt(
+            **data,
+            _seal=_BROKER_RECONCILIATION_RECEIPT_SEAL,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("broker reconciliation receipt contract is invalid") from exc
+    if receipt.to_canonical_dict() != dict(value):
+        raise ValueError("broker reconciliation receipt canonical mismatch")
+    return receipt
 
 
 def verify_broker_reconciliation_receipt(

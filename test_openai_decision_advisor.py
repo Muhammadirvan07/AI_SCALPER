@@ -117,6 +117,36 @@ class OpenAIDecisionAdvisorTests(unittest.TestCase):
             self.assertEqual("APPROVED", result["status"])
             self.assertEqual("WRITTEN", result["audit_status"])
 
+    def test_optional_signed_receipt_issuer_is_bound_to_advisory_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            captured = []
+            advisor = OpenAIDecisionAdvisor(
+                settings=self.settings(directory),
+                transport=self.successful_transport,
+                receipt_issuer=lambda evidence: captured.append(evidence) or {
+                    "schema_version": "synthetic-signed-receipt"
+                },
+            )
+            result = advisor.advise(ready_decision())
+            self.assertEqual("WRITTEN", result["advisory_receipt_status"])
+            self.assertEqual("PAPER_ONLY", captured[0]["execution_scope"])
+            self.assertEqual("BUY", captured[0]["deterministic_action"])
+
+    def test_receipt_issuer_failure_vetoes_advisory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            def fail(_):
+                raise OSError("synthetic signer failure")
+
+            advisor = OpenAIDecisionAdvisor(
+                settings=self.settings(directory),
+                transport=self.successful_transport,
+                receipt_issuer=fail,
+            )
+            result = advisor.advise(ready_decision())
+            self.assertEqual("VETOED_ERROR", result["status"])
+            self.assertEqual("FAILED", result["advisory_receipt_status"])
+            self.assertEqual(["ADVISORY_RECEIPT_WRITE_FAILED"], result["risk_flags"])
+
     def test_stale_missing_or_naive_news_fails_closed(self):
         for published_at in (
             (datetime.now(UTC) - timedelta(hours=2)).isoformat(), None, datetime.now().isoformat()

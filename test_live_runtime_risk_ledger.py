@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from dataclasses import InitVar, dataclass
@@ -22,6 +23,7 @@ from live_runtime.risk_ledger import (
     RiskLedgerSourceError,
     RiskSourceReceipt,
     RiskStateReceipt,
+    risk_state_receipt_from_mapping,
     verify_risk_source_receipt,
     verify_risk_state_receipt,
 )
@@ -256,6 +258,9 @@ class DurableRiskLedgerTests(unittest.TestCase):
         ledger.append_account_snapshot(self._snapshot("snapshot-1", at=START))
         entry_receipt = ledger.append_entry(
             self._entry("entry-1", at=START + timedelta(seconds=1))
+        )
+        entry_receipt = risk_state_receipt_from_mapping(
+            entry_receipt.to_canonical_dict()
         )
         self.assertEqual(2, entry_receipt.event_sequence)
         self.assertEqual(1, entry_receipt.entries_today)
@@ -710,7 +715,7 @@ class DurableRiskLedgerTests(unittest.TestCase):
         self.assertEqual(ACCOUNT_ID_SHA256, receipt.binding.account_id_sha256)
         self.assertNotIn(RAW_ACCOUNT_LOGIN, receipt.canonical_json())
 
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             columns = {
                 row[1]
                 for row in connection.execute("PRAGMA table_info(risk_ledger_identity)")

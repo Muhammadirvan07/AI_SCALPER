@@ -1,0 +1,21 @@
+{
+  "schema": "finex-terminal-monitoring-v1",
+  "candidate": "finex",
+  "environment": "DEMO",
+  "expected_server": "FinexBisnisSolusi-Demo",
+  "symbol_map": {
+    "AUDUSD": "AUDUSD",
+    "EURUSD": "EURUSD",
+    "USDJPY": "USDJPY",
+    "XAUUSD": "XAUUSD"
+  },
+  "poll_interval_seconds": 2,
+  "minimum_samples": 3,
+  "maximum_samples": 120,
+  "max_sample_gap_seconds": 5,
+  "max_spread_bps": 10,
+  "authorization_granted": false,
+  "registration_enabled": false,
+  "promotion_eligible": false,
+  "order_capability": "DISABLED"
+}

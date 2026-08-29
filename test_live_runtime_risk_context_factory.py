@@ -150,6 +150,8 @@ class TrustedRiskContextFactoryTests(unittest.TestCase):
             heartbeat_provider=lambda: NOW - timedelta(seconds=2),
             audit_export_status_provider=lambda: True,
             backup_status_provider=lambda: True,
+            health_source_evidence_sha256="d" * 64,
+            health_trust_policy_sha256="e" * 64,
             disk_free_provider=lambda _path: MIN_FREE_DISK_BYTES + 1,
         )
         self.runtime_receipt = collector.collect(

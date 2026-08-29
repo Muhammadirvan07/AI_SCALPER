@@ -15,6 +15,9 @@ from live_runtime.reconciliation import (
     issue_broker_deal_receipt,
     issue_broker_closed_trade_receipt,
     issue_broker_reconciliation_receipt,
+    broker_reconciliation_receipt_from_mapping,
+    reconciliation_result_from_mapping,
+    reconciliation_result_to_mapping,
     verify_broker_deal_receipt,
     verify_broker_reconciliation_receipt,
 )
@@ -177,7 +180,13 @@ class BrokerReconciliationReceiptTests(unittest.TestCase):
 
     def test_signed_reconciliation_and_deal_receipts_verify_exactly(self):
         reconciled = result(closed=("intent-1",))
+        reconciled = reconciliation_result_from_mapping(
+            reconciliation_result_to_mapping(reconciled)
+        )
         observation = issue_reconciliation(reconciled)
+        observation = broker_reconciliation_receipt_from_mapping(
+            observation.to_canonical_dict()
+        )
         self.assertIs(observation, self.verify_reconciliation(observation, reconciled))
 
         deal = issue_deal(observation)

@@ -8,8 +8,8 @@ once.  Every public result keeps automated ordering and live trading disabled.
 
 from __future__ import annotations
 
-from dataclasses import InitVar, dataclass, field, replace
-from datetime import datetime, timedelta
+from dataclasses import InitVar, dataclass, field, fields, replace
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 from pathlib import Path
@@ -2541,6 +2541,334 @@ class StageAuthorizationValidation(CanonicalContract):
             raise ValueError("validation cannot enable execution")
 
 
+def _persisted_stage_utc(value: object, name: str) -> datetime:
+    if not isinstance(value, str):
+        raise StageAuthorizationIntegrityError(f"{name} is invalid")
+    text = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise StageAuthorizationIntegrityError(f"{name} is invalid") from exc
+    if parsed.tzinfo is None:
+        raise StageAuthorizationIntegrityError(f"{name} must be timezone-aware")
+    return parsed.astimezone(timezone.utc)
+
+
+def _persisted_stage_object(
+    value: object, expected: set[str], name: str
+) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise StageAuthorizationIntegrityError(f"{name} must be an object")
+    data = {str(key): item for key, item in value.items()}
+    if set(data) != expected:
+        raise StageAuthorizationIntegrityError(f"{name} fields are invalid")
+    return data
+
+
+def acceptance_authority_policy_from_mapping(
+    value: Mapping[str, object],
+) -> AcceptanceAuthorityTrustPolicy:
+    serialized = dict(value)
+    data = _persisted_stage_object(
+        value,
+        {item.name for item in fields(AcceptanceAuthorityTrustPolicy)},
+        "acceptance authority policy",
+    )
+    raw_allowlist = data["domain_key_allowlist"]
+    if not isinstance(raw_allowlist, list):
+        raise StageAuthorizationIntegrityError(
+            "acceptance authority allowlist must be a list"
+        )
+    normalized = []
+    for row in raw_allowlist:
+        if not isinstance(row, list) or len(row) != 2 or not isinstance(row[1], list):
+            raise StageAuthorizationIntegrityError(
+                "acceptance authority allowlist row is invalid"
+            )
+        keys = []
+        for key_row in row[1]:
+            if not isinstance(key_row, list) or len(key_row) != 2:
+                raise StageAuthorizationIntegrityError(
+                    "acceptance authority key row is invalid"
+                )
+            keys.append((str(key_row[0]), str(key_row[1])))
+        normalized.append((str(row[0]), tuple(keys)))
+    data["domain_key_allowlist"] = tuple(normalized)
+    try:
+        policy = AcceptanceAuthorityTrustPolicy(**data)
+    except (TypeError, ValueError) as exc:
+        raise StageAuthorizationIntegrityError(
+            "acceptance authority policy contract is invalid"
+        ) from exc
+    if policy.to_canonical_dict() != serialized:
+        raise StageAuthorizationIntegrityError(
+            "acceptance authority policy canonical mismatch"
+        )
+    return policy
+
+
+def manual_demo_readiness_receipt_from_mapping(
+    value: Mapping[str, object],
+) -> ManualDemoReadinessReceipt:
+    serialized = dict(value)
+    data = _persisted_stage_object(
+        value,
+        {item.name for item in fields(ManualDemoReadinessReceipt)},
+        "manual demo readiness receipt",
+    )
+    raw_gates = data["gate_receipts"]
+    if not isinstance(raw_gates, list) or any(
+        not isinstance(row, list) or len(row) != 2 for row in raw_gates
+    ):
+        raise StageAuthorizationIntegrityError("manual readiness gates are invalid")
+    data["gate_receipts"] = tuple(
+        (str(row[0]), str(row[1])) for row in raw_gates
+    )
+    for name in (
+        "pre_manual_entry_review_checked_at",
+        "issued_at",
+        "expires_at",
+    ):
+        data[name] = _persisted_stage_utc(data[name], f"manual readiness {name}")
+    try:
+        receipt = ManualDemoReadinessReceipt(**data)
+    except (TypeError, ValueError) as exc:
+        raise StageAuthorizationIntegrityError(
+            "manual demo readiness receipt contract is invalid"
+        ) from exc
+    if receipt.to_canonical_dict() != serialized:
+        raise StageAuthorizationIntegrityError(
+            "manual demo readiness receipt canonical mismatch"
+        )
+    return receipt
+
+
+def manual_demo_aggregate_receipt_from_mapping(
+    value: Mapping[str, object],
+) -> ManualDemoAggregateReceipt:
+    serialized = dict(value)
+    data = _persisted_stage_object(
+        value,
+        {item.name for item in fields(ManualDemoAggregateReceipt)},
+        "manual demo aggregate receipt",
+    )
+    for name in ("assessed_at", "issued_at", "expires_at"):
+        data[name] = _persisted_stage_utc(data[name], f"manual aggregate {name}")
+    try:
+        receipt = ManualDemoAggregateReceipt(**data)
+    except (TypeError, ValueError) as exc:
+        raise StageAuthorizationIntegrityError(
+            "manual demo aggregate receipt contract is invalid"
+        ) from exc
+    if receipt.to_canonical_dict() != serialized:
+        raise StageAuthorizationIntegrityError(
+            "manual demo aggregate receipt canonical mismatch"
+        )
+    return receipt
+
+
+def acceptance_authority_receipt_from_mapping(
+    value: Mapping[str, object],
+) -> AcceptanceAuthorityReceipt:
+    serialized = dict(value)
+    data = _persisted_stage_object(
+        value,
+        {item.name for item in fields(AcceptanceAuthorityReceipt)},
+        "acceptance authority receipt",
+    )
+    data["accepted_at"] = _persisted_stage_utc(
+        data["accepted_at"], "acceptance accepted_at"
+    )
+    data["expires_at"] = _persisted_stage_utc(
+        data["expires_at"], "acceptance expires_at"
+    )
+    try:
+        receipt = AcceptanceAuthorityReceipt(
+            **data, _seal=_ACCEPTANCE_AUTHORITY_RECEIPT_SEAL
+        )
+    except (TypeError, ValueError) as exc:
+        raise StageAuthorizationIntegrityError(
+            "acceptance authority receipt contract is invalid"
+        ) from exc
+    if receipt.to_canonical_dict() != serialized:
+        raise StageAuthorizationIntegrityError(
+            "acceptance authority receipt canonical mismatch"
+        )
+    return receipt
+
+
+def stage_readiness_request_from_mapping(
+    value: Mapping[str, object],
+) -> StageReadinessRequest:
+    serialized = dict(value)
+    data = _persisted_stage_object(
+        value,
+        {item.name for item in fields(StageReadinessRequest)},
+        "stage readiness request",
+    )
+    binding_raw = _persisted_stage_object(
+        data["binding"],
+        {item.name for item in fields(StageBinding)},
+        "stage binding",
+    )
+    try:
+        data["binding"] = StageBinding(**binding_raw)
+    except (TypeError, ValueError) as exc:
+        raise StageAuthorizationIntegrityError("stage binding is invalid") from exc
+    raw_acceptance = data["acceptance_receipts"]
+    if not isinstance(raw_acceptance, list):
+        raise StageAuthorizationIntegrityError(
+            "stage acceptance receipts must be a list"
+        )
+    data["acceptance_receipts"] = tuple(
+        acceptance_authority_receipt_from_mapping(item)
+        for item in raw_acceptance
+    )
+    data["issued_at"] = _persisted_stage_utc(data["issued_at"], "request issued_at")
+    data["expires_at"] = _persisted_stage_utc(
+        data["expires_at"], "request expires_at"
+    )
+    try:
+        request = StageReadinessRequest(**data)
+    except (TypeError, ValueError) as exc:
+        raise StageAuthorizationIntegrityError(
+            "stage readiness request contract is invalid"
+        ) from exc
+    if request.to_canonical_dict() != serialized:
+        raise StageAuthorizationIntegrityError(
+            "stage readiness request canonical mismatch"
+        )
+    return request
+
+
+def human_approval_attestation_from_mapping(
+    value: Mapping[str, object],
+) -> HumanApprovalAttestation:
+    serialized = dict(value)
+    data = _persisted_stage_object(
+        value,
+        {item.name for item in fields(HumanApprovalAttestation)},
+        "human approval attestation",
+    )
+    data["approved_at"] = _persisted_stage_utc(
+        data["approved_at"], "approval approved_at"
+    )
+    try:
+        approval = HumanApprovalAttestation(**data)
+    except (TypeError, ValueError) as exc:
+        raise StageAuthorizationIntegrityError(
+            "human approval attestation contract is invalid"
+        ) from exc
+    if approval.to_canonical_dict() != serialized:
+        raise StageAuthorizationIntegrityError(
+            "human approval attestation canonical mismatch"
+        )
+    return approval
+
+
+def stage_readiness_authorization_from_mapping(
+    value: Mapping[str, object],
+) -> StageReadinessAuthorization:
+    """Rehydrate exact signed stage evidence; it grants no execution authority."""
+
+    authorization_fields = fields(StageReadinessAuthorization)
+    if not isinstance(value, Mapping) or set(value) != {
+        item.name for item in authorization_fields
+    }:
+        raise StageAuthorizationIntegrityError("stage authorization shape is invalid")
+    serialized = dict(value)
+    data = dict(serialized)
+    raw_request = data.get("request")
+    request_fields = fields(StageReadinessRequest)
+    if not isinstance(raw_request, Mapping) or set(raw_request) != {
+        item.name for item in request_fields
+    }:
+        raise StageAuthorizationIntegrityError("stage request shape is invalid")
+    request_data = dict(raw_request)
+    raw_binding = request_data.get("binding")
+    binding_fields = fields(StageBinding)
+    if not isinstance(raw_binding, Mapping) or set(raw_binding) != {
+        item.name for item in binding_fields
+    }:
+        raise StageAuthorizationIntegrityError("stage binding shape is invalid")
+    try:
+        request_data["binding"] = StageBinding(**dict(raw_binding))
+    except (TypeError, ValueError) as exc:
+        raise StageAuthorizationIntegrityError("stage binding is invalid") from exc
+
+    raw_acceptances = request_data.get("acceptance_receipts")
+    acceptance_fields = fields(AcceptanceAuthorityReceipt)
+    acceptance_names = {item.name for item in acceptance_fields}
+    if not isinstance(raw_acceptances, list):
+        raise StageAuthorizationIntegrityError("acceptance receipts are invalid")
+    acceptances: list[AcceptanceAuthorityReceipt] = []
+    for raw in raw_acceptances:
+        if not isinstance(raw, Mapping) or set(raw) != acceptance_names:
+            raise StageAuthorizationIntegrityError("acceptance receipt shape is invalid")
+        acceptance_data = dict(raw)
+        acceptance_data["accepted_at"] = _persisted_stage_utc(
+            acceptance_data["accepted_at"], "acceptance accepted_at"
+        )
+        acceptance_data["expires_at"] = _persisted_stage_utc(
+            acceptance_data["expires_at"], "acceptance expires_at"
+        )
+        try:
+            acceptances.append(
+                AcceptanceAuthorityReceipt(
+                    **acceptance_data,
+                    _seal=_ACCEPTANCE_AUTHORITY_RECEIPT_SEAL,
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise StageAuthorizationIntegrityError(
+                "acceptance receipt contract is invalid"
+            ) from exc
+    request_data["acceptance_receipts"] = tuple(acceptances)
+    request_data["issued_at"] = _persisted_stage_utc(
+        request_data["issued_at"], "stage request issued_at"
+    )
+    request_data["expires_at"] = _persisted_stage_utc(
+        request_data["expires_at"], "stage request expires_at"
+    )
+    try:
+        request = StageReadinessRequest(**request_data)
+    except (TypeError, ValueError) as exc:
+        raise StageAuthorizationIntegrityError("stage request contract is invalid") from exc
+    data["request"] = request
+
+    raw_approvals = data.get("approvals")
+    approval_fields = fields(HumanApprovalAttestation)
+    approval_names = {item.name for item in approval_fields}
+    if not isinstance(raw_approvals, list):
+        raise StageAuthorizationIntegrityError("human approvals are invalid")
+    approvals: list[HumanApprovalAttestation] = []
+    for raw in raw_approvals:
+        if not isinstance(raw, Mapping) or set(raw) != approval_names:
+            raise StageAuthorizationIntegrityError("human approval shape is invalid")
+        approval_data = dict(raw)
+        approval_data["approved_at"] = _persisted_stage_utc(
+            approval_data["approved_at"], "human approval approved_at"
+        )
+        try:
+            approvals.append(HumanApprovalAttestation(**approval_data))
+        except (TypeError, ValueError) as exc:
+            raise StageAuthorizationIntegrityError(
+                "human approval contract is invalid"
+            ) from exc
+    data["approvals"] = tuple(approvals)
+    try:
+        authorization = StageReadinessAuthorization(**data)
+    except (TypeError, ValueError) as exc:
+        raise StageAuthorizationIntegrityError(
+            "stage authorization contract is invalid"
+        ) from exc
+    if authorization.to_canonical_dict() != serialized:
+        raise StageAuthorizationIntegrityError(
+            "stage authorization canonical mismatch"
+        )
+    return authorization
+
+
 def validate_and_consume_stage_readiness_authorization(
     authorization: StageReadinessAuthorization,
     *,
@@ -2753,6 +3081,9 @@ __all__ = [
     "StageReadinessRequest",
     "StageReplayCheckpoint",
     "account_alias_sha256",
+    "acceptance_authority_policy_from_mapping",
+    "acceptance_authority_receipt_from_mapping",
+    "human_approval_attestation_from_mapping",
     "human_identity_sha256",
     "issue_acceptance_authority_receipt",
     "issue_demo_auto_stage_authorization",
@@ -2760,6 +3091,10 @@ __all__ = [
     "issue_manual_demo_aggregate_receipt",
     "issue_manual_demo_custody_checkpoint",
     "issue_stage_readiness_authorization",
+    "manual_demo_aggregate_receipt_from_mapping",
+    "manual_demo_readiness_receipt_from_mapping",
+    "stage_readiness_authorization_from_mapping",
+    "stage_readiness_request_from_mapping",
     "validate_and_consume_demo_auto_stage_authorization",
     "validate_and_consume_stage_readiness_authorization",
 ]

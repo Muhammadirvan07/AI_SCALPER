@@ -21,6 +21,7 @@ from live_runtime.release_reproducibility import (
     ReproducibilityObservation,
     WindowsReproducibilityReceipt,
     issue_reproducibility_receipt,
+    windows_reproducibility_receipt_from_mapping,
     verify_reproducibility_receipt,
 )
 
@@ -126,6 +127,9 @@ class ReleaseReproducibilityTests(unittest.TestCase):
             issued_at=NOW + timedelta(minutes=2),
             signer_key_id="release-review-key",
             secret=KEY,
+        )
+        receipt = windows_reproducibility_receipt_from_mapping(
+            receipt.to_canonical_dict()
         )
         self.assertTrue(
             verify_reproducibility_receipt(

@@ -257,7 +257,9 @@ def verify_terminal_fence(
         "environment": "DEMO",
         "broker_server": "FinexBisnisSolusi-Demo",
         "discovery_payload_sha256": discovery.get("payload_sha256"),
-        "discovery_captured_at_utc": discovery.get("captured_at_utc"),
+        "discovery_captured_at_utc": _utc_text(
+            _utc(discovery.get("captured_at_utc"), "discovery captured_at_utc")
+        ),
         "account_identity_sha256": _mapping(
             discovery.get("account"), "discovery account"
         ).get("account_identity_sha256"),

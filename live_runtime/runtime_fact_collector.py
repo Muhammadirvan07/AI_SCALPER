@@ -8,7 +8,7 @@ raises and no receipt exists for an executor to trust.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from datetime import datetime, timedelta
 import hashlib
 import hmac
@@ -34,7 +34,7 @@ from .health import (
 )
 
 
-RUNTIME_FACT_RECEIPT_SCHEMA_VERSION = "runtime-fact-receipt-v1"
+RUNTIME_FACT_RECEIPT_SCHEMA_VERSION = "runtime-fact-receipt-v2"
 RUNTIME_TICK_FACT_SCHEMA_VERSION = "runtime-tick-fact-v1"
 RUNTIME_FACT_RECEIPT_MAX_AGE_SECONDS = 1.0
 RUNTIME_FACT_RECEIPT_MAX_AGE = timedelta(
@@ -257,6 +257,8 @@ class RuntimeFactReceipt(CanonicalContract):
     health_facts_sha256: str
     health_decision: RuntimeHealthDecision
     health_decision_sha256: str
+    health_source_evidence_sha256: str
+    health_trust_policy_sha256: str
     journal_sha256: str
     key_id: str
     observed_at_utc: datetime
@@ -287,6 +289,8 @@ class RuntimeFactReceipt(CanonicalContract):
             "tick_sha256",
             "health_facts_sha256",
             "health_decision_sha256",
+            "health_source_evidence_sha256",
+            "health_trust_policy_sha256",
             "journal_sha256",
         ):
             object.__setattr__(self, name, require_hash(name, getattr(self, name)))
@@ -401,6 +405,8 @@ class RuntimeFactCollector:
         heartbeat_provider: Callable[[], datetime],
         audit_export_status_provider: Callable[[], bool],
         backup_status_provider: Callable[[], bool],
+        health_source_evidence_sha256: str,
+        health_trust_policy_sha256: str,
         disk_free_provider: Callable[[Path], int] | None = None,
     ) -> None:
         if adapter is None or journal is None:
@@ -425,6 +431,12 @@ class RuntimeFactCollector:
         self.backup_status_provider = _require_provider(
             "backup_status_provider",
             backup_status_provider,
+        )
+        self.health_source_evidence_sha256 = require_hash(
+            "health_source_evidence_sha256", health_source_evidence_sha256
+        )
+        self.health_trust_policy_sha256 = require_hash(
+            "health_trust_policy_sha256", health_trust_policy_sha256
         )
         self.disk_free_provider = (
             _default_disk_free
@@ -641,6 +653,8 @@ class RuntimeFactCollector:
             health_facts_sha256=health_facts.content_sha256,
             health_decision=health_decision,
             health_decision_sha256=health_decision.content_sha256,
+            health_source_evidence_sha256=self.health_source_evidence_sha256,
+            health_trust_policy_sha256=self.health_trust_policy_sha256,
             journal_sha256=journal_sha256,
             key_id=self.key_id,
             observed_at_utc=observed_at,
@@ -656,6 +670,114 @@ class RuntimeFactCollector:
             hashlib.sha256,
         ).hexdigest()
         return replace(unsigned, signature=signature)
+
+
+def _persisted_utc(value: object, name: str) -> datetime:
+    if isinstance(value, datetime):
+        return require_utc(name, value)
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be canonical UTC text")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{name} is invalid") from exc
+    return require_utc(name, parsed)
+
+
+def _persisted_object(
+    value: object, expected: set[str], name: str
+) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name} must be an object")
+    result = {str(key): item for key, item in value.items()}
+    if set(result) != expected:
+        raise ValueError(f"{name} fields are invalid")
+    return result
+
+
+def runtime_fact_receipt_from_mapping(
+    value: Mapping[str, object],
+) -> RuntimeFactReceipt:
+    """Rebuild one exact persisted receipt without trusting nested decisions."""
+
+    try:
+        raw = _persisted_object(
+            value,
+            {item.name for item in fields(RuntimeFactReceipt)},
+            "runtime fact receipt",
+        )
+        account_raw = _persisted_object(
+            raw["account_fact"],
+            {item.name for item in fields(RuntimeAccountFact)},
+            "runtime account fact",
+        )
+        account_raw["captured_at_utc"] = _persisted_utc(
+            account_raw["captured_at_utc"], "account captured_at_utc"
+        )
+        account_fact = RuntimeAccountFact(**account_raw)
+
+        broker_raw = _persisted_object(
+            raw["broker_spec"],
+            {item.name for item in fields(BrokerSpec)},
+            "broker spec",
+        )
+        broker_raw["captured_at"] = _persisted_utc(
+            broker_raw["captured_at"], "broker captured_at"
+        )
+        broker_spec = BrokerSpec(**broker_raw)
+
+        tick_raw = _persisted_object(
+            raw["tick"],
+            {item.name for item in fields(RuntimeTickFact)},
+            "runtime tick fact",
+        )
+        tick_raw["time_utc"] = _persisted_utc(
+            tick_raw["time_utc"], "tick time_utc"
+        )
+        tick_raw["collected_at_utc"] = _persisted_utc(
+            tick_raw["collected_at_utc"], "tick collected_at_utc"
+        )
+        tick = RuntimeTickFact(**tick_raw)
+
+        health_raw = _persisted_object(
+            raw["health_facts"],
+            {item.name for item in fields(RuntimeHealthFacts)},
+            "runtime health facts",
+        )
+        health_raw["observed_at"] = _persisted_utc(
+            health_raw["observed_at"], "health observed_at"
+        )
+        health_raw["heartbeat_at"] = _persisted_utc(
+            health_raw["heartbeat_at"], "health heartbeat_at"
+        )
+        health_facts = RuntimeHealthFacts(**health_raw)
+        health_decision = evaluate_runtime_health(health_facts)
+        decision_raw = _persisted_object(
+            raw["health_decision"],
+            {item.name for item in fields(RuntimeHealthDecision)},
+            "runtime health decision",
+        )
+        if canonical_json(decision_raw) != health_decision.canonical_json():
+            raise ValueError("persisted health decision is not evaluator-derived")
+
+        raw["account_fact"] = account_fact
+        raw["broker_spec"] = broker_spec
+        raw["tick"] = tick
+        raw["health_facts"] = health_facts
+        raw["health_decision"] = health_decision
+        raw["observed_at_utc"] = _persisted_utc(
+            raw["observed_at_utc"], "receipt observed_at_utc"
+        )
+        raw["valid_until_utc"] = _persisted_utc(
+            raw["valid_until_utc"], "receipt valid_until_utc"
+        )
+        return RuntimeFactReceipt(**raw)
+    except RuntimeFactVerificationError:
+        raise
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeFactVerificationError(
+            ["RUNTIME_FACT_RECEIPT_MAPPING_INVALID"]
+        ) from exc
 
 
 def verify_runtime_fact_receipt(

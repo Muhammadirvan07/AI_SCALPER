@@ -16,6 +16,7 @@ from live_runtime.runtime_fact_collector import (
     RuntimeFactCollector,
     RuntimeFactReceipt,
     RuntimeFactVerificationError,
+    runtime_fact_receipt_from_mapping,
     verify_runtime_fact_receipt,
 )
 
@@ -152,6 +153,8 @@ class RuntimeFactCollectorTests(unittest.TestCase):
             "heartbeat_provider": lambda: NOW - timedelta(seconds=5),
             "audit_export_status_provider": lambda: True,
             "backup_status_provider": lambda: True,
+            "health_source_evidence_sha256": "d" * 64,
+            "health_trust_policy_sha256": "e" * 64,
             "disk_free_provider": lambda _path: MIN_FREE_DISK_BYTES + 1,
         }
         values.update(changes)
@@ -198,6 +201,27 @@ class RuntimeFactCollectorTests(unittest.TestCase):
         self.assertFalse(receipt.safe_to_demo_auto_order)
         self.assertTrue(receipt.verify_signature(SECRET))
         self.assertIs(receipt, self.verify(receipt))
+
+    def test_persisted_receipt_round_trip_rebuilds_evaluator_sealed_decision(self):
+        receipt = self.collector().collect(
+            symbol=SYMBOL,
+            broker_symbol=BROKER_SYMBOL,
+        )
+        rebuilt = runtime_fact_receipt_from_mapping(receipt.to_canonical_dict())
+        self.assertIs(type(rebuilt), RuntimeFactReceipt)
+        self.assertEqual(receipt, rebuilt)
+        self.assertIs(type(rebuilt.health_decision), RuntimeHealthDecision)
+        self.assertIs(rebuilt, self.verify(rebuilt))
+
+        tampered = receipt.to_canonical_dict()
+        tampered["health_decision"]["healthy"] = False
+        tampered["health_decision"]["reason_codes"] = ["CALLER_CLAIMED"]
+        with self.assertRaises(RuntimeFactVerificationError) as raised:
+            runtime_fact_receipt_from_mapping(tampered)
+        self.assertEqual(
+            ("RUNTIME_FACT_RECEIPT_MAPPING_INVALID",),
+            raised.exception.reason_codes,
+        )
 
     def test_receipt_subclass_cannot_override_signature_verification(self):
         class ForgedRuntimeFactReceipt(RuntimeFactReceipt):

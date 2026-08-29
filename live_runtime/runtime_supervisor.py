@@ -9,7 +9,7 @@ lease and an HMAC-chained receipt for every startup, cycle, and shutdown.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import InitVar, dataclass, replace
+from dataclasses import InitVar, dataclass, fields, replace
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
@@ -423,6 +423,41 @@ def issue_runtime_news_guard_receipt(
         _secret(key), _NEWS_GUARD_DOMAIN + unsigned.signing_payload, hashlib.sha256
     ).hexdigest()
     return replace(unsigned, signature_hmac_sha256=signature, _seal=_NEWS_GUARD_SEAL)
+
+
+def runtime_news_guard_receipt_from_mapping(
+    value: Mapping[str, object],
+) -> RuntimeNewsGuardReceipt:
+    """Rehydrate an exact news-guard receipt for signature verification."""
+
+    expected = {field.name for field in fields(RuntimeNewsGuardReceipt)}
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise RuntimeSupervisorIntegrityError("news guard receipt shape is invalid")
+    data = dict(value)
+    for name in ("observed_at_utc", "valid_until_utc"):
+        raw = data[name]
+        if not isinstance(raw, str):
+            raise RuntimeSupervisorIntegrityError(
+                "news guard receipt timestamp is invalid"
+            )
+        text = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError as exc:
+            raise RuntimeSupervisorIntegrityError(
+                "news guard receipt timestamp is invalid"
+            ) from exc
+        if parsed.tzinfo is None:
+            raise RuntimeSupervisorIntegrityError(
+                "news guard receipt timestamp must be timezone-aware"
+            )
+        data[name] = parsed.astimezone(timezone.utc)
+    try:
+        return RuntimeNewsGuardReceipt(**data, _seal=_NEWS_GUARD_SEAL)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeSupervisorIntegrityError(
+            "news guard receipt contract is invalid"
+        ) from exc
 
 
 def verify_runtime_news_guard_receipt(
@@ -5127,6 +5162,7 @@ __all__ = [
     "SUPERVISOR_CHECKPOINT_CAS_ACK_SCHEMA_VERSION",
     "SAFE_TO_DEMO_AUTO_ORDER",
     "issue_runtime_news_guard_receipt",
+    "runtime_news_guard_receipt_from_mapping",
     "runtime_news_guard_trust_sha256",
     "seal_runtime_demo_auto_execution_result",
     "seal_runtime_live_canary_execution_result",

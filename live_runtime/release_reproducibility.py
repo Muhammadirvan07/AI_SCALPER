@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from datetime import datetime
+from dataclasses import dataclass, fields, replace
+from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
@@ -157,6 +157,17 @@ class WindowsReproducibilityReceipt:
         payload["issued_at_utc"] = self.issued_at_utc.isoformat().replace("+00:00", "Z")
         return _canonical(payload)
 
+    def to_canonical_dict(self) -> dict[str, object]:
+        payload = dict(self.__dict__)
+        payload["issued_at_utc"] = self.issued_at_utc.isoformat().replace(
+            "+00:00", "Z"
+        )
+        return payload
+
+    @property
+    def content_sha256(self) -> str:
+        return hashlib.sha256(_canonical(self.to_canonical_dict())).hexdigest()
+
     @property
     def receipt_id(self) -> str:
         return "release_repro_" + hashlib.sha256(self.signing_payload).hexdigest()[:32]
@@ -186,6 +197,8 @@ def issue_reproducibility_receipt(
         raise TypeError("two exact ReproducibilityObservation values are required")
     if first.build_id == second.build_id:
         raise ReproducibilityError("BUILD_ID_REPLAY")
+    if first.host_alias_sha256 == second.host_alias_sha256:
+        raise ReproducibilityError("HOST_ALIAS_REPLAY")
     comparisons = (
         ("GIT_COMMIT_MISMATCH", first.git_commit, second.git_commit),
         ("GIT_TREE_MISMATCH", first.git_tree, second.git_tree),
@@ -218,6 +231,33 @@ def issue_reproducibility_receipt(
     ).sign(secret)
 
 
+def windows_reproducibility_receipt_from_mapping(
+    value: Mapping[str, object],
+) -> WindowsReproducibilityReceipt:
+    expected = {item.name for item in fields(WindowsReproducibilityReceipt)}
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ReproducibilityError("RECEIPT_SHAPE_INVALID")
+    data = dict(value)
+    raw_time = data.get("issued_at_utc")
+    if not isinstance(raw_time, str):
+        raise ReproducibilityError("RECEIPT_TIMESTAMP_INVALID")
+    text = raw_time[:-1] + "+00:00" if raw_time.endswith("Z") else raw_time
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ReproducibilityError("RECEIPT_TIMESTAMP_INVALID") from exc
+    if parsed.tzinfo is None:
+        raise ReproducibilityError("RECEIPT_TIMESTAMP_NAIVE")
+    data["issued_at_utc"] = parsed.astimezone(timezone.utc)
+    try:
+        receipt = WindowsReproducibilityReceipt(**data)
+    except (TypeError, ValueError) as exc:
+        raise ReproducibilityError("RECEIPT_CONTRACT_INVALID") from exc
+    if receipt.to_canonical_dict() != dict(value):
+        raise ReproducibilityError("RECEIPT_CANONICAL_MISMATCH")
+    return receipt
+
+
 def verify_reproducibility_receipt(
     receipt: WindowsReproducibilityReceipt,
     *,
@@ -244,4 +284,5 @@ __all__ = [
     "WindowsReproducibilityReceipt",
     "issue_reproducibility_receipt",
     "verify_reproducibility_receipt",
+    "windows_reproducibility_receipt_from_mapping",
 ]

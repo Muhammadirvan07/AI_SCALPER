@@ -298,6 +298,8 @@ class LiveCanaryOrderAuthorizationTests(unittest.TestCase):
             health_facts_sha256=health.content_sha256,
             health_decision=health_decision,
             health_decision_sha256=health_decision.content_sha256,
+            health_source_evidence_sha256="d" * 64,
+            health_trust_policy_sha256="e" * 64,
             journal_sha256=candidate.journal_sha256,
             key_id="live-order-runtime-fact-key-v1",
             observed_at_utc=self.now,

@@ -28,6 +28,7 @@ from live_runtime.stage_authorization import (
     issue_acceptance_authority_receipt,
     issue_human_approval,
     issue_stage_readiness_authorization,
+    stage_readiness_authorization_from_mapping,
     validate_and_consume_stage_readiness_authorization,
 )
 
@@ -467,6 +468,9 @@ class StageAuthorizationTestCase(unittest.TestCase):
 
     def test_demo_auto_requires_all_evidence_and_remains_deny_only(self) -> None:
         authorization = self._issue(self._request())
+        authorization = stage_readiness_authorization_from_mapping(
+            authorization.to_canonical_dict()
+        )
         with tempfile.TemporaryDirectory() as directory:
             validation = self._validate(authorization, self._registry(Path(directory)))
         self.assertTrue(validation.valid)

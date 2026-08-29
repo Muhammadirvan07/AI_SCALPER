@@ -47,6 +47,7 @@ class LiveReadinessEvidence:
     kill_switch_verified: bool = False
     reconciliation_verified: bool = False
     release_identity_verified: bool = False
+    terminal_monitor_verified: bool = False
     critical_incident_count: int = 0
 
 
@@ -117,6 +118,8 @@ def assess_live_readiness(evidence: LiveReadinessEvidence) -> LiveReadinessAsses
         blockers.add("RECONCILIATION_VERIFICATION_REQUIRED")
     if not evidence.release_identity_verified:
         blockers.add("CLEAN_RELEASE_IDENTITY_REQUIRED")
+    if not evidence.terminal_monitor_verified:
+        blockers.add("REALTIME_TERMINAL_MONITOR_REQUIRED")
 
     demo_blockers = set(blockers)
     if evidence.critical_incident_count:

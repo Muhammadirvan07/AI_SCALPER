@@ -464,6 +464,85 @@ def decode_signed_release_trust_receipt(
     return receipt
 
 
+def decode_release_trust_checkpoint(
+    payload: str | bytes,
+) -> ReleaseTrustCheckpoint:
+    """Decode one exact canonical custody checkpoint without re-signing it."""
+
+    if isinstance(payload, bytes):
+        try:
+            text = payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ReleaseTrustError("CHECKPOINT_JSON_INVALID") from exc
+    elif isinstance(payload, str):
+        text = payload
+    else:
+        raise TypeError("release trust checkpoint payload must be str or bytes")
+
+    def reject_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ReleaseTrustError("CHECKPOINT_JSON_DUPLICATE_KEY")
+            result[key] = value
+        return result
+
+    try:
+        raw = json.loads(text, object_pairs_hook=reject_duplicates)
+    except ReleaseTrustError:
+        raise
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ReleaseTrustError("CHECKPOINT_JSON_INVALID") from exc
+    expected_fields = {
+        "sequence",
+        "accepted_receipt_sha256",
+        "accepted_nonce_sha256",
+        "release_binding_sha256",
+        "trust_policy_sha256",
+        "predecessor_checkpoint_sha256",
+        "accepted_at_utc",
+        "custody_issuer_id",
+        "custody_key_id",
+        "custody_key_fingerprint_sha256",
+        "signature_hmac_sha256",
+        "schema_version",
+    }
+    if not isinstance(raw, Mapping) or set(raw) != expected_fields:
+        raise ReleaseTrustError("CHECKPOINT_JSON_SCHEMA_INVALID")
+    accepted_at = raw.get("accepted_at_utc")
+    if not isinstance(accepted_at, str) or not accepted_at.endswith("Z"):
+        raise ReleaseTrustError("CHECKPOINT_JSON_TIMESTAMP_INVALID")
+    try:
+        accepted_at_utc = require_utc(
+            "accepted_at_utc",
+            datetime.fromisoformat(accepted_at.removesuffix("Z") + "+00:00"),
+        )
+        checkpoint = ReleaseTrustCheckpoint(
+            sequence=raw["sequence"],
+            accepted_receipt_sha256=raw["accepted_receipt_sha256"],
+            accepted_nonce_sha256=raw["accepted_nonce_sha256"],
+            release_binding_sha256=raw["release_binding_sha256"],
+            trust_policy_sha256=raw["trust_policy_sha256"],
+            predecessor_checkpoint_sha256=raw["predecessor_checkpoint_sha256"],
+            accepted_at_utc=accepted_at_utc,
+            custody_issuer_id=raw["custody_issuer_id"],
+            custody_key_id=raw["custody_key_id"],
+            custody_key_fingerprint_sha256=raw[
+                "custody_key_fingerprint_sha256"
+            ],
+            signature_hmac_sha256=raw["signature_hmac_sha256"],
+            schema_version=raw["schema_version"],
+            _seal=_CHECKPOINT_SEAL,
+        )
+    except ReleaseTrustError:
+        raise
+    except (TypeError, ValueError, KeyError) as exc:
+        raise ReleaseTrustError("CHECKPOINT_JSON_SCHEMA_INVALID") from exc
+    if not checkpoint.signature_hmac_sha256 or checkpoint.canonical_json() != text:
+        raise ReleaseTrustError("CHECKPOINT_JSON_NOT_CANONICAL")
+    return checkpoint
+
+
 @dataclass(frozen=True)
 class ReleaseTrustCustodyProposal(CanonicalContract):
     sequence: int
@@ -686,6 +765,41 @@ def issue_release_trust_custody_commit(
         _seal=_ACK_SEAL,
     )
     return ReleaseTrustCustodyCommit(checkpoint, acknowledgement)
+
+
+def verify_release_trust_checkpoint(
+    checkpoint: ReleaseTrustCheckpoint,
+    *,
+    policy: ReleaseTrustPolicy,
+    custody_key_provider: Callable[[str], str | bytes],
+) -> ReleaseTrustCheckpoint:
+    """Authenticate one externally stored custody head without mutating it."""
+
+    if type(checkpoint) is not ReleaseTrustCheckpoint:
+        raise ReleaseTrustError("EXTERNAL_CHECKPOINT_TYPE_INVALID")
+    if type(policy) is not ReleaseTrustPolicy or not callable(custody_key_provider):
+        raise TypeError("exact policy and custody key provider are required")
+    if (
+        checkpoint.trust_policy_sha256 != policy.content_sha256
+        or checkpoint.custody_issuer_id != policy.custody_issuer_id
+        or checkpoint.custody_key_id != policy.custody_key_id
+        or checkpoint.custody_key_fingerprint_sha256
+        != policy.custody_key_fingerprint_sha256
+        or not checkpoint.signature_hmac_sha256
+    ):
+        raise ReleaseTrustError("EXTERNAL_CHECKPOINT_BINDING_INVALID")
+    try:
+        secret = _secret(
+            custody_key_provider(policy.custody_key_id), purpose="CUSTODY"
+        )
+    except Exception as exc:
+        raise ReleaseTrustError("CUSTODY_KEY_PROVIDER_FAILED") from exc
+    if release_trust_key_fingerprint(secret) != policy.custody_key_fingerprint_sha256:
+        raise ReleaseTrustError("CUSTODY_KEY_FINGERPRINT_MISMATCH")
+    expected = _hmac(secret, _CUSTODY_CHECKPOINT_DOMAIN, checkpoint.signing_dict)
+    if not hmac.compare_digest(expected, checkpoint.signature_hmac_sha256):
+        raise ReleaseTrustError("EXTERNAL_CHECKPOINT_SIGNATURE_INVALID")
+    return checkpoint
 
 
 @dataclass(frozen=True)

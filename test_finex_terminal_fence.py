@@ -21,7 +21,10 @@ FENCE_KEY = b"terminal-fence-test-key" * 2
 def _discovery() -> dict[str, object]:
     return {
         "candidate_id": "finex",
-        "captured_at_utc": (NOW - timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
+        "captured_at_utc": (NOW - timedelta(minutes=1))
+        .replace(microsecond=123456)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "payload_sha256": "a" * 64,
         "execution_enabled": False,
         "live_allowed": False,

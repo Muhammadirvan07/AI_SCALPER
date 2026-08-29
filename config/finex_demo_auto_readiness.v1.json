@@ -1,0 +1,36 @@
+{
+  "schema_version": "finex-demo-auto-readiness-manifest-v1",
+  "candidate_id": "finex",
+  "operating_jurisdiction": "ID",
+  "environment": "DEMO",
+  "broker_server": "FinexBisnisSolusi-Demo",
+  "required_symbols": [
+    "AUDUSD",
+    "EURUSD",
+    "USDJPY",
+    "XAUUSD"
+  ],
+  "required_gates": [
+    "AI_NEWS_ADVISORY",
+    "BROKER_EVIDENCE_FRESHNESS",
+    "CALENDAR_MONITORING",
+    "HUMAN_APPROVAL_PIPELINE",
+    "KILL_SWITCH",
+    "RECONCILIATION",
+    "REGULATORY_DUAL_REVIEW",
+    "RELEASE_IDENTITY",
+    "RISK_CONTROLS",
+    "SOAK_PORTFOLIO",
+    "STRATEGY_PORTFOLIO",
+    "TERMINAL_MONITOR"
+  ],
+  "minimum_clean_days": 30,
+  "minimum_total_closed_fills": 100,
+  "minimum_closed_fills_per_symbol": 20,
+  "authorization_granted": false,
+  "activation_authorized": false,
+  "execution_enabled": false,
+  "safe_to_demo_auto_order": false,
+  "live_allowed": false,
+  "order_capability": "DISABLED"
+}

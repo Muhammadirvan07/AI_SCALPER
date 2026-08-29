@@ -9,8 +9,8 @@ hash; neither artifact authorizes execution on its own.
 
 from __future__ import annotations
 
-from dataclasses import InitVar, dataclass, replace
-from datetime import datetime, timedelta
+from dataclasses import InitVar, dataclass, fields, replace
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 from typing import Callable
@@ -464,11 +464,41 @@ def validate_promotion_evidence_receipt(
     )
 
 
+def promotion_evidence_receipt_from_mapping(
+    value: dict[str, object],
+) -> PromotionEvidenceReceipt:
+    """Rehydrate an exact signed receipt without re-signing caller data."""
+
+    expected = {field.name for field in fields(PromotionEvidenceReceipt)}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise ValueError("promotion evidence receipt shape is invalid")
+    serialized = dict(value)
+    data = dict(serialized)
+    for name in ("issued_at", "expires_at"):
+        raw = data[name]
+        if not isinstance(raw, str) or not raw.endswith("Z"):
+            raise ValueError("promotion evidence timestamp is invalid")
+        try:
+            data[name] = datetime.fromisoformat(raw[:-1] + "+00:00").astimezone(
+                timezone.utc
+            )
+        except ValueError as exc:
+            raise ValueError("promotion evidence timestamp is invalid") from exc
+    try:
+        receipt = PromotionEvidenceReceipt(**data)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("promotion evidence receipt contract is invalid") from exc
+    if receipt.to_canonical_dict() != serialized:
+        raise ValueError("promotion evidence receipt is not canonical")
+    return receipt
+
+
 __all__ = [
     "MAX_RECEIPT_LIFETIME",
     "PROMOTION_EVIDENCE_SCHEMA_VERSION",
     "PromotionEvidenceReceipt",
     "PromotionEvidenceValidation",
     "issue_promotion_evidence_receipt",
+    "promotion_evidence_receipt_from_mapping",
     "validate_promotion_evidence_receipt",
 ]

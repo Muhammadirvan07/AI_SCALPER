@@ -29,6 +29,7 @@ def complete_evidence(**overrides):
         "kill_switch_verified": True,
         "reconciliation_verified": True,
         "release_identity_verified": True,
+        "terminal_monitor_verified": True,
     }
     values.update(overrides)
     return LiveReadinessEvidence(**values)
@@ -92,6 +93,11 @@ class LiveReadinessTests(unittest.TestCase):
         self.assertFalse(result.demo_auto_ready_for_activation_review)
         self.assertFalse(result.live_canary_ready_for_activation_review)
         self.assertIn("CRITICAL_INCIDENT_DEMOTION_LATCHED", result.blocker_codes)
+
+    def test_realtime_terminal_monitor_is_required(self):
+        result = assess_live_readiness(complete_evidence(terminal_monitor_verified=False))
+        self.assertIn("REALTIME_TERMINAL_MONITOR_REQUIRED", result.blocker_codes)
+        self.assertFalse(result.demo_auto_ready_for_activation_review)
 
     def test_unknown_symbol_is_rejected(self):
         with self.assertRaises(ValueError):

@@ -16,6 +16,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from live_runtime.contracts import canonical_sha256
+
 ROOT = Path(__file__).resolve().parent
 LOCAL_ENV_FILE = ROOT / "scripts" / ".env.local"
 DEFAULT_AUDIT_FILE = ROOT / "openai_advisory_audit.jsonl"
@@ -132,9 +134,11 @@ class OpenAIDecisionAdvisor:
         self,
         settings: AdvisorSettings | None = None,
         transport: Callable[[Request, float], dict[str, Any]] | None = None,
+        receipt_issuer: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     ) -> None:
         self.settings = settings or AdvisorSettings.from_environment()
         self._transport = transport or self._request_json
+        self._receipt_issuer = receipt_issuer
 
     @staticmethod
     def _request_json(request: Request, timeout: float) -> dict[str, Any]:
@@ -466,6 +470,56 @@ class OpenAIDecisionAdvisor:
                 "risk_flags": ["AUDIT_WRITE_FAILED"],
                 "rationale": ["Fail-closed because the advisory audit record could not be persisted."],
             })
+        result["advisory_receipt_status"] = "NOT_CONFIGURED"
+        if audit_ok and self._receipt_issuer is not None:
+            receipt_evidence = {
+                "symbol": symbol,
+                "model": result.get("model", self.settings.model),
+                "reasoning_effort": result.get("reasoning_effort", "medium"),
+                "execution_scope": getattr(
+                    self._receipt_issuer, "execution_scope", "PAPER_ONLY"
+                ),
+                "decision_snapshot_sha256": snapshot_hash,
+                "news_payload_sha256": canonical_sha256(news),
+                "advisory_output_sha256": canonical_sha256({
+                    key: result.get(key)
+                    for key in (
+                        "status", "recommendation", "confidence", "news_sentiment",
+                        "news_sentiment_label", "risk_flags", "rationale",
+                    )
+                }),
+                "policy_sha256": canonical_sha256({
+                    "model": self.settings.model,
+                    "minimum_confidence": self.settings.minimum_confidence,
+                    "require_news": self.settings.require_news,
+                    "news_max_age_minutes": self.settings.news_max_age_minutes,
+                    "news_future_skew_seconds": self.settings.news_future_skew_seconds,
+                    "output_schema": self.OUTPUT_SCHEMA,
+                }),
+                "deterministic_action": action,
+                "recommendation": result.get("recommendation", "WAIT"),
+                "status": result.get("status", "VETOED_ERROR"),
+                "confidence": result.get("confidence", 0.0),
+                "generated_at_utc": generated_at,
+            }
+            try:
+                receipt = self._receipt_issuer(receipt_evidence)
+                if not isinstance(receipt, dict):
+                    raise TypeError("advisory receipt issuer returned an invalid payload")
+                result["advisory_receipt"] = dict(receipt)
+                result["advisory_receipt_status"] = "WRITTEN"
+            except Exception:
+                result.update({
+                    "status": "VETOED_ERROR",
+                    "advisory_mode": "BLOCKED",
+                    "recommendation": "WAIT",
+                    "confidence": 0.0,
+                    "risk_flags": ["ADVISORY_RECEIPT_WRITE_FAILED"],
+                    "rationale": [
+                        "Fail-closed because signed advisory evidence could not be persisted."
+                    ],
+                    "advisory_receipt_status": "FAILED",
+                })
         return result
 
 

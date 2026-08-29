@@ -7,7 +7,7 @@ projection, reconciliation, journals, services, MT5, and broker mutation.
 
 from __future__ import annotations
 
-from dataclasses import InitVar, dataclass, field
+from dataclasses import InitVar, dataclass, field, fields
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
@@ -596,6 +596,118 @@ def verify_demo_auto_soak_cohort_receipt(
         return False
 
 
+def _persisted_utc(value: object, name: str) -> datetime:
+    if not isinstance(value, str):
+        raise DemoAutoSoakCohortIntegrityError(f"{name} is invalid")
+    text = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise DemoAutoSoakCohortIntegrityError(f"{name} is invalid") from exc
+    if parsed.tzinfo is None:
+        raise DemoAutoSoakCohortIntegrityError(f"{name} must be timezone-aware")
+    return parsed.astimezone(UTC)
+
+
+def demo_auto_soak_cohort_binding_from_mapping(
+    value: Mapping[str, object],
+) -> DemoAutoSoakCohortBinding:
+    """Load an exact cohort binding; the signed receipt still authenticates it."""
+
+    expected = {item.name for item in fields(DemoAutoSoakCohortBinding)}
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise DemoAutoSoakCohortBindingError("cohort binding shape is invalid")
+    data = dict(value)
+    raw_members = data.get("members")
+    member_fields = {item.name for item in fields(DemoAutoSoakCohortMemberBinding)}
+    if not isinstance(raw_members, list):
+        raise DemoAutoSoakCohortBindingError("cohort members are invalid")
+    members: list[DemoAutoSoakCohortMemberBinding] = []
+    for raw in raw_members:
+        if not isinstance(raw, Mapping) or set(raw) != member_fields:
+            raise DemoAutoSoakCohortBindingError("cohort member shape is invalid")
+        try:
+            members.append(DemoAutoSoakCohortMemberBinding(**dict(raw)))
+        except (TypeError, ValueError) as exc:
+            raise DemoAutoSoakCohortBindingError(
+                "cohort member contract is invalid"
+            ) from exc
+    raw_xau = data.get("xau_lane_ids")
+    if not isinstance(raw_xau, list) or any(not isinstance(item, str) for item in raw_xau):
+        raise DemoAutoSoakCohortBindingError("cohort XAU lane identities are invalid")
+    data["members"] = tuple(members)
+    data["xau_lane_ids"] = tuple(raw_xau)
+    try:
+        return DemoAutoSoakCohortBinding(**data)
+    except (TypeError, ValueError) as exc:
+        raise DemoAutoSoakCohortBindingError(
+            "cohort binding contract is invalid"
+        ) from exc
+
+
+def demo_auto_soak_cohort_receipt_from_mapping(
+    value: Mapping[str, object],
+) -> DemoAutoSoakCohortReceipt:
+    """Load one exact signed cohort receipt without trusting derived claims."""
+
+    receipt_fields = fields(DemoAutoSoakCohortReceipt)
+    expected = {item.name for item in receipt_fields}
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise DemoAutoSoakCohortIntegrityError("cohort receipt shape is invalid")
+    serialized = dict(value)
+    data = dict(serialized)
+    raw_snapshots = data.get("member_snapshots")
+    snapshot_fields = {item.name for item in fields(DemoAutoSoakCohortMemberSnapshot)}
+    if not isinstance(raw_snapshots, list):
+        raise DemoAutoSoakCohortIntegrityError("cohort snapshots are invalid")
+    snapshots: list[DemoAutoSoakCohortMemberSnapshot] = []
+    for raw in raw_snapshots:
+        if not isinstance(raw, Mapping) or set(raw) != snapshot_fields:
+            raise DemoAutoSoakCohortIntegrityError("cohort snapshot shape is invalid")
+        try:
+            snapshots.append(DemoAutoSoakCohortMemberSnapshot(**dict(raw)))
+        except (TypeError, ValueError) as exc:
+            raise DemoAutoSoakCohortIntegrityError(
+                "cohort snapshot contract is invalid"
+            ) from exc
+    raw_owners = data.get("deal_identity_owners")
+    if not isinstance(raw_owners, list) or any(
+        not isinstance(item, list)
+        or len(item) != 2
+        or any(not isinstance(part, str) for part in item)
+        for item in raw_owners
+    ):
+        raise DemoAutoSoakCohortIntegrityError("cohort deal owners are invalid")
+    raw_blockers = data.get("blocker_codes")
+    if not isinstance(raw_blockers, list) or any(
+        not isinstance(item, str) for item in raw_blockers
+    ):
+        raise DemoAutoSoakCohortIntegrityError("cohort blocker codes are invalid")
+    data["member_snapshots"] = tuple(snapshots)
+    data["deal_identity_owners"] = tuple(
+        (str(item[0]), str(item[1])) for item in raw_owners
+    )
+    data["blocker_codes"] = tuple(raw_blockers)
+    data["issued_at_utc"] = _persisted_utc(data["issued_at_utc"], "issued_at_utc")
+    data["valid_until_utc"] = _persisted_utc(
+        data["valid_until_utc"], "valid_until_utc"
+    )
+    try:
+        receipt = DemoAutoSoakCohortReceipt(
+            **{item.name: data[item.name] for item in receipt_fields if item.init},
+            _seal=_COHORT_RECEIPT_SEAL,
+        )
+    except (TypeError, ValueError) as exc:
+        raise DemoAutoSoakCohortIntegrityError(
+            "cohort receipt contract is invalid"
+        ) from exc
+    if receipt.to_canonical_dict() != serialized:
+        raise DemoAutoSoakCohortIntegrityError(
+            "cohort receipt derived safety fields are invalid"
+        )
+    return receipt
+
+
 __all__ = [
     "COHORT_BINDING_SCHEMA_VERSION",
     "COHORT_RECEIPT_SCHEMA_VERSION",
@@ -608,5 +720,7 @@ __all__ = [
     "DemoAutoSoakCohortReceipt",
     "DemoAutoSoakCohortReplayError",
     "MAX_CURRENT_RECEIPT_AGE",
+    "demo_auto_soak_cohort_binding_from_mapping",
+    "demo_auto_soak_cohort_receipt_from_mapping",
     "verify_demo_auto_soak_cohort_receipt",
 ]

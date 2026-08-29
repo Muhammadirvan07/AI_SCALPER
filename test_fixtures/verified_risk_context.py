@@ -242,6 +242,8 @@ def build_verified_risk_context(
         heartbeat_provider=lambda: health_facts.heartbeat_at,
         audit_export_status_provider=lambda: health_facts.audit_export_healthy,
         backup_status_provider=lambda: health_facts.backup_recent,
+        health_source_evidence_sha256="d" * 64,
+        health_trust_policy_sha256="e" * 64,
         disk_free_provider=lambda _path: max(
             health_facts.free_disk_bytes, MIN_FREE_DISK_BYTES + 1
         ),

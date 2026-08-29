@@ -317,6 +317,21 @@ class BrokerSpec(CanonicalContract):
         )
 
     @property
+    def content_sha256(self) -> str:
+        """Return the stable economic-contract identity for this specification.
+
+        ``captured_at`` is liveness evidence, not part of the instrument contract.
+        Keeping it out of this identity lets a newly observed, one-second-fresh
+        specification remain bound to the reviewed contract while every runtime
+        receipt still serializes and signs the exact capture timestamp.  Callers
+        must continue enforcing ``captured_at`` freshness independently.
+        """
+
+        payload = self.to_canonical_dict()
+        payload.pop("captured_at")
+        return canonical_sha256(payload)
+
+    @property
     def spec_id(self) -> str:
         return f"broker_{self.content_sha256[:32]}"
 

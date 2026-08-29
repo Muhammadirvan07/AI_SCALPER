@@ -9,7 +9,7 @@ contains no broker mutation, permit, demo-auto, or live-trading capability.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import InitVar, dataclass
+from dataclasses import InitVar, dataclass, fields
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
@@ -717,6 +717,76 @@ def _event_binding(event: object) -> RiskLedgerBinding:
     if type(binding) is not RiskLedgerBinding:
         raise TypeError("risk event binding is invalid")
     return binding
+
+
+def issue_risk_source_receipt(
+    *,
+    event: object,
+    binding: RiskLedgerBinding,
+    upstream_receipt_type: str,
+    upstream_receipt: object,
+    issuer_id: str,
+    key_id: str,
+    key: str | bytes,
+    observed_at_utc: datetime,
+    valid_until_utc: datetime,
+) -> RiskSourceReceipt:
+    """Issue and immediately verify one exact, short-lived source envelope."""
+
+    if type(binding) is not RiskLedgerBinding or _event_binding(event) != binding:
+        raise RiskLedgerBindingError("risk source event binding does not match")
+    source_kinds = {
+        AccountRiskSnapshot: "ACCOUNT_SNAPSHOT",
+        EntryRiskEvent: "ENTRY",
+        ClosedTradeRiskEvent: "CLOSED_TRADE",
+    }
+    source_kind = source_kinds.get(type(event))
+    if source_kind is None:
+        raise TypeError("unsupported exact risk event type")
+    try:
+        event_sha256 = require_hash("event_sha256", event.content_sha256)
+        upstream_sha256 = require_hash(
+            "upstream_receipt_sha256", upstream_receipt.content_sha256
+        )
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise RiskLedgerSourceError("canonical upstream receipt is required") from exc
+    exact_issuer = _exact_id("issuer_id", issuer_id)
+    exact_key_id = _exact_id("key_id", key_id)
+    observed = require_utc("observed_at_utc", observed_at_utc)
+    valid_until = require_utc("valid_until_utc", valid_until_utc)
+    unsigned = {
+        "source_receipt_id": (
+            f"risk-source-{event_sha256[:24]}-{upstream_sha256[:24]}"
+        ),
+        "source_kind": source_kind,
+        "issuer_id": exact_issuer,
+        "key_id": exact_key_id,
+        "binding": binding.to_canonical_dict(),
+        "event_sha256": event_sha256,
+        "upstream_receipt_type": require_text(
+            "upstream_receipt_type", upstream_receipt_type, upper=True
+        ),
+        "upstream_receipt_sha256": upstream_sha256,
+        "observed_at_utc": observed,
+        "valid_until_utc": valid_until,
+        "schema_version": SOURCE_RECEIPT_SCHEMA_VERSION,
+    }
+    signature = _hmac_sha256(_key(key), _SOURCE_HMAC_DOMAIN, unsigned)
+
+    def provider(requested_key_id: str) -> str | bytes:
+        if requested_key_id != exact_key_id:
+            raise KeyError(requested_key_id)
+        return key
+
+    return verify_risk_source_receipt(
+        {**unsigned, "signature_hmac_sha256": signature},
+        expected_event=event,
+        expected_binding=binding,
+        key_provider=provider,
+        trusted_issuer_keys={exact_issuer: (exact_key_id,)},
+        clock_provider=lambda: observed,
+        enforce_freshness=True,
+    )
 
 
 def verify_risk_source_receipt(
@@ -1895,6 +1965,42 @@ def verify_risk_state_receipt(
     return hmac.compare_digest(receipt.receipt_hmac_sha256, expected)
 
 
+def risk_state_receipt_from_mapping(value: Mapping[str, object]) -> RiskStateReceipt:
+    """Rehydrate one exact signed risk-state receipt for HMAC verification."""
+
+    expected = {item.name for item in fields(RiskStateReceipt)}
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise RiskLedgerIntegrityError("risk-state receipt shape is invalid")
+    data = dict(value)
+    raw_binding = data.get("binding")
+    binding_fields = {item.name for item in fields(RiskLedgerBinding)}
+    if not isinstance(raw_binding, Mapping) or set(raw_binding) != binding_fields:
+        raise RiskLedgerIntegrityError("risk-state binding shape is invalid")
+    try:
+        data["binding"] = RiskLedgerBinding(**dict(raw_binding))
+    except (TypeError, ValueError) as exc:
+        raise RiskLedgerIntegrityError("risk-state binding is invalid") from exc
+    for name in ("issued_at_utc", "latest_event_at_utc"):
+        raw = data[name]
+        if not isinstance(raw, str):
+            raise RiskLedgerIntegrityError("risk-state timestamp is invalid")
+        text = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError as exc:
+            raise RiskLedgerIntegrityError("risk-state timestamp is invalid") from exc
+        if parsed.tzinfo is None:
+            raise RiskLedgerIntegrityError("risk-state timestamp must be timezone-aware")
+        data[name] = parsed.astimezone(UTC)
+    try:
+        receipt = RiskStateReceipt(**data, _seal=_RECEIPT_SEAL)
+    except (TypeError, ValueError) as exc:
+        raise RiskLedgerIntegrityError("risk-state receipt contract is invalid") from exc
+    if receipt.to_canonical_dict() != dict(value):
+        raise RiskLedgerIntegrityError("risk-state receipt canonical mismatch")
+    return receipt
+
+
 __all__ = [
     "AccountRiskSnapshot",
     "ClosedTradeRiskEvent",
@@ -1911,6 +2017,8 @@ __all__ = [
     "RiskStateReceipt",
     "RiskStateCheckpointCASAcknowledgement",
     "CHECKPOINT_CAS_ACK_SCHEMA_VERSION",
+    "issue_risk_source_receipt",
+    "risk_state_receipt_from_mapping",
     "verify_risk_source_receipt",
     "verify_risk_state_receipt",
 ]
