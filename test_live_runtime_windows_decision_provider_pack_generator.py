@@ -29,8 +29,14 @@ from live_runtime.decision_ipc import (
 from live_runtime.windows_decision_provider_pack import (
     CredentialReference,
     WindowsClockBinding,
+    WindowsEd25519ClockBinding,
+    WindowsTrustedUTCContinuityCASBinding,
     parse_windows_decision_provider_configuration,
+    parse_windows_decision_provider_configuration_v2,
     validate_windows_decision_provider_bindings,
+)
+from live_runtime.windows_ed25519_trusted_clock import (
+    ed25519_public_key_sha256,
 )
 from live_runtime.windows_decision_provider_pack_generator import (
     GENERATED_PATHS,
@@ -358,6 +364,77 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
             },
         }
 
+    def _pack_payload_v2(self) -> dict[str, object]:
+        payload = self._pack_payload()
+        producer, feed, ipc, _clock, references = self._bindings()
+        algorithm = b"ssh-ed25519"
+        key = b"k" * 32
+        blob = (
+            len(algorithm).to_bytes(4, "big")
+            + algorithm
+            + len(key).to_bytes(4, "big")
+            + key
+        )
+        import base64
+
+        public_key = "ssh-ed25519 " + base64.b64encode(blob).decode("ascii")
+        clock = WindowsEd25519ClockBinding(
+            provider_id="decision-ed25519-clock-v1",
+            source_host_identity_sha256=HASH_A,
+            consumer_host_identity_sha256=HASH_C,
+            authority_issuer_id="offhost-clock-authority-v1",
+            signer_identity="offhost-clock-signer-v1",
+            authority_public_key=public_key,
+            authority_public_key_sha256=ed25519_public_key_sha256(public_key),
+            ssh_keygen_path=r"C:\Windows\System32\OpenSSH\ssh-keygen.exe",
+            ssh_keygen_sha256="d" * 64,
+            maximum_attestation_age_ms=10_000,
+            maximum_delivery_delay_ms=3_000,
+            maximum_bootstrap_drift_ms=1_000,
+        )
+        continuity_key_id = "clock-continuity-key-v1"
+        continuity_fingerprint = "e" * 64
+        continuity = WindowsTrustedUTCContinuityCASBinding(
+            provider_id="clock-continuity-directory-cas-v1",
+            clock_binding_sha256=clock.content_sha256,
+            custody_issuer_id="clock-continuity-custody-v1",
+            custody_key_id=continuity_key_id,
+            custody_key_fingerprint_sha256=continuity_fingerprint,
+        )
+        filtered = [
+            item.to_canonical_dict()
+            for item in references
+            if item.key_id != "clock-key-v1"
+        ]
+        filtered.append(
+            CredentialReference(
+                key_id=continuity_key_id,
+                target_name=f"AI_SCALPER/DECISION/{continuity_key_id}",
+                fingerprint_sha256=continuity_fingerprint,
+            ).to_canonical_dict()
+        )
+        payload.update(
+            {
+                "clock_binding": clock.to_canonical_dict(),
+                "clock_continuity_binding": continuity.to_canonical_dict(),
+                "credential_references": filtered,
+                "pack_id": "decision-provider-pack-v9",
+                "schema_version": "windows-decision-provider-pack-input-v2",
+            }
+        )
+        payload["external_cas"] = {
+            "clock": {
+                "provider_id": continuity.provider_id,
+                "request_directory": r"C:\AI_SCALPER_STATE\decision\clock-continuity-requests",
+                "response_directory": r"C:\AI_SCALPER_STATE\decision\clock-continuity-responses",
+            },
+            **payload["external_cas"],
+        }
+        payload["storage"]["clock_attestation_path"] = (
+            r"C:\AI_SCALPER_STATE\decision\clock-envelope.json"
+        )
+        return payload
+
     def _prepare(self, name: str):
         return prepare_windows_decision_provider_pack(
             base_suite_root=self.suite_root,
@@ -439,6 +516,59 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
                 for item in runtime.providers
             },
         )
+
+    def test_v2_pack_is_additive_public_key_only_and_uses_v2_builder(self) -> None:
+        self.pack_input.write_bytes(canonical_file(self._pack_payload_v2()))
+        generated = self._prepare("v2-pack")
+        root = Path(generated.output_root)
+        validated = validate_windows_decision_provider_pack(
+            base_suite_root=self.suite_root,
+            decision_base_release=self.decision_base,
+            pack_root=root,
+        )
+        self.assertEqual(generated.pack_identity_sha256, validated.pack_identity_sha256)
+        provider_bytes = (root / "configured_providers/decision_provider.py").read_bytes()
+        self.assertIn(b"parse_windows_decision_provider_configuration_v2", provider_bytes)
+        self.assertIn(b"build_windows_decision_provider_service_v2", provider_bytes)
+        configuration = parse_windows_decision_provider_configuration_v2(
+            _extract_provider_configuration(provider_bytes)
+        )
+        key_ids = {item.key_id for item in configuration.credential_references}
+        self.assertNotIn("clock-key-v1", key_ids)
+        self.assertIn("clock-continuity-key-v1", key_ids)
+        self.assertEqual(
+            "windows-ed25519-trusted-utc-binding-v1",
+            configuration.clock_binding.schema_version,
+        )
+
+    def test_v2_rejects_clock_secret_extra_pin_and_path_or_identity_drift(self) -> None:
+        baseline = self._pack_payload_v2()
+        cases = []
+        extra = json.loads(json.dumps(baseline))
+        extra["credential_references"].append(
+            {
+                "key_id": "clock-key-v1",
+                "target_name": "AI_SCALPER/DECISION/clock-key-v1",
+                "fingerprint_sha256": "f" * 64,
+            }
+        )
+        cases.append(extra)
+        wrong_binding = json.loads(json.dumps(baseline))
+        wrong_binding["clock_continuity_binding"]["clock_binding_sha256"] = "f" * 64
+        cases.append(wrong_binding)
+        collided = json.loads(json.dumps(baseline))
+        collided["external_cas"]["clock"]["request_directory"] = collided[
+            "external_cas"
+        ]["ipc"]["request_directory"]
+        cases.append(collided)
+        relative_executable = json.loads(json.dumps(baseline))
+        relative_executable["clock_binding"]["ssh_keygen_path"] = "ssh-keygen.exe"
+        cases.append(relative_executable)
+        for index, payload in enumerate(cases):
+            with self.subTest(index=index):
+                self.pack_input.write_bytes(canonical_file(payload))
+                with self.assertRaises(DecisionProviderPackError):
+                    self._prepare(f"v2-invalid-{index}")
 
     def test_implementation_hashes_bind_all_transitive_foundation_bytes(
         self,
@@ -736,6 +866,53 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
                 "output_root",
             },
             prepare_destinations,
+        )
+
+    @unittest.skipUnless(
+        Path(
+            r"C:\Users\muham\AI_SCALPER_PRIVATE\finex\decision-input-v8\decision-provider-pack-input.json"
+        ).is_file(),
+        "source-bound historical FINEX v8 input is unavailable",
+    )
+    def test_v1_generation_matches_frozen_source_bound_v8_hashes(self) -> None:
+        suite = Path(
+            r"C:\Users\muham\AI_SCALPER_RELEASES\20260830\base-release-suite-09ddd3c-v1"
+        )
+        historical_input = Path(
+            r"C:\Users\muham\AI_SCALPER_PRIVATE\finex\decision-input-v8\decision-provider-pack-input.json"
+        )
+        try:
+            suite.resolve(strict=True)
+            historical_input.resolve(strict=True)
+        except OSError as exc:
+            self.skipTest(f"historical v8 artifacts are inaccessible: {exc}")
+        generated = prepare_windows_decision_provider_pack(
+            base_suite_root=suite,
+            decision_base_release=suite / "decision-base-v1.zip",
+            pack_input_path=historical_input,
+            output_root=self.root / "historical-v8-regeneration",
+        )
+        self.assertEqual(
+            "e7cdfc0e2f316bf996500918b7ce7148225b3d6c28692dd934b62d00e309cc05",
+            generated.base_suite_identity_sha256,
+        )
+        self.assertEqual(
+            "326292ff25a6667f03aa4a026209a25846a3b790a63ad5bc1ad2747d62aa81e3",
+            generated.decision_base_release_identity_sha256,
+        )
+        expected = {
+            "config/windows_service_config.json": "6b5e09ef6f252c415987c9a208779a8843964b52cdeeeaa420c1f8dc090ae145",
+            "configured_providers/__init__.py": "38f888e365eed5fa67b2140b7630ea561cd48221c3db3ca39cec0052a44ff13a",
+            "configured_providers/decision_provider.py": "a55701b04c51075c010392d29c9d8a6417f2a318b51bdfbec1ccc1ef9f5cd85c",
+            "reviewed_windows_factory.py": "882ea030c77c32234a3646bbab16322aa595a2b56d107434735d25103d4511a2",
+        }
+        root = Path(generated.output_root)
+        self.assertEqual(
+            expected,
+            {
+                relative: hashlib.sha256((root / relative).read_bytes()).hexdigest()
+                for relative in GENERATED_PATHS
+            },
         )
         validate_destinations = {
             action.dest

@@ -86,6 +86,13 @@ from .windows_provider_primitives import (
     _text,
     issue_windows_clock_attestation,
 )
+from .windows_ed25519_trusted_clock import (
+    Ed25519AttestedTrustedUTCProvider,
+    WindowsEd25519ClockBinding,
+    WindowsEd25519TrustedUTCContinuity,
+    WindowsEd25519TrustedUTCError,
+    parse_trusted_utc_envelope,
+)
 
 
 UTC = timezone.utc
@@ -99,7 +106,15 @@ PRODUCTION_EXECUTION_READY = False
 _MAXIMUM_CAS_PACKET_BYTES = 4 * 1024 * 1024
 _CAS_REQUEST_SCHEMA_VERSION = "external-cas-request-v1"
 _CAS_RESPONSE_SCHEMA_VERSION = "external-cas-response-v1"
-_CAS_DOMAINS = frozenset({"DECISION_IPC", "PRODUCER_CURSOR"})
+_CAS_DOMAINS = frozenset(
+    {"DECISION_IPC", "PRODUCER_CURSOR", "TRUSTED_UTC_CONTINUITY"}
+)
+_TRUSTED_UTC_CONTINUITY_ACK_SCHEMA = (
+    "windows-ed25519-trusted-utc-continuity-cas-ack-v1"
+)
+_TRUSTED_UTC_CONTINUITY_ACK_DOMAIN = (
+    b"AI_SCALPER_WINDOWS_ED25519_TRUSTED_UTC_CONTINUITY_CAS_V1\0"
+)
 
 
 WindowsDecisionProviderError = WindowsProviderPrimitiveError
@@ -1173,6 +1188,361 @@ class DecisionProducerExternalCAS(_DirectoryExternalCAS):
 
 
 @dataclass(frozen=True, slots=True)
+class WindowsTrustedUTCContinuityCASBinding(CanonicalContract):
+    provider_id: str
+    clock_binding_sha256: str
+    custody_issuer_id: str
+    custody_key_id: str
+    custody_key_fingerprint_sha256: str
+    schema_version: str = "windows-trusted-utc-continuity-cas-binding-v1"
+
+    def __post_init__(self) -> None:
+        for name in ("provider_id", "custody_issuer_id", "custody_key_id"):
+            object.__setattr__(self, name, _text(name, getattr(self, name)))
+        for name in (
+            "clock_binding_sha256",
+            "custody_key_fingerprint_sha256",
+        ):
+            object.__setattr__(
+                self, name, require_hash(name, getattr(self, name))
+            )
+        if self.schema_version != "windows-trusted-utc-continuity-cas-binding-v1":
+            raise ValueError("unsupported trusted UTC continuity CAS binding")
+
+
+@dataclass(frozen=True, slots=True)
+class TrustedUTCContinuityCASAcknowledgement(CanonicalContract):
+    provider_id: str
+    clock_binding_sha256: str
+    expected_previous_continuity_sha256: str
+    accepted_continuity_sha256: str
+    observed_previous_continuity_sha256: str
+    accepted: bool
+    issued_at_utc: datetime
+    custody_issuer_id: str
+    custody_key_id: str
+    custody_key_fingerprint_sha256: str
+    hmac_sha256: str
+    schema_version: str = _TRUSTED_UTC_CONTINUITY_ACK_SCHEMA
+
+    def __post_init__(self) -> None:
+        for name in ("provider_id", "custody_issuer_id", "custody_key_id"):
+            object.__setattr__(self, name, _text(name, getattr(self, name)))
+        for name in (
+            "clock_binding_sha256",
+            "expected_previous_continuity_sha256",
+            "accepted_continuity_sha256",
+            "observed_previous_continuity_sha256",
+            "custody_key_fingerprint_sha256",
+            "hmac_sha256",
+        ):
+            object.__setattr__(
+                self, name, require_hash(name, getattr(self, name))
+            )
+        if type(self.accepted) is not bool:
+            raise TypeError("accepted must be exact bool")
+        object.__setattr__(
+            self,
+            "issued_at_utc",
+            require_utc("issued_at_utc", self.issued_at_utc).astimezone(UTC),
+        )
+        if self.schema_version != _TRUSTED_UTC_CONTINUITY_ACK_SCHEMA:
+            raise ValueError("unsupported trusted UTC continuity acknowledgement")
+
+    @property
+    def signing_dict(self) -> dict[str, object]:
+        value = self.to_canonical_dict()
+        value.pop("hmac_sha256")
+        return value
+
+
+def _trusted_utc_continuity_hmac(
+    key: bytes, acknowledgement: TrustedUTCContinuityCASAcknowledgement
+) -> str:
+    payload = _TRUSTED_UTC_CONTINUITY_ACK_DOMAIN + canonical_json(
+        acknowledgement.signing_dict
+    ).encode("utf-8")
+    return hmac.new(key, payload, hashlib.sha256).hexdigest()
+
+
+def issue_trusted_utc_continuity_cas_acknowledgement(
+    *,
+    binding: WindowsTrustedUTCContinuityCASBinding,
+    expected_previous_continuity_sha256: str,
+    accepted_continuity_sha256: str,
+    observed_previous_continuity_sha256: str,
+    accepted: bool,
+    issued_at_utc: datetime,
+    custody_key: str | bytes,
+) -> TrustedUTCContinuityCASAcknowledgement:
+    if type(binding) is not WindowsTrustedUTCContinuityCASBinding:
+        raise TypeError("binding must be exact continuity CAS binding")
+    key = _key_material(custody_key)
+    fingerprint = hashlib.sha256(key).hexdigest()
+    if not hmac.compare_digest(
+        fingerprint, binding.custody_key_fingerprint_sha256
+    ):
+        raise ValueError("trusted UTC continuity custody key mismatch")
+    unsigned = TrustedUTCContinuityCASAcknowledgement(
+        provider_id=binding.provider_id,
+        clock_binding_sha256=binding.clock_binding_sha256,
+        expected_previous_continuity_sha256=(
+            expected_previous_continuity_sha256
+        ),
+        accepted_continuity_sha256=accepted_continuity_sha256,
+        observed_previous_continuity_sha256=(
+            observed_previous_continuity_sha256
+        ),
+        accepted=accepted,
+        issued_at_utc=issued_at_utc,
+        custody_issuer_id=binding.custody_issuer_id,
+        custody_key_id=binding.custody_key_id,
+        custody_key_fingerprint_sha256=fingerprint,
+        hmac_sha256="0" * 64,
+    )
+    return TrustedUTCContinuityCASAcknowledgement(
+        **{
+            **unsigned.to_canonical_dict(),
+            "issued_at_utc": unsigned.issued_at_utc,
+            "hmac_sha256": _trusted_utc_continuity_hmac(key, unsigned),
+        }
+    )
+
+
+_TRUSTED_UTC_CONTINUITY_FIELDS = frozenset(
+    item.name for item in fields(WindowsEd25519TrustedUTCContinuity)
+)
+_TRUSTED_UTC_CONTINUITY_ACK_FIELDS = frozenset(
+    item.name for item in fields(TrustedUTCContinuityCASAcknowledgement)
+)
+
+
+def _parse_trusted_utc_continuity(
+    value: object,
+) -> WindowsEd25519TrustedUTCContinuity:
+    if not isinstance(value, Mapping) or frozenset(value) != _TRUSTED_UTC_CONTINUITY_FIELDS:
+        raise ValueError("trusted UTC continuity fields drift")
+    payload = dict(value)
+    for name in ("last_authority_utc", "last_trusted_utc"):
+        payload[name] = _parse_canonical_utc(payload[name], label=name)
+    return WindowsEd25519TrustedUTCContinuity(**payload)
+
+
+def _parse_trusted_utc_continuity_acknowledgement(
+    value: object,
+) -> TrustedUTCContinuityCASAcknowledgement:
+    if not isinstance(value, Mapping) or frozenset(value) != _TRUSTED_UTC_CONTINUITY_ACK_FIELDS:
+        raise ValueError("trusted UTC continuity acknowledgement fields drift")
+    payload = dict(value)
+    payload["issued_at_utc"] = _parse_canonical_utc(
+        payload["issued_at_utc"], label="continuity acknowledgement issue time"
+    )
+    return TrustedUTCContinuityCASAcknowledgement(**payload)
+
+
+class TrustedUTCContinuityExternalCAS(_DirectoryExternalCAS):
+    """Authenticated external CAS for the Ed25519 trusted-clock cursor."""
+
+    __slots__ = ()
+
+    def __init__(
+        self,
+        *,
+        binding: WindowsTrustedUTCContinuityCASBinding,
+        request_directory: str | Path,
+        response_directory: str | Path,
+        custody_key_provider: Callable[[str], bytes],
+        system_clock: Callable[[], datetime],
+        timeout_seconds: float,
+    ) -> None:
+        if type(binding) is not WindowsTrustedUTCContinuityCASBinding:
+            raise TypeError("binding must be exact continuity CAS binding")
+        super().__init__(
+            provider_id=binding.provider_id,
+            binding=binding,
+            state_domain="TRUSTED_UTC_CONTINUITY",
+            identity_sha256=binding.clock_binding_sha256,
+            request_directory=request_directory,
+            response_directory=response_directory,
+            custody_key_provider=custody_key_provider,
+            clock_provider=system_clock,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def _key(self) -> bytes:
+        try:
+            key = _key_material(
+                self._custody_key_provider(self._binding.custody_key_id)
+            )
+        except Exception as exc:
+            raise WindowsDecisionProviderError(
+                "EXTERNAL_CAS_KEY_UNAVAILABLE"
+            ) from exc
+        if not hmac.compare_digest(
+            hashlib.sha256(key).hexdigest(),
+            self._binding.custody_key_fingerprint_sha256,
+        ):
+            raise WindowsDecisionProviderError(
+                "EXTERNAL_CAS_KEY_FINGERPRINT_MISMATCH"
+            )
+        return key
+
+    def _build_request(
+        self, *, expected_previous: str, proposed: object
+    ) -> ExternalCASRequest:
+        if type(proposed) is not WindowsEd25519TrustedUTCContinuity:
+            raise TypeError("proposed must be exact trusted UTC continuity")
+        expected = require_hash("expected_previous", expected_previous)
+        request_id = canonical_sha256(
+            _request_identity_payload(
+                provider_id=self._provider_id,
+                state_domain=self._state_domain,
+                identity_sha256=self._identity_sha256,
+                expected_previous_sha256=expected,
+                proposed_sha256=proposed.content_sha256,
+            )
+        )
+        return ExternalCASRequest(
+            request_id=request_id,
+            provider_id=self._provider_id,
+            state_domain=self._state_domain,
+            identity_sha256=self._identity_sha256,
+            expected_previous_sha256=expected,
+            proposed_object=proposed.to_canonical_dict(),
+            proposed_sha256=proposed.content_sha256,
+            issued_at_utc=proposed.last_trusted_utc,
+            expires_at_utc=proposed.last_trusted_utc
+            + timedelta(seconds=self._timeout_seconds),
+        )
+
+    def _verify_typed_response(
+        self,
+        *,
+        request: ExternalCASRequest,
+        acknowledgement: object,
+        current_object: object,
+    ) -> tuple[
+        TrustedUTCContinuityCASAcknowledgement,
+        WindowsEd25519TrustedUTCContinuity,
+    ]:
+        try:
+            ack = _parse_trusted_utc_continuity_acknowledgement(
+                acknowledgement
+            )
+            current = _parse_trusted_utc_continuity(current_object)
+            proposed = _parse_trusted_utc_continuity(
+                request.proposed_object
+            )
+        except (TypeError, ValueError) as exc:
+            raise WindowsDecisionProviderError(
+                "EXTERNAL_CAS_RESPONSE_INVALID"
+            ) from exc
+        key = self._key()
+        binding = self._binding
+        if (
+            ack.provider_id != binding.provider_id
+            or ack.clock_binding_sha256 != binding.clock_binding_sha256
+            or ack.custody_issuer_id != binding.custody_issuer_id
+            or ack.custody_key_id != binding.custody_key_id
+            or ack.custody_key_fingerprint_sha256
+            != binding.custody_key_fingerprint_sha256
+            or not hmac.compare_digest(
+                ack.hmac_sha256,
+                _trusted_utc_continuity_hmac(key, ack),
+            )
+            or ack.expected_previous_continuity_sha256
+            != request.expected_previous_sha256
+            or ack.accepted_continuity_sha256 != request.proposed_sha256
+            or ack.issued_at_utc != proposed.last_trusted_utc
+        ):
+            raise WindowsDecisionProviderError("EXTERNAL_CAS_ACK_INVALID")
+        if ack.accepted:
+            if (
+                ack.observed_previous_continuity_sha256
+                != request.expected_previous_sha256
+                or current != proposed
+            ):
+                raise WindowsDecisionProviderError(
+                    "EXTERNAL_CAS_READBACK_MISMATCH"
+                )
+        elif current.content_sha256 != ack.observed_previous_continuity_sha256:
+            raise WindowsDecisionProviderError(
+                "EXTERNAL_CAS_READBACK_MISMATCH"
+            )
+        return ack, current
+
+    def current(self) -> WindowsEd25519TrustedUTCContinuity | None:
+        observed = self._current_typed()
+        if observed is None:
+            return None
+        if type(observed) is not WindowsEd25519TrustedUTCContinuity:
+            raise WindowsDecisionProviderError(
+                "EXTERNAL_CAS_READBACK_INVALID"
+            )
+        return observed
+
+    def compare_and_swap(
+        self,
+        expected_previous: str,
+        proposed: WindowsEd25519TrustedUTCContinuity,
+    ) -> bool:
+        observed = self._compare_and_swap_typed(expected_previous, proposed)
+        if type(observed) is not TrustedUTCContinuityCASAcknowledgement:
+            raise WindowsDecisionProviderError("EXTERNAL_CAS_ACK_INVALID")
+        return observed.accepted
+
+
+class WindowsEd25519ClockEnvelopeFile:
+    """Stable, uncached byte reader for one canonical Ed25519 envelope."""
+
+    __slots__ = ("__path",)
+
+    def __init__(self, path: str | Path) -> None:
+        configured = Path(path).expanduser()
+        if not configured.is_absolute():
+            raise WindowsDecisionProviderError(
+                "TRUSTED_UTC_ENVELOPE_PATH_INVALID"
+            )
+        self.__path = configured
+        self._verify_path()
+
+    def _verify_path(self) -> os.stat_result:
+        path = self.__path
+        _require_real_directory(path.parent)
+        try:
+            metadata = path.lstat()
+        except OSError as exc:
+            raise WindowsDecisionProviderError(
+                "TRUSTED_UTC_ENVELOPE_PATH_INVALID"
+            ) from exc
+        if (
+            stat.S_ISLNK(metadata.st_mode)
+            or not stat.S_ISREG(metadata.st_mode)
+            or _is_reparse(metadata)
+            or metadata.st_size > _MAXIMUM_CAS_PACKET_BYTES
+        ):
+            raise WindowsDecisionProviderError(
+                "TRUSTED_UTC_ENVELOPE_PATH_INVALID"
+            )
+        return metadata
+
+    def __call__(self) -> bytes:
+        first = self._verify_path()
+        try:
+            payload = self.__path.read_bytes()
+            second = self.__path.lstat()
+        except OSError as exc:
+            raise WindowsDecisionProviderError(
+                "TRUSTED_UTC_ENVELOPE_UNSTABLE"
+            ) from exc
+        if not _same_stat(first, second) or len(payload) != int(second.st_size):
+            raise WindowsDecisionProviderError(
+                "TRUSTED_UTC_ENVELOPE_UNSTABLE"
+            )
+        parse_trusted_utc_envelope(payload)
+        return payload
+
+@dataclass(frozen=True, slots=True)
 class WindowsDecisionProviderConfiguration(CanonicalContract):
     """Exact non-secret runtime wiring for one decision provider pack."""
 
@@ -1419,8 +1789,239 @@ class WindowsDecisionProviderConfiguration(CanonicalContract):
         }
 
 
+@dataclass(frozen=True, slots=True)
+class WindowsDecisionProviderConfigurationV2(CanonicalContract):
+    """Additive Ed25519 trusted-clock wiring; v1 remains unchanged."""
+
+    pack_id: str
+    base_suite_identity_sha256: str
+    decision_base_release_identity_sha256: str
+    decision_feed_binding: DecisionFeedBinding
+    decision_ipc_binding: DecisionIPCBinding
+    decision_producer_binding: DecisionProducerBinding
+    clock_binding: WindowsEd25519ClockBinding
+    clock_continuity_binding: WindowsTrustedUTCContinuityCASBinding
+    credential_target_prefix: str
+    credential_references: tuple[CredentialReference, ...]
+    finalized_m15_directory: str
+    decision_ipc_database: str
+    producer_cursor_database: str
+    ipc_cas_provider_id: str
+    ipc_cas_request_directory: str
+    ipc_cas_response_directory: str
+    producer_cas_provider_id: str
+    producer_cas_request_directory: str
+    producer_cas_response_directory: str
+    clock_attestation_path: str
+    clock_continuity_request_directory: str
+    clock_continuity_response_directory: str
+    cas_timeout_seconds: float
+    order_capability: str = ORDER_CAPABILITY
+    live_allowed: bool = LIVE_ALLOWED
+    safe_to_demo_auto_order: bool = SAFE_TO_DEMO_AUTO_ORDER
+    max_lot: float = MAX_LOT
+    promotion_eligible: bool = PROMOTION_ELIGIBLE
+    schema_version: str = "windows-decision-provider-configuration-v2"
+
+    def __post_init__(self) -> None:
+        for name in (
+            "pack_id",
+            "ipc_cas_provider_id",
+            "producer_cas_provider_id",
+            "credential_target_prefix",
+        ):
+            object.__setattr__(self, name, _text(name, getattr(self, name)))
+        if len(
+            {
+                self.ipc_cas_provider_id,
+                self.producer_cas_provider_id,
+                self.clock_continuity_binding.provider_id,
+            }
+        ) != 3:
+            raise ValueError("external CAS provider IDs must be distinct")
+        for name in (
+            "base_suite_identity_sha256",
+            "decision_base_release_identity_sha256",
+        ):
+            object.__setattr__(
+                self, name, require_hash(name, getattr(self, name))
+            )
+        for name, expected in (
+            ("decision_feed_binding", DecisionFeedBinding),
+            ("decision_ipc_binding", DecisionIPCBinding),
+            ("decision_producer_binding", DecisionProducerBinding),
+            ("clock_binding", WindowsEd25519ClockBinding),
+            (
+                "clock_continuity_binding",
+                WindowsTrustedUTCContinuityCASBinding,
+            ),
+        ):
+            if type(getattr(self, name)) is not expected:
+                raise TypeError(f"{name} must be exact {expected.__name__}")
+        if (
+            self.clock_continuity_binding.clock_binding_sha256
+            != self.clock_binding.content_sha256
+        ):
+            raise ValueError("clock continuity binding mismatch")
+        if (
+            type(self.credential_references) is not tuple
+            or not self.credential_references
+            or any(
+                type(item) is not CredentialReference
+                for item in self.credential_references
+            )
+        ):
+            raise TypeError("credential_references must be a non-empty exact tuple")
+        references = tuple(
+            sorted(self.credential_references, key=lambda item: item.key_id)
+        )
+        ids = tuple(item.key_id.casefold() for item in references)
+        targets = tuple(item.target_name.casefold() for item in references)
+        if (
+            len(set(ids)) != len(ids)
+            or len(set(targets)) != len(targets)
+            or self.credential_target_prefix.endswith(("/", "\\"))
+            or "\\" in self.credential_target_prefix
+            or any(
+                item.target_name
+                != f"{self.credential_target_prefix}/{item.key_id}"
+                for item in references
+            )
+        ):
+            raise ValueError("credential references must be unique and prefix-bound")
+        object.__setattr__(self, "credential_references", references)
+        for name in (
+            "finalized_m15_directory",
+            "decision_ipc_database",
+            "producer_cursor_database",
+            "ipc_cas_request_directory",
+            "ipc_cas_response_directory",
+            "producer_cas_request_directory",
+            "producer_cas_response_directory",
+            "clock_attestation_path",
+            "clock_continuity_request_directory",
+            "clock_continuity_response_directory",
+        ):
+            object.__setattr__(self, name, _text(name, getattr(self, name)))
+        if isinstance(self.cas_timeout_seconds, bool):
+            raise TypeError("cas_timeout_seconds must be numeric")
+        try:
+            timeout = float(self.cas_timeout_seconds)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("cas_timeout_seconds must be numeric") from exc
+        if not math.isfinite(timeout) or not 0 < timeout <= 2:
+            raise ValueError("cas_timeout_seconds must be in (0, 2]")
+        object.__setattr__(self, "cas_timeout_seconds", timeout)
+        if (
+            self.order_capability != ORDER_CAPABILITY
+            or self.live_allowed is not False
+            or self.safe_to_demo_auto_order is not False
+            or type(self.max_lot) is not float
+            or self.max_lot != MAX_LOT
+            or self.promotion_eligible is not False
+            or self.schema_version
+            != "windows-decision-provider-configuration-v2"
+        ):
+            raise ValueError("decision provider v2 safety/configuration drift")
+
+    def provider_configuration_hashes(self) -> dict[str, str]:
+        common = {
+            "schema_version": self.schema_version,
+            "pack_id": self.pack_id,
+            "base_suite_identity_sha256": self.base_suite_identity_sha256,
+            "decision_base_release_identity_sha256": (
+                self.decision_base_release_identity_sha256
+            ),
+            "credential_references": self.credential_references,
+            "credential_target_prefix": self.credential_target_prefix,
+            "safety": {
+                "order_capability": self.order_capability,
+                "live_allowed": self.live_allowed,
+                "safe_to_demo_auto_order": self.safe_to_demo_auto_order,
+                "max_lot": self.max_lot,
+                "promotion_eligible": self.promotion_eligible,
+            },
+        }
+        details: dict[str, object] = {
+            "FINALIZED_M15_DATA": {
+                "binding": self.decision_feed_binding,
+                "directory": self.finalized_m15_directory,
+            },
+            "IPC_CHECKPOINT_CAS": {
+                "binding": self.decision_ipc_binding,
+                "provider_id": self.ipc_cas_provider_id,
+                "request_directory": self.ipc_cas_request_directory,
+                "response_directory": self.ipc_cas_response_directory,
+                "timeout_seconds": self.cas_timeout_seconds,
+            },
+            "IPC_SIGNING_KEY_CUSTODY": {
+                "decision_key_id": self.decision_ipc_binding.decision_key_id,
+                "decision_key_fingerprint_sha256": (
+                    self.decision_ipc_binding.decision_key_fingerprint_sha256
+                ),
+                "ipc_custody_key_id": self.decision_ipc_binding.custody_key_id,
+                "ipc_custody_key_fingerprint_sha256": (
+                    self.decision_ipc_binding.custody_key_fingerprint_sha256
+                ),
+            },
+            "PRODUCER_CURSOR_ACK_VERIFIER": {
+                "provider_id": self.producer_cas_provider_id,
+                "binding": self.decision_producer_binding,
+                "producer_cursor_database": self.producer_cursor_database,
+            },
+            "PRODUCER_CURSOR_CAS": {
+                "provider_id": self.producer_cas_provider_id,
+                "binding": self.decision_producer_binding,
+                "request_directory": self.producer_cas_request_directory,
+                "response_directory": self.producer_cas_response_directory,
+                "timeout_seconds": self.cas_timeout_seconds,
+            },
+            "SESSION_CALENDAR_VERIFIER": {
+                "calendar_bindings": tuple(
+                    {
+                        "lane_id": lane.lane_id,
+                        "calendar_sha256": lane.session_calendar_sha256,
+                        "issuer_id": lane.session_calendar_issuer_id,
+                        "key_id": lane.session_calendar_key_id,
+                        "key_fingerprint_sha256": (
+                            lane.session_calendar_key_fingerprint_sha256
+                        ),
+                    }
+                    for lane in self.decision_producer_binding.lanes
+                )
+            },
+            "TRUSTED_CLOCK": {
+                "binding": self.clock_binding,
+                "attestation_path": self.clock_attestation_path,
+                "continuity_binding": self.clock_continuity_binding,
+                "continuity_request_directory": (
+                    self.clock_continuity_request_directory
+                ),
+                "continuity_response_directory": (
+                    self.clock_continuity_response_directory
+                ),
+                "timeout_seconds": self.cas_timeout_seconds,
+            },
+        }
+        return {
+            role: canonical_sha256(
+                {"common": common, "role": role, "configuration": details[role]}
+            )
+            for role in PROVIDER_ROLES
+        }
+
+
 _PROVIDER_CONFIGURATION_FIELDS = frozenset(
     item.name for item in fields(WindowsDecisionProviderConfiguration)
+)
+_PROVIDER_CONFIGURATION_V2_FIELDS = frozenset(
+    item.name for item in fields(WindowsDecisionProviderConfigurationV2)
+)
+_ED25519_CLOCK_BINDING_FIELDS = frozenset(
+    item.name for item in fields(WindowsEd25519ClockBinding)
+)
+_TRUSTED_UTC_CONTINUITY_BINDING_FIELDS = frozenset(
+    item.name for item in fields(WindowsTrustedUTCContinuityCASBinding)
 )
 _CREDENTIAL_REFERENCE_FIELDS = frozenset(
     item.name for item in fields(CredentialReference)
@@ -1524,6 +2125,71 @@ def parse_windows_decision_provider_configuration(
         ) from exc
 
 
+def parse_windows_decision_provider_configuration_v2(
+    value: object,
+) -> WindowsDecisionProviderConfigurationV2:
+    """Parse only the additive Ed25519 provider configuration schema."""
+
+    if (
+        not isinstance(value, Mapping)
+        or frozenset(value) != _PROVIDER_CONFIGURATION_V2_FIELDS
+    ):
+        raise WindowsDecisionProviderError(
+            "DECISION_PROVIDER_CONFIGURATION_INVALID"
+        )
+    payload = dict(value)
+    try:
+        payload["decision_feed_binding"] = validate_decision_feed_binding(
+            payload["decision_feed_binding"]
+        )
+        raw_ipc = payload["decision_ipc_binding"]
+        if not isinstance(raw_ipc, Mapping) or frozenset(raw_ipc) != _DECISION_IPC_BINDING_FIELDS:
+            raise ValueError("decision IPC binding fields drift")
+        payload["decision_ipc_binding"] = DecisionIPCBinding(**dict(raw_ipc))
+        raw_producer = payload["decision_producer_binding"]
+        if not isinstance(raw_producer, Mapping) or frozenset(raw_producer) != _DECISION_PRODUCER_BINDING_FIELDS:
+            raise ValueError("decision producer binding fields drift")
+        raw_lanes = raw_producer.get("lanes")
+        if not isinstance(raw_lanes, list) or not 1 <= len(raw_lanes) <= 4:
+            raise ValueError("decision producer lane set is invalid")
+        lanes = []
+        for raw_lane in raw_lanes:
+            if not isinstance(raw_lane, Mapping) or frozenset(raw_lane) != _DECISION_PRODUCER_LANE_FIELDS:
+                raise ValueError("decision producer lane fields drift")
+            lanes.append(DecisionProducerLaneConfig(**dict(raw_lane)))
+        producer_payload = dict(raw_producer)
+        producer_payload["lanes"] = tuple(lanes)
+        payload["decision_producer_binding"] = DecisionProducerBinding(
+            **producer_payload
+        )
+        raw_clock = payload["clock_binding"]
+        if not isinstance(raw_clock, Mapping) or frozenset(raw_clock) != _ED25519_CLOCK_BINDING_FIELDS:
+            raise ValueError("Ed25519 clock binding fields drift")
+        payload["clock_binding"] = WindowsEd25519ClockBinding(**dict(raw_clock))
+        raw_continuity = payload["clock_continuity_binding"]
+        if not isinstance(raw_continuity, Mapping) or frozenset(raw_continuity) != _TRUSTED_UTC_CONTINUITY_BINDING_FIELDS:
+            raise ValueError("clock continuity binding fields drift")
+        payload["clock_continuity_binding"] = (
+            WindowsTrustedUTCContinuityCASBinding(**dict(raw_continuity))
+        )
+        raw_references = payload["credential_references"]
+        if not isinstance(raw_references, list) or not raw_references:
+            raise ValueError("credential references are invalid")
+        references = []
+        for raw_reference in raw_references:
+            if not isinstance(raw_reference, Mapping) or frozenset(raw_reference) != _CREDENTIAL_REFERENCE_FIELDS:
+                raise ValueError("credential reference fields drift")
+            references.append(CredentialReference(**dict(raw_reference)))
+        payload["credential_references"] = tuple(references)
+        return WindowsDecisionProviderConfigurationV2(**payload)
+    except WindowsDecisionProviderError:
+        raise
+    except (DecisionFeedError, KeyError, TypeError, ValueError) as exc:
+        raise WindowsDecisionProviderError(
+            "DECISION_PROVIDER_CONFIGURATION_INVALID"
+        ) from exc
+
+
 def _required_credential_fingerprints(
     *,
     runtime_config: WindowsDecisionServiceRuntimeConfig,
@@ -1559,6 +2225,36 @@ def _required_credential_fingerprints(
         clock.authority_key_id,
         clock.authority_key_fingerprint_sha256,
     )
+    return required
+
+
+def _required_credential_fingerprints_v2(
+    *,
+    runtime_config: WindowsDecisionServiceRuntimeConfig,
+    provider_config: WindowsDecisionProviderConfigurationV2,
+) -> dict[str, str]:
+    required: dict[str, str] = {}
+
+    def add(key_id: str, fingerprint: str) -> None:
+        existing = required.get(key_id)
+        if existing is not None and existing != fingerprint:
+            raise WindowsDecisionProviderError("CREDENTIAL_BINDING_COLLISION")
+        required[key_id] = fingerprint
+
+    feed = provider_config.decision_feed_binding
+    ipc = provider_config.decision_ipc_binding
+    producer = runtime_config.decision_producer_binding
+    continuity = provider_config.clock_continuity_binding
+    add(feed.publisher_key_id, feed.publisher_key_fingerprint_sha256)
+    add(ipc.decision_key_id, ipc.decision_key_fingerprint_sha256)
+    add(ipc.custody_key_id, ipc.custody_key_fingerprint_sha256)
+    add(producer.custody_key_id, producer.custody_key_fingerprint_sha256)
+    for lane in producer.lanes:
+        add(
+            lane.session_calendar_key_id,
+            lane.session_calendar_key_fingerprint_sha256,
+        )
+    add(continuity.custody_key_id, continuity.custody_key_fingerprint_sha256)
     return required
 
 
@@ -1652,6 +2348,76 @@ def validate_windows_decision_provider_bindings(
     )
 
 
+def validate_windows_decision_provider_bindings_v2(
+    *,
+    runtime_config: WindowsDecisionServiceRuntimeConfig,
+    provider_config: WindowsDecisionProviderConfigurationV2,
+) -> None:
+    if type(runtime_config) is not WindowsDecisionServiceRuntimeConfig:
+        raise TypeError(
+            "runtime_config must be exact WindowsDecisionServiceRuntimeConfig"
+        )
+    if type(provider_config) is not WindowsDecisionProviderConfigurationV2:
+        raise TypeError(
+            "provider_config must be exact WindowsDecisionProviderConfigurationV2"
+        )
+    producer = runtime_config.decision_producer_binding
+    feed = provider_config.decision_feed_binding
+    ipc = provider_config.decision_ipc_binding
+    if (
+        producer != provider_config.decision_producer_binding
+        or runtime_config.service_id != producer.service_id
+        or ipc.decision_issuer_id != producer.service_id
+        or ipc.environment != "DEMO"
+        or feed.broker_server != ipc.server
+        or feed.broker_account_identity_sha256 != ipc.account_id_sha256
+        or len(feed.lanes) != len(producer.lanes)
+    ):
+        raise WindowsDecisionProviderError(
+            "DECISION_PROVIDER_CROSS_BINDING_MISMATCH"
+        )
+    for lane in producer.lanes:
+        try:
+            feed_lane = feed.lane(lane.lane_id)
+        except KeyError as exc:
+            raise WindowsDecisionProviderError(
+                "DECISION_PROVIDER_CROSS_BINDING_MISMATCH"
+            ) from exc
+        if (
+            feed_lane.symbol != lane.symbol
+            or feed_lane.source_name != lane.source_name
+            or feed_lane.data_contract_sha256 != lane.data_contract_sha256
+            or feed_lane.session_calendar_sha256
+            != lane.session_calendar_sha256
+            or lane.commit_sha != ipc.commit_sha
+            or lane.config_sha256 != ipc.config_sha256
+            or lane.model_artifact_sha256 != ipc.model_artifact_sha256
+            or lane.data_contract_sha256 != ipc.data_contract_sha256
+        ):
+            raise WindowsDecisionProviderError(
+                "DECISION_PROVIDER_CROSS_BINDING_MISMATCH"
+            )
+    if {
+        item.role: item.configuration_sha256
+        for item in runtime_config.providers
+    } != provider_config.provider_configuration_hashes():
+        raise WindowsDecisionProviderError(
+            "PROVIDER_CONFIGURATION_BINDING_MISMATCH"
+        )
+    required = _required_credential_fingerprints_v2(
+        runtime_config=runtime_config,
+        provider_config=provider_config,
+    )
+    configured = {
+        item.key_id: item.fingerprint_sha256
+        for item in provider_config.credential_references
+    }
+    if configured != required:
+        raise WindowsDecisionProviderError(
+            "CREDENTIAL_REFERENCE_BINDING_MISMATCH"
+        )
+
+
 def _require_preprovisioned_file(path: Path, *, reason_code: str) -> None:
     if not path.is_absolute():
         raise WindowsDecisionProviderError(reason_code)
@@ -1716,6 +2482,117 @@ def _validate_composition_paths(
                 raise WindowsDecisionProviderError(
                     "DECISION_PROVIDER_PATH_COLLISION"
                 )
+
+
+def _validate_composition_paths_v2(
+    provider_config: WindowsDecisionProviderConfigurationV2,
+) -> None:
+    directories = tuple(
+        Path(value).expanduser()
+        for value in (
+            provider_config.finalized_m15_directory,
+            provider_config.ipc_cas_request_directory,
+            provider_config.ipc_cas_response_directory,
+            provider_config.producer_cas_request_directory,
+            provider_config.producer_cas_response_directory,
+            provider_config.clock_continuity_request_directory,
+            provider_config.clock_continuity_response_directory,
+        )
+    )
+    databases = (
+        Path(provider_config.decision_ipc_database).expanduser(),
+        Path(provider_config.producer_cursor_database).expanduser(),
+    )
+    clock_path = Path(provider_config.clock_attestation_path).expanduser()
+    paths = (*directories, *databases, clock_path)
+    kinds = (*("directory" for _ in directories), "file", "file", "file")
+    verified = tuple(
+        _verify_v2_path_chain(path, leaf_kind=kind)
+        for path, kind in zip(paths, kinds, strict=True)
+    )
+    for index, (first_path, first_chain) in enumerate(verified):
+        for second_path, second_chain in verified[index + 1 :]:
+            first_parts = tuple(part.casefold() for part in first_path.parts)
+            second_parts = tuple(part.casefold() for part in second_path.parts)
+            shorter = min(len(first_parts), len(second_parts))
+            if (
+                first_parts[:shorter] == second_parts[:shorter]
+                or first_chain[-1] in second_chain
+                or second_chain[-1] in first_chain
+            ):
+                raise WindowsDecisionProviderError(
+                    "DECISION_PROVIDER_PATH_COLLISION"
+                )
+
+
+def _verify_v2_path_chain(
+    path: Path,
+    *,
+    leaf_kind: str,
+) -> tuple[Path, tuple[tuple[int, int], ...]]:
+    """Reject aliases at every existing component and bind physical identity."""
+
+    configured = Path(path)
+    if not configured.is_absolute() or leaf_kind not in {"file", "directory"}:
+        raise WindowsDecisionProviderError("DECISION_PROVIDER_V2_PATH_INVALID")
+    anchor = Path(configured.anchor)
+    components = configured.parts[1:]
+    cursor = anchor
+    identities: list[tuple[int, int]] = []
+    try:
+        root_first = anchor.lstat()
+        root_resolved = Path(os.path.realpath(anchor))
+        root_second = anchor.lstat()
+    except OSError as exc:
+        raise WindowsDecisionProviderError(
+            "DECISION_PROVIDER_V2_PATH_INVALID"
+        ) from exc
+    if (
+        not _same_stat(root_first, root_second)
+        or stat.S_ISLNK(root_first.st_mode)
+        or _is_reparse(root_first)
+        or not stat.S_ISDIR(root_first.st_mode)
+        or os.path.normcase(os.path.abspath(anchor))
+        != os.path.normcase(os.path.abspath(root_resolved))
+    ):
+        raise WindowsDecisionProviderError(
+            "DECISION_PROVIDER_V2_PATH_INVALID"
+        )
+    identities.append((int(root_first.st_dev), int(root_first.st_ino)))
+    for index, component in enumerate(components):
+        cursor = cursor / component
+        try:
+            first = cursor.lstat()
+            resolved = Path(os.path.realpath(cursor))
+            second = cursor.lstat()
+        except OSError as exc:
+            raise WindowsDecisionProviderError(
+                "DECISION_PROVIDER_V2_PATH_INVALID"
+            ) from exc
+        is_leaf = index == len(components) - 1
+        if (
+            not _same_stat(first, second)
+            or stat.S_ISLNK(first.st_mode)
+            or _is_reparse(first)
+            or os.path.normcase(os.path.abspath(cursor))
+            != os.path.normcase(os.path.abspath(resolved))
+            or (
+                is_leaf
+                and (
+                    (leaf_kind == "file" and not stat.S_ISREG(first.st_mode))
+                    or (
+                        leaf_kind == "directory"
+                        and not stat.S_ISDIR(first.st_mode)
+                    )
+                )
+            )
+            or (not is_leaf and not stat.S_ISDIR(first.st_mode))
+        ):
+            raise WindowsDecisionProviderError(
+                "DECISION_PROVIDER_V2_PATH_INVALID"
+            )
+        identities.append((int(first.st_dev), int(first.st_ino)))
+    return Path(os.path.realpath(configured)), tuple(identities)
 
 
 def build_windows_decision_provider_service(
@@ -1832,11 +2709,128 @@ def build_windows_decision_provider_service(
         ) from exc
 
 
+def build_windows_decision_provider_service_v2(
+    *,
+    runtime_config: WindowsDecisionServiceRuntimeConfig,
+    provider_config: WindowsDecisionProviderConfigurationV2,
+) -> BrokerlessDecisionProducerService:
+    """Materialize the additive Ed25519-clock decision service fail closed."""
+
+    validate_windows_decision_provider_bindings_v2(
+        runtime_config=runtime_config,
+        provider_config=provider_config,
+    )
+    _validate_composition_paths_v2(provider_config)
+    key_provider = WindowsCredentialManagerKeyProvider(
+        target_prefix=provider_config.credential_target_prefix,
+        references=provider_config.credential_references,
+        backend=_WindowsNativeCredentialBackend(),
+        platform=sys.platform,
+    )
+    envelope_file = WindowsEd25519ClockEnvelopeFile(
+        provider_config.clock_attestation_path
+    )
+    system_clock = lambda: datetime.now(UTC)
+    clock_continuity = TrustedUTCContinuityExternalCAS(
+        binding=provider_config.clock_continuity_binding,
+        request_directory=provider_config.clock_continuity_request_directory,
+        response_directory=provider_config.clock_continuity_response_directory,
+        custody_key_provider=key_provider,
+        system_clock=system_clock,
+        timeout_seconds=provider_config.cas_timeout_seconds,
+    )
+    trusted_clock = Ed25519AttestedTrustedUTCProvider(
+        binding=provider_config.clock_binding,
+        envelope_provider=envelope_file,
+        continuity_provider=clock_continuity.current,
+        continuity_compare_and_swap=clock_continuity.compare_and_swap,
+        system_clock=system_clock,
+        monotonic_clock=time.monotonic,
+    )
+    # Signature, freshness, executable identity, and external continuity CAS
+    # must all succeed before either mutable SQLite provider is constructed.
+    try:
+        trusted_clock()
+    except WindowsDecisionProviderError:
+        raise
+    except WindowsEd25519TrustedUTCError as exc:
+        raise WindowsDecisionProviderError(exc.reason_code) from exc
+    except Exception as exc:
+        raise WindowsDecisionProviderError(
+            "TRUSTED_UTC_PREFLIGHT_FAILED"
+        ) from exc
+
+    try:
+        feed_directory = SignedDecisionFeedDirectory(
+            provider_config.finalized_m15_directory,
+            binding=provider_config.decision_feed_binding,
+            key_provider=key_provider,
+            clock_provider=trusted_clock,
+        )
+        ipc_cas = DecisionIPCExternalCAS(
+            provider_id=provider_config.ipc_cas_provider_id,
+            binding=provider_config.decision_ipc_binding,
+            request_directory=provider_config.ipc_cas_request_directory,
+            response_directory=provider_config.ipc_cas_response_directory,
+            custody_key_provider=key_provider,
+            clock_provider=trusted_clock,
+            timeout_seconds=provider_config.cas_timeout_seconds,
+        )
+        cursor_cas = DecisionProducerExternalCAS(
+            provider_id=provider_config.producer_cas_provider_id,
+            binding=runtime_config.decision_producer_binding,
+            request_directory=provider_config.producer_cas_request_directory,
+            response_directory=provider_config.producer_cas_response_directory,
+            custody_key_provider=key_provider,
+            clock_provider=trusted_clock,
+            timeout_seconds=provider_config.cas_timeout_seconds,
+        )
+        queue = DurableDecisionIPCQueue(
+            provider_config.decision_ipc_database,
+            binding=provider_config.decision_ipc_binding,
+            decision_key_provider=key_provider,
+            custody_key_provider=key_provider,
+            external_checkpoint_provider=ipc_cas.current,
+            checkpoint_exporter=ipc_cas.compare_and_swap,
+            clock_provider=trusted_clock,
+        )
+        cursor_verifier = make_decision_producer_cas_verifier(
+            runtime_config.decision_producer_binding, key_provider
+        )
+        cursor_store = DecisionProducerCursorStore(
+            provider_config.producer_cursor_database,
+            binding=runtime_config.decision_producer_binding,
+            external_checkpoint_provider=cursor_cas.current,
+            checkpoint_cas=cursor_cas.compare_and_swap,
+            acknowledgement_verifier=cursor_verifier,
+            clock_provider=trusted_clock,
+        )
+        return BrokerlessDecisionProducerService(
+            binding=runtime_config.decision_producer_binding,
+            input_port=feed_directory.provider(),
+            calendar_port=make_verified_session_calendar_port(
+                runtime_config.decision_producer_binding, key_provider
+            ),
+            publish_port=make_decision_snapshot_publish_port(
+                DecisionIPCProducer(queue)
+            ),
+            cursor_store=cursor_store,
+            clock_provider=trusted_clock,
+        )
+    except WindowsDecisionProviderError:
+        raise
+    except Exception as exc:
+        raise WindowsDecisionProviderError(
+            "DECISION_PROVIDER_MATERIALIZATION_FAILED"
+        ) from exc
+
+
 __all__ = [
     "AttestedTrustedUTCProvider",
     "CredentialReference",
     "DecisionIPCExternalCAS",
     "DecisionProducerExternalCAS",
+    "Ed25519AttestedTrustedUTCProvider",
     "ExternalCASRequest",
     "LIVE_ALLOWED",
     "MAX_LOT",
@@ -1851,10 +2845,21 @@ __all__ = [
     "WindowsClockBinding",
     "WindowsCredentialManagerKeyProvider",
     "WindowsDecisionProviderConfiguration",
+    "WindowsDecisionProviderConfigurationV2",
     "WindowsDecisionProviderError",
+    "WindowsEd25519ClockBinding",
+    "WindowsEd25519ClockEnvelopeFile",
+    "WindowsEd25519TrustedUTCContinuity",
+    "WindowsTrustedUTCContinuityCASBinding",
+    "TrustedUTCContinuityCASAcknowledgement",
+    "TrustedUTCContinuityExternalCAS",
     "build_windows_decision_provider_service",
+    "build_windows_decision_provider_service_v2",
+    "issue_trusted_utc_continuity_cas_acknowledgement",
     "issue_windows_clock_attestation",
     "parse_windows_decision_provider_configuration",
+    "parse_windows_decision_provider_configuration_v2",
     "parse_windows_clock_attestation",
     "validate_windows_decision_provider_bindings",
+    "validate_windows_decision_provider_bindings_v2",
 ]

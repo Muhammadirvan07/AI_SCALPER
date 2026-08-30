@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from dataclasses import replace
+import base64
 import hashlib
 import json
+import os
 from pathlib import Path
+import subprocess
 import tempfile
 import threading
 import time
@@ -40,9 +43,24 @@ from live_runtime.windows_decision_provider_pack import (
     WindowsClockAttestationFile,
     WindowsClockBinding,
     WindowsDecisionProviderConfiguration,
+    WindowsDecisionProviderConfigurationV2,
     WindowsDecisionProviderError,
+    WindowsEd25519ClockBinding,
+    WindowsEd25519ClockEnvelopeFile,
+    WindowsEd25519TrustedUTCContinuity,
+    WindowsTrustedUTCContinuityCASBinding,
+    TrustedUTCContinuityExternalCAS,
     build_windows_decision_provider_service,
+    build_windows_decision_provider_service_v2,
+    issue_trusted_utc_continuity_cas_acknowledgement,
     issue_windows_clock_attestation,
+    parse_windows_decision_provider_configuration_v2,
+)
+from live_runtime.windows_ed25519_trusted_clock import (
+    ENVELOPE_SCHEMA,
+    WindowsEd25519TrustedUTCAttestation,
+    WindowsEd25519TrustedUTCError,
+    ed25519_public_key_sha256,
 )
 from live_runtime.windows_decision_service_entrypoint import (
     WindowsDecisionServiceRuntimeConfig,
@@ -581,6 +599,511 @@ class WindowsDecisionProviderCompositionTests(unittest.TestCase):
             raised.exception.reason_code,
         )
         self.assertEqual([], self.backend.reads)
+
+    def _v2_configuration(self):
+        algorithm = b"ssh-ed25519"
+        key = b"k" * 32
+        blob = (
+            len(algorithm).to_bytes(4, "big")
+            + algorithm
+            + len(key).to_bytes(4, "big")
+            + key
+        )
+        public_key = "ssh-ed25519 " + base64.b64encode(blob).decode("ascii")
+        executable = self.root / "ssh-keygen.exe"
+        executable.write_bytes(b"pinned-test-executable")
+        clock = WindowsEd25519ClockBinding(
+            provider_id="decision-ed25519-clock-v1",
+            source_host_identity_sha256=HASH_A,
+            consumer_host_identity_sha256=HASH_C,
+            authority_issuer_id="offhost-clock-authority-v1",
+            signer_identity="offhost-clock-signer-v1",
+            authority_public_key=public_key,
+            authority_public_key_sha256=ed25519_public_key_sha256(public_key),
+            ssh_keygen_path=str(executable.resolve()),
+            ssh_keygen_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),
+            maximum_attestation_age_ms=10_000,
+            maximum_delivery_delay_ms=3_000,
+            maximum_bootstrap_drift_ms=1_000,
+        )
+        attestation = WindowsEd25519TrustedUTCAttestation(
+            binding_sha256=clock.content_sha256,
+            source_host_identity_sha256=HASH_A,
+            consumer_host_identity_sha256=HASH_C,
+            authority_issuer_id=clock.authority_issuer_id,
+            signer_identity=clock.signer_identity,
+            authority_public_key_sha256=clock.authority_public_key_sha256,
+            sequence=1,
+            previous_attestation_sha256="0" * 64,
+            authority_utc=self.now,
+            issued_at_utc=self.now - timedelta(milliseconds=50),
+            expires_at_utc=self.now + timedelta(seconds=5),
+        )
+        payload = attestation.signing_payload
+        envelope_path = self.root / "clock-envelope.json"
+        envelope_path.write_bytes(
+            (
+                canonical_json(
+                    {
+                        "payload_base64": base64.b64encode(payload).decode("ascii"),
+                        "schema_version": ENVELOPE_SCHEMA,
+                        "signature_base64": base64.b64encode(b"signature").decode("ascii"),
+                    }
+                )
+                + "\n"
+            ).encode("utf-8")
+        )
+        clock_requests = self.root / "clock-continuity-requests"
+        clock_responses = self.root / "clock-continuity-responses"
+        clock_requests.mkdir()
+        clock_responses.mkdir()
+        custody_key = b"clock-continuity-custody-key-material"
+        custody_binding = WindowsTrustedUTCContinuityCASBinding(
+            provider_id="clock-continuity-directory-cas-v1",
+            clock_binding_sha256=clock.content_sha256,
+            custody_issuer_id="clock-continuity-custody-v1",
+            custody_key_id="clock-continuity-key-v1",
+            custody_key_fingerprint_sha256=hashlib.sha256(custody_key).hexdigest(),
+        )
+        target = "AI_SCALPER/DECISION/clock-continuity-key-v1"
+        self.backend.keys[target] = custody_key
+        references = tuple(
+            item
+            for item in self.configuration.credential_references
+            if item.key_id != "clock-key-v1"
+        ) + (
+            CredentialReference(
+                key_id="clock-continuity-key-v1",
+                target_name=target,
+                fingerprint_sha256=hashlib.sha256(custody_key).hexdigest(),
+            ),
+        )
+        configuration = WindowsDecisionProviderConfigurationV2(
+            pack_id="decision-provider-pack-v2",
+            base_suite_identity_sha256=HASH_A,
+            decision_base_release_identity_sha256=HASH_B,
+            decision_feed_binding=self.feed_binding,
+            decision_ipc_binding=self.ipc_binding,
+            decision_producer_binding=self.producer_binding,
+            clock_binding=clock,
+            clock_continuity_binding=custody_binding,
+            credential_target_prefix="AI_SCALPER/DECISION",
+            credential_references=references,
+            finalized_m15_directory=str(self.feed_directory),
+            decision_ipc_database=str(self.ipc_database),
+            producer_cursor_database=str(self.cursor_database),
+            ipc_cas_provider_id="ipc-directory-cas-v1",
+            ipc_cas_request_directory=str(self.ipc_requests),
+            ipc_cas_response_directory=str(self.ipc_responses),
+            producer_cas_provider_id="cursor-directory-cas-v1",
+            producer_cas_request_directory=str(self.cursor_requests),
+            producer_cas_response_directory=str(self.cursor_responses),
+            clock_attestation_path=str(envelope_path),
+            clock_continuity_request_directory=str(clock_requests),
+            clock_continuity_response_directory=str(clock_responses),
+            cas_timeout_seconds=1.0,
+        )
+        hashes = configuration.provider_configuration_hashes()
+        runtime = replace(
+            self.runtime,
+            providers=tuple(
+                replace(item, configuration_sha256=hashes[item.role])
+                for item in self.runtime.providers
+            ),
+        )
+        return configuration, runtime, custody_key
+
+    def test_v2_continuity_acknowledgement_is_domain_authenticated(self) -> None:
+        configuration, _runtime, custody_key = self._v2_configuration()
+        self.assertEqual(
+            configuration,
+            parse_windows_decision_provider_configuration_v2(
+                configuration.to_canonical_dict()
+            ),
+        )
+        continuity = WindowsEd25519TrustedUTCContinuity(
+            binding_sha256=configuration.clock_binding.content_sha256,
+            source_host_identity_sha256=HASH_A,
+            consumer_host_identity_sha256=HASH_C,
+            sequence=1,
+            attestation_sha256=HASH_B,
+            last_authority_utc=self.now,
+            last_trusted_utc=self.now,
+        )
+        adapter = TrustedUTCContinuityExternalCAS(
+            binding=configuration.clock_continuity_binding,
+            request_directory=configuration.clock_continuity_request_directory,
+            response_directory=configuration.clock_continuity_response_directory,
+            custody_key_provider=lambda _: custody_key,
+            system_clock=lambda: self.now,
+            timeout_seconds=1.0,
+        )
+        request = adapter._build_request(
+            expected_previous="0" * 64,
+            proposed=continuity,
+        )
+        acknowledgement = issue_trusted_utc_continuity_cas_acknowledgement(
+            binding=configuration.clock_continuity_binding,
+            expected_previous_continuity_sha256="0" * 64,
+            accepted_continuity_sha256=continuity.content_sha256,
+            observed_previous_continuity_sha256="0" * 64,
+            accepted=True,
+            issued_at_utc=self.now,
+            custody_key=custody_key,
+        )
+        observed, current = adapter._verify_typed_response(
+            request=request,
+            acknowledgement=acknowledgement.to_canonical_dict(),
+            current_object=continuity.to_canonical_dict(),
+        )
+        self.assertTrue(observed.accepted)
+        self.assertEqual(continuity, current)
+        forged = replace(acknowledgement, hmac_sha256="f" * 64)
+        with self.assertRaises(WindowsDecisionProviderError) as raised:
+            adapter._verify_typed_response(
+                request=request,
+                acknowledgement=forged.to_canonical_dict(),
+                current_object=continuity.to_canonical_dict(),
+            )
+        self.assertEqual("EXTERNAL_CAS_ACK_INVALID", raised.exception.reason_code)
+
+    def test_v2_clock_preflight_failure_precedes_sqlite(self) -> None:
+        configuration, runtime, _ = self._v2_configuration()
+        preflight = unittest.mock.Mock(side_effect=RuntimeError("clock blocked"))
+        with (
+            patch("live_runtime.windows_decision_provider_pack.sys.platform", "win32"),
+            patch(
+                "live_runtime.windows_decision_provider_pack._WindowsNativeCredentialBackend",
+                return_value=self.backend,
+            ),
+            patch(
+                "live_runtime.windows_decision_provider_pack.Ed25519AttestedTrustedUTCProvider",
+                return_value=preflight,
+            ),
+            patch(
+                "live_runtime.windows_decision_provider_pack.DurableDecisionIPCQueue"
+            ) as queue,
+            patch(
+                "live_runtime.windows_decision_provider_pack.DecisionProducerCursorStore"
+            ) as cursor,
+            self.assertRaises(WindowsDecisionProviderError) as raised,
+        ):
+            build_windows_decision_provider_service_v2(
+                runtime_config=runtime,
+                provider_config=configuration,
+            )
+        self.assertEqual("TRUSTED_UTC_PREFLIGHT_FAILED", raised.exception.reason_code)
+        preflight.assert_called_once_with()
+        queue.assert_not_called()
+        cursor.assert_not_called()
+
+    def test_v2_clock_preflight_preserves_classified_reason(self) -> None:
+        configuration, runtime, _ = self._v2_configuration()
+        classified = unittest.mock.Mock(
+            side_effect=WindowsEd25519TrustedUTCError(
+                "TRUSTED_UTC_SIGNATURE_INVALID"
+            )
+        )
+        with (
+            patch("live_runtime.windows_decision_provider_pack.sys.platform", "win32"),
+            patch(
+                "live_runtime.windows_decision_provider_pack._WindowsNativeCredentialBackend",
+                return_value=self.backend,
+            ),
+            patch(
+                "live_runtime.windows_decision_provider_pack.Ed25519AttestedTrustedUTCProvider",
+                return_value=classified,
+            ),
+            patch(
+                "live_runtime.windows_decision_provider_pack.DurableDecisionIPCQueue"
+            ) as queue,
+            self.assertRaises(WindowsDecisionProviderError) as raised,
+        ):
+            build_windows_decision_provider_service_v2(
+                runtime_config=runtime,
+                provider_config=configuration,
+            )
+        self.assertEqual(
+            "TRUSTED_UTC_SIGNATURE_INVALID", raised.exception.reason_code
+        )
+        queue.assert_not_called()
+
+    def _continuity_case(self):
+        configuration, _runtime, custody_key = self._v2_configuration()
+        continuity = WindowsEd25519TrustedUTCContinuity(
+            binding_sha256=configuration.clock_binding.content_sha256,
+            source_host_identity_sha256=HASH_A,
+            consumer_host_identity_sha256=HASH_C,
+            sequence=1,
+            attestation_sha256=HASH_B,
+            last_authority_utc=self.now,
+            last_trusted_utc=self.now,
+        )
+        adapter = TrustedUTCContinuityExternalCAS(
+            binding=configuration.clock_continuity_binding,
+            request_directory=configuration.clock_continuity_request_directory,
+            response_directory=configuration.clock_continuity_response_directory,
+            custody_key_provider=lambda _: custody_key,
+            system_clock=lambda: self.now,
+            timeout_seconds=1.0,
+        )
+        request = adapter._build_request(
+            expected_previous="0" * 64, proposed=continuity
+        )
+        acknowledgement = issue_trusted_utc_continuity_cas_acknowledgement(
+            binding=configuration.clock_continuity_binding,
+            expected_previous_continuity_sha256="0" * 64,
+            accepted_continuity_sha256=continuity.content_sha256,
+            observed_previous_continuity_sha256="0" * 64,
+            accepted=True,
+            issued_at_utc=self.now,
+            custody_key=custody_key,
+        )
+        return configuration, custody_key, continuity, adapter, request, acknowledgement
+
+    def test_v2_continuity_rejects_identity_and_chain_tampering(self) -> None:
+        configuration, custody_key, continuity, adapter, request, acknowledgement = (
+            self._continuity_case()
+        )
+        tampered = (
+            replace(acknowledgement, provider_id="wrong-provider-v1"),
+            replace(acknowledgement, clock_binding_sha256="d" * 64),
+            replace(acknowledgement, custody_issuer_id="wrong-issuer-v1"),
+            replace(acknowledgement, custody_key_id="wrong-key-v1"),
+            replace(
+                acknowledgement,
+                custody_key_fingerprint_sha256="e" * 64,
+            ),
+        )
+        for forged in tampered:
+            with self.subTest(field=forged), self.assertRaises(
+                WindowsDecisionProviderError
+            ) as raised:
+                adapter._verify_typed_response(
+                    request=request,
+                    acknowledgement=forged.to_canonical_dict(),
+                    current_object=continuity.to_canonical_dict(),
+                )
+            self.assertEqual("EXTERNAL_CAS_ACK_INVALID", raised.exception.reason_code)
+        for expected, proposed in (("f" * 64, continuity.content_sha256), ("0" * 64, "f" * 64)):
+            forged = issue_trusted_utc_continuity_cas_acknowledgement(
+                binding=configuration.clock_continuity_binding,
+                expected_previous_continuity_sha256=expected,
+                accepted_continuity_sha256=proposed,
+                observed_previous_continuity_sha256="0" * 64,
+                accepted=True,
+                issued_at_utc=self.now,
+                custody_key=custody_key,
+            )
+            with self.assertRaises(WindowsDecisionProviderError) as raised:
+                adapter._verify_typed_response(
+                    request=request,
+                    acknowledgement=forged.to_canonical_dict(),
+                    current_object=continuity.to_canonical_dict(),
+                )
+            self.assertEqual("EXTERNAL_CAS_ACK_INVALID", raised.exception.reason_code)
+
+    def test_v2_continuity_rejects_negative_ack_readback_and_callback_failures(self) -> None:
+        configuration, custody_key, continuity, adapter, request, _ = self._continuity_case()
+        rejected = issue_trusted_utc_continuity_cas_acknowledgement(
+            binding=configuration.clock_continuity_binding,
+            expected_previous_continuity_sha256="0" * 64,
+            accepted_continuity_sha256=continuity.content_sha256,
+            observed_previous_continuity_sha256="f" * 64,
+            accepted=False,
+            issued_at_utc=self.now,
+            custody_key=custody_key,
+        )
+        with self.assertRaises(WindowsDecisionProviderError) as raised:
+            adapter._verify_typed_response(
+                request=request,
+                acknowledgement=rejected.to_canonical_dict(),
+                current_object=continuity.to_canonical_dict(),
+            )
+        self.assertEqual("EXTERNAL_CAS_READBACK_MISMATCH", raised.exception.reason_code)
+        key_failure = TrustedUTCContinuityExternalCAS(
+            binding=configuration.clock_continuity_binding,
+            request_directory=configuration.clock_continuity_request_directory,
+            response_directory=configuration.clock_continuity_response_directory,
+            custody_key_provider=lambda _: (_ for _ in ()).throw(OSError()),
+            system_clock=lambda: self.now,
+            timeout_seconds=1.0,
+        )
+        with self.assertRaises(WindowsDecisionProviderError) as raised:
+            key_failure._verify_typed_response(
+                request=request,
+                acknowledgement=rejected.to_canonical_dict(),
+                current_object=continuity.to_canonical_dict(),
+            )
+        self.assertEqual("EXTERNAL_CAS_KEY_UNAVAILABLE", raised.exception.reason_code)
+        clock_failure = TrustedUTCContinuityExternalCAS(
+            binding=configuration.clock_continuity_binding,
+            request_directory=configuration.clock_continuity_request_directory,
+            response_directory=configuration.clock_continuity_response_directory,
+            custody_key_provider=lambda _: custody_key,
+            system_clock=lambda: (_ for _ in ()).throw(OSError()),
+            timeout_seconds=1.0,
+        )
+        with self.assertRaises(WindowsDecisionProviderError) as raised:
+            clock_failure._clock()
+        self.assertEqual("EXTERNAL_CAS_CLOCK_INVALID", raised.exception.reason_code)
+
+    def test_v2_continuity_rejects_cross_domain_and_stale_response(self) -> None:
+        _configuration, _key, continuity, adapter, request, acknowledgement = (
+            self._continuity_case()
+        )
+        request_path = Path(adapter._request_directory) / f"{request.request_id}.request.json"
+        request_path.write_bytes(canonical_json(request).encode("utf-8"))
+
+        def timestamp(value):
+            return value.isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+        response = {
+            "schema_version": "external-cas-response-v1",
+            "request_id": request.request_id,
+            "request_sha256": request.content_sha256,
+            "provider_id": request.provider_id,
+            "state_domain": request.state_domain,
+            "identity_sha256": request.identity_sha256,
+            "acknowledgement": acknowledgement.to_canonical_dict(),
+            "current_object": continuity.to_canonical_dict(),
+            "responded_at_utc": timestamp(request.expires_at_utc),
+        }
+        with self.assertRaises(WindowsDecisionProviderError) as raised:
+            adapter._parse_response(
+                canonical_json(response).encode("utf-8"),
+                expected_request=request,
+                require_live_observation=False,
+            )
+        self.assertEqual("EXTERNAL_CAS_RESPONSE_EXPIRED", raised.exception.reason_code)
+        response["responded_at_utc"] = timestamp(self.now)
+        response["state_domain"] = "DECISION_IPC"
+        with self.assertRaises(WindowsDecisionProviderError) as raised:
+            adapter._parse_response(
+                canonical_json(response).encode("utf-8"),
+                expected_request=request,
+                require_live_observation=False,
+            )
+        self.assertEqual("EXTERNAL_CAS_RESPONSE_INVALID", raised.exception.reason_code)
+
+    def test_v2_envelope_replacement_is_rejected(self) -> None:
+        configuration, _runtime, _ = self._v2_configuration()
+        path = Path(configuration.clock_attestation_path)
+        replacement = path.with_name("replacement-envelope.json")
+        replacement.write_bytes(path.read_bytes())
+        reader = WindowsEd25519ClockEnvelopeFile(path)
+        original = Path.read_bytes
+
+        def replace_during_read(observed):
+            payload = original(observed)
+            if observed == path:
+                os.replace(replacement, path)
+            return payload
+
+        with patch.object(Path, "read_bytes", replace_during_read), self.assertRaises(
+            WindowsDecisionProviderError
+        ) as raised:
+            reader()
+        self.assertEqual("TRUSTED_UTC_ENVELOPE_UNSTABLE", raised.exception.reason_code)
+
+    def test_v2_direct_and_ancestor_alias_paths_fail_before_credentials(self) -> None:
+        configuration, _runtime, _ = self._v2_configuration()
+
+        def runtime_for(config):
+            hashes = config.provider_configuration_hashes()
+            return replace(
+                self.runtime,
+                providers=tuple(
+                    replace(item, configuration_sha256=hashes[item.role])
+                    for item in self.runtime.providers
+                ),
+            )
+
+        direct = replace(
+            configuration,
+            clock_continuity_request_directory=configuration.ipc_cas_request_directory,
+        )
+        with self.assertRaises(WindowsDecisionProviderError) as raised:
+            build_windows_decision_provider_service_v2(
+                runtime_config=runtime_for(direct), provider_config=direct
+            )
+        self.assertEqual("DECISION_PROVIDER_PATH_COLLISION", raised.exception.reason_code)
+        alias = self.root / "clock-request-alias"
+        try:
+            alias.symlink_to(
+                Path(configuration.clock_continuity_request_directory),
+                target_is_directory=True,
+            )
+        except (NotImplementedError, OSError) as exc:
+            self.skipTest(f"directory symlink unavailable: {exc}")
+        aliased = replace(
+            configuration,
+            clock_continuity_request_directory=str(alias),
+        )
+        with self.assertRaises(WindowsDecisionProviderError) as raised:
+            build_windows_decision_provider_service_v2(
+                runtime_config=runtime_for(aliased), provider_config=aliased
+            )
+        self.assertEqual("DECISION_PROVIDER_V2_PATH_INVALID", raised.exception.reason_code)
+        self.assertEqual([], self.backend.reads)
+
+    @unittest.skipUnless(os.name == "nt", "Windows junction semantics only")
+    def test_v2_ancestor_junction_is_rejected(self) -> None:
+        configuration, _runtime, _ = self._v2_configuration()
+        junction = self.root / "clock-request-junction"
+        completed = subprocess.run(
+            [
+                "cmd",
+                "/c",
+                "mklink",
+                "/J",
+                str(junction),
+                configuration.clock_continuity_request_directory,
+            ],
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            self.skipTest("junction creation unavailable")
+        drifted = replace(
+            configuration,
+            clock_continuity_request_directory=str(junction),
+        )
+        hashes = drifted.provider_configuration_hashes()
+        runtime = replace(
+            self.runtime,
+            providers=tuple(
+                replace(item, configuration_sha256=hashes[item.role])
+                for item in self.runtime.providers
+            ),
+        )
+        with self.assertRaises(WindowsDecisionProviderError) as raised:
+            build_windows_decision_provider_service_v2(
+                runtime_config=runtime, provider_config=drifted
+            )
+        self.assertEqual("DECISION_PROVIDER_V2_PATH_INVALID", raised.exception.reason_code)
+
+    def test_successful_v2_composition_with_approved_clock_port(self) -> None:
+        configuration, runtime, _ = self._v2_configuration()
+        trusted_clock = unittest.mock.Mock(return_value=self.now)
+        with (
+            patch("live_runtime.windows_decision_provider_pack.sys.platform", "win32"),
+            patch(
+                "live_runtime.windows_decision_provider_pack._WindowsNativeCredentialBackend",
+                return_value=self.backend,
+            ),
+            patch(
+                "live_runtime.windows_decision_provider_pack.Ed25519AttestedTrustedUTCProvider",
+                return_value=trusted_clock,
+            ),
+        ):
+            service = build_windows_decision_provider_service_v2(
+                runtime_config=runtime, provider_config=configuration
+            )
+            cycle = service.run_cycle()
+        self.assertIs(type(service), BrokerlessDecisionProducerService)
+        self.assertEqual("NO_INPUT", cycle.lanes[0].status)
+        self.assertGreaterEqual(trusted_clock.call_count, 1)
 
 
 if __name__ == "__main__":

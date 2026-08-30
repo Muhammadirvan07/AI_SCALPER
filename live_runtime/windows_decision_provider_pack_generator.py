@@ -9,6 +9,8 @@ starts a process, initializes MT5, or performs broker work.
 from __future__ import annotations
 
 import ast
+import base64
+import binascii
 from dataclasses import InitVar, dataclass
 import hashlib
 import io
@@ -18,6 +20,7 @@ import os
 from pathlib import Path, PureWindowsPath
 import re
 import stat
+import struct
 from typing import Any, Mapping
 import unicodedata
 import zipfile
@@ -37,8 +40,12 @@ from .windows_decision_service_factory_template import (
 
 
 PACK_INPUT_SCHEMA = "windows-decision-provider-pack-input-v1"
+PACK_INPUT_SCHEMA_V2 = "windows-decision-provider-pack-input-v2"
 PROVIDER_CONFIGURATION_SCHEMA = (
     "windows-decision-provider-configuration-v1"
+)
+PROVIDER_CONFIGURATION_SCHEMA_V2 = (
+    "windows-decision-provider-configuration-v2"
 )
 PACK_VALIDATION_SCHEMA = "windows-decision-provider-pack-validation-v1"
 PACK_STATUS = "EXTERNAL_PROVIDER_ACCEPTANCE_REQUIRED"
@@ -118,6 +125,9 @@ _PACK_INPUT_FIELDS = frozenset(
         "storage",
     }
 )
+_PACK_INPUT_V2_FIELDS = frozenset(
+    {*_PACK_INPUT_FIELDS, "clock_continuity_binding"}
+)
 _RUNTIME_INPUT_FIELDS = frozenset(
     {
         "cycle_deadline_seconds",
@@ -155,6 +165,7 @@ _STORAGE_FIELDS = frozenset(
     }
 )
 _EXTERNAL_CAS_FIELDS = frozenset({"ipc", "producer"})
+_EXTERNAL_CAS_V2_FIELDS = frozenset({"clock", "ipc", "producer"})
 _CAS_ENDPOINT_FIELDS = frozenset(
     {"provider_id", "request_directory", "response_directory"}
 )
@@ -169,6 +180,35 @@ _CLOCK_FIELDS = frozenset(
         "host_identity_sha256",
         "maximum_absolute_drift_ms",
         "maximum_attestation_age_ms",
+        "provider_id",
+        "schema_version",
+    }
+)
+_ED25519_CLOCK_FIELDS = frozenset(
+    {
+        "authority_issuer_id",
+        "authority_public_key",
+        "authority_public_key_sha256",
+        "consumer_host_identity_sha256",
+        "maximum_attestation_age_ms",
+        "maximum_bootstrap_drift_ms",
+        "maximum_delivery_delay_ms",
+        "provider_id",
+        "schema_version",
+        "signer_identity",
+        "source_host_identity_sha256",
+        "ssh_keygen_path",
+        "ssh_keygen_sha256",
+        "sshsig_namespace",
+        "trust_scope",
+    }
+)
+_CLOCK_CONTINUITY_FIELDS = frozenset(
+    {
+        "clock_binding_sha256",
+        "custody_issuer_id",
+        "custody_key_fingerprint_sha256",
+        "custody_key_id",
         "provider_id",
         "schema_version",
     }
@@ -277,6 +317,14 @@ _PROVIDER_CONFIGURATION_FIELDS = frozenset(
         "promotion_eligible",
         "safe_to_demo_auto_order",
         "schema_version",
+    }
+)
+_PROVIDER_CONFIGURATION_V2_FIELDS = frozenset(
+    {
+        *_PROVIDER_CONFIGURATION_FIELDS,
+        "clock_continuity_binding",
+        "clock_continuity_request_directory",
+        "clock_continuity_response_directory",
     }
 )
 _PROVIDER_OUTPUT_FIELDS = frozenset(
@@ -823,6 +871,113 @@ def _clock(value: object) -> dict[str, Any]:
     return payload
 
 
+def _normalized_ed25519_public_key(value: object) -> str:
+    text = _text(value, "CLOCK_BINDING_INVALID")
+    parts = text.split()
+    if len(parts) < 2 or parts[0] != "ssh-ed25519":
+        raise DecisionProviderPackError("CLOCK_BINDING_INVALID")
+    try:
+        decoded = base64.b64decode(parts[1], validate=True)
+        offset = 0
+
+        def read_part() -> bytes:
+            nonlocal offset
+            if offset + 4 > len(decoded):
+                raise ValueError
+            length = struct.unpack(">I", decoded[offset : offset + 4])[0]
+            offset += 4
+            if offset + length > len(decoded):
+                raise ValueError
+            result = decoded[offset : offset + length]
+            offset += length
+            return result
+
+        algorithm = read_part()
+        key = read_part()
+    except (binascii.Error, struct.error, ValueError) as exc:
+        raise DecisionProviderPackError("CLOCK_BINDING_INVALID") from exc
+    if algorithm != b"ssh-ed25519" or len(key) != 32 or offset != len(decoded):
+        raise DecisionProviderPackError("CLOCK_BINDING_INVALID")
+    return f"ssh-ed25519 {parts[1]}"
+
+
+def _clock_v2(value: object) -> dict[str, Any]:
+    payload = _mapping(value, _ED25519_CLOCK_FIELDS, "CLOCK_BINDING_INVALID")
+    if (
+        payload["schema_version"]
+        != "windows-ed25519-trusted-utc-binding-v1"
+        or payload["sshsig_namespace"]
+        != "ai-scalper-finex-trusted-utc-v1"
+        or payload["trust_scope"] != "TRUSTED_UTC_ONLY"
+    ):
+        raise DecisionProviderPackError("CLOCK_BINDING_INVALID")
+    for name in (
+        "provider_id",
+        "authority_issuer_id",
+        "signer_identity",
+    ):
+        payload[name] = _text(
+            payload[name], "CLOCK_BINDING_INVALID", identifier=True
+        )
+    for name in (
+        "source_host_identity_sha256",
+        "consumer_host_identity_sha256",
+        "authority_public_key_sha256",
+        "ssh_keygen_sha256",
+    ):
+        payload[name] = _hash(payload[name], "CLOCK_BINDING_INVALID")
+    payload["authority_public_key"] = _normalized_ed25519_public_key(
+        payload["authority_public_key"]
+    )
+    if (
+        _sha256(payload["authority_public_key"].encode("ascii"))
+        != payload["authority_public_key_sha256"]
+    ):
+        raise DecisionProviderPackError("CLOCK_BINDING_INVALID")
+    payload["ssh_keygen_path"] = _windows_path(payload["ssh_keygen_path"])
+    for name, maximum in (
+        ("maximum_attestation_age_ms", 60_000),
+        ("maximum_delivery_delay_ms", 30_000),
+        ("maximum_bootstrap_drift_ms", 5_000),
+    ):
+        payload[name] = _integer(
+            payload[name],
+            "CLOCK_BINDING_INVALID",
+            minimum=1,
+            maximum=maximum,
+        )
+    return payload
+
+
+def _clock_continuity(value: object) -> dict[str, Any]:
+    payload = _mapping(
+        value,
+        _CLOCK_CONTINUITY_FIELDS,
+        "CLOCK_CONTINUITY_BINDING_INVALID",
+    )
+    if (
+        payload["schema_version"]
+        != "windows-trusted-utc-continuity-cas-binding-v1"
+    ):
+        raise DecisionProviderPackError(
+            "CLOCK_CONTINUITY_BINDING_INVALID"
+        )
+    for name in ("provider_id", "custody_issuer_id", "custody_key_id"):
+        payload[name] = _text(
+            payload[name],
+            "CLOCK_CONTINUITY_BINDING_INVALID",
+            identifier=True,
+        )
+    for name in (
+        "clock_binding_sha256",
+        "custody_key_fingerprint_sha256",
+    ):
+        payload[name] = _hash(
+            payload[name], "CLOCK_CONTINUITY_BINDING_INVALID"
+        )
+    return payload
+
+
 def _credential_references(
     value: object,
     *,
@@ -947,7 +1102,80 @@ def _validate_cross_bindings(
         )
 
 
+def _validate_cross_bindings_v2(
+    *,
+    runtime: Mapping[str, object],
+    producer: Mapping[str, object],
+    feed: Mapping[str, object],
+    ipc: Mapping[str, object],
+    clock: Mapping[str, object],
+    continuity: Mapping[str, object],
+    references: list[dict[str, Any]],
+) -> None:
+    if (
+        runtime["service_id"] != producer["service_id"]
+        or ipc["decision_issuer_id"] != producer["service_id"]
+        or feed["broker_server"] != ipc["server"]
+        or feed["broker_account_identity_sha256"]
+        != ipc["account_id_sha256"]
+        or continuity["clock_binding_sha256"]
+        != _sha256(_canonical_bytes(clock))
+    ):
+        raise DecisionProviderPackError("PROVIDER_CROSS_BINDING_MISMATCH")
+    feed_lanes = {item["lane_id"]: item for item in feed["lanes"]}
+    if set(feed_lanes) != {item["lane_id"] for item in producer["lanes"]}:
+        raise DecisionProviderPackError("PROVIDER_CROSS_BINDING_MISMATCH")
+    for lane in producer["lanes"]:
+        observed = feed_lanes[lane["lane_id"]]
+        if (
+            observed["symbol"] != lane["symbol"]
+            or observed["source_name"] != lane["source_name"]
+            or observed["data_contract_sha256"] != lane["data_contract_sha256"]
+            or observed["session_calendar_sha256"]
+            != lane["session_calendar_sha256"]
+            or lane["commit_sha"] != ipc["commit_sha"]
+            or lane["config_sha256"] != ipc["config_sha256"]
+            or lane["model_artifact_sha256"]
+            != ipc["model_artifact_sha256"]
+            or lane["data_contract_sha256"] != ipc["data_contract_sha256"]
+        ):
+            raise DecisionProviderPackError("PROVIDER_CROSS_BINDING_MISMATCH")
+    required: dict[str, str] = {}
+
+    def add(key_id: str, fingerprint: str) -> None:
+        existing = required.get(key_id)
+        if existing is not None and existing != fingerprint:
+            raise DecisionProviderPackError("CREDENTIAL_BINDING_COLLISION")
+        required[key_id] = fingerprint
+
+    add(feed["publisher_key_id"], feed["publisher_key_fingerprint_sha256"])
+    add(ipc["decision_key_id"], ipc["decision_key_fingerprint_sha256"])
+    add(ipc["custody_key_id"], ipc["custody_key_fingerprint_sha256"])
+    add(producer["custody_key_id"], producer["custody_key_fingerprint_sha256"])
+    for lane in producer["lanes"]:
+        add(
+            lane["session_calendar_key_id"],
+            lane["session_calendar_key_fingerprint_sha256"],
+        )
+    add(
+        continuity["custody_key_id"],
+        continuity["custody_key_fingerprint_sha256"],
+    )
+    configured = {
+        item["key_id"]: item["fingerprint_sha256"] for item in references
+    }
+    if configured != required:
+        raise DecisionProviderPackError(
+            "CREDENTIAL_REFERENCE_BINDING_MISMATCH"
+        )
+
+
 def _validated_input(payload: object) -> dict[str, Any]:
+    if (
+        isinstance(payload, Mapping)
+        and payload.get("schema_version") == PACK_INPUT_SCHEMA_V2
+    ):
+        return _validated_input_v2(payload)
     root = _mapping(
         payload,
         _PACK_INPUT_FIELDS,
@@ -1082,6 +1310,122 @@ def _validated_input(payload: object) -> dict[str, Any]:
     return root
 
 
+def _validated_input_v2(payload: object) -> dict[str, Any]:
+    root = _mapping(
+        payload, _PACK_INPUT_V2_FIELDS, "PACK_INPUT_FIELDS_INVALID"
+    )
+    if root["schema_version"] != PACK_INPUT_SCHEMA_V2:
+        raise DecisionProviderPackError("PACK_INPUT_SCHEMA_INVALID")
+    if root["safety"] != _SAFETY:
+        raise DecisionProviderPackError("PACK_SAFETY_INVALID")
+    root["pack_id"] = _text(root["pack_id"], "PACK_ID_INVALID", identifier=True)
+    runtime = _mapping(
+        root["runtime"], _RUNTIME_INPUT_FIELDS, "PACK_RUNTIME_INVALID"
+    )
+    runtime["service_id"] = _text(
+        runtime["service_id"], "PACK_RUNTIME_INVALID"
+    )
+    runtime["max_cycles"] = _integer(
+        runtime["max_cycles"], "PACK_RUNTIME_INVALID", minimum=1, maximum=100_000
+    )
+    runtime["poll_seconds"] = _number(
+        runtime["poll_seconds"], "PACK_RUNTIME_INVALID", minimum=0, maximum=15
+    )
+    runtime["cycle_deadline_seconds"] = _number(
+        runtime["cycle_deadline_seconds"],
+        "PACK_RUNTIME_INVALID",
+        minimum=0.05,
+        maximum=30,
+    )
+    producer = _producer(runtime["decision_producer_binding"])
+    runtime["decision_producer_binding"] = producer
+    feed = _feed(root["decision_feed_binding"])
+    ipc = _ipc(root["decision_ipc_binding"])
+    clock = _clock_v2(root["clock_binding"])
+    continuity = _clock_continuity(root["clock_continuity_binding"])
+    prefix = _text(
+        root["credential_target_prefix"], "CREDENTIAL_TARGET_PREFIX_INVALID"
+    )
+    if prefix.endswith(("/", "\\")) or "\\" in prefix:
+        raise DecisionProviderPackError("CREDENTIAL_TARGET_PREFIX_INVALID")
+    references = _credential_references(
+        root["credential_references"], prefix=prefix
+    )
+    storage = _mapping(root["storage"], _STORAGE_FIELDS, "PACK_STORAGE_INVALID")
+    for name in _STORAGE_FIELDS:
+        storage[name] = _windows_path(storage[name])
+    external = _mapping(
+        root["external_cas"],
+        _EXTERNAL_CAS_V2_FIELDS,
+        "EXTERNAL_CAS_CONFIGURATION_INVALID",
+    )
+    for domain in ("clock", "ipc", "producer"):
+        endpoint = _mapping(
+            external[domain],
+            _CAS_ENDPOINT_FIELDS,
+            "EXTERNAL_CAS_CONFIGURATION_INVALID",
+        )
+        endpoint["provider_id"] = _text(
+            endpoint["provider_id"],
+            "EXTERNAL_CAS_CONFIGURATION_INVALID",
+            identifier=True,
+        )
+        endpoint["request_directory"] = _windows_path(
+            endpoint["request_directory"]
+        )
+        endpoint["response_directory"] = _windows_path(
+            endpoint["response_directory"]
+        )
+        external[domain] = endpoint
+    provider_ids = [external[name]["provider_id"] for name in external]
+    if (
+        len(set(provider_ids)) != 3
+        or external["clock"]["provider_id"] != continuity["provider_id"]
+    ):
+        raise DecisionProviderPackError("EXTERNAL_CAS_CONFIGURATION_INVALID")
+    root["cas_timeout_seconds"] = _number(
+        root["cas_timeout_seconds"],
+        "EXTERNAL_CAS_TIMEOUT_INVALID",
+        minimum=0,
+        maximum=2,
+        lower_exclusive=True,
+    )
+    paths = [
+        *storage.values(),
+        *(
+            external[domain][name]
+            for domain in ("clock", "ipc", "producer")
+            for name in ("request_directory", "response_directory")
+        ),
+        clock["ssh_keygen_path"],
+    ]
+    if _windows_paths_overlap(paths):
+        raise DecisionProviderPackError("PROVIDER_PATH_COLLISION")
+    _validate_cross_bindings_v2(
+        runtime=runtime,
+        producer=producer,
+        feed=feed,
+        ipc=ipc,
+        clock=clock,
+        continuity=continuity,
+        references=references,
+    )
+    root.update(
+        {
+            "runtime": runtime,
+            "decision_feed_binding": feed,
+            "decision_ipc_binding": ipc,
+            "clock_binding": clock,
+            "clock_continuity_binding": continuity,
+            "credential_references": references,
+            "credential_target_prefix": prefix,
+            "storage": storage,
+            "external_cas": external,
+        }
+    )
+    return root
+
+
 def _verify_suite_and_foundation(
     *,
     base_suite_root: str | Path,
@@ -1170,6 +1514,38 @@ def _provider_configuration(
 ) -> dict[str, Any]:
     storage = pack["storage"]
     external = pack["external_cas"]
+    if pack["schema_version"] == PACK_INPUT_SCHEMA_V2:
+        return {
+            "base_suite_identity_sha256": suite_identity_sha256,
+            "cas_timeout_seconds": pack["cas_timeout_seconds"],
+            "clock_attestation_path": storage["clock_attestation_path"],
+            "clock_binding": pack["clock_binding"],
+            "clock_continuity_binding": pack["clock_continuity_binding"],
+            "clock_continuity_request_directory": external["clock"]["request_directory"],
+            "clock_continuity_response_directory": external["clock"]["response_directory"],
+            "credential_references": pack["credential_references"],
+            "credential_target_prefix": pack["credential_target_prefix"],
+            "decision_base_release_identity_sha256": decision_release_identity_sha256,
+            "decision_feed_binding": pack["decision_feed_binding"],
+            "decision_ipc_binding": pack["decision_ipc_binding"],
+            "decision_ipc_database": storage["decision_ipc_database"],
+            "decision_producer_binding": pack["runtime"]["decision_producer_binding"],
+            "finalized_m15_directory": storage["finalized_m15_directory"],
+            "ipc_cas_provider_id": external["ipc"]["provider_id"],
+            "ipc_cas_request_directory": external["ipc"]["request_directory"],
+            "ipc_cas_response_directory": external["ipc"]["response_directory"],
+            "live_allowed": False,
+            "max_lot": 0.01,
+            "order_capability": "DISABLED",
+            "pack_id": pack["pack_id"],
+            "producer_cas_provider_id": external["producer"]["provider_id"],
+            "producer_cas_request_directory": external["producer"]["request_directory"],
+            "producer_cas_response_directory": external["producer"]["response_directory"],
+            "producer_cursor_database": storage["producer_cursor_database"],
+            "promotion_eligible": False,
+            "safe_to_demo_auto_order": False,
+            "schema_version": PROVIDER_CONFIGURATION_SCHEMA_V2,
+        }
     return {
         "base_suite_identity_sha256": suite_identity_sha256,
         "cas_timeout_seconds": pack["cas_timeout_seconds"],
@@ -1311,6 +1687,19 @@ def _provider_configuration_hashes(
             ],
         },
     }
+    if configuration["schema_version"] == PROVIDER_CONFIGURATION_SCHEMA_V2:
+        details["TRUSTED_CLOCK"] = {
+            "binding": configuration["clock_binding"],
+            "attestation_path": configuration["clock_attestation_path"],
+            "continuity_binding": configuration["clock_continuity_binding"],
+            "continuity_request_directory": configuration[
+                "clock_continuity_request_directory"
+            ],
+            "continuity_response_directory": configuration[
+                "clock_continuity_response_directory"
+            ],
+            "timeout_seconds": configuration["cas_timeout_seconds"],
+        }
     return {
         role: _sha256(
             _canonical_bytes(
@@ -1329,6 +1718,32 @@ def _provider_module_bytes(
     configuration: Mapping[str, Any],
 ) -> bytes:
     configuration_json = _canonical_bytes(configuration).decode("ascii")
+    if configuration["schema_version"] == PROVIDER_CONFIGURATION_SCHEMA_V2:
+        source = (
+            '"""Reviewed decision-only provider composition."""\n'
+            "\n"
+            "from __future__ import annotations\n"
+            "\n"
+            "import json\n"
+            "\n"
+            "from live_runtime.windows_decision_provider_pack import (\n"
+            "    build_windows_decision_provider_service_v2,\n"
+            "    parse_windows_decision_provider_configuration_v2,\n"
+            ")\n"
+            "\n"
+            f"_PROVIDER_CONFIGURATION_JSON = {configuration_json!r}\n"
+            "\n"
+            "\n"
+            "def build_decision_provider_service(runtime_config):\n"
+            "    provider_config = parse_windows_decision_provider_configuration_v2(\n"
+            "        json.loads(_PROVIDER_CONFIGURATION_JSON)\n"
+            "    )\n"
+            "    return build_windows_decision_provider_service_v2(\n"
+            "        runtime_config=runtime_config,\n"
+            "        provider_config=provider_config,\n"
+            "    )\n"
+        )
+        return source.encode("utf-8")
     source = (
         '"""Reviewed decision-only provider composition."""\n'
         "\n"
@@ -1554,6 +1969,13 @@ def _validated_provider_configuration(
     suite: VerifiedBaseReleaseSuite,
     role: VerifiedBaseReleaseSuiteRole,
 ) -> dict[str, Any]:
+    if (
+        isinstance(payload, Mapping)
+        and payload.get("schema_version") == PROVIDER_CONFIGURATION_SCHEMA_V2
+    ):
+        return _validated_provider_configuration_v2(
+            payload, suite=suite, role=role
+        )
     configuration = _mapping(
         payload,
         _PROVIDER_CONFIGURATION_FIELDS,
@@ -1657,6 +2079,112 @@ def _validated_provider_configuration(
             "decision_feed_binding": feed,
             "decision_ipc_binding": ipc,
             "clock_binding": clock,
+            "credential_references": references,
+            "credential_target_prefix": prefix,
+        }
+    )
+    return configuration
+
+
+def _validated_provider_configuration_v2(
+    payload: object,
+    *,
+    suite: VerifiedBaseReleaseSuite,
+    role: VerifiedBaseReleaseSuiteRole,
+) -> dict[str, Any]:
+    configuration = _mapping(
+        payload,
+        _PROVIDER_CONFIGURATION_V2_FIELDS,
+        "PROVIDER_CONFIGURATION_FIELDS_INVALID",
+    )
+    if (
+        configuration["schema_version"] != PROVIDER_CONFIGURATION_SCHEMA_V2
+        or configuration["base_suite_identity_sha256"]
+        != suite.suite_identity_sha256
+        or configuration["decision_base_release_identity_sha256"]
+        != role.release_identity_sha256
+        or configuration["order_capability"] != ORDER_CAPABILITY
+        or configuration["live_allowed"] is not False
+        or configuration["safe_to_demo_auto_order"] is not False
+        or type(configuration["max_lot"]) is not float
+        or configuration["max_lot"] != MAX_LOT
+        or configuration["promotion_eligible"] is not False
+    ):
+        raise DecisionProviderPackError("PROVIDER_CONFIGURATION_INVALID")
+    configuration["pack_id"] = _text(
+        configuration["pack_id"],
+        "PROVIDER_CONFIGURATION_INVALID",
+        identifier=True,
+    )
+    producer = _producer(configuration["decision_producer_binding"])
+    feed = _feed(configuration["decision_feed_binding"])
+    ipc = _ipc(configuration["decision_ipc_binding"])
+    clock = _clock_v2(configuration["clock_binding"])
+    continuity = _clock_continuity(configuration["clock_continuity_binding"])
+    prefix = _text(
+        configuration["credential_target_prefix"],
+        "CREDENTIAL_TARGET_PREFIX_INVALID",
+    )
+    if prefix.endswith(("/", "\\")) or "\\" in prefix:
+        raise DecisionProviderPackError("CREDENTIAL_TARGET_PREFIX_INVALID")
+    references = _credential_references(
+        configuration["credential_references"], prefix=prefix
+    )
+    path_names = (
+        "finalized_m15_directory",
+        "decision_ipc_database",
+        "producer_cursor_database",
+        "ipc_cas_request_directory",
+        "ipc_cas_response_directory",
+        "producer_cas_request_directory",
+        "producer_cas_response_directory",
+        "clock_attestation_path",
+        "clock_continuity_request_directory",
+        "clock_continuity_response_directory",
+    )
+    for name in path_names:
+        configuration[name] = _windows_path(configuration[name])
+    if _windows_paths_overlap(
+        [*(configuration[name] for name in path_names), clock["ssh_keygen_path"]]
+    ):
+        raise DecisionProviderPackError("PROVIDER_PATH_COLLISION")
+    for name in ("ipc_cas_provider_id", "producer_cas_provider_id"):
+        configuration[name] = _text(
+            configuration[name],
+            "EXTERNAL_CAS_CONFIGURATION_INVALID",
+            identifier=True,
+        )
+    if len(
+        {
+            configuration["ipc_cas_provider_id"],
+            configuration["producer_cas_provider_id"],
+            continuity["provider_id"],
+        }
+    ) != 3:
+        raise DecisionProviderPackError("EXTERNAL_CAS_CONFIGURATION_INVALID")
+    configuration["cas_timeout_seconds"] = _number(
+        configuration["cas_timeout_seconds"],
+        "EXTERNAL_CAS_TIMEOUT_INVALID",
+        minimum=0,
+        maximum=2,
+        lower_exclusive=True,
+    )
+    _validate_cross_bindings_v2(
+        runtime={"service_id": producer["service_id"]},
+        producer=producer,
+        feed=feed,
+        ipc=ipc,
+        clock=clock,
+        continuity=continuity,
+        references=references,
+    )
+    configuration.update(
+        {
+            "decision_producer_binding": producer,
+            "decision_feed_binding": feed,
+            "decision_ipc_binding": ipc,
+            "clock_binding": clock,
+            "clock_continuity_binding": continuity,
             "credential_references": references,
             "credential_target_prefix": prefix,
         }
@@ -1952,12 +2480,25 @@ def _remove_created_file(
 
 def _directory_identity(
     metadata: os.stat_result,
-) -> tuple[int, int, int, int]:
+) -> tuple[int, int, int]:
     return (
         int(metadata.st_dev),
         int(metadata.st_ino),
         int(metadata.st_mode),
+    )
+
+
+def _cleanup_file_identity(
+    metadata: os.stat_result,
+    payload: bytes,
+) -> tuple[int, int, int, int, int, int]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(metadata.st_size),
         int(getattr(metadata, "st_file_attributes", 0)),
+        int.from_bytes(hashlib.sha256(payload).digest(), "big"),
     )
 
 
@@ -1981,7 +2522,18 @@ def _write_exclusive(path: Path, payload: bytes) -> tuple[int, ...]:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-            completed_identity = _identity(os.fstat(handle.fileno()))
+        completed = path.lstat()
+        if (
+            created_identity is None
+            or (int(completed.st_dev), int(completed.st_ino))
+            != created_identity
+            or not stat.S_ISREG(completed.st_mode)
+            or stat.S_ISLNK(completed.st_mode)
+            or _is_reparse(completed)
+        ):
+            _remove_created_file(path, created_identity)
+            raise DecisionProviderPackError("PACK_OUTPUT_WRITE_FAILED")
+        completed_identity = _cleanup_file_identity(completed, payload)
     except DecisionProviderPackError:
         raise
     except OSError as exc:
@@ -2002,15 +2554,32 @@ def _remove_if_same(
     identity: tuple[int, ...],
 ) -> None:
     try:
-        if _identity(path.lstat()) == identity:
+        before = path.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or stat.S_ISLNK(before.st_mode)
+            or _is_reparse(before)
+            or int(before.st_size) > MAX_FILE_BYTES
+        ):
+            return
+        payload = _stable_read(
+            path,
+            maximum_bytes=MAX_FILE_BYTES,
+            reason_code="PACK_OUTPUT_WRITE_FAILED",
+        )
+        after = path.lstat()
+        if (
+            _cleanup_file_identity(before, payload) == identity
+            and _cleanup_file_identity(after, payload) == identity
+        ):
             path.unlink()
-    except OSError:
+    except (OSError, DecisionProviderPackError):
         pass
 
 
 def _cleanup_created(
     root: Path,
-    root_identity: tuple[int, int, int, int],
+    root_identity: tuple[int, int, int],
     files: list[tuple[Path, tuple[int, ...]]],
 ) -> None:
     try:
@@ -2118,6 +2687,7 @@ __all__ = [
     "DecisionProviderPackValidation",
     "GENERATED_PATHS",
     "PACK_INPUT_SCHEMA",
+    "PACK_INPUT_SCHEMA_V2",
     "PACK_STATUS",
     "prepare_windows_decision_provider_pack",
     "validate_windows_decision_provider_pack",

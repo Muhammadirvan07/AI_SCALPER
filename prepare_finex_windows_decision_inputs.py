@@ -8,14 +8,20 @@ import json
 import os
 from pathlib import Path
 import secrets
+import stat
 import sys
 from typing import Any
 
 from live_runtime.windows_provider_primitives import _WindowsNativeCredentialBackend
+from live_runtime.windows_ed25519_trusted_clock import (
+    ed25519_public_key_sha256,
+    normalize_ed25519_public_key,
+)
 
 
 SCHEMA_VERSION = "finex-windows-decision-input-preparation-v1"
 PACK_SCHEMA_VERSION = "windows-decision-provider-pack-input-v1"
+PACK_SCHEMA_VERSION_V2 = "windows-decision-provider-pack-input-v2"
 TARGET_PREFIX = "AI_SCALPER/FINEX/DECISION"
 EXECUTION_TARGET_PREFIX = "AI_SCALPER/FINEX/EXECUTION"
 KEY_TARGETS = {
@@ -30,6 +36,18 @@ KEY_TARGETS = {
     ),
 }
 DECISION_KEY_IDS = tuple(KEY_TARGETS)[:-1]
+V2_KEY_TARGETS = {
+    key_id: target
+    for key_id, target in KEY_TARGETS.items()
+    if key_id not in {
+        "finex-trusted-clock-v1",
+        "finex-downstream-permit-v1",
+    }
+}
+V2_KEY_TARGETS["finex-trusted-clock-continuity-v1"] = (
+    f"{TARGET_PREFIX}/finex-trusted-clock-continuity-v1"
+)
+V2_DECISION_KEY_IDS = tuple(V2_KEY_TARGETS)
 REQUIRED_SYMBOLS = ("AUDUSD", "EURUSD", "USDJPY", "XAUUSD")
 
 
@@ -66,20 +84,130 @@ def _sha256_file(path: Path) -> str:
     return _sha256_bytes(path.read_bytes())
 
 
-def _write_exclusive(path: Path, payload: bytes) -> None:
+def _is_reparse(metadata: os.stat_result) -> bool:
+    return bool(int(getattr(metadata, "st_file_attributes", 0)) & 0x400)
+
+
+def _root_identity(metadata: os.stat_result) -> tuple[int, int, int]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+    )
+
+
+def _created_file_identity(
+    metadata: os.stat_result,
+    payload: bytes,
+) -> tuple[int, int, int, int, int, int]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(metadata.st_size),
+        int(getattr(metadata, "st_file_attributes", 0)),
+        int.from_bytes(hashlib.sha256(payload).digest(), "big"),
+    )
+
+
+def _remove_created_file(path: Path, identity: tuple[int, int] | None) -> None:
+    if identity is None:
+        return
+    try:
+        observed = path.lstat()
+        if (
+            stat.S_ISREG(observed.st_mode)
+            and not stat.S_ISLNK(observed.st_mode)
+            and not _is_reparse(observed)
+            and (int(observed.st_dev), int(observed.st_ino)) == identity
+        ):
+            path.unlink()
+    except OSError:
+        pass
+
+
+def _write_exclusive(path: Path, payload: bytes) -> tuple[int, ...]:
     path.parent.mkdir(parents=True, exist_ok=True)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags, 0o600)
+    descriptor: int | None = None
+    physical_identity: tuple[int, int] | None = None
     try:
+        descriptor = os.open(path, flags, 0o600)
         with os.fdopen(descriptor, "wb", closefd=False) as stream:
+            created = os.fstat(descriptor)
+            physical_identity = (int(created.st_dev), int(created.st_ino))
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-    finally:
         os.close(descriptor)
+        descriptor = None
+        completed = path.lstat()
+        if (
+            physical_identity
+            != (int(completed.st_dev), int(completed.st_ino))
+            or not stat.S_ISREG(completed.st_mode)
+            or stat.S_ISLNK(completed.st_mode)
+            or _is_reparse(completed)
+        ):
+            _remove_created_file(path, physical_identity)
+            raise PreparationError("OUTPUT_FILE_IDENTITY_INVALID")
+        return _created_file_identity(completed, payload)
+    except BaseException:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        _remove_created_file(path, physical_identity)
+        raise
+
+
+def _remove_if_unchanged(path: Path, identity: tuple[int, ...]) -> None:
+    try:
+        before = path.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or stat.S_ISLNK(before.st_mode)
+            or _is_reparse(before)
+            or int(before.st_size) != int(identity[3])
+        ):
+            return
+        payload = path.read_bytes()
+        after = path.lstat()
+        if (
+            _created_file_identity(before, payload) == identity
+            and _created_file_identity(after, payload) == identity
+        ):
+            path.unlink()
+    except OSError:
+        pass
+
+
+def _cleanup_output(
+    root: Path,
+    identity: tuple[int, int, int],
+    created: list[tuple[Path, tuple[int, ...]]],
+) -> None:
+    try:
+        observed = root.lstat()
+    except OSError:
+        return
+    if (
+        _root_identity(observed) != identity
+        or not stat.S_ISDIR(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or _is_reparse(observed)
+    ):
+        return
+    for path, file_identity in reversed(created):
+        _remove_if_unchanged(path, file_identity)
+    try:
+        root.rmdir()
+    except OSError:
+        pass
 
 
 class _CREDENTIALW(ctypes.Structure):
@@ -126,10 +254,13 @@ def _write_windows_credential(target_name: str, secret: bytes) -> None:
         raise ctypes.WinError(ctypes.get_last_error())
 
 
-def _ensure_credentials() -> dict[str, str]:
+def _ensure_credentials(
+    key_targets: dict[str, str] | None = None,
+) -> dict[str, str]:
+    targets = KEY_TARGETS if key_targets is None else key_targets
     backend = _WindowsNativeCredentialBackend()
     fingerprints: dict[str, str] = {}
-    for key_id, target_name in KEY_TARGETS.items():
+    for key_id, target_name in targets.items():
         secret = backend.read_blob(target_name)
         if secret is None:
             _write_windows_credential(target_name, secrets.token_bytes(32))
@@ -156,6 +287,9 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
     if output_root.exists():
         raise PreparationError("OUTPUT_ROOT_ALREADY_EXISTS")
 
+    provider_schema = getattr(args, "provider_schema", "v2")
+    if provider_schema not in {"v1", "v2"}:
+        raise PreparationError("PROVIDER_SCHEMA_INVALID")
     discovery = _load_json(discovery_path)
     suite = _load_json(suite_manifest_path)
     account = discovery.get("account")
@@ -205,7 +339,67 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
     }
     data_contract_bytes = _canonical_bytes(data_contract)
     data_contract_hash = _sha256_bytes(data_contract_bytes)
-    fingerprints = _ensure_credentials()
+    if provider_schema == "v2":
+        supplied_public_key = getattr(args, "clock_authority_public_key", None)
+        source_host = getattr(args, "clock_source_host_identity_sha256", None)
+        consumer_host = getattr(args, "clock_consumer_host_identity_sha256", None)
+        supplied_executable = getattr(args, "ssh_keygen_path", None)
+        supplied_executable_hash = getattr(args, "ssh_keygen_sha256", None)
+        supplied_permit_fingerprint = getattr(
+            args,
+            "downstream_permit_key_fingerprint_sha256",
+            None,
+        )
+        try:
+            public_key = normalize_ed25519_public_key(supplied_public_key)
+        except (TypeError, ValueError) as exc:
+            raise PreparationError("CLOCK_PUBLIC_KEY_INVALID") from exc
+        for label, value in (
+            ("CLOCK_SOURCE_HOST_IDENTITY_INVALID", source_host),
+            ("CLOCK_CONSUMER_HOST_IDENTITY_INVALID", consumer_host),
+            ("SSH_KEYGEN_SHA256_INVALID", supplied_executable_hash),
+            (
+                "DOWNSTREAM_PERMIT_KEY_FINGERPRINT_INVALID",
+                supplied_permit_fingerprint,
+            ),
+        ):
+            if (
+                not isinstance(value, str)
+                or len(value) != 64
+                or any(item not in "0123456789abcdef" for item in value)
+            ):
+                raise PreparationError(label)
+        if not isinstance(supplied_executable, str):
+            raise PreparationError("SSH_KEYGEN_PATH_INVALID")
+        ssh_keygen = Path(supplied_executable)
+        if not ssh_keygen.is_absolute():
+            raise PreparationError("SSH_KEYGEN_PATH_INVALID")
+        try:
+            ssh_keygen = ssh_keygen.resolve(strict=True)
+        except OSError as exc:
+            raise PreparationError("SSH_KEYGEN_PATH_INVALID") from exc
+        if (
+            not ssh_keygen.is_file()
+            or _sha256_file(ssh_keygen) != supplied_executable_hash
+        ):
+            raise PreparationError("SSH_KEYGEN_IDENTITY_MISMATCH")
+        key_targets = V2_KEY_TARGETS
+        decision_key_ids = V2_DECISION_KEY_IDS
+    else:
+        public_key = None
+        source_host = None
+        consumer_host = None
+        ssh_keygen = None
+        supplied_executable_hash = None
+        supplied_permit_fingerprint = None
+        key_targets = KEY_TARGETS
+        decision_key_ids = DECISION_KEY_IDS
+    fingerprints = _ensure_credentials(key_targets)
+    permit_fingerprint = (
+        supplied_permit_fingerprint
+        if provider_schema == "v2"
+        else fingerprints["finex-downstream-permit-v1"]
+    )
 
     directories = {
         "feed": state_root / "feed",
@@ -214,6 +408,13 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
         "cursor_requests": state_root / "cursor-requests",
         "cursor_responses": state_root / "cursor-responses",
     }
+    if provider_schema == "v2":
+        directories.update(
+            {
+                "clock_requests": state_root / "clock-continuity-requests",
+                "clock_responses": state_root / "clock-continuity-responses",
+            }
+        )
     state_root.mkdir(parents=True, exist_ok=True)
     for directory in directories.values():
         directory.mkdir(parents=True, exist_ok=True)
@@ -302,28 +503,59 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
         "permit_key_id": "finex-downstream-permit-v1",
         "permit_key_fingerprint_sha256": fingerprints[
             "finex-downstream-permit-v1"
-        ],
+        ] if provider_schema == "v1" else permit_fingerprint,
         "schema_version": "decision-ipc-binding-v2",
     }
-    clock_binding = {
-        "provider_id": "finex-decision-clock-v1",
-        "host_identity_sha256": _machine_identity_sha256(),
-        "authority_issuer_id": "finex-local-clock-authority-v1",
-        "authority_key_id": "finex-trusted-clock-v1",
-        "authority_key_fingerprint_sha256": fingerprints[
-            "finex-trusted-clock-v1"
-        ],
-        "maximum_attestation_age_ms": 10000,
-        "maximum_absolute_drift_ms": 1000,
-        "schema_version": "windows-clock-binding-v1",
-    }
+    if provider_schema == "v2":
+        clock_binding = {
+            "provider_id": "finex-decision-ed25519-clock-v1",
+            "source_host_identity_sha256": source_host,
+            "consumer_host_identity_sha256": consumer_host,
+            "authority_issuer_id": "finex-offhost-clock-authority-v1",
+            "signer_identity": "finex-offhost-clock-signer-v1",
+            "authority_public_key": public_key,
+            "authority_public_key_sha256": ed25519_public_key_sha256(public_key),
+            "ssh_keygen_path": str(ssh_keygen),
+            "ssh_keygen_sha256": supplied_executable_hash,
+            "maximum_attestation_age_ms": 10000,
+            "maximum_delivery_delay_ms": 3000,
+            "maximum_bootstrap_drift_ms": 1000,
+            "sshsig_namespace": "ai-scalper-finex-trusted-utc-v1",
+            "trust_scope": "TRUSTED_UTC_ONLY",
+            "schema_version": "windows-ed25519-trusted-utc-binding-v1",
+        }
+        clock_binding_sha256 = _sha256_bytes(_canonical_bytes(clock_binding)[:-1])
+        clock_continuity_binding = {
+            "provider_id": "finex-clock-continuity-directory-cas-v1",
+            "clock_binding_sha256": clock_binding_sha256,
+            "custody_issuer_id": "finex-clock-continuity-custody-v1",
+            "custody_key_id": "finex-trusted-clock-continuity-v1",
+            "custody_key_fingerprint_sha256": fingerprints[
+                "finex-trusted-clock-continuity-v1"
+            ],
+            "schema_version": "windows-trusted-utc-continuity-cas-binding-v1",
+        }
+    else:
+        clock_binding = {
+            "provider_id": "finex-decision-clock-v1",
+            "host_identity_sha256": _machine_identity_sha256(),
+            "authority_issuer_id": "finex-local-clock-authority-v1",
+            "authority_key_id": "finex-trusted-clock-v1",
+            "authority_key_fingerprint_sha256": fingerprints[
+                "finex-trusted-clock-v1"
+            ],
+            "maximum_attestation_age_ms": 10000,
+            "maximum_absolute_drift_ms": 1000,
+            "schema_version": "windows-clock-binding-v1",
+        }
+        clock_continuity_binding = None
     references = [
         {
             "key_id": key_id,
-            "target_name": KEY_TARGETS[key_id],
+            "target_name": key_targets[key_id],
             "fingerprint_sha256": fingerprints[key_id],
         }
-        for key_id in sorted(DECISION_KEY_IDS)
+        for key_id in sorted(decision_key_ids)
     ]
     pack_input = {
         "cas_timeout_seconds": 1.0,
@@ -344,7 +576,11 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
                 "response_directory": str(directories["cursor_responses"]),
             },
         },
-        "pack_id": "finex-decision-provider-pack-v1",
+        "pack_id": (
+            "finex-decision-provider-pack-v9"
+            if provider_schema == "v2"
+            else "finex-decision-provider-pack-v1"
+        ),
         "runtime": {
             "cycle_deadline_seconds": 5.0,
             "decision_producer_binding": producer_binding,
@@ -360,7 +596,11 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
             "promotion_eligible": False,
             "safe_to_demo_auto_order": False,
         },
-        "schema_version": PACK_SCHEMA_VERSION,
+        "schema_version": (
+            PACK_SCHEMA_VERSION_V2
+            if provider_schema == "v2"
+            else PACK_SCHEMA_VERSION
+        ),
         "storage": {
             "clock_attestation_path": str(state_root / "clock-attestation.json"),
             "decision_ipc_database": str(state_root / "decision-ipc.sqlite3"),
@@ -368,6 +608,16 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
             "producer_cursor_database": str(state_root / "producer-cursor.sqlite3"),
         },
     }
+    if provider_schema == "v2":
+        pack_input["clock_continuity_binding"] = clock_continuity_binding
+        pack_input["external_cas"]["clock"] = {
+            "provider_id": clock_continuity_binding["provider_id"],
+            "request_directory": str(directories["clock_requests"]),
+            "response_directory": str(directories["clock_responses"]),
+        }
+        pack_input["storage"]["clock_attestation_path"] = str(
+            state_root / "clock-envelope.json"
+        )
     receipt = {
         "schema_version": SCHEMA_VERSION,
         "candidate_id": "finex",
@@ -383,7 +633,12 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
         "state_root": str(state_root),
         "status": "PROVIDER_PACK_INPUT_READY_EXTERNAL_CONFORMANCE_REQUIRED",
         "remaining_blockers": [
-            "SIGNED_CLOCK_ATTESTATION_REQUIRED",
+            "SIGNED_ED25519_CLOCK_ENVELOPE_REQUIRED"
+            if provider_schema == "v2"
+            else "SIGNED_CLOCK_ATTESTATION_REQUIRED",
+            "EXTERNAL_CLOCK_CONTINUITY_CUSTODY_ACCEPTANCE_REQUIRED"
+            if provider_schema == "v2"
+            else "CLOCK_AUTHORITY_CREDENTIAL_REQUIRED",
             "SIGNED_FINALIZED_M15_FEED_REQUIRED",
             "EXTERNAL_CAS_CUSTODY_ACCEPTANCE_REQUIRED",
             "SERVICE_ACCOUNT_AND_ACL_ACCEPTANCE_REQUIRED",
@@ -397,14 +652,18 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
     receipt["content_sha256"] = _sha256_bytes(_canonical_bytes(receipt))
 
     output_root.mkdir(parents=True, exist_ok=False)
+    output_identity = _root_identity(output_root.lstat())
+    created_files: list[tuple[Path, tuple[int, ...]]] = []
     try:
-        _write_exclusive(output_root / "finex-finalized-m15-data-contract.json", data_contract_bytes)
-        _write_exclusive(output_root / "decision-provider-pack-input.json", _canonical_bytes(pack_input))
-        _write_exclusive(output_root / "FINEX_DECISION_INPUT_PREPARATION.json", _canonical_bytes(receipt))
+        for name, payload in (
+            ("finex-finalized-m15-data-contract.json", data_contract_bytes),
+            ("decision-provider-pack-input.json", _canonical_bytes(pack_input)),
+            ("FINEX_DECISION_INPUT_PREPARATION.json", _canonical_bytes(receipt)),
+        ):
+            path = output_root / name
+            created_files.append((path, _write_exclusive(path, payload)))
     except BaseException:
-        for child in output_root.iterdir():
-            child.unlink(missing_ok=True)
-        output_root.rmdir()
+        _cleanup_output(output_root, output_identity, created_files)
         raise
     return receipt
 
@@ -421,6 +680,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-suite-manifest", required=True)
     parser.add_argument("--state-root", required=True)
     parser.add_argument("--output-root", required=True)
+    parser.add_argument("--provider-schema", choices=("v1", "v2"), default="v2")
+    parser.add_argument("--clock-authority-public-key")
+    parser.add_argument("--clock-source-host-identity-sha256")
+    parser.add_argument("--clock-consumer-host-identity-sha256")
+    parser.add_argument("--ssh-keygen-path")
+    parser.add_argument("--ssh-keygen-sha256")
+    parser.add_argument("--downstream-permit-key-fingerprint-sha256")
     return parser
 
 
