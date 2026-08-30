@@ -3,6 +3,7 @@ import hashlib
 import json
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
@@ -25,6 +26,7 @@ from validation_evidence import (
     verify_frozen_snapshot,
     verify_validation_receipt as _verify_validation_receipt,
 )
+from validation_evidence.secure_core import _artifact_identity
 
 
 UTC = timezone.utc
@@ -571,6 +573,67 @@ class ValidationEvidenceTests(unittest.TestCase):
             "GC=F",
         )
         self.assertTrue(verify_frozen_snapshot(self.root, "snapshot-001")["valid"])
+
+    def test_broker_historical_snapshot_is_read_only_and_non_promotable(self):
+        sources = {
+            symbol: {
+                "provider_kind": "BROKER_TERMINAL_READ_ONLY_SNAPSHOT",
+                "candidate_id": "finex",
+                "broker_server": "FinexBisnisSolusi-Demo",
+                "environment": "DEMO",
+                "account_identity_sha256": "a" * 64,
+                "canonical_symbol": symbol,
+                "broker_symbol": symbol,
+                "source_discovery_payload_sha256": "b" * 64,
+                "fresh_discovery_payload_sha256": "c" * 64,
+                "captured_at_utc": "2026-01-01T01:15:00Z",
+                "read_only_attestation": {
+                    "account_trade_allowed": False,
+                    "account_trade_expert": True,
+                    "terminal_trade_allowed": False,
+                    "terminal_tradeapi_disabled": True,
+                },
+                "evidence_role": "HISTORICAL_RESEARCH_ONLY",
+            }
+            for symbol in REQUIRED_SYMBOLS
+        }
+        manifest = create_frozen_snapshot(
+            self.root,
+            self.snapshot_frames,
+            sources,
+            self.boundaries,
+            snapshot_id="broker-historical",
+            created_at="2026-01-01T02:00:00Z",
+            source_class="BROKER_HISTORICAL_RESEARCH",
+        )
+        self.assertEqual("BROKER_HISTORICAL_RESEARCH", manifest["snapshot_source_class"])
+        self.assertFalse(manifest["promotion_eligible"])
+        self.assertTrue(verify_frozen_snapshot(self.root, "broker-historical")["valid"])
+
+        unsafe_sources = copy.deepcopy(sources)
+        unsafe_sources["XAUUSD"]["read_only_attestation"][
+            "terminal_trade_allowed"
+        ] = True
+        with self.assertRaisesRegex(
+            EvidenceValidationError, "BROKER_HISTORICAL_SOURCE_NOT_READ_ONLY"
+        ):
+            create_frozen_snapshot(
+                self.root,
+                self.snapshot_frames,
+                unsafe_sources,
+                self.boundaries,
+                snapshot_id="broker-historical-unsafe",
+                created_at="2026-01-01T02:00:00Z",
+                source_class="BROKER_HISTORICAL_RESEARCH",
+            )
+
+    def test_artifact_identity_ignores_cloud_state_but_binds_reparse_point(self):
+        common = {"st_dev": 1, "st_ino": 2, "st_mode": 0o100600}
+        recalled = SimpleNamespace(**common, st_file_attributes=0x10000020)
+        hydrated = SimpleNamespace(**common, st_file_attributes=0x20)
+        reparse = SimpleNamespace(**common, st_file_attributes=0x420)
+        self.assertEqual(_artifact_identity(recalled), _artifact_identity(hydrated))
+        self.assertNotEqual(_artifact_identity(hydrated), _artifact_identity(reparse))
 
     def test_frozen_snapshot_is_create_exclusive(self):
         self._create_snapshot()

@@ -66,6 +66,8 @@ DEVELOPMENT_SOURCES = {
 }
 
 SNAPSHOT_SCHEMA_VERSION = "snapshot-v2"
+DEVELOPMENT_SNAPSHOT_SOURCE_CLASS = "DEVELOPMENT_INDICATIVE"
+BROKER_HISTORICAL_SNAPSHOT_SOURCE_CLASS = "BROKER_HISTORICAL_RESEARCH"
 FORWARD_CONTRACT_SCHEMA_VERSION = "forward-contract-v4"
 LEGACY_FORWARD_CONTRACT_SCHEMA_VERSION = "forward-contract-v3"
 SESSION_CALENDAR_SCHEMA_VERSION = "session-calendar-v1"
@@ -577,11 +579,17 @@ def _windows_move_write_through(
 
 
 def _artifact_identity(metadata: os.stat_result) -> tuple[int, int, int, int]:
+    # Windows may clear cloud/storage attributes (for example
+    # FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) as soon as a staging directory is
+    # populated.  Those bits are not object identity.  Preserve the
+    # security-sensitive reparse-point bit alongside device, file ID, and
+    # mode so junction/symlink substitution still fails closed.
+    reparse_attributes = int(getattr(metadata, "st_file_attributes", 0)) & 0x400
     return (
         int(metadata.st_dev),
         int(metadata.st_ino),
         int(metadata.st_mode),
-        int(getattr(metadata, "st_file_attributes", 0)),
+        reparse_attributes,
     )
 
 
@@ -1072,6 +1080,60 @@ def _validate_development_source(symbol: str, source: object) -> dict:
     if source.get("broker_aligned") is not False:
         raise EvidenceValidationError("DEVELOPMENT_SOURCE_INVALID", symbol)
     return copy.deepcopy(expected)
+
+
+def _validate_broker_historical_source(symbol: str, source: object) -> dict:
+    if not isinstance(source, Mapping):
+        raise EvidenceValidationError("BROKER_HISTORICAL_SOURCE_INVALID", symbol)
+    allowed = {
+        "provider_kind",
+        "candidate_id",
+        "broker_server",
+        "environment",
+        "account_identity_sha256",
+        "canonical_symbol",
+        "broker_symbol",
+        "source_discovery_payload_sha256",
+        "fresh_discovery_payload_sha256",
+        "captured_at_utc",
+        "read_only_attestation",
+        "evidence_role",
+    }
+    if set(source) != allowed or _contains_sensitive_key(source):
+        raise EvidenceValidationError("BROKER_HISTORICAL_SOURCE_INVALID", f"{symbol}.fields")
+    if (
+        source.get("provider_kind") != "BROKER_TERMINAL_READ_ONLY_SNAPSHOT"
+        or source.get("environment") != "DEMO"
+        or source.get("canonical_symbol") != symbol
+        or source.get("evidence_role") != "HISTORICAL_RESEARCH_ONLY"
+    ):
+        raise EvidenceValidationError("BROKER_HISTORICAL_SOURCE_INVALID", symbol)
+    for field in ("candidate_id", "broker_server", "broker_symbol"):
+        if not isinstance(source.get(field), str) or not source[field].strip():
+            raise EvidenceValidationError("BROKER_HISTORICAL_SOURCE_INVALID", f"{symbol}.{field}")
+    for field in (
+        "account_identity_sha256",
+        "source_discovery_payload_sha256",
+        "fresh_discovery_payload_sha256",
+    ):
+        _require_sha256(source.get(field), f"{symbol}.{field}")
+    _utc_timestamp(source.get("captured_at_utc"), f"{symbol}.captured_at_utc")
+    attestation = source.get("read_only_attestation")
+    if not isinstance(attestation, Mapping) or set(attestation) != {
+        "account_trade_allowed",
+        "account_trade_expert",
+        "terminal_trade_allowed",
+        "terminal_tradeapi_disabled",
+    }:
+        raise EvidenceValidationError("BROKER_HISTORICAL_SOURCE_INVALID", f"{symbol}.attestation")
+    if (
+        attestation.get("account_trade_allowed") is not False
+        or attestation.get("account_trade_expert") is not True
+        or attestation.get("terminal_trade_allowed") is not False
+        or attestation.get("terminal_tradeapi_disabled") is not True
+    ):
+        raise EvidenceValidationError("BROKER_HISTORICAL_SOURCE_NOT_READ_ONLY", symbol)
+    return copy.deepcopy(dict(source))
 
 
 def _contains_sensitive_key(value: object) -> bool:
@@ -1904,14 +1966,25 @@ def create_frozen_snapshot(
     *,
     snapshot_id: str,
     created_at: object,
+    source_class: str = DEVELOPMENT_SNAPSHOT_SOURCE_CLASS,
 ) -> dict:
-    """Atomically create a frozen four-symbol development snapshot."""
+    """Atomically create a non-promotable frozen historical snapshot."""
 
     snapshot_id = _validate_id(snapshot_id, "snapshot_id")
     created = _utc_timestamp(created_at, "created_at")
     frame_map = _validate_symbol_map(frames, "frames")
     source_map = _validate_symbol_map(sources, "sources")
     boundary_map = _validate_symbol_map(boundaries, "boundaries")
+    if source_class not in {
+        DEVELOPMENT_SNAPSHOT_SOURCE_CLASS,
+        BROKER_HISTORICAL_SNAPSHOT_SOURCE_CLASS,
+    }:
+        raise EvidenceValidationError("SNAPSHOT_SOURCE_CLASS_INVALID")
+    source_validator = (
+        _validate_development_source
+        if source_class == DEVELOPMENT_SNAPSHOT_SOURCE_CLASS
+        else _validate_broker_historical_source
+    )
     files: dict[str, bytes] = {}
     items: dict[str, dict] = {}
     for symbol in REQUIRED_SYMBOLS:
@@ -1951,7 +2024,7 @@ def create_frozen_snapshot(
             "seen_legacy_end_at_utc": _utc_iso(legacy_end),
             "timeframe_seconds": TIMEFRAME_SECONDS,
             "evidence_role": "DEVELOPMENT_AND_SEEN_LEGACY_ONLY",
-            "source": _validate_development_source(symbol, source_map[symbol]),
+            "source": source_validator(symbol, source_map[symbol]),
         }
     manifest = _attach_payload_hash(
         {
@@ -1959,6 +2032,8 @@ def create_frozen_snapshot(
             "snapshot_id": snapshot_id,
             "created_at_utc": _utc_iso(created),
             "normalizer_version": "validation-evidence-canonical-csv-v2",
+            "snapshot_source_class": source_class,
+            "promotion_eligible": False,
             "symbols": items,
         },
         "manifest_payload_sha256",
@@ -1990,6 +2065,21 @@ def verify_frozen_snapshot(root: str | Path, snapshot_id: str) -> dict:
         _utc_timestamp(manifest.get("created_at_utc"), "created_at_utc")
         if manifest.get("normalizer_version") != "validation-evidence-canonical-csv-v2":
             failures.append("SNAPSHOT_NORMALIZER_INVALID")
+        source_class = manifest.get(
+            "snapshot_source_class", DEVELOPMENT_SNAPSHOT_SOURCE_CLASS
+        )
+        if source_class not in {
+            DEVELOPMENT_SNAPSHOT_SOURCE_CLASS,
+            BROKER_HISTORICAL_SNAPSHOT_SOURCE_CLASS,
+        }:
+            failures.append("SNAPSHOT_SOURCE_CLASS_INVALID")
+        if manifest.get("promotion_eligible", False) is not False:
+            failures.append("SNAPSHOT_PROMOTION_FLAG_INVALID")
+        source_validator = (
+            _validate_development_source
+            if source_class == DEVELOPMENT_SNAPSHOT_SOURCE_CLASS
+            else _validate_broker_historical_source
+        )
         symbols = manifest.get("symbols")
         if not isinstance(symbols, dict) or set(symbols) != set(REQUIRED_SYMBOLS):
             failures.append("SYMBOL_SET_INVALID")
@@ -2032,7 +2122,7 @@ def verify_frozen_snapshot(root: str | Path, snapshot_id: str) -> dict:
             )
             if not development_end < legacy_end or legacy_end != frame["Datetime"].iloc[-1]:
                 failures.append(f"SNAPSHOT_BOUNDARY_INVALID:{symbol}")
-            _validate_development_source(symbol, item.get("source"))
+            source_validator(symbol, item.get("source"))
         actual_files = {
             path.name for path in directory.iterdir() if path.is_file() and not path.name.startswith(".")
         }
