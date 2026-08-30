@@ -9,6 +9,7 @@ import './styles/terminal.css'
 import './styles/futuristic.css'
 import './styles/app-shell.css'
 import './styles/domain-dashboard.css'
+import './styles/minimal-glass.css'
 
 const hashRoute = window.location.hash.replace(/^#\/?/, '')
 if (

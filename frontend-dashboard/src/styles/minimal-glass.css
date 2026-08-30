@@ -1,0 +1,152 @@
+:root {
+  --app-bg: #05080f;
+  --app-bg-soft: #08111d;
+  --app-surface: rgba(13, 24, 39, 0.58);
+  --app-surface-raised: rgba(17, 31, 49, 0.72);
+  --app-surface-hover: rgba(24, 42, 64, 0.72);
+  --app-line: rgba(206, 225, 244, 0.1);
+  --app-line-strong: rgba(206, 225, 244, 0.18);
+  --app-text: #edf6ff;
+  --app-muted: #9eafc2;
+  --app-faint: #6f8299;
+  --app-accent: #62d6ff;
+  --app-accent-soft: #a5e8ff;
+  --app-blue: #79a8ff;
+  --app-violet: #a78bfa;
+  --app-positive: #55e0af;
+  --app-warning: #f5c76b;
+  --app-negative: #ff8099;
+  --app-radius-sm: 10px;
+  --app-radius: 16px;
+  --app-radius-lg: 22px;
+  --app-glass-line: rgba(221, 238, 255, 0.11);
+  --app-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --app-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+html,
+body,
+#root {
+  background: #05080f;
+}
+
+body {
+  background:
+    radial-gradient(circle at 18% -8%, rgba(44, 163, 217, 0.14), transparent 34rem),
+    radial-gradient(circle at 92% 16%, rgba(112, 84, 205, 0.11), transparent 29rem),
+    #05080f;
+}
+
+.quant-app {
+  background: transparent;
+}
+
+.app-shell__workspace {
+  background:
+    radial-gradient(circle at 78% 4%, rgba(98, 214, 255, 0.055), transparent 26rem),
+    radial-gradient(circle at 24% 72%, rgba(121, 168, 255, 0.035), transparent 32rem);
+}
+
+.app-sidebar {
+  border-right-color: var(--app-glass-line);
+  background: rgba(6, 12, 21, 0.7);
+  box-shadow: 18px 0 48px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(28px) saturate(135%);
+}
+
+.app-sidebar__link {
+  min-height: 42px;
+  border-radius: 12px;
+}
+
+.app-sidebar__link:hover {
+  color: var(--app-text);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.app-sidebar__link.is-active {
+  color: #d8f5ff;
+  border-color: rgba(165, 232, 255, 0.15);
+  background: linear-gradient(110deg, rgba(98, 214, 255, 0.13), rgba(121, 168, 255, 0.055));
+  box-shadow: var(--app-glass-highlight), 0 10px 30px rgba(0, 0, 0, 0.09);
+}
+
+.app-sidebar__link.is-active::before {
+  display: none;
+}
+
+.app-topbar {
+  min-height: 72px;
+  border-bottom-color: rgba(221, 238, 255, 0.09);
+  background: rgba(5, 10, 18, 0.6);
+  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(26px) saturate(140%);
+}
+
+.app-icon-button,
+.app-profile__trigger,
+.app-connection {
+  border-color: var(--app-glass-line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: var(--app-glass-highlight);
+}
+
+.app-connection {
+  border-color: color-mix(in srgb, currentColor 32%, transparent);
+  background: color-mix(in srgb, currentColor 7%, transparent);
+}
+
+.quant-terminal {
+  min-height: calc(100dvh - 72px);
+  background: transparent;
+}
+
+.safety-banner {
+  top: 72px;
+  min-height: 44px;
+  border-bottom-color: rgba(255, 128, 153, 0.15);
+  background: rgba(60, 16, 31, 0.48);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(24px) saturate(130%);
+}
+
+.qt-panel,
+.panel,
+.terminal-kpi,
+.domain-kpi,
+.ec-kpi,
+.ec-calendar-panel,
+.ec-focus-panel,
+.ec-events-panel,
+.ec-insight-panel {
+  border-color: var(--app-glass-line);
+  border-radius: var(--app-radius);
+  background: linear-gradient(145deg, rgba(18, 32, 51, 0.62), rgba(8, 17, 29, 0.5));
+  box-shadow: var(--app-glass-highlight), 0 20px 58px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(22px) saturate(130%);
+}
+
+.qt-command-overview {
+  border-color: rgba(165, 232, 255, 0.13);
+  border-radius: var(--app-radius-lg);
+  background:
+    radial-gradient(circle at 82% 12%, rgba(98, 214, 255, 0.09), transparent 20rem),
+    linear-gradient(135deg, rgba(20, 36, 57, 0.68), rgba(8, 17, 29, 0.5));
+  box-shadow: var(--app-glass-highlight), var(--app-shadow);
+  backdrop-filter: blur(24px) saturate(135%);
+}
+
+@media (max-width: 767px) {
+  .app-topbar {
+    min-height: 62px;
+  }
+
+  .safety-banner {
+    top: 62px;
+  }
+
+  .qt-container {
+    padding-inline: 0.75rem;
+  }
+}
