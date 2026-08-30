@@ -26,6 +26,8 @@ SCRIPT_NAME = "finex_decision_provider_static_review.py"
 MAX_FILE_BYTES = 256 * 1024 * 1024
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 EXPECTED_STATUS = "EXTERNAL_PROVIDER_CONFORMANCE_REQUIRED"
+MAX_REQUEST_LIFETIME = timedelta(days=14)
+MAX_REVIEW_CLOCK_SKEW = timedelta(minutes=1)
 
 
 class ReviewError(RuntimeError):
@@ -64,6 +66,54 @@ def _require_hash(value: object, label: str) -> str:
     if len(text) != 64 or any(character not in "0123456789abcdef" for character in text):
         raise ReviewError(f"{label}_INVALID")
     return text
+
+
+def _utc(value: object, label: str) -> datetime:
+    if not isinstance(value, str) or not value:
+        raise ReviewError(f"{label}_INVALID")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ReviewError(f"{label}_INVALID") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+        raise ReviewError(f"{label}_UTC_REQUIRED")
+    return parsed.astimezone(timezone.utc)
+
+
+def _validate_request_time(
+    request: Mapping[str, Any], *, now: datetime | None = None
+) -> tuple[datetime, datetime]:
+    issued = _utc(request.get("issued_at_utc"), "REQUEST_ISSUED_AT")
+    valid_until = _utc(request.get("valid_until_utc"), "REQUEST_VALID_UNTIL")
+    observed = datetime.now(timezone.utc) if now is None else now
+    if observed.tzinfo is None or observed.utcoffset() != timedelta(0):
+        raise ReviewError("TRUSTED_CLOCK_UTC_REQUIRED")
+    observed = observed.astimezone(timezone.utc)
+    if (
+        issued >= valid_until
+        or valid_until - issued > MAX_REQUEST_LIFETIME
+        or issued > observed
+        or observed > valid_until
+    ):
+        raise ReviewError("REVIEW_REQUEST_TIME_INVALID")
+    return issued, valid_until
+
+
+def _validate_attestation_time(
+    request: Mapping[str, Any],
+    reviewed_at: object,
+    *,
+    now: datetime | None = None,
+) -> datetime:
+    observed = datetime.now(timezone.utc) if now is None else now
+    issued, valid_until = _validate_request_time(request, now=observed)
+    reviewed = _utc(reviewed_at, "ATTESTATION_REVIEWED_AT")
+    if (
+        not issued < reviewed <= valid_until
+        or reviewed > observed + MAX_REVIEW_CLOCK_SKEW
+    ):
+        raise ReviewError("ATTESTATION_TIME_INVALID")
+    return reviewed
 
 
 def _verify_candidate_files(files: Mapping[str, bytes]) -> dict[str, Any]:
@@ -187,6 +237,7 @@ def _verify_request(path: Path, archive: Path, public_key: Path) -> dict[str, An
         or request.get("order_capability") != "DISABLED"
     ):
         raise ReviewError("REVIEW_REQUEST_CONTRACT_INVALID")
+    _validate_request_time(request)
     if _sha(archive.read_bytes()) != request.get("candidate_archive_sha256"):
         raise ReviewError("CANDIDATE_ARCHIVE_HASH_MISMATCH")
     files = _archive_files(archive)
@@ -358,6 +409,7 @@ def assemble(args: argparse.Namespace) -> None:
         or attestation.get("order_capability") != "DISABLED"
     ):
         raise ReviewError("ATTESTATION_BINDING_INVALID")
+    _validate_attestation_time(request, attestation.get("reviewed_at_utc"))
     normalized = _normalized_public_key(public_key.read_bytes()).decode("ascii").strip()
     with tempfile.TemporaryDirectory(prefix="finex-decision-review-verify-") as temporary:
         allowed = Path(temporary) / "allowed_signers"
