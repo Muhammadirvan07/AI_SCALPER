@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import stat
 import subprocess
@@ -28,6 +29,7 @@ MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 EXPECTED_STATUS = "EXTERNAL_PROVIDER_CONFORMANCE_REQUIRED"
 MAX_REQUEST_LIFETIME = timedelta(days=14)
 MAX_REVIEW_CLOCK_SKEW = timedelta(minutes=1)
+SAFE_CANDIDATE_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}\Z")
 
 
 class ReviewError(RuntimeError):
@@ -224,6 +226,13 @@ def _request_without_hash(request: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _candidate_archive_name(candidate_id: object) -> str:
+    value = str(candidate_id or "")
+    if SAFE_CANDIDATE_ID.fullmatch(value) is None:
+        raise ReviewError("CANDIDATE_ID_INVALID")
+    return f"{value}.zip"
+
+
 def _verify_request(path: Path, archive: Path, public_key: Path) -> dict[str, Any]:
     request = _load_json(path, "REVIEW_REQUEST")
     claimed = _require_hash(request.get("request_sha256"), "REQUEST_HASH")
@@ -258,13 +267,14 @@ def prepare(args: argparse.Namespace) -> None:
         raise ReviewError("OUTPUT_ALREADY_EXISTS")
     files = _candidate_directory_files(candidate_root)
     receipt = _verify_candidate_files(files)
+    archive_name = _candidate_archive_name(receipt.get("candidate_id"))
     normalized_key = _normalized_public_key(public_key.read_bytes())
     issued = datetime.now(timezone.utc)
     parent = output.parent
     parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{output.name}.pending-", dir=parent))
     try:
-        archive_path = staging / "finex-decision-configured-candidate-v7.zip"
+        archive_path = staging / archive_name
         with zipfile.ZipFile(archive_path, "x", compression=zipfile.ZIP_STORED) as archive:
             for name, payload in sorted(files.items()):
                 info = zipfile.ZipInfo(name, date_time=(2026, 8, 30, 0, 0, 0))
@@ -315,7 +325,7 @@ def prepare(args: argparse.Namespace) -> None:
             "Run from this directory after reviewing the candidate ZIP:\r\n\r\n"
             "py -3.12 .\\finex_decision_provider_static_review.py sign `\r\n"
             "  --request .\\finex-decision-provider-review-request-v1.json `\r\n"
-            "  --candidate-archive .\\finex-decision-configured-candidate-v7.zip `\r\n"
+            f"  --candidate-archive .\\{archive_name} `\r\n"
             "  --reviewer-public-key .\\reviewer-public-key.pub `\r\n"
             "  --private-key \"$HOME\\.ssh\\finex_calendar_review_putra_v3\" `\r\n"
             "  --attestation .\\putra-finex-decision-provider-static-review-v1.json `\r\n"

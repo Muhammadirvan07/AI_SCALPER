@@ -5,6 +5,7 @@ import unittest
 
 from finex_decision_provider_static_review import (
     ReviewError,
+    _candidate_archive_name,
     _validate_attestation_time,
     _validate_request_time,
 )
@@ -60,6 +61,17 @@ class FinexDecisionProviderStaticReviewTests(unittest.TestCase):
                 ReviewError, "ATTESTATION_TIME_INVALID"
             ):
                 _validate_attestation_time(request, reviewed.isoformat(), now=NOW)
+
+    def test_candidate_archive_name_tracks_safe_candidate_id(self):
+        self.assertEqual(
+            "finex-decision-configured-v8.zip",
+            _candidate_archive_name("finex-decision-configured-v8"),
+        )
+        for candidate_id in ("", "../candidate", "candidate/v8", "Candidate V8"):
+            with self.subTest(candidate_id=candidate_id), self.assertRaisesRegex(
+                ReviewError, "CANDIDATE_ID_INVALID"
+            ):
+                _candidate_archive_name(candidate_id)
 
 
 if __name__ == "__main__":
