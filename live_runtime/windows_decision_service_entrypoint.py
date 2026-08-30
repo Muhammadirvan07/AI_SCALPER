@@ -126,6 +126,7 @@ _CONFIGURED_BINDING_FIELDS = frozenset(
         "base_release_manifest",
         "base_release_manifest_sha256",
         "base_release_profile",
+        "base_release_suite",
         "bootstrap_binding_sha256",
         "broker_mutation_performed",
         "credential_access_performed",
@@ -1062,6 +1063,62 @@ def _verify_configured_decision_release(
             raise DecisionServiceRuntimeError(
                 "DECISION_SERVICE_CONFIGURED_BINDING_INVALID"
             ) from exc
+
+    raw_suite_binding = binding.get("base_release_suite")
+    suite_fields = {
+        "schema_version",
+        "suite_schema_version",
+        "suite_release_profile",
+        "suite_identity_sha256",
+        "suite_manifest_sha256",
+        "role",
+        "role_archive_sha256",
+        "role_sidecar_sha256",
+    }
+    if not isinstance(raw_suite_binding, Mapping):
+        raise DecisionServiceRuntimeError(
+            "DECISION_SERVICE_CONFIGURED_SUITE_BINDING_INVALID"
+        )
+    suite_binding = dict(raw_suite_binding)
+    if (
+        set(suite_binding) != suite_fields
+        or suite_binding.get("schema_version")
+        != "windows-base-release-suite-binding-v1"
+        or suite_binding.get("suite_schema_version")
+        != "ai-scalper-windows-base-release-suite-v1"
+        or suite_binding.get("suite_release_profile")
+        != "WINDOWS_ATOMIC_BASE_RELEASE_SUITE_V1"
+        or suite_binding.get("role") != "DECISION"
+    ):
+        raise DecisionServiceRuntimeError(
+            "DECISION_SERVICE_CONFIGURED_SUITE_BINDING_INVALID"
+        )
+    try:
+        suite_identity = _nonzero_hash(
+            "suite_identity_sha256", suite_binding.get("suite_identity_sha256")
+        )
+        suite_manifest = _nonzero_hash(
+            "suite_manifest_sha256", suite_binding.get("suite_manifest_sha256")
+        )
+        suite_archive = _nonzero_hash(
+            "role_archive_sha256", suite_binding.get("role_archive_sha256")
+        )
+        suite_sidecar = _nonzero_hash(
+            "role_sidecar_sha256", suite_binding.get("role_sidecar_sha256")
+        )
+    except (TypeError, ValueError) as exc:
+        raise DecisionServiceRuntimeError(
+            "DECISION_SERVICE_CONFIGURED_SUITE_BINDING_INVALID"
+        ) from exc
+    if (
+        suite_identity != suite_binding["suite_identity_sha256"]
+        or suite_manifest != suite_binding["suite_manifest_sha256"]
+        or suite_archive != binding["base_release_archive_sha256"]
+        or suite_sidecar != binding["base_release_manifest_sha256"]
+    ):
+        raise DecisionServiceRuntimeError(
+            "DECISION_SERVICE_CONFIGURED_SUITE_BINDING_INVALID"
+        )
 
     raw_base_manifest = binding.get("base_release_manifest")
     if not isinstance(raw_base_manifest, Mapping):

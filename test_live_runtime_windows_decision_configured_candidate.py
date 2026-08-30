@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 from live_runtime.configured_service_release import (
@@ -25,6 +26,7 @@ from live_runtime.windows_decision_service_factory_template import (
 )
 from live_runtime.windows_decision_service_entrypoint import (
     parse_windows_decision_service_runtime_config,
+    validate_reviewed_windows_decision_service_factory_manifest,
 )
 from assemble_windows_decision_configured_candidate import (
     _parser as assemble_parser,
@@ -194,6 +196,25 @@ class WindowsDecisionConfiguredCandidateTests(unittest.TestCase):
         self.assertEqual(
             result.base_suite_identity_sha256,
             configured.base_release_suite_identity_sha256,
+        )
+        extracted = self.root / "suite-bound-runtime-extracted"
+        with zipfile.ZipFile(root / "decision-configured-v1.zip") as archive:
+            archive.extractall(extracted)
+        manifest, _runtime, context = (
+            validate_reviewed_windows_decision_service_factory_manifest(
+                release_root=extracted,
+                manifest_path=(
+                    extracted / "config/windows_factory_manifest.json"
+                ),
+                expected_release_identity_sha256=(
+                    result.configured_release_identity_sha256
+                ),
+            )
+        )
+        self.assertEqual("WINDOWS_DECISION_SERVICE_V1", manifest.release_profile)
+        self.assertEqual(
+            result.configured_release_identity_sha256,
+            context.release_identity_sha256,
         )
 
     def test_existing_destination_and_mid_assembly_failure_preserve_inputs(
