@@ -31,6 +31,7 @@ from live_runtime.windows_decision_provider_pack import (
     WindowsClockBinding,
     WindowsEd25519ClockBinding,
     WindowsTrustedUTCContinuityCASBinding,
+    WindowsTrustedUTCContinuityAcceptanceBinding,
     parse_windows_decision_provider_configuration,
     parse_windows_decision_provider_configuration_v2,
     validate_windows_decision_provider_bindings,
@@ -104,6 +105,7 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
         *,
         root: Path | None = None,
         include_primitives: bool = True,
+        decision_version: int = 1,
     ) -> tuple[Path, Path, dict[str, object]]:
         target_root = self.root if root is None else root
         target_root.mkdir(parents=True, exist_ok=True)
@@ -127,11 +129,17 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
             sources["live_runtime/windows_provider_primitives.py"] = (
                 source_root / "live_runtime/windows_provider_primitives.py"
             ).read_bytes()
+        if decision_version == 2:
+            for relative in (
+                "live_runtime/windows_ed25519_trusted_clock.py",
+                "live_runtime/windows_trusted_utc_continuity_acceptance_verifier.py",
+            ):
+                sources[relative] = (source_root / relative).read_bytes()
         unsigned = {
             "schema_version": (
-                "ai-scalper-windows-decision-service-manifest-v1"
+                f"ai-scalper-windows-decision-service-manifest-v{decision_version}"
             ),
-            "release_profile": "WINDOWS_DECISION_SERVICE_V1",
+            "release_profile": f"WINDOWS_DECISION_SERVICE_V{decision_version}",
             "git_commit": "1" * 40,
             "git_tree": "2" * 40,
             "safety": {
@@ -169,10 +177,11 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
         suite, suite_manifest, _manifests = write_suite_from_role_bases(
             target_root,
             {"DECISION": (archive, manifest)},
+            decision_version=decision_version,
         )
         return (
             suite,
-            suite / "decision-base-v1.zip",
+            suite / f"decision-base-v{decision_version}.zip",
             suite_manifest,
         )
 
@@ -401,6 +410,18 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
             custody_key_id=continuity_key_id,
             custody_key_fingerprint_sha256=continuity_fingerprint,
         )
+        acceptance = WindowsTrustedUTCContinuityAcceptanceBinding(
+            provider_id=continuity.provider_id,
+            clock_binding_sha256=clock.content_sha256,
+            source_host_identity_sha256=HASH_A,
+            consumer_host_identity_sha256=HASH_C,
+            custody_issuer_id="clock-continuity-acceptance-issuer-v1",
+            custody_key_id="clock-continuity-acceptance-key-v1",
+            custody_public_key_sha256=hashlib.sha256(
+                public_key.encode("ascii")
+            ).hexdigest(),
+            public_key_file_sha256="f" * 64,
+        )
         filtered = [
             item.to_canonical_dict()
             for item in references
@@ -417,6 +438,9 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
             {
                 "clock_binding": clock.to_canonical_dict(),
                 "clock_continuity_binding": continuity.to_canonical_dict(),
+                "clock_continuity_acceptance_binding": (
+                    acceptance.to_canonical_dict()
+                ),
                 "credential_references": filtered,
                 "pack_id": "decision-provider-pack-v9",
                 "schema_version": "windows-decision-provider-pack-input-v2",
@@ -432,6 +456,9 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
         }
         payload["storage"]["clock_attestation_path"] = (
             r"C:\AI_SCALPER_STATE\decision\clock-envelope.json"
+        )
+        payload["storage"]["clock_continuity_acceptance_public_key_path"] = (
+            r"C:\AI_SCALPER_STATE\decision\continuity-acceptance.pub"
         )
         return payload
 
@@ -519,11 +546,20 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
 
     def test_v2_pack_is_additive_public_key_only_and_uses_v2_builder(self) -> None:
         self.pack_input.write_bytes(canonical_file(self._pack_payload_v2()))
-        generated = self._prepare("v2-pack")
+        suite, decision_base, _manifest = self._base_suite(
+            root=self.root / "v2-base",
+            decision_version=2,
+        )
+        generated = prepare_windows_decision_provider_pack(
+            base_suite_root=suite,
+            decision_base_release=decision_base,
+            pack_input_path=self.pack_input,
+            output_root=self.root / "v2-pack",
+        )
         root = Path(generated.output_root)
         validated = validate_windows_decision_provider_pack(
-            base_suite_root=self.suite_root,
-            decision_base_release=self.decision_base,
+            base_suite_root=suite,
+            decision_base_release=decision_base,
             pack_root=root,
         )
         self.assertEqual(generated.pack_identity_sha256, validated.pack_identity_sha256)
@@ -540,6 +576,25 @@ class WindowsDecisionProviderPackGeneratorTests(unittest.TestCase):
             "windows-ed25519-trusted-utc-binding-v1",
             configuration.clock_binding.schema_version,
         )
+
+    def test_v1_v2_base_cross_binding_fails_closed(self) -> None:
+        self.pack_input.write_bytes(canonical_file(self._pack_payload_v2()))
+        with self.assertRaises(DecisionProviderPackError) as raised:
+            self._prepare("v2-on-v1")
+        self.assertEqual("DECISION_BASE_VERSION_MISMATCH", raised.exception.reason_code)
+        self.pack_input.write_bytes(canonical_file(self._pack_payload()))
+        suite, decision_base, _manifest = self._base_suite(
+            root=self.root / "v2-cross-base",
+            decision_version=2,
+        )
+        with self.assertRaises(DecisionProviderPackError) as reverse:
+            prepare_windows_decision_provider_pack(
+                base_suite_root=suite,
+                decision_base_release=decision_base,
+                pack_input_path=self.pack_input,
+                output_root=self.root / "v1-on-v2",
+            )
+        self.assertEqual("DECISION_BASE_VERSION_MISMATCH", reverse.exception.reason_code)
 
     def test_v2_rejects_clock_secret_extra_pin_and_path_or_identity_drift(self) -> None:
         baseline = self._pack_payload_v2()

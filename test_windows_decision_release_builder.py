@@ -11,6 +11,7 @@ import zipfile
 import build_windows_decision_release as decision_release_builder
 from build_windows_decision_release import (
     APPROVED_SOURCE_PATHS,
+    APPROVED_SOURCE_PATHS_V2,
     READINESS_BLOCKERS,
     RELEASE_PROFILE,
     REPO_ROOT,
@@ -303,17 +304,65 @@ class WindowsDecisionReleaseBuilderTests(unittest.TestCase):
                 build_decision_release(root, allowlist, base / "release.zip")
 
     def test_project_allowlist_has_exact_import_closure_and_dependency_lock(self):
-        allowlist = load_decision_allowlist(
+        frozen_v1 = load_decision_allowlist(
             REPO_ROOT / "config/windows_decision_service_allowlist.v1.json"
+        )
+        self.assertEqual(APPROVED_SOURCE_PATHS, set(frozen_v1["files"]))
+        allowlist = load_decision_allowlist(
+            REPO_ROOT / "config/windows_decision_service_allowlist.v2.json"
         )
         sources = {
             path: (REPO_ROOT / path).read_bytes() for path in allowlist["files"]
         }
         _verify_local_import_closure(REPO_ROOT, sources)
-        _validate_decision_source_security(sources)
+        _validate_decision_source_security(
+            sources,
+            reject_signing_capability=True,
+        )
         _validate_dependency_lock_set(sources)
-        self.assertEqual(APPROVED_SOURCE_PATHS, set(sources))
+        self.assertEqual(APPROVED_SOURCE_PATHS_V2, set(sources))
         self.assertNotIn("live_runtime/executor.py", sources)
+        self.assertNotIn(
+            "live_runtime/windows_trusted_utc_continuity_cas_responder.py",
+            sources,
+        )
+
+    def test_v2_allowlist_rejects_missing_extra_and_v1_is_frozen(self):
+        v1_bytes = (
+            REPO_ROOT / "config/windows_decision_service_allowlist.v1.json"
+        ).read_bytes()
+        self.assertEqual(
+            "0587198b5767e7489a887567292a46f91bc94e02f9424212c54dac99aeefe799",
+            decision_release_builder._sha256(v1_bytes),
+        )
+        source = json.loads(
+            (REPO_ROOT / "config/windows_decision_service_allowlist.v2.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            for name, files in (
+                ("missing", source["files"][:-1]),
+                ("extra", [*source["files"], "live_runtime/executor.py"]),
+            ):
+                payload = {**source, "files": files}
+                path = root / f"{name}.json"
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                with self.subTest(name=name), self.assertRaises(ReleaseBuildError):
+                    load_decision_allowlist(path)
+
+    def test_v2_client_capability_scanner_rejects_signing_authority(self):
+        for source in (
+            b"private_key_path = 'authority'\n",
+            b"class AuthoritySigner:\n    pass\n",
+            b"operation = 'sign'\n",
+        ):
+            with self.subTest(source=source), self.assertRaises(ReleaseBuildError):
+                _validate_decision_source_security(
+                    {"live_runtime/forbidden.py": source},
+                    reject_signing_capability=True,
+                )
 
     def test_factory_template_is_exact_non_materializing_and_secret_free(self):
         payload = self._factory_payload("a" * 64)

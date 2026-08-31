@@ -1,0 +1,16 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory=$true)][string]$BootstrapSha256,
+    [Parameter(Mandatory=$true)][string]$SelfSha256,[Parameter(Mandatory=$true)][string]$PowerShellPath,[Parameter(Mandatory=$true)][string]$PowerShellSha256,
+    [Parameter(Mandatory=$true)][string]$PythonPath,[Parameter(Mandatory=$true)][string]$PythonSha256,
+    [Parameter(Mandatory=$true)][string]$SshKeygenPath,[Parameter(Mandatory=$true)][string]$SshKeygenSha256,[Parameter(Mandatory=$true)][string]$CoreSha256,
+    [string]$PrivateKeyPath = "$HOME\.ssh\finex_trusted_utc_authority_v1",
+    [switch]$Create
+)
+$ErrorActionPreference = 'Stop'
+$bootstrap=Join-Path $PSScriptRoot 'OPERATOR_BOOTSTRAP.ps1';if((Get-FileHash -LiteralPath $bootstrap -Algorithm SHA256).Hash.ToLowerInvariant()-cne$BootstrapSha256){throw 'BOOTSTRAP_IDENTITY_MISMATCH'};. $bootstrap;Assert-OperatorPowerShellProcess $PowerShellPath $PowerShellSha256|Out-Null
+$core = Join-Path $PSScriptRoot 'finex_trusted_utc.py'
+foreach($pin in @(@($PSCommandPath,$SelfSha256,'SELF_IDENTITY_MISMATCH'),@($PowerShellPath,$PowerShellSha256,'POWERSHELL_IDENTITY_MISMATCH'),@($SshKeygenPath,$SshKeygenSha256,'SSH_KEYGEN_IDENTITY_MISMATCH'),@($core,$CoreSha256,'CORE_IDENTITY_MISMATCH'))){$null=Assert-OperatorPinnedFile $pin[0] $pin[1] $pin[2]}
+$command = if ($Create) { 'create-key' } else { 'key-preflight' }
+Invoke-OperatorPinnedPython $PythonPath $PythonSha256 @($core,$command,'--ssh-keygen',$SshKeygenPath,'--private-key',$PrivateKeyPath,'--python-sha256',$PythonSha256,'--ssh-keygen-sha256',$SshKeygenSha256,'--core-sha256',$CoreSha256,'--runner-path',$PSCommandPath,'--runner-sha256',$SelfSha256)
+if (-not $Create) { Write-Output 'NO_KEY_CREATED_USE_EXPLICIT_CREATE_SWITCH' }

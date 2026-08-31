@@ -31,6 +31,16 @@ class PrepareFinexWindowsDecisionInputsTests(unittest.TestCase):
         self.ssh_keygen = self.root / "ssh-keygen.exe"
         self.ssh_keygen.write_bytes(b"pinned synthetic ssh-keygen executable")
         self.ssh_sha256 = hashlib.sha256(self.ssh_keygen.read_bytes()).hexdigest()
+        self.acceptance_public_key = self.root / "continuity-acceptance.pub"
+        self.acceptance_public_key.write_text(
+            _public_key() + " finex-continuity-acceptance\n", encoding="ascii"
+        )
+        self.acceptance_public_file_sha256 = hashlib.sha256(
+            self.acceptance_public_key.read_bytes()
+        ).hexdigest()
+        self.acceptance_public_sha256 = target.acceptance_public_key_sha256(
+            _public_key()
+        )
         self.discovery.write_text(
             json.dumps(
                 {
@@ -88,6 +98,12 @@ class PrepareFinexWindowsDecisionInputsTests(unittest.TestCase):
             "--ssh-keygen-path", str(self.ssh_keygen.resolve()),
             "--ssh-keygen-sha256", self.ssh_sha256,
             "--downstream-permit-key-fingerprint-sha256", "3" * 64,
+            "--continuity-acceptance-public-key-path",
+            str(self.acceptance_public_key.resolve()),
+            "--continuity-acceptance-public-key-file-sha256",
+            self.acceptance_public_file_sha256,
+            "--continuity-acceptance-public-key-sha256",
+            self.acceptance_public_sha256,
         ]
 
     @staticmethod
@@ -135,6 +151,16 @@ class PrepareFinexWindowsDecisionInputsTests(unittest.TestCase):
             pack["decision_ipc_binding"]["permit_key_fingerprint_sha256"],
         )
         self.assertIn("clock", pack["external_cas"])
+        self.assertEqual(
+            self.acceptance_public_sha256,
+            pack["clock_continuity_acceptance_binding"][
+                "custody_public_key_sha256"
+            ],
+        )
+        self.assertEqual(
+            str(self.acceptance_public_key.resolve()),
+            pack["storage"]["clock_continuity_acceptance_public_key_path"],
+        )
         self.assertFalse(Path(pack["storage"]["clock_attestation_path"]).exists())
         self.assertTrue(Path(pack["external_cas"]["clock"]["request_directory"]).is_dir())
         self.assertTrue(Path(pack["external_cas"]["clock"]["response_directory"]).is_dir())

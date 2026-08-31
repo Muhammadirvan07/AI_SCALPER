@@ -41,6 +41,9 @@ DEFAULT_ALLOWLIST = (
 ALLOWLIST_SCHEMA = "ai-scalper-windows-decision-service-allowlist-v1"
 RELEASE_PROFILE = "WINDOWS_DECISION_SERVICE_V1"
 MANIFEST_SCHEMA = "ai-scalper-windows-decision-service-manifest-v1"
+ALLOWLIST_SCHEMA_V2 = "ai-scalper-windows-decision-service-allowlist-v2"
+RELEASE_PROFILE_V2 = "WINDOWS_DECISION_SERVICE_V2"
+MANIFEST_SCHEMA_V2 = "ai-scalper-windows-decision-service-manifest-v2"
 ALLOWLIST_NAME_PATTERN = re.compile(
     r"windows_decision_service_allowlist\.v[1-9][0-9]*\.json"
 )
@@ -76,6 +79,12 @@ REQUIRED_USAGE_POLICY = {
     ),
     "validation_entrypoint": "validate_windows_decision_service.py",
 }
+REQUIRED_USAGE_POLICY_V2 = {
+    **REQUIRED_USAGE_POLICY,
+    "cursor_cas_acknowledgement_authentication": (
+        "BINDING_PINNED_HMAC_AND_ED25519_ACCEPTANCE"
+    ),
+}
 
 APPROVED_SOURCE_PATHS = frozenset(
     {
@@ -104,6 +113,14 @@ APPROVED_SOURCE_PATHS = frozenset(
         "strategy/trend_analyzer.py",
         "validate_windows_decision_service.py",
         "vendor/wheels/ta-0.11.0-py3-none-any.whl",
+    }
+)
+APPROVED_SOURCE_PATHS_V2 = frozenset(
+    (APPROVED_SOURCE_PATHS - {"config/windows_decision_service_allowlist.v1.json"})
+    | {
+        "config/windows_decision_service_allowlist.v2.json",
+        "live_runtime/windows_ed25519_trusted_clock.py",
+        "live_runtime/windows_trusted_utc_continuity_acceptance_verifier.py",
     }
 )
 
@@ -344,15 +361,36 @@ def _is_forbidden_import(module: str) -> bool:
 
 def _validate_decision_source_security(
     source_bytes: Mapping[str, bytes],
+    *,
+    reject_signing_capability: bool = False,
 ) -> None:
     for path_text, data in source_bytes.items():
         if not path_text.endswith(".py"):
             continue
         try:
-            tree = ast.parse(data.decode("utf-8"), filename=path_text)
+            source_text = data.decode("utf-8")
+            tree = ast.parse(source_text, filename=path_text)
         except (UnicodeDecodeError, SyntaxError) as exc:
             raise ReleaseBuildError(f"invalid Python decision source: {path_text}") from exc
         for node in ast.walk(tree):
+            if reject_signing_capability:
+                if (
+                    isinstance(node, ast.Name)
+                    and node.id.casefold() in {"private_key", "private_key_path"}
+                ) or (
+                    isinstance(node, ast.arg)
+                    and node.arg.casefold() in {"private_key", "private_key_path"}
+                ) or (
+                    isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                    and "signer" in node.name.casefold()
+                ) or (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and node.value.casefold() == "sign"
+                ):
+                    raise ReleaseBuildError(
+                        f"decision client signing capability forbidden: {path_text}"
+                    )
             if isinstance(node, ast.Import):
                 modules = [item.name for item in node.names]
             elif isinstance(node, ast.ImportFrom) and node.level == 0:
@@ -387,13 +425,25 @@ def load_decision_allowlist(path: Path) -> dict[str, Any]:
         raise ReleaseBuildError("invalid decision service allowlist") from exc
     if not isinstance(payload, dict) or set(payload) != ALLOWLIST_FIELDS:
         raise ReleaseBuildError("decision service allowlist root fields drift")
-    if payload.get("schema_version") != ALLOWLIST_SCHEMA:
+    schema = payload.get("schema_version")
+    if schema not in {ALLOWLIST_SCHEMA, ALLOWLIST_SCHEMA_V2}:
         raise ReleaseBuildError("unsupported decision service allowlist schema")
-    if payload.get("release_profile") != RELEASE_PROFILE:
+    profile = RELEASE_PROFILE if schema == ALLOWLIST_SCHEMA else RELEASE_PROFILE_V2
+    approved = (
+        APPROVED_SOURCE_PATHS
+        if schema == ALLOWLIST_SCHEMA
+        else APPROVED_SOURCE_PATHS_V2
+    )
+    if payload.get("release_profile") != profile:
         raise ReleaseBuildError("decision service release profile drift")
     if payload.get("safety") != REQUIRED_SAFETY:
         raise ReleaseBuildError("decision service safety lock drift")
-    if payload.get("usage_policy") != REQUIRED_USAGE_POLICY:
+    usage_policy = (
+        REQUIRED_USAGE_POLICY
+        if schema == ALLOWLIST_SCHEMA
+        else REQUIRED_USAGE_POLICY_V2
+    )
+    if payload.get("usage_policy") != usage_policy:
         raise ReleaseBuildError("decision service usage policy drift")
     files = payload.get("files")
     if not isinstance(files, list):
@@ -403,7 +453,7 @@ def load_decision_allowlist(path: Path) -> dict[str, Any]:
         raise ReleaseBuildError("duplicate decision service allowlist path")
     if len({value.casefold() for value in normalized}) != len(normalized):
         raise ReleaseBuildError("case-colliding decision service allowlist path")
-    if set(normalized) != APPROVED_SOURCE_PATHS:
+    if set(normalized) != approved:
         raise ReleaseBuildError("decision service exact source allowlist drift")
     for path_text in normalized:
         _path_policy(path_text)
@@ -419,9 +469,13 @@ def _read_decision_sources(
     tracked: set[str],
     *,
     commit: str,
+    reject_signing_capability: bool = False,
 ) -> dict[str, bytes]:
     sources = _read_release_sources(root, paths, tracked, commit=commit)
-    _validate_decision_source_security(sources)
+    _validate_decision_source_security(
+        sources,
+        reject_signing_capability=reject_signing_capability,
+    )
     return sources
 
 
@@ -454,6 +508,9 @@ def build_decision_release(
 
     commit, tree, tracked = _validate_git_release_source(root)
     allowlist = load_decision_allowlist(allowlist_path)
+    is_v2 = allowlist["schema_version"] == ALLOWLIST_SCHEMA_V2
+    manifest_schema = MANIFEST_SCHEMA_V2 if is_v2 else MANIFEST_SCHEMA
+    release_profile = RELEASE_PROFILE_V2 if is_v2 else RELEASE_PROFILE
     if allowlist_relative not in allowlist["files"]:
         raise ReleaseBuildError("decision allowlist must include itself")
     sources = _read_decision_sources(
@@ -461,6 +518,7 @@ def build_decision_release(
         allowlist["files"],
         tracked,
         commit=commit,
+        reject_signing_capability=is_v2,
     )
     allowlist["_raw_sha256"] = _sha256(sources[allowlist_relative])
     dependency_summary = _validate_dependency_lock_set(sources)
@@ -476,8 +534,8 @@ def build_decision_release(
         raise ReleaseBuildError("loaded decision allowlist does not match commit")
 
     manifest_base: dict[str, Any] = {
-        "schema_version": MANIFEST_SCHEMA,
-        "release_profile": RELEASE_PROFILE,
+        "schema_version": manifest_schema,
+        "release_profile": release_profile,
         "git_commit": commit,
         "git_tree": tree,
         "allowlist_sha256": allowlist["_raw_sha256"],

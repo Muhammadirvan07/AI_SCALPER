@@ -138,6 +138,17 @@ ROLE_POLICIES = (
         production_field_required=True,
     ),
 )
+ROLE_POLICIES_V2 = (
+    _RolePolicy(
+        role="DECISION",
+        release_profile="WINDOWS_DECISION_SERVICE_V2",
+        manifest_schema="ai-scalper-windows-decision-service-manifest-v2",
+        archive_name="decision-base-v2.zip",
+        order_capability="DISABLED",
+        production_field_required=True,
+    ),
+    *ROLE_POLICIES[1:],
+)
 _POLICY_BY_ROLE = {item.role: item for item in ROLE_POLICIES}
 _POLICY_BY_PROFILE = {
     item.release_profile: item for item in ROLE_POLICIES
@@ -594,7 +605,10 @@ def _role_record(
     return dict(value)
 
 
-def _suite_manifest(data: bytes) -> dict[str, Any]:
+def _suite_manifest(
+    data: bytes,
+    role_policies: tuple[_RolePolicy, ...] = ROLE_POLICIES,
+) -> dict[str, Any]:
     payload = _strict_json(
         data,
         reason_code="SUITE_MANIFEST_INVALID",
@@ -617,14 +631,14 @@ def _suite_manifest(data: bytes) -> dict[str, Any]:
         or HEX_64.fullmatch(identity) is None
         or _sha256(_canonical_bytes(unsigned)) != identity
         or not isinstance(roles, list)
-        or len(roles) != len(ROLE_POLICIES)
+        or len(roles) != len(role_policies)
     ):
         raise BaseReleaseSuiteVerificationError(
             "SUITE_MANIFEST_INVALID"
         )
     payload["roles"] = [
         _role_record(record, policy)
-        for record, policy in zip(roles, ROLE_POLICIES, strict=True)
+        for record, policy in zip(roles, role_policies, strict=True)
     ]
     return payload
 
@@ -736,15 +750,20 @@ def _verify_role(
 
 def verify_base_release_suite(
     suite_root: str | Path,
+    *,
+    decision_version: int = 1,
 ) -> VerifiedBaseReleaseSuite:
     """Independently verify one exact five-role base suite."""
 
+    if decision_version not in {1, 2}:
+        raise BaseReleaseSuiteVerificationError("SUITE_VERSION_INVALID")
+    role_policies = ROLE_POLICIES if decision_version == 1 else ROLE_POLICIES_V2
     root = _safe_root(suite_root)
     expected_names = {
         SUITE_MANIFEST_NAME,
         *(
             name
-            for policy in ROLE_POLICIES
+            for policy in role_policies
             for name in (
                 policy.archive_name,
                 f"{policy.archive_name}.manifest.json",
@@ -767,7 +786,7 @@ def verify_base_release_suite(
         maximum_bytes=MAX_MANIFEST_BYTES,
         reason_code="SUITE_MANIFEST_INPUT_INVALID",
     )
-    manifest = _suite_manifest(manifest_bytes)
+    manifest = _suite_manifest(manifest_bytes, role_policies)
     roles = tuple(
         _verify_role(
             root=root,
@@ -777,7 +796,7 @@ def verify_base_release_suite(
             tree=str(manifest["git_tree"]),
         )
         for policy, record in zip(
-            ROLE_POLICIES,
+            role_policies,
             manifest["roles"],
             strict=True,
         )
@@ -843,6 +862,7 @@ __all__ = [
     "BaseReleaseSuiteVerificationError",
     "LOCKED_SAFETY",
     "ROLE_POLICIES",
+    "ROLE_POLICIES_V2",
     "SUITE_BINDING_SCHEMA",
     "SUITE_EFFECTS",
     "SUITE_MANIFEST_NAME",

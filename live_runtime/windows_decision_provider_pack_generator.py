@@ -50,6 +50,7 @@ PROVIDER_CONFIGURATION_SCHEMA_V2 = (
 PACK_VALIDATION_SCHEMA = "windows-decision-provider-pack-validation-v1"
 PACK_STATUS = "EXTERNAL_PROVIDER_ACCEPTANCE_REQUIRED"
 DECISION_PROFILE = "WINDOWS_DECISION_SERVICE_V1"
+DECISION_PROFILE_V2 = "WINDOWS_DECISION_SERVICE_V2"
 FOUNDATION_PATH = "live_runtime/windows_decision_provider_pack.py"
 PRIMITIVES_PATH = "live_runtime/windows_provider_primitives.py"
 FOUNDATION_PATHS = (
@@ -125,8 +126,16 @@ _PACK_INPUT_FIELDS = frozenset(
         "storage",
     }
 )
+FOUNDATION_PATHS_V2 = FOUNDATION_PATHS + (
+    "live_runtime/windows_ed25519_trusted_clock.py",
+    "live_runtime/windows_trusted_utc_continuity_acceptance_verifier.py",
+)
 _PACK_INPUT_V2_FIELDS = frozenset(
-    {*_PACK_INPUT_FIELDS, "clock_continuity_binding"}
+    {
+        *_PACK_INPUT_FIELDS,
+        "clock_continuity_binding",
+        "clock_continuity_acceptance_binding",
+    }
 )
 _RUNTIME_INPUT_FIELDS = frozenset(
     {
@@ -184,6 +193,9 @@ _CLOCK_FIELDS = frozenset(
         "schema_version",
     }
 )
+_STORAGE_V2_FIELDS = frozenset(
+    {*_STORAGE_FIELDS, "clock_continuity_acceptance_public_key_path"}
+)
 _ED25519_CLOCK_FIELDS = frozenset(
     {
         "authority_issuer_id",
@@ -211,6 +223,21 @@ _CLOCK_CONTINUITY_FIELDS = frozenset(
         "custody_key_id",
         "provider_id",
         "schema_version",
+    }
+)
+_CLOCK_CONTINUITY_ACCEPTANCE_FIELDS = frozenset(
+    {
+        "clock_binding_sha256",
+        "consumer_host_identity_sha256",
+        "custody_issuer_id",
+        "custody_key_id",
+        "custody_public_key_sha256",
+        "provider_id",
+        "public_key_file_sha256",
+        "response_schema_version",
+        "schema_version",
+        "source_host_identity_sha256",
+        "sshsig_namespace",
     }
 )
 _PRODUCER_FIELDS = frozenset(
@@ -323,6 +350,8 @@ _PROVIDER_CONFIGURATION_V2_FIELDS = frozenset(
     {
         *_PROVIDER_CONFIGURATION_FIELDS,
         "clock_continuity_binding",
+        "clock_continuity_acceptance_binding",
+        "clock_continuity_acceptance_public_key_path",
         "clock_continuity_request_directory",
         "clock_continuity_response_directory",
     }
@@ -978,6 +1007,40 @@ def _clock_continuity(value: object) -> dict[str, Any]:
     return payload
 
 
+def _clock_continuity_acceptance(value: object) -> dict[str, Any]:
+    payload = _mapping(
+        value,
+        _CLOCK_CONTINUITY_ACCEPTANCE_FIELDS,
+        "CLOCK_CONTINUITY_ACCEPTANCE_BINDING_INVALID",
+    )
+    if (
+        payload["schema_version"]
+        != "windows-trusted-utc-continuity-acceptance-binding-v1"
+        or payload["response_schema_version"]
+        != "external-cas-response-v1+ed25519-acceptance-v1"
+        or payload["sshsig_namespace"]
+        != "ai-scalper-finex-trusted-utc-continuity-acceptance-v1"
+    ):
+        raise DecisionProviderPackError(
+            "CLOCK_CONTINUITY_ACCEPTANCE_BINDING_INVALID"
+        )
+    for name in ("provider_id", "custody_issuer_id", "custody_key_id"):
+        payload[name] = _text(
+            payload[name],
+            "CLOCK_CONTINUITY_ACCEPTANCE_BINDING_INVALID",
+            identifier=True,
+        )
+    for name in (
+        "clock_binding_sha256", "source_host_identity_sha256",
+        "consumer_host_identity_sha256", "custody_public_key_sha256",
+        "public_key_file_sha256",
+    ):
+        payload[name] = _hash(
+            payload[name], "CLOCK_CONTINUITY_ACCEPTANCE_BINDING_INVALID"
+        )
+    return payload
+
+
 def _credential_references(
     value: object,
     *,
@@ -1110,6 +1173,7 @@ def _validate_cross_bindings_v2(
     ipc: Mapping[str, object],
     clock: Mapping[str, object],
     continuity: Mapping[str, object],
+    acceptance: Mapping[str, object],
     references: list[dict[str, Any]],
 ) -> None:
     if (
@@ -1120,6 +1184,13 @@ def _validate_cross_bindings_v2(
         != ipc["account_id_sha256"]
         or continuity["clock_binding_sha256"]
         != _sha256(_canonical_bytes(clock))
+        or acceptance["provider_id"] != continuity["provider_id"]
+        or acceptance["clock_binding_sha256"]
+        != continuity["clock_binding_sha256"]
+        or acceptance["source_host_identity_sha256"]
+        != clock["source_host_identity_sha256"]
+        or acceptance["consumer_host_identity_sha256"]
+        != clock["consumer_host_identity_sha256"]
     ):
         raise DecisionProviderPackError("PROVIDER_CROSS_BINDING_MISMATCH")
     feed_lanes = {item["lane_id"]: item for item in feed["lanes"]}
@@ -1343,6 +1414,9 @@ def _validated_input_v2(payload: object) -> dict[str, Any]:
     ipc = _ipc(root["decision_ipc_binding"])
     clock = _clock_v2(root["clock_binding"])
     continuity = _clock_continuity(root["clock_continuity_binding"])
+    acceptance = _clock_continuity_acceptance(
+        root["clock_continuity_acceptance_binding"]
+    )
     prefix = _text(
         root["credential_target_prefix"], "CREDENTIAL_TARGET_PREFIX_INVALID"
     )
@@ -1351,8 +1425,8 @@ def _validated_input_v2(payload: object) -> dict[str, Any]:
     references = _credential_references(
         root["credential_references"], prefix=prefix
     )
-    storage = _mapping(root["storage"], _STORAGE_FIELDS, "PACK_STORAGE_INVALID")
-    for name in _STORAGE_FIELDS:
+    storage = _mapping(root["storage"], _STORAGE_V2_FIELDS, "PACK_STORAGE_INVALID")
+    for name in _STORAGE_V2_FIELDS:
         storage[name] = _windows_path(storage[name])
     external = _mapping(
         root["external_cas"],
@@ -1408,6 +1482,7 @@ def _validated_input_v2(payload: object) -> dict[str, Any]:
         ipc=ipc,
         clock=clock,
         continuity=continuity,
+        acceptance=acceptance,
         references=references,
     )
     root.update(
@@ -1417,6 +1492,7 @@ def _validated_input_v2(payload: object) -> dict[str, Any]:
             "decision_ipc_binding": ipc,
             "clock_binding": clock,
             "clock_continuity_binding": continuity,
+            "clock_continuity_acceptance_binding": acceptance,
             "credential_references": references,
             "credential_target_prefix": prefix,
             "storage": storage,
@@ -1435,12 +1511,26 @@ def _verify_suite_and_foundation(
     VerifiedBaseReleaseSuiteRole,
     dict[str, bytes],
 ]:
+    archive_name = Path(decision_base_release).name
+    if archive_name == "decision-base-v1.zip":
+        decision_version = 1
+        decision_profile = DECISION_PROFILE
+        foundation_paths = FOUNDATION_PATHS
+    elif archive_name == "decision-base-v2.zip":
+        decision_version = 2
+        decision_profile = DECISION_PROFILE_V2
+        foundation_paths = FOUNDATION_PATHS_V2
+    else:
+        raise DecisionProviderPackError("DECISION_BASE_SUITE_BINDING_MISMATCH")
     try:
-        suite = verify_base_release_suite(base_suite_root)
+        suite = verify_base_release_suite(
+            base_suite_root,
+            decision_version=decision_version,
+        )
         binding = suite_binding_for_base_archive(
             suite,
             decision_base_release,
-            DECISION_PROFILE,
+            decision_profile,
         )
         role = suite.role("DECISION")
     except (
@@ -1472,7 +1562,7 @@ def _verify_suite_and_foundation(
     try:
         with zipfile.ZipFile(io.BytesIO(archive_bytes), "r") as archive:
             members: dict[str, bytes] = {}
-            for path in FOUNDATION_PATHS:
+            for path in foundation_paths:
                 matching = [
                     info
                     for info in archive.infolist()
@@ -1506,6 +1596,20 @@ def _verify_suite_and_foundation(
     return suite, role, members
 
 
+def _require_provider_base_version(
+    schema_version: object,
+    role: VerifiedBaseReleaseSuiteRole,
+) -> None:
+    expected_profile = (
+        DECISION_PROFILE_V2
+        if schema_version == PROVIDER_CONFIGURATION_SCHEMA_V2
+        or schema_version == PACK_INPUT_SCHEMA_V2
+        else DECISION_PROFILE
+    )
+    if role.release_profile != expected_profile:
+        raise DecisionProviderPackError("DECISION_BASE_VERSION_MISMATCH")
+
+
 def _provider_configuration(
     pack: Mapping[str, Any],
     *,
@@ -1521,6 +1625,12 @@ def _provider_configuration(
             "clock_attestation_path": storage["clock_attestation_path"],
             "clock_binding": pack["clock_binding"],
             "clock_continuity_binding": pack["clock_continuity_binding"],
+            "clock_continuity_acceptance_binding": pack[
+                "clock_continuity_acceptance_binding"
+            ],
+            "clock_continuity_acceptance_public_key_path": storage[
+                "clock_continuity_acceptance_public_key_path"
+            ],
             "clock_continuity_request_directory": external["clock"]["request_directory"],
             "clock_continuity_response_directory": external["clock"]["response_directory"],
             "credential_references": pack["credential_references"],
@@ -1692,6 +1802,12 @@ def _provider_configuration_hashes(
             "binding": configuration["clock_binding"],
             "attestation_path": configuration["clock_attestation_path"],
             "continuity_binding": configuration["clock_continuity_binding"],
+            "acceptance_binding": configuration[
+                "clock_continuity_acceptance_binding"
+            ],
+            "acceptance_public_key_path": configuration[
+                "clock_continuity_acceptance_public_key_path"
+            ],
             "continuity_request_directory": configuration[
                 "clock_continuity_request_directory"
             ],
@@ -1820,7 +1936,10 @@ def _implementation_hashes(
     provider_module_bytes: bytes,
 ) -> dict[str, str]:
     if (
-        set(foundation_files) != set(FOUNDATION_PATHS)
+        set(foundation_files) not in {
+            frozenset(FOUNDATION_PATHS),
+            frozenset(FOUNDATION_PATHS_V2),
+        }
         or any(
             not isinstance(data, bytes) or not data
             for data in foundation_files.values()
@@ -1835,7 +1954,7 @@ def _implementation_hashes(
             "path": path,
             "sha256": _sha256(foundation_files[path]),
         }
-        for path in sorted(FOUNDATION_PATHS)
+        for path in sorted(foundation_files)
     ]
     module_sha256 = _sha256(provider_module_bytes)
     return {
@@ -2121,6 +2240,9 @@ def _validated_provider_configuration_v2(
     ipc = _ipc(configuration["decision_ipc_binding"])
     clock = _clock_v2(configuration["clock_binding"])
     continuity = _clock_continuity(configuration["clock_continuity_binding"])
+    acceptance = _clock_continuity_acceptance(
+        configuration["clock_continuity_acceptance_binding"]
+    )
     prefix = _text(
         configuration["credential_target_prefix"],
         "CREDENTIAL_TARGET_PREFIX_INVALID",
@@ -2141,6 +2263,7 @@ def _validated_provider_configuration_v2(
         "clock_attestation_path",
         "clock_continuity_request_directory",
         "clock_continuity_response_directory",
+        "clock_continuity_acceptance_public_key_path",
     )
     for name in path_names:
         configuration[name] = _windows_path(configuration[name])
@@ -2176,6 +2299,7 @@ def _validated_provider_configuration_v2(
         ipc=ipc,
         clock=clock,
         continuity=continuity,
+        acceptance=acceptance,
         references=references,
     )
     configuration.update(
@@ -2185,6 +2309,7 @@ def _validated_provider_configuration_v2(
             "decision_ipc_binding": ipc,
             "clock_binding": clock,
             "clock_continuity_binding": continuity,
+            "clock_continuity_acceptance_binding": acceptance,
             "credential_references": references,
             "credential_target_prefix": prefix,
         }
@@ -2486,6 +2611,7 @@ def _directory_identity(
         int(metadata.st_ino),
         int(metadata.st_mode),
     )
+    _require_provider_base_version(configuration["schema_version"], role)
 
 
 def _cleanup_file_identity(
@@ -2615,16 +2741,17 @@ def prepare_windows_decision_provider_pack(
 ) -> DecisionProviderPackValidation:
     """Generate one deterministic, create-exclusive four-file overlay."""
 
-    suite, role, foundation_files = _verify_suite_and_foundation(
-        base_suite_root=base_suite_root,
-        decision_base_release=decision_base_release,
-    )
     input_bytes = _stable_read(
         Path(pack_input_path).expanduser().absolute(),
         maximum_bytes=MAX_FILE_BYTES,
         reason_code="PACK_INPUT_INVALID",
     )
     pack = _validated_input(_strict_json(input_bytes, canonical=True))
+    suite, role, foundation_files = _verify_suite_and_foundation(
+        base_suite_root=base_suite_root,
+        decision_base_release=decision_base_release,
+    )
+    _require_provider_base_version(pack["schema_version"], role)
     files = _generated_files(
         pack=pack,
         suite=suite,

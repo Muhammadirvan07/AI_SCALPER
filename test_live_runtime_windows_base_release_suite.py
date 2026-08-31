@@ -177,6 +177,8 @@ def generic_role(
 def write_suite_from_role_bases(
     root: Path,
     role_bases: dict[str, tuple[Path, dict[str, object]]],
+    *,
+    decision_version: int = 1,
 ) -> tuple[Path, dict[str, object], dict[str, dict[str, object]]]:
     root = root.resolve()
     suite = root / "base-suite"
@@ -189,6 +191,19 @@ def write_suite_from_role_bases(
 
     manifests: dict[str, dict[str, object]] = {}
     records: list[dict[str, object]] = []
+    role_cases = ROLE_CASES
+    if decision_version == 2:
+        role_cases = (
+            (
+                "DECISION",
+                "decision-base-v2.zip",
+                "WINDOWS_DECISION_SERVICE_V2",
+                "ai-scalper-windows-decision-service-manifest-v2",
+                "DISABLED",
+                True,
+            ),
+            *ROLE_CASES[1:],
+        )
     for (
         role,
         archive_name,
@@ -196,7 +211,7 @@ def write_suite_from_role_bases(
         schema,
         capability,
         production_field,
-    ) in ROLE_CASES:
+    ) in role_cases:
         supplied = role_bases.get(role)
         if supplied is not None:
             supplied_path, manifest = supplied

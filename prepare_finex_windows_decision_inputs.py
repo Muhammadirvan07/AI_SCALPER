@@ -17,6 +17,10 @@ from live_runtime.windows_ed25519_trusted_clock import (
     ed25519_public_key_sha256,
     normalize_ed25519_public_key,
 )
+from live_runtime.windows_trusted_utc_continuity_acceptance import (
+    acceptance_public_key_sha256,
+    normalize_openssh_ed25519_public_key,
+)
 
 
 SCHEMA_VERSION = "finex-windows-decision-input-preparation-v1"
@@ -350,6 +354,15 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
             "downstream_permit_key_fingerprint_sha256",
             None,
         )
+        acceptance_public_path_raw = getattr(
+            args, "continuity_acceptance_public_key_path", None
+        )
+        acceptance_public_file_hash = getattr(
+            args, "continuity_acceptance_public_key_file_sha256", None
+        )
+        acceptance_public_pin = getattr(
+            args, "continuity_acceptance_public_key_sha256", None
+        )
         try:
             public_key = normalize_ed25519_public_key(supplied_public_key)
         except (TypeError, ValueError) as exc:
@@ -358,6 +371,14 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
             ("CLOCK_SOURCE_HOST_IDENTITY_INVALID", source_host),
             ("CLOCK_CONSUMER_HOST_IDENTITY_INVALID", consumer_host),
             ("SSH_KEYGEN_SHA256_INVALID", supplied_executable_hash),
+            (
+                "CONTINUITY_ACCEPTANCE_PUBLIC_KEY_FILE_SHA256_INVALID",
+                acceptance_public_file_hash,
+            ),
+            (
+                "CONTINUITY_ACCEPTANCE_PUBLIC_KEY_SHA256_INVALID",
+                acceptance_public_pin,
+            ),
             (
                 "DOWNSTREAM_PERMIT_KEY_FINGERPRINT_INVALID",
                 supplied_permit_fingerprint,
@@ -383,6 +404,29 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
             or _sha256_file(ssh_keygen) != supplied_executable_hash
         ):
             raise PreparationError("SSH_KEYGEN_IDENTITY_MISMATCH")
+        if not isinstance(acceptance_public_path_raw, str):
+            raise PreparationError("CONTINUITY_ACCEPTANCE_PUBLIC_KEY_PATH_INVALID")
+        acceptance_public_path = Path(acceptance_public_path_raw)
+        if not acceptance_public_path.is_absolute():
+            raise PreparationError("CONTINUITY_ACCEPTANCE_PUBLIC_KEY_PATH_INVALID")
+        try:
+            acceptance_public_path = acceptance_public_path.resolve(strict=True)
+            acceptance_public_bytes = acceptance_public_path.read_bytes()
+            acceptance_public_key = normalize_openssh_ed25519_public_key(
+                acceptance_public_bytes.decode("ascii", errors="strict")
+            )
+        except (OSError, UnicodeError, TypeError, ValueError) as exc:
+            raise PreparationError(
+                "CONTINUITY_ACCEPTANCE_PUBLIC_KEY_PATH_INVALID"
+            ) from exc
+        if (
+            _sha256_bytes(acceptance_public_bytes) != acceptance_public_file_hash
+            or acceptance_public_key_sha256(acceptance_public_key)
+            != acceptance_public_pin
+        ):
+            raise PreparationError(
+                "CONTINUITY_ACCEPTANCE_PUBLIC_KEY_IDENTITY_MISMATCH"
+            )
         key_targets = V2_KEY_TARGETS
         decision_key_ids = V2_DECISION_KEY_IDS
     else:
@@ -392,6 +436,9 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
         ssh_keygen = None
         supplied_executable_hash = None
         supplied_permit_fingerprint = None
+        acceptance_public_path = None
+        acceptance_public_file_hash = None
+        acceptance_public_pin = None
         key_targets = KEY_TARGETS
         decision_key_ids = DECISION_KEY_IDS
     fingerprints = _ensure_credentials(key_targets)
@@ -535,6 +582,25 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
             ],
             "schema_version": "windows-trusted-utc-continuity-cas-binding-v1",
         }
+        clock_continuity_acceptance_binding = {
+            "provider_id": clock_continuity_binding["provider_id"],
+            "clock_binding_sha256": clock_binding_sha256,
+            "source_host_identity_sha256": source_host,
+            "consumer_host_identity_sha256": consumer_host,
+            "custody_issuer_id": "finex-clock-continuity-acceptance-v1",
+            "custody_key_id": "finex-clock-continuity-acceptance-key-v1",
+            "custody_public_key_sha256": acceptance_public_pin,
+            "public_key_file_sha256": acceptance_public_file_hash,
+            "sshsig_namespace": (
+                "ai-scalper-finex-trusted-utc-continuity-acceptance-v1"
+            ),
+            "response_schema_version": (
+                "external-cas-response-v1+ed25519-acceptance-v1"
+            ),
+            "schema_version": (
+                "windows-trusted-utc-continuity-acceptance-binding-v1"
+            ),
+        }
     else:
         clock_binding = {
             "provider_id": "finex-decision-clock-v1",
@@ -549,6 +615,7 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
             "schema_version": "windows-clock-binding-v1",
         }
         clock_continuity_binding = None
+        clock_continuity_acceptance_binding = None
     references = [
         {
             "key_id": key_id,
@@ -610,6 +677,9 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
     }
     if provider_schema == "v2":
         pack_input["clock_continuity_binding"] = clock_continuity_binding
+        pack_input["clock_continuity_acceptance_binding"] = (
+            clock_continuity_acceptance_binding
+        )
         pack_input["external_cas"]["clock"] = {
             "provider_id": clock_continuity_binding["provider_id"],
             "request_directory": str(directories["clock_requests"]),
@@ -618,6 +688,9 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
         pack_input["storage"]["clock_attestation_path"] = str(
             state_root / "clock-envelope.json"
         )
+        pack_input["storage"][
+            "clock_continuity_acceptance_public_key_path"
+        ] = str(acceptance_public_path)
     receipt = {
         "schema_version": SCHEMA_VERSION,
         "candidate_id": "finex",
@@ -687,6 +760,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--ssh-keygen-path")
     parser.add_argument("--ssh-keygen-sha256")
     parser.add_argument("--downstream-permit-key-fingerprint-sha256")
+    parser.add_argument("--continuity-acceptance-public-key-path")
+    parser.add_argument("--continuity-acceptance-public-key-file-sha256")
+    parser.add_argument("--continuity-acceptance-public-key-sha256")
     return parser
 
 

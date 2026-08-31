@@ -93,6 +93,13 @@ from .windows_ed25519_trusted_clock import (
     WindowsEd25519TrustedUTCError,
     parse_trusted_utc_envelope,
 )
+from .windows_trusted_utc_continuity_acceptance_verifier import (
+    ACCEPTANCE_SSHSIG_NAMESPACE,
+    acceptance_public_key_sha256,
+    normalize_openssh_ed25519_public_key,
+    validate_restricted_path_acl,
+    verify_acceptance_envelope,
+)
 
 
 UTC = timezone.utc
@@ -1211,6 +1218,39 @@ class WindowsTrustedUTCContinuityCASBinding(CanonicalContract):
 
 
 @dataclass(frozen=True, slots=True)
+class WindowsTrustedUTCContinuityAcceptanceBinding(CanonicalContract):
+    provider_id: str
+    clock_binding_sha256: str
+    source_host_identity_sha256: str
+    consumer_host_identity_sha256: str
+    custody_issuer_id: str
+    custody_key_id: str
+    custody_public_key_sha256: str
+    public_key_file_sha256: str
+    sshsig_namespace: str = ACCEPTANCE_SSHSIG_NAMESPACE
+    response_schema_version: str = "external-cas-response-v1+ed25519-acceptance-v1"
+    schema_version: str = "windows-trusted-utc-continuity-acceptance-binding-v1"
+
+    def __post_init__(self) -> None:
+        for name in ("provider_id", "custody_issuer_id", "custody_key_id"):
+            object.__setattr__(self, name, _text(name, getattr(self, name)))
+        for name in (
+            "clock_binding_sha256", "source_host_identity_sha256",
+            "consumer_host_identity_sha256", "custody_public_key_sha256",
+            "public_key_file_sha256",
+        ):
+            object.__setattr__(self, name, require_hash(name, getattr(self, name)))
+        if (
+            self.sshsig_namespace != ACCEPTANCE_SSHSIG_NAMESPACE
+            or self.response_schema_version
+            != "external-cas-response-v1+ed25519-acceptance-v1"
+            or self.schema_version
+            != "windows-trusted-utc-continuity-acceptance-binding-v1"
+        ):
+            raise ValueError("trusted UTC acceptance binding mismatch")
+
+
+@dataclass(frozen=True, slots=True)
 class TrustedUTCContinuityCASAcknowledgement(CanonicalContract):
     provider_id: str
     clock_binding_sha256: str
@@ -1343,7 +1383,11 @@ def _parse_trusted_utc_continuity_acknowledgement(
 class TrustedUTCContinuityExternalCAS(_DirectoryExternalCAS):
     """Authenticated external CAS for the Ed25519 trusted-clock cursor."""
 
-    __slots__ = ()
+    __slots__ = (
+        "_acceptance_binding", "_acceptance_public_key_path",
+        "_acceptance_public_key", "_ssh_keygen_path", "_ssh_keygen_sha256",
+        "_known_continuity_attestations",
+    )
 
     def __init__(
         self,
@@ -1354,6 +1398,10 @@ class TrustedUTCContinuityExternalCAS(_DirectoryExternalCAS):
         custody_key_provider: Callable[[str], bytes],
         system_clock: Callable[[], datetime],
         timeout_seconds: float,
+        acceptance_binding: WindowsTrustedUTCContinuityAcceptanceBinding | None = None,
+        acceptance_public_key_path: str | Path | None = None,
+        ssh_keygen_path: str | Path | None = None,
+        ssh_keygen_sha256: str | None = None,
     ) -> None:
         if type(binding) is not WindowsTrustedUTCContinuityCASBinding:
             raise TypeError("binding must be exact continuity CAS binding")
@@ -1368,6 +1416,196 @@ class TrustedUTCContinuityExternalCAS(_DirectoryExternalCAS):
             clock_provider=system_clock,
             timeout_seconds=timeout_seconds,
         )
+        self._acceptance_binding = acceptance_binding
+        self._acceptance_public_key_path = None
+        self._acceptance_public_key = None
+        self._ssh_keygen_path = None
+        self._ssh_keygen_sha256 = None
+        self._known_continuity_attestations: dict[str, str] = {}
+        configured = (acceptance_binding, acceptance_public_key_path,
+                      ssh_keygen_path, ssh_keygen_sha256)
+        if any(item is not None for item in configured):
+            if (
+                type(acceptance_binding)
+                is not WindowsTrustedUTCContinuityAcceptanceBinding
+                or acceptance_public_key_path is None
+                or ssh_keygen_path is None
+                or ssh_keygen_sha256 is None
+            ):
+                raise TypeError("dual continuity acceptance configuration is incomplete")
+            if (
+                acceptance_binding.provider_id != binding.provider_id
+                or acceptance_binding.clock_binding_sha256
+                != binding.clock_binding_sha256
+            ):
+                raise ValueError("dual continuity acceptance binding mismatch")
+            key_path = Path(acceptance_public_key_path).expanduser()
+            executable_path = Path(ssh_keygen_path).expanduser()
+            if not key_path.is_absolute() or not executable_path.is_absolute():
+                raise WindowsDecisionProviderError("CONTINUITY_ACCEPTANCE_PATH_INVALID")
+            self._acceptance_public_key_path = key_path
+            self._ssh_keygen_path = executable_path
+            self._ssh_keygen_sha256 = require_hash(
+                "ssh_keygen_sha256", ssh_keygen_sha256
+            )
+            self._acceptance_public_key = self._read_acceptance_public_key()
+
+    def _read_acceptance_public_key(self) -> str:
+        binding = self._acceptance_binding
+        path = self._acceptance_public_key_path
+        if binding is None or path is None:
+            raise WindowsDecisionProviderError("CONTINUITY_ACCEPTANCE_NOT_CONFIGURED")
+        try:
+            validate_restricted_path_acl(path)
+            payload = _stable_read(path, root=path.parent)
+            if (
+                not isinstance(payload, bytes)
+                or hashlib.sha256(payload).hexdigest()
+                != binding.public_key_file_sha256
+            ):
+                raise ValueError
+            public_key = normalize_openssh_ed25519_public_key(
+                payload.decode("ascii", errors="strict")
+            )
+            if acceptance_public_key_sha256(public_key) != binding.custody_public_key_sha256:
+                raise ValueError
+            return public_key
+        except Exception as exc:
+            raise WindowsDecisionProviderError(
+                "CONTINUITY_ACCEPTANCE_PUBLIC_KEY_INVALID"
+            ) from exc
+
+    def _acceptance_bytes(self, request_id: str) -> bytes:
+        specific = _stable_read(
+            self._response_directory / f"{request_id}.acceptance.json",
+            root=self._response_directory,
+        )
+        head = _stable_read(
+            self._response_directory / "current.acceptance.json",
+            root=self._response_directory,
+        )
+        if not isinstance(specific, bytes) or head != specific:
+            raise WindowsDecisionProviderError("CONTINUITY_ACCEPTANCE_READBACK_MISMATCH")
+        return specific
+
+    def _historical_predecessor_attestation(self, continuity_sha256: str) -> str:
+        cached = self._known_continuity_attestations.get(continuity_sha256)
+        if cached is not None:
+            return cached
+        binding = self._acceptance_binding
+        if binding is None:
+            raise WindowsDecisionProviderError("CONTINUITY_ACCEPTANCE_NOT_CONFIGURED")
+        try:
+            before = tuple(sorted(path.name for path in self._response_directory.iterdir()))
+            matches: list[object] = []
+            for name in before:
+                suffix = ".acceptance.json"
+                if name == "current.acceptance.json" or not name.endswith(suffix):
+                    continue
+                request_id = name[: -len(suffix)]
+                try:
+                    require_hash("historical acceptance request ID", request_id)
+                except ValueError:
+                    continue
+                payload = _stable_read(
+                    self._response_directory / name,
+                    root=self._response_directory,
+                )
+                if not isinstance(payload, bytes):
+                    raise ValueError
+                receipt = verify_acceptance_envelope(
+                    payload,
+                    public_key=self._read_acceptance_public_key(),
+                    executable_path=self._ssh_keygen_path,
+                    executable_sha256=self._ssh_keygen_sha256,
+                    acl_validator=validate_restricted_path_acl,
+                )
+                if receipt.committed_continuity_sha256 != continuity_sha256:
+                    continue
+                if (
+                    receipt.provider_id != binding.provider_id
+                    or receipt.clock_binding_sha256 != binding.clock_binding_sha256
+                    or receipt.source_host_identity_sha256
+                    != binding.source_host_identity_sha256
+                    or receipt.consumer_host_identity_sha256
+                    != binding.consumer_host_identity_sha256
+                    or receipt.cas_request_id != request_id
+                    or receipt.custody_issuer_id != binding.custody_issuer_id
+                    or receipt.custody_key_id != binding.custody_key_id
+                    or receipt.custody_public_key_sha256
+                    != binding.custody_public_key_sha256
+                ):
+                    raise ValueError
+                matches.append(receipt)
+            after = tuple(sorted(path.name for path in self._response_directory.iterdir()))
+            if before != after or len(matches) != 1:
+                raise ValueError
+            receipt = matches[0]
+            self._known_continuity_attestations[
+                continuity_sha256
+            ] = receipt.candidate_attestation_sha256
+            return receipt.candidate_attestation_sha256
+        except Exception as exc:
+            raise WindowsDecisionProviderError(
+                "CONTINUITY_ACCEPTANCE_PREDECESSOR_UNAVAILABLE"
+            ) from exc
+
+    def _verify_acceptance(
+        self,
+        *,
+        request: ExternalCASRequest,
+        proposed: WindowsEd25519TrustedUTCContinuity,
+    ) -> None:
+        binding = self._acceptance_binding
+        if binding is None:
+            return
+        public_key = self._read_acceptance_public_key()
+        expected_predecessor = (
+            "0" * 64
+            if request.expected_previous_sha256 == "0" * 64
+            else self._known_continuity_attestations.get(
+                request.expected_previous_sha256
+            )
+        )
+        if expected_predecessor is None:
+            expected_predecessor = self._historical_predecessor_attestation(
+                request.expected_previous_sha256
+            )
+        try:
+            receipt = verify_acceptance_envelope(
+                self._acceptance_bytes(request.request_id),
+                public_key=public_key,
+                executable_path=self._ssh_keygen_path,
+                executable_sha256=self._ssh_keygen_sha256,
+                acl_validator=validate_restricted_path_acl,
+            )
+        except Exception as exc:
+            raise WindowsDecisionProviderError("CONTINUITY_ACCEPTANCE_INVALID") from exc
+        if (
+            receipt.provider_id != binding.provider_id
+            or receipt.clock_binding_sha256 != binding.clock_binding_sha256
+            or receipt.source_host_identity_sha256
+            != binding.source_host_identity_sha256
+            or receipt.consumer_host_identity_sha256
+            != binding.consumer_host_identity_sha256
+            or receipt.sequence != proposed.sequence
+            or receipt.predecessor_attestation_sha256 != expected_predecessor
+            or receipt.candidate_attestation_sha256 != proposed.attestation_sha256
+            or receipt.cas_request_id != request.request_id
+            or receipt.expected_previous_continuity_sha256
+            != request.expected_previous_sha256
+            or receipt.committed_continuity_sha256 != request.proposed_sha256
+            or receipt.custody_issuer_id != binding.custody_issuer_id
+            or receipt.custody_key_id != binding.custody_key_id
+            or receipt.custody_public_key_sha256
+            != binding.custody_public_key_sha256
+            or receipt.accepted_at_utc < request.issued_at_utc
+            or receipt.accepted_at_utc >= request.expires_at_utc
+        ):
+            raise WindowsDecisionProviderError("CONTINUITY_ACCEPTANCE_BINDING_MISMATCH")
+        self._known_continuity_attestations[
+            proposed.content_sha256
+        ] = proposed.attestation_sha256
 
     def _key(self) -> bytes:
         try:
@@ -1465,6 +1703,7 @@ class TrustedUTCContinuityExternalCAS(_DirectoryExternalCAS):
                 raise WindowsDecisionProviderError(
                     "EXTERNAL_CAS_READBACK_MISMATCH"
                 )
+            self._verify_acceptance(request=request, proposed=proposed)
         elif current.content_sha256 != ack.observed_previous_continuity_sha256:
             raise WindowsDecisionProviderError(
                 "EXTERNAL_CAS_READBACK_MISMATCH"
@@ -1801,6 +2040,7 @@ class WindowsDecisionProviderConfigurationV2(CanonicalContract):
     decision_producer_binding: DecisionProducerBinding
     clock_binding: WindowsEd25519ClockBinding
     clock_continuity_binding: WindowsTrustedUTCContinuityCASBinding
+    clock_continuity_acceptance_binding: WindowsTrustedUTCContinuityAcceptanceBinding
     credential_target_prefix: str
     credential_references: tuple[CredentialReference, ...]
     finalized_m15_directory: str
@@ -1815,6 +2055,7 @@ class WindowsDecisionProviderConfigurationV2(CanonicalContract):
     clock_attestation_path: str
     clock_continuity_request_directory: str
     clock_continuity_response_directory: str
+    clock_continuity_acceptance_public_key_path: str
     cas_timeout_seconds: float
     order_capability: str = ORDER_CAPABILITY
     live_allowed: bool = LIVE_ALLOWED
@@ -1855,12 +2096,24 @@ class WindowsDecisionProviderConfigurationV2(CanonicalContract):
                 "clock_continuity_binding",
                 WindowsTrustedUTCContinuityCASBinding,
             ),
+            (
+                "clock_continuity_acceptance_binding",
+                WindowsTrustedUTCContinuityAcceptanceBinding,
+            ),
         ):
             if type(getattr(self, name)) is not expected:
                 raise TypeError(f"{name} must be exact {expected.__name__}")
         if (
             self.clock_continuity_binding.clock_binding_sha256
             != self.clock_binding.content_sha256
+            or self.clock_continuity_acceptance_binding.provider_id
+            != self.clock_continuity_binding.provider_id
+            or self.clock_continuity_acceptance_binding.clock_binding_sha256
+            != self.clock_binding.content_sha256
+            or self.clock_continuity_acceptance_binding.source_host_identity_sha256
+            != self.clock_binding.source_host_identity_sha256
+            or self.clock_continuity_acceptance_binding.consumer_host_identity_sha256
+            != self.clock_binding.consumer_host_identity_sha256
         ):
             raise ValueError("clock continuity binding mismatch")
         if (
@@ -1901,6 +2154,7 @@ class WindowsDecisionProviderConfigurationV2(CanonicalContract):
             "clock_attestation_path",
             "clock_continuity_request_directory",
             "clock_continuity_response_directory",
+            "clock_continuity_acceptance_public_key_path",
         ):
             object.__setattr__(self, name, _text(name, getattr(self, name)))
         if isinstance(self.cas_timeout_seconds, bool):
@@ -1994,6 +2248,10 @@ class WindowsDecisionProviderConfigurationV2(CanonicalContract):
                 "binding": self.clock_binding,
                 "attestation_path": self.clock_attestation_path,
                 "continuity_binding": self.clock_continuity_binding,
+                "acceptance_binding": self.clock_continuity_acceptance_binding,
+                "acceptance_public_key_path": (
+                    self.clock_continuity_acceptance_public_key_path
+                ),
                 "continuity_request_directory": (
                     self.clock_continuity_request_directory
                 ),
@@ -2022,6 +2280,9 @@ _ED25519_CLOCK_BINDING_FIELDS = frozenset(
 )
 _TRUSTED_UTC_CONTINUITY_BINDING_FIELDS = frozenset(
     item.name for item in fields(WindowsTrustedUTCContinuityCASBinding)
+)
+_TRUSTED_UTC_CONTINUITY_ACCEPTANCE_BINDING_FIELDS = frozenset(
+    item.name for item in fields(WindowsTrustedUTCContinuityAcceptanceBinding)
 )
 _CREDENTIAL_REFERENCE_FIELDS = frozenset(
     item.name for item in fields(CredentialReference)
@@ -2171,6 +2432,16 @@ def parse_windows_decision_provider_configuration_v2(
             raise ValueError("clock continuity binding fields drift")
         payload["clock_continuity_binding"] = (
             WindowsTrustedUTCContinuityCASBinding(**dict(raw_continuity))
+        )
+        raw_acceptance = payload["clock_continuity_acceptance_binding"]
+        if (
+            not isinstance(raw_acceptance, Mapping)
+            or frozenset(raw_acceptance)
+            != _TRUSTED_UTC_CONTINUITY_ACCEPTANCE_BINDING_FIELDS
+        ):
+            raise ValueError("clock continuity acceptance binding fields drift")
+        payload["clock_continuity_acceptance_binding"] = (
+            WindowsTrustedUTCContinuityAcceptanceBinding(**dict(raw_acceptance))
         )
         raw_references = payload["credential_references"]
         if not isinstance(raw_references, list) or not raw_references:
@@ -2504,8 +2775,14 @@ def _validate_composition_paths_v2(
         Path(provider_config.producer_cursor_database).expanduser(),
     )
     clock_path = Path(provider_config.clock_attestation_path).expanduser()
-    paths = (*directories, *databases, clock_path)
-    kinds = (*("directory" for _ in directories), "file", "file", "file")
+    acceptance_key_path = Path(
+        provider_config.clock_continuity_acceptance_public_key_path
+    ).expanduser()
+    paths = (*directories, *databases, clock_path, acceptance_key_path)
+    kinds = (
+        *("directory" for _ in directories),
+        *("file" for _ in (*databases, clock_path, acceptance_key_path)),
+    )
     verified = tuple(
         _verify_v2_path_chain(path, leaf_kind=kind)
         for path, kind in zip(paths, kinds, strict=True)
@@ -2738,6 +3015,12 @@ def build_windows_decision_provider_service_v2(
         custody_key_provider=key_provider,
         system_clock=system_clock,
         timeout_seconds=provider_config.cas_timeout_seconds,
+        acceptance_binding=provider_config.clock_continuity_acceptance_binding,
+        acceptance_public_key_path=(
+            provider_config.clock_continuity_acceptance_public_key_path
+        ),
+        ssh_keygen_path=provider_config.clock_binding.ssh_keygen_path,
+        ssh_keygen_sha256=provider_config.clock_binding.ssh_keygen_sha256,
     )
     trusted_clock = Ed25519AttestedTrustedUTCProvider(
         binding=provider_config.clock_binding,
@@ -2851,6 +3134,7 @@ __all__ = [
     "WindowsEd25519ClockEnvelopeFile",
     "WindowsEd25519TrustedUTCContinuity",
     "WindowsTrustedUTCContinuityCASBinding",
+    "WindowsTrustedUTCContinuityAcceptanceBinding",
     "TrustedUTCContinuityCASAcknowledgement",
     "TrustedUTCContinuityExternalCAS",
     "build_windows_decision_provider_service",

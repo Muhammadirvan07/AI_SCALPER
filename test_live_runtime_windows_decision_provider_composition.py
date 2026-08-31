@@ -49,6 +49,7 @@ from live_runtime.windows_decision_provider_pack import (
     WindowsEd25519ClockEnvelopeFile,
     WindowsEd25519TrustedUTCContinuity,
     WindowsTrustedUTCContinuityCASBinding,
+    WindowsTrustedUTCContinuityAcceptanceBinding,
     TrustedUTCContinuityExternalCAS,
     build_windows_decision_provider_service,
     build_windows_decision_provider_service_v2,
@@ -107,6 +108,12 @@ class FakeNativeBackend:
 
 class WindowsDecisionProviderCompositionTests(unittest.TestCase):
     def setUp(self) -> None:
+        acl_patch = patch(
+            "live_runtime.windows_decision_provider_pack.validate_restricted_path_acl",
+            lambda _path: None,
+        )
+        acl_patch.start()
+        self.addCleanup(acl_patch.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
@@ -665,6 +672,20 @@ class WindowsDecisionProviderCompositionTests(unittest.TestCase):
             custody_key_id="clock-continuity-key-v1",
             custody_key_fingerprint_sha256=hashlib.sha256(custody_key).hexdigest(),
         )
+        acceptance_public_path = self.root / "continuity-acceptance.pub"
+        acceptance_public_path.write_text(public_key + " acceptance-test\n", encoding="ascii")
+        acceptance_binding = WindowsTrustedUTCContinuityAcceptanceBinding(
+            provider_id=custody_binding.provider_id,
+            clock_binding_sha256=clock.content_sha256,
+            source_host_identity_sha256=HASH_A,
+            consumer_host_identity_sha256=HASH_C,
+            custody_issuer_id="continuity-acceptance-issuer-v1",
+            custody_key_id="continuity-acceptance-key-v1",
+            custody_public_key_sha256=hashlib.sha256(public_key.encode("ascii")).hexdigest(),
+            public_key_file_sha256=hashlib.sha256(
+                acceptance_public_path.read_bytes()
+            ).hexdigest(),
+        )
         target = "AI_SCALPER/DECISION/clock-continuity-key-v1"
         self.backend.keys[target] = custody_key
         references = tuple(
@@ -687,6 +708,7 @@ class WindowsDecisionProviderCompositionTests(unittest.TestCase):
             decision_producer_binding=self.producer_binding,
             clock_binding=clock,
             clock_continuity_binding=custody_binding,
+            clock_continuity_acceptance_binding=acceptance_binding,
             credential_target_prefix="AI_SCALPER/DECISION",
             credential_references=references,
             finalized_m15_directory=str(self.feed_directory),
@@ -701,6 +723,9 @@ class WindowsDecisionProviderCompositionTests(unittest.TestCase):
             clock_attestation_path=str(envelope_path),
             clock_continuity_request_directory=str(clock_requests),
             clock_continuity_response_directory=str(clock_responses),
+            clock_continuity_acceptance_public_key_path=str(
+                acceptance_public_path
+            ),
             cas_timeout_seconds=1.0,
         )
         hashes = configuration.provider_configuration_hashes()
@@ -766,6 +791,178 @@ class WindowsDecisionProviderCompositionTests(unittest.TestCase):
                 current_object=continuity.to_canonical_dict(),
             )
         self.assertEqual("EXTERNAL_CAS_ACK_INVALID", raised.exception.reason_code)
+
+    def test_v2_continuity_requires_hmac_and_bound_ed25519_acceptance(self) -> None:
+        configuration, _runtime, custody_key = self._v2_configuration()
+        continuity = WindowsEd25519TrustedUTCContinuity(
+            binding_sha256=configuration.clock_binding.content_sha256,
+            source_host_identity_sha256=HASH_A,
+            consumer_host_identity_sha256=HASH_C,
+            sequence=1,
+            attestation_sha256=HASH_B,
+            last_authority_utc=self.now,
+            last_trusted_utc=self.now,
+        )
+        adapter = TrustedUTCContinuityExternalCAS(
+            binding=configuration.clock_continuity_binding,
+            request_directory=configuration.clock_continuity_request_directory,
+            response_directory=configuration.clock_continuity_response_directory,
+            custody_key_provider=lambda _: custody_key,
+            system_clock=lambda: self.now,
+            timeout_seconds=1.0,
+            acceptance_binding=configuration.clock_continuity_acceptance_binding,
+            acceptance_public_key_path=(
+                configuration.clock_continuity_acceptance_public_key_path
+            ),
+            ssh_keygen_path=configuration.clock_binding.ssh_keygen_path,
+            ssh_keygen_sha256=configuration.clock_binding.ssh_keygen_sha256,
+        )
+        request = adapter._build_request(
+            expected_previous="0" * 64, proposed=continuity
+        )
+        acknowledgement = issue_trusted_utc_continuity_cas_acknowledgement(
+            binding=configuration.clock_continuity_binding,
+            expected_previous_continuity_sha256="0" * 64,
+            accepted_continuity_sha256=continuity.content_sha256,
+            observed_previous_continuity_sha256="0" * 64,
+            accepted=True,
+            issued_at_utc=self.now,
+            custody_key=custody_key,
+        )
+        acceptance = b"canonical-signed-acceptance"
+        response_root = Path(configuration.clock_continuity_response_directory)
+        (response_root / f"{request.request_id}.acceptance.json").write_bytes(acceptance)
+        (response_root / "current.acceptance.json").write_bytes(acceptance)
+        binding = configuration.clock_continuity_acceptance_binding
+        receipt = unittest.mock.Mock(
+            provider_id=binding.provider_id,
+            clock_binding_sha256=binding.clock_binding_sha256,
+            source_host_identity_sha256=HASH_A,
+            consumer_host_identity_sha256=HASH_C,
+            sequence=1,
+            predecessor_attestation_sha256="0" * 64,
+            candidate_attestation_sha256=continuity.attestation_sha256,
+            cas_request_id=request.request_id,
+            expected_previous_continuity_sha256="0" * 64,
+            committed_continuity_sha256=continuity.content_sha256,
+            accepted_at_utc=self.now,
+            custody_issuer_id=binding.custody_issuer_id,
+            custody_key_id=binding.custody_key_id,
+            custody_public_key_sha256=binding.custody_public_key_sha256,
+        )
+        with patch(
+            "live_runtime.windows_decision_provider_pack.verify_acceptance_envelope",
+            return_value=receipt,
+        ) as verifier:
+            observed, current = adapter._verify_typed_response(
+                request=request,
+                acknowledgement=acknowledgement.to_canonical_dict(),
+                current_object=continuity.to_canonical_dict(),
+            )
+        self.assertTrue(observed.accepted)
+        self.assertEqual(continuity, current)
+        verifier.assert_called_once()
+
+        forged_hmac = replace(acknowledgement, hmac_sha256="f" * 64)
+        with patch(
+            "live_runtime.windows_decision_provider_pack.verify_acceptance_envelope"
+        ) as verifier, self.assertRaises(WindowsDecisionProviderError):
+            adapter._verify_typed_response(
+                request=request,
+                acknowledgement=forged_hmac.to_canonical_dict(),
+                current_object=continuity.to_canonical_dict(),
+            )
+        verifier.assert_not_called()
+
+        with patch(
+            "live_runtime.windows_decision_provider_pack.verify_acceptance_envelope",
+            side_effect=ValueError("wrong key/domain/signature"),
+        ), self.assertRaisesRegex(
+            WindowsDecisionProviderError, "CONTINUITY_ACCEPTANCE_INVALID"
+        ):
+            adapter._verify_typed_response(
+                request=request,
+                acknowledgement=acknowledgement.to_canonical_dict(),
+                current_object=continuity.to_canonical_dict(),
+            )
+
+    def test_v2_acceptance_reconstructs_signed_predecessor_after_restart(self) -> None:
+        configuration, _runtime, custody_key = self._v2_configuration()
+        binding = configuration.clock_continuity_acceptance_binding
+        adapter = TrustedUTCContinuityExternalCAS(
+            binding=configuration.clock_continuity_binding,
+            request_directory=configuration.clock_continuity_request_directory,
+            response_directory=configuration.clock_continuity_response_directory,
+            custody_key_provider=lambda _: custody_key,
+            system_clock=lambda: self.now,
+            timeout_seconds=1.0,
+            acceptance_binding=binding,
+            acceptance_public_key_path=(
+                configuration.clock_continuity_acceptance_public_key_path
+            ),
+            ssh_keygen_path=configuration.clock_binding.ssh_keygen_path,
+            ssh_keygen_sha256=configuration.clock_binding.ssh_keygen_sha256,
+        )
+        previous = WindowsEd25519TrustedUTCContinuity(
+            binding_sha256=configuration.clock_binding.content_sha256,
+            source_host_identity_sha256=HASH_A,
+            consumer_host_identity_sha256=HASH_C,
+            sequence=1,
+            attestation_sha256=HASH_B,
+            last_authority_utc=self.now,
+            last_trusted_utc=self.now,
+        )
+        proposed = replace(
+            previous, sequence=2, attestation_sha256=HASH_C
+        )
+        request = adapter._build_request(
+            expected_previous=previous.content_sha256, proposed=proposed
+        )
+        historical_id = "a" * 64
+        root = Path(configuration.clock_continuity_response_directory)
+        (root / f"{historical_id}.acceptance.json").write_bytes(b"historical")
+        (root / f"{request.request_id}.acceptance.json").write_bytes(b"current")
+        (root / "current.acceptance.json").write_bytes(b"current")
+
+        common = dict(
+            provider_id=binding.provider_id,
+            clock_binding_sha256=binding.clock_binding_sha256,
+            source_host_identity_sha256=HASH_A,
+            consumer_host_identity_sha256=HASH_C,
+            custody_issuer_id=binding.custody_issuer_id,
+            custody_key_id=binding.custody_key_id,
+            custody_public_key_sha256=binding.custody_public_key_sha256,
+            accepted_at_utc=self.now,
+        )
+        historical = unittest.mock.Mock(
+            **common,
+            sequence=1,
+            predecessor_attestation_sha256="0" * 64,
+            candidate_attestation_sha256=previous.attestation_sha256,
+            cas_request_id=historical_id,
+            expected_previous_continuity_sha256="0" * 64,
+            committed_continuity_sha256=previous.content_sha256,
+        )
+        current = unittest.mock.Mock(
+            **common,
+            sequence=2,
+            predecessor_attestation_sha256=previous.attestation_sha256,
+            candidate_attestation_sha256=proposed.attestation_sha256,
+            cas_request_id=request.request_id,
+            expected_previous_continuity_sha256=previous.content_sha256,
+            committed_continuity_sha256=proposed.content_sha256,
+        )
+        with patch(
+            "live_runtime.windows_decision_provider_pack.verify_acceptance_envelope",
+            side_effect=lambda data, **_kwargs: (
+                historical if data == b"historical" else current
+            ),
+        ):
+            adapter._verify_acceptance(request=request, proposed=proposed)
+        self.assertEqual(
+            previous.attestation_sha256,
+            adapter._known_continuity_attestations[previous.content_sha256],
+        )
 
     def test_v2_clock_preflight_failure_precedes_sqlite(self) -> None:
         configuration, runtime, _ = self._v2_configuration()

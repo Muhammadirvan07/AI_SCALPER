@@ -264,6 +264,21 @@ ROLE_POLICIES = (
         production_field_required=True,
     ),
 )
+ROLE_POLICIES_V2 = (
+    BaseReleaseRolePolicy(
+        role="DECISION",
+        builder_name="build_decision_release",
+        allowlist_relative="config/windows_decision_service_allowlist.v2.json",
+        archive_name="decision-base-v2.zip",
+        release_profile="WINDOWS_DECISION_SERVICE_V2",
+        manifest_schema="ai-scalper-windows-decision-service-manifest-v2",
+        order_capability="DISABLED",
+        manifest_keys=ROLE_POLICIES[0].manifest_keys,
+        result_keys=ROLE_POLICIES[0].result_keys,
+        production_field_required=True,
+    ),
+    *ROLE_POLICIES[1:],
+)
 
 
 def _canonical_json(payload: Mapping[str, Any]) -> bytes:
@@ -742,7 +757,10 @@ def _suite_manifest(
     }
 
 
-def _validate_suite_manifest_bytes(data: bytes) -> dict[str, Any]:
+def _validate_suite_manifest_bytes(
+    data: bytes,
+    role_policies: tuple[BaseReleaseRolePolicy, ...] = ROLE_POLICIES,
+) -> dict[str, Any]:
     payload = _strict_json(data, expected_keys=SUITE_MANIFEST_KEYS)
     identity = payload.get("suite_identity_sha256")
     body = dict(payload)
@@ -761,12 +779,12 @@ def _validate_suite_manifest_bytes(data: bytes) -> dict[str, Any]:
         or HEX_64.fullmatch(identity) is None
         or _sha256(_canonical_json(body)) != identity
         or not isinstance(roles, list)
-        or len(roles) != len(ROLE_POLICIES)
+        or len(roles) != len(role_policies)
     ):
         raise BaseReleaseSuiteError(
             "BASE_RELEASE_SUITE_MANIFEST_INVALID"
         )
-    for policy, record in zip(ROLE_POLICIES, roles):
+    for policy, record in zip(role_policies, roles):
         if (
             not isinstance(record, dict)
             or frozenset(record) != ROLE_RECORD_KEYS
@@ -804,8 +822,9 @@ def _validate_suite_manifest_bytes(data: bytes) -> dict[str, Any]:
 def _revalidate_staged_role_bytes(
     staging: Path,
     roles: list[dict[str, Any]],
+    role_policies: tuple[BaseReleaseRolePolicy, ...] = ROLE_POLICIES,
 ) -> None:
-    for policy, record in zip(ROLE_POLICIES, roles):
+    for policy, record in zip(role_policies, roles):
         archive = _stable_read(
             staging / policy.archive_name,
             maximum_bytes=MAX_ARCHIVE_BYTES,
@@ -977,7 +996,12 @@ def _cleanup_staging(
 def build_base_release_suite(
     repo_root: Path,
     output_root: Path,
+    *,
+    decision_version: int = 1,
 ) -> dict[str, object]:
+    if decision_version not in {1, 2}:
+        raise BaseReleaseSuiteError("BASE_RELEASE_SUITE_VERSION_INVALID")
+    role_policies = ROLE_POLICIES if decision_version == 1 else ROLE_POLICIES_V2
     output, parent_state = _validate_destination(repo_root, output_root)
     try:
         repository = repo_root.resolve(strict=True)
@@ -1014,7 +1038,7 @@ def build_base_release_suite(
         )
 
         role_records: list[dict[str, Any]] = []
-        for policy in ROLE_POLICIES:
+        for policy in role_policies:
             archive = staging / policy.archive_name
             sidecar = staging / f"{policy.archive_name}.manifest.json"
             try:
@@ -1042,7 +1066,7 @@ def build_base_release_suite(
 
         expected_before_manifest = {
             name
-            for policy in ROLE_POLICIES
+            for policy in role_policies
             for name in (
                 policy.archive_name,
                 f"{policy.archive_name}.manifest.json",
@@ -1067,12 +1091,15 @@ def build_base_release_suite(
             manifest_path,
             maximum_bytes=MAX_MANIFEST_BYTES,
         )
-        verified_manifest = _validate_suite_manifest_bytes(manifest_bytes)
+        verified_manifest = _validate_suite_manifest_bytes(
+            manifest_bytes,
+            role_policies,
+        )
         if verified_manifest != manifest:
             raise BaseReleaseSuiteError(
                 "BASE_RELEASE_SUITE_MANIFEST_INVALID"
             )
-        _revalidate_staged_role_bytes(staging, role_records)
+        _revalidate_staged_role_bytes(staging, role_records, role_policies)
 
         try:
             final_commit, final_tree = _clean_source_state(repository)
@@ -1131,13 +1158,23 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         help="New suite directory outside the repository",
     )
+    parser.add_argument(
+        "--decision-version",
+        type=int,
+        choices=(1, 2),
+        default=1,
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        result = build_base_release_suite(REPO_ROOT, args.output_root)
+        result = build_base_release_suite(
+            REPO_ROOT,
+            args.output_root,
+            decision_version=args.decision_version,
+        )
     except BaseReleaseSuiteError as exc:
         print(f"BASE_RELEASE_SUITE_REJECTED: {exc}")
         return 2
