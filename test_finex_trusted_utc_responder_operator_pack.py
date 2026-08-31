@@ -49,7 +49,7 @@ class FinexTrustedUTCResponderPackTests(unittest.TestCase):
                 self.assertNotIn("StartWhenAvailable", text)
                 self.assertNotIn("Start-ScheduledTask", text)
             else:
-                self.assertIn("EXPLICIT_ACTIVATE_SWITCH_REQUIRED", text)
+                self.assertIn("PHASE_B_V3_EXPLICIT_ACTIVATE_REQUIRED", text)
 
     def test_bootstrap_precedes_python_and_all_pins_are_explicit(self):
         bootstrap = (PACK / "OPERATOR_BOOTSTRAP.ps1").read_text(encoding="utf-8")
@@ -74,6 +74,10 @@ class FinexTrustedUTCResponderPackTests(unittest.TestCase):
             if not script.name.startswith(("CREATE_", "VERIFY_", "RUN_", "INSTALL_", "ACTIVATE_")):
                 continue
             text = script.read_text(encoding="utf-8")
+            if script.name.startswith("ACTIVATE_"):
+                self.assertIn("Invoke-PhaseBV3Activation",text,script.name)
+                self.assertIn("V3CorePath",text,script.name)
+                continue
             self.assertIn("BootstrapSha256", text, script.name)
             if script.name.startswith("RUN_"):
                 self.assertIn("HELD_BOOTSTRAP_CONTEXT_REQUIRED", text, script.name)
@@ -120,8 +124,8 @@ class FinexTrustedUTCResponderPackTests(unittest.TestCase):
             self.assertIn(marker, bootstrap)
         for script in PACK.glob("ACTIVATE_*.ps1"):
             text = script.read_text(encoding="utf-8")
-            self.assertIn("Assert-OperatorInstalledReceipt", text)
-            self.assertIn("Actions.Count-ne 1", text)
+            self.assertIn("AttestationPath", text)
+            self.assertIn("Invoke-PhaseBV3Activation", text)
 
     def test_receipt_file_and_hidden_action_drift_fail_closed_in_subprocess(self):
         powershell = Path(__import__("shutil").which("powershell.exe") or "")
@@ -180,7 +184,7 @@ if(-not$taskBlocked){throw 'TASK_DRIFT_NOT_BLOCKED'}
 
     def test_firewall_is_activation_only_and_activation_rolls_back(self):
         installer = (PACK / "INSTALL_PUTRA_TRUSTED_UTC_PRODUCER.ps1").read_text(encoding="utf-8")
-        activation = (PACK / "ACTIVATE_PUTRA_TRUSTED_UTC_PRODUCER.ps1").read_text(encoding="utf-8")
+        activation = (PACK / "ACTIVATE_PHASE_B_V3_COMMON.ps1").read_text(encoding="utf-8")
         self.assertNotIn("New-NetFirewallRule", installer)
         self.assertIn("desired_firewall", installer)
         for marker in ("New-NetFirewallRule", "FIREWALL_RESOURCE_COLLISION",
@@ -189,16 +193,14 @@ if(-not$taskBlocked){throw 'TASK_DRIFT_NOT_BLOCKED'}
 
     def test_phase_b_receipt_and_loader_trust_order_static_contract(self):
         phase = (PACK / "OPERATOR_PHASE_B.ps1").read_text(encoding="utf-8")
-        for marker in ("finex-operator-install-receipt-v2", "immutable_files",
-                       "mutable_paths", "receipt_public_fingerprint",
-                       "runtime_acl_policy", "RedirectStandardInput",
-                       "FileShare]::Read", "RECEIPT_SIGNATURE_INVALID",
-                       "ACL_POLICY_NOT_CANONICAL", "POST_INVOKE_IDENTITY_DRIFT",
-                       "ScriptBlock]::Create"):
+        core=(PACK/"phase_b_asymmetric_v3.py").read_text(encoding="utf-8")
+        for marker in ("finex-phase-b-precommit-plan-v3","finex-phase-b-pointer-envelope-v3",
+                       "finex-phase-b-materialized-loader-v3","GenerationId",
+                       "PredecessorGenerationId","ReceiptPrivateKeyPath"):
             self.assertIn(marker, phase)
-        loader = phase[phase.index("$loader=@'"):phase.index("'@.Replace")]
-        self.assertLess(loader.index("RECEIPT_SIGNATURE_INVALID"), loader.index("ScriptBlock]::Create"))
-        self.assertNotIn(". $bootstrap", loader)
+        for marker in ("SSHSIG_INVALID","CURRENT_POINTER_NOT_EXACT_PRECOMMIT",
+                       "RUNTIME_STRUCTURAL_DRIFT","ACTIVE_FIREWALL_BINDING_DRIFT"):
+            self.assertIn(marker,core)
 
     def test_phase_c_task_actions_are_committed_encoded_loaders_only(self):
         installers=("INSTALL_FINEX_TRUSTED_UTC_FETCHER.ps1","INSTALL_FINEX_TRUSTED_UTC_CAS_RESPONDER.ps1","INSTALL_PUTRA_TRUSTED_UTC_PRODUCER.ps1")
@@ -207,26 +209,25 @@ if(-not$taskBlocked){throw 'TASK_DRIFT_NOT_BLOCKED'}
             text=(PACK/name).read_text(encoding="utf-8")
             self.assertNotIn("-ExecutionPolicy AllSigned -File",text,name)
             self.assertIn("-EncodedCommand $PhaseBEncodedCommand",text,name)
-            self.assertIn("Get-PhaseBEncodedLoaderValues",text,name)
+            self.assertIn("Get-PhaseBV3EncodedLoaderBindings",text,name)
             self.assertIn("PHASE_B_POINTER_PREMATURE",text,name)
         for name in activators:
             text=(PACK/name).read_text(encoding="utf-8")
-            self.assertIn("LEGACY_MUTABLE_RUNNER_ACTION_FORBIDDEN",text,name)
-            self.assertIn("Get-PhaseBEncodedLoaderValues",text,name)
-            self.assertIn("PHASE_B_POINTER_BINDING_MISMATCH",text,name)
-            self.assertIn("Wait-OperatorSignedReadiness",text,name)
-            self.assertIn("New-OperatorReadinessChallenge",text,name)
-            self.assertIn("Stop-ScheduledTask",text,name)
-            self.assertIn("PHASE_B_ACTIVE_REQUIRED",text,name)
+            self.assertIn("Invoke-PhaseBV3Activation",text,name)
+            self.assertIn("AttestationSignaturePath",text,name)
         publisher=(PACK/"PUBLISH_FINEX_TRUSTED_UTC_PHASE_C.ps1").read_text(encoding="utf-8")
-        for marker in ("EXPLICIT_PHASE_C_PUBLISH_REQUIRED","Get-OperatorTaskRecord","PrecommitManifestSha256","PRECOMMIT_SIGNATURE_INVALID","PHASE_C_ANTI_ROLLBACK_CONFLICT"):
+        for marker in ("PHASE_B_V3_EXPLICIT_PUBLISH_REQUIRED","verify-publish","attestation-signature","CurrentPointer"):
             self.assertIn(marker,publisher)
         self.assertNotIn("ReceiptPrivateKeyPath",publisher)
         self.assertNotIn("[Guid]::NewGuid",publisher)
 
     def test_phase_b_semantic_surface_is_fail_closed_static(self):
-        text=(PACK/"OPERATOR_PHASE_B.ps1").read_text(encoding="utf-8")
-        for marker in ("definition_xml_sha256","working_directory","allow_demand_start","run_only_if_network_available","edge_traversal","remote_port","interface_alias","PUBLIC_KEY_FINGERPRINT_INVALID","CONFIG_IDENTITY_INVALID","absent_then_canonical_schema","activation_challenge","MUTABLE_PARENT_POLICY_BINDING_INVALID","MUTABLE_EXPECTED_ABSENT","MUTABLE_UNENROLLED_PRESENT","finex-mutable-enrollment-v4","state='pending'","state-eq'committed'","RECEIPT_POINTER_SIGNATURE_INVALID","RUNTIME_ARGUMENT_PATH_UNBOUND","ROLE_CONFIG_TRANSITIVE_PATH_UNBOUND","READINESS_RUNTIME_BINDING_INCOMPLETE","$CURRENT_POINTER_GENERATION"):
+        text=(PACK/"phase_b_asymmetric_v3.py").read_text(encoding="utf-8")+(PACK/"PHASE_B_V3_WINDOWS.ps1").read_text(encoding="utf-8")
+        for marker in ("definition_xml_sha256","allow_demand_start","config_and_key_bindings",
+                       "future_pointer_sha256","installed_disabled_precondition","operator_role",
+                       "READINESS_AUTHORITY_UNBOUND","RUNTIME_INVOCATION_INVALID",
+                       "PREDECESSOR_CHAIN_INVALID","PUBLISH_TOCTOU_DRIFT",
+                       "CURRENT_POINTER_NOT_EXACT_PRECOMMIT"):
             self.assertIn(marker,text)
 
     def test_rotation_cas_and_signed_readiness_source_contract(self):

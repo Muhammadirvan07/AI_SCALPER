@@ -929,7 +929,7 @@ def verify_key(
     stored = normalize_public_key(stable_read(public, maximum=4096, reason="PUBLIC_KEY_INVALID").decode("ascii"))
     if derived != stored:
         raise TrustedUTCOperatorError("KEYPAIR_MISMATCH")
-    fingerprint = public_key_sha256(derived)
+    fingerprint = hashlib.sha256(base64.b64decode(derived.split()[1], validate=True)).hexdigest()
     if expected_public_key_sha256 is not None and fingerprint != _hash(
         expected_public_key_sha256, "PUBLIC_KEY_FINGERPRINT_INVALID"
     ):
@@ -1895,7 +1895,7 @@ def build_operator_entry_encoded_command(*, loader_path: str, loader_sha256: str
     for index in (1, 3, 5, 8):
         if re.fullmatch(r"[0-9a-f]{64}", values[index]) is None:
             raise TrustedUTCOperatorError("ENTRY_LOADER_PIN_INVALID")
-    if role not in {"publish", "install", "activate"}:
+    if role not in {"publish", "install", "activate", "status"}:
         raise TrustedUTCOperatorError("ENTRY_LOADER_ROLE_INVALID")
     for index in (0, 2, 4):
         if not Path(values[index]).is_absolute():

@@ -1,16 +1,19 @@
 """Build cryptographically verified Phase D inputs from immutable Phase B precommits."""
 from __future__ import annotations
-import argparse, base64, hashlib, json, os, subprocess, tempfile
+import argparse, base64, hashlib, json, os, subprocess, sys, tempfile
 from pathlib import Path
 from validate_phase_d_inputs import HASH, canonical, ed25519_fingerprint, strict, _plan
 from phase_d_trust_contracts import hash_value, validate_host_value
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"finex_trusted_utc_v1"))
+from phase_b_asymmetric_v3 import load_bundle, materialize_loader
 
 def verify(public_key,signature,data,identity,namespace,ssh_keygen):
  public=Path(public_key).read_text("ascii").strip()
  with tempfile.NamedTemporaryFile("w",delete=False,encoding="ascii") as allowed:
   allowed.write(identity+" "+public+"\n");name=allowed.name
  try:
-  result=subprocess.run([ssh_keygen,"-Y","verify","-f",name,"-I",identity,"-n",namespace,"-s",str(signature)],input=data,capture_output=True)
+  try:result=subprocess.run([ssh_keygen,"-Y","verify","-f",name,"-I",identity,"-n",namespace,"-s",str(signature)],input=data,capture_output=True,timeout=3,check=False)
+  except subprocess.TimeoutExpired as exc:raise ValueError("signature_timeout") from exc
   if result.returncode:raise ValueError("signature")
  finally:os.unlink(name)
 def evidence(args,fingerprint):
@@ -30,25 +33,20 @@ def identity_and_binding(args):
  return host_hash,binding["binding_sha256"]
 def role(args,name,expected_role,fingerprint):
  root=Path(getattr(args,name+"_precommit"));manifest=root/"precommit.json";plan,raw=strict(manifest)
- encoded=getattr(args,name+"_encoded");item={"encoded":encoded,"encoded_sha256":hashlib.sha256(encoded.encode()).hexdigest(),"plan_manifest_path":str(manifest.resolve()),"plan_manifest_sha256":hashlib.sha256(raw).hexdigest(),"pointer_sha256":plan.get("pointer_sha256"),"public_key_fingerprint_sha256":fingerprint,"signer_identity":args.signer_identity}
- _plan(item,expected_role);pointer,pointer_raw=strict(root/"current.json");payload=pointer.get("payload",{})
- pointer_fields={"generation_id","predecessor_generation_id","receipt_sha256","schema_version","sequence","signature_sha256"}
- if set(pointer)!={"payload","schema_version","signature_base64"} or pointer.get("schema_version")!="finex-operator-receipt-current-envelope-v2" or type(payload) is not dict or set(payload)!=pointer_fields or payload.get("schema_version")!="finex-operator-receipt-current-payload-v2" or payload.get("generation_id")!=plan["generation_id"] or payload.get("sequence")!=plan["sequence"] or payload.get("predecessor_generation_id")!=plan["predecessor_generation_id"] or payload.get("receipt_sha256")!=plan["generation_receipt_sha256"] or payload.get("signature_sha256")!=plan["generation_signature_sha256"] or hashlib.sha256(pointer_raw).hexdigest()!=plan["pointer_sha256"]:raise ValueError("pointer")
- pointer_payload=canonical(payload);sig=base64.b64decode(pointer.get("signature_base64",""),validate=True);descriptor,temp_name=tempfile.mkstemp(suffix=".sig");os.close(descriptor);tmp=Path(temp_name)
- try:tmp.write_bytes(sig);verify(args.public_key,tmp,pointer_payload,args.signer_identity,plan["receipt_namespace"]+"-pointer",args.ssh_keygen)
- finally:tmp.unlink(missing_ok=True)
- generation=root/"current.json.generations"/plan["generation_id"];receipt=generation/"receipt.json";signature=generation/"receipt.json.sig";data=receipt.read_bytes()
- if hashlib.sha256(data).hexdigest()!=plan["generation_receipt_sha256"] or hashlib.sha256(signature.read_bytes()).hexdigest()!=plan["generation_signature_sha256"]:raise ValueError("generation")
- verify(args.public_key,signature,data,args.signer_identity,plan["receipt_namespace"],args.ssh_keygen)
- return item
+ if plan.get("schema_version")!="finex-phase-b-precommit-plan-v3":raise ValueError("v3_required")
+ generation,generation_raw,_,pointer_raw,_=load_bundle(root,Path(args.public_key),args.signer_identity,Path(args.ssh_keygen))
+ trust=generation["immutable_config"]
+ if generation["operator_role"]!=expected_role or trust["expected_host_role"]!=args.host_role or trust["host_identity_sha256"]!=args.verified_host_identity_sha256 or trust["joint_binding_sha256"]!=args.verified_joint_binding_sha256 or trust["release_identity_sha256"]!=args.verified_release_identity_sha256 or trust["source_host_identity_sha256"]!=args.verified_source_host_identity_sha256 or trust["consumer_host_identity_sha256"]!=args.verified_consumer_host_identity_sha256:raise ValueError("role_trust_binding")
+ loader=materialize_loader(generation,generation_raw,pointer_raw)
+ return {"decoded_bindings":loader["decoded_bindings"],"encoded":loader["encoded_command"],"encoded_sha256":loader["encoded_command_sha256"],"generation_sha256":hashlib.sha256(generation_raw).hexdigest(),"plan_manifest_path":str(manifest.resolve()),"plan_manifest_sha256":hashlib.sha256(raw).hexdigest(),"pointer_sha256":hashlib.sha256(pointer_raw).hexdigest(),"public_key_fingerprint_sha256":fingerprint,"signer_identity":args.signer_identity,"task_template_sha256":plan["task_template_sha256"]}
 def main(argv=None):
- p=argparse.ArgumentParser();p.add_argument("--host-role",choices=("finex","putra"),required=True);p.add_argument("--ssh-keygen",required=True);p.add_argument("--public-key",required=True);p.add_argument("--expected-public-fingerprint",required=True);p.add_argument("--signer-identity",required=True);p.add_argument("--key-evidence",required=True);p.add_argument("--key-evidence-signature",required=True);p.add_argument("--host-identity",required=True);p.add_argument("--joint-binding",required=True);p.add_argument("--cas-precommit");p.add_argument("--cas-encoded");p.add_argument("--fetcher-precommit");p.add_argument("--fetcher-encoded");p.add_argument("--producer-precommit");p.add_argument("--producer-encoded");p.add_argument("--output",required=True);a=p.parse_args(argv)
+ p=argparse.ArgumentParser();p.add_argument("--host-role",choices=("finex","putra"),required=True);p.add_argument("--ssh-keygen",required=True);p.add_argument("--public-key",required=True);p.add_argument("--expected-public-fingerprint",required=True);p.add_argument("--signer-identity",required=True);p.add_argument("--key-evidence",required=True);p.add_argument("--key-evidence-signature",required=True);p.add_argument("--host-identity",required=True);p.add_argument("--joint-binding",required=True);p.add_argument("--cas-precommit");p.add_argument("--fetcher-precommit");p.add_argument("--producer-precommit");p.add_argument("--output",required=True);a=p.parse_args(argv)
  try:
   fingerprint=ed25519_fingerprint(a.public_key)
   if fingerprint!=a.expected_public_fingerprint:raise ValueError("fingerprint")
-  evidence(a,fingerprint);host_hash,binding_hash=identity_and_binding(a)
-  if a.host_role=="finex":value={"binding_sha256":binding_hash,"cas":role(a,"cas","finex-cas",fingerprint),"fetcher":role(a,"fetcher","finex-fetcher",fingerprint),"host_identity_sha256":host_hash,"schema_version":"finex-phase-d-phase-b-input-v2"}
-  else:value={"binding_sha256":binding_hash,"host_identity_sha256":host_hash,"producer":role(a,"producer","putra-producer",fingerprint),"schema_version":"putra-phase-d-phase-b-input-v2"}
+  evidence(a,fingerprint);host_hash,binding_hash=identity_and_binding(a);binding_value,_=strict(a.joint_binding);payload=binding_value["payload"];release_hash=payload["release_identity_sha256"];source_hash=payload["source_host_identity_sha256"];consumer_hash=payload["consumer_host_identity_sha256"];a.verified_host_identity_sha256=host_hash;a.verified_joint_binding_sha256=binding_hash;a.verified_release_identity_sha256=release_hash;a.verified_source_host_identity_sha256=source_hash;a.verified_consumer_host_identity_sha256=consumer_hash
+  if a.host_role=="finex":value={"binding_sha256":binding_hash,"cas":role(a,"cas","finex-cas",fingerprint),"consumer_host_identity_sha256":consumer_hash,"expected_host_role":"finex","fetcher":role(a,"fetcher","finex-fetcher",fingerprint),"host_identity_sha256":host_hash,"release_identity_sha256":release_hash,"schema_version":"finex-phase-d-phase-b-input-v3","source_host_identity_sha256":source_hash}
+  else:value={"binding_sha256":binding_hash,"consumer_host_identity_sha256":consumer_hash,"expected_host_role":"putra","host_identity_sha256":host_hash,"producer":role(a,"producer","putra-producer",fingerprint),"release_identity_sha256":release_hash,"schema_version":"putra-phase-d-phase-b-input-v3","source_host_identity_sha256":source_hash}
   target=Path(a.output);target.parent.mkdir(parents=True,exist_ok=True);fd,temp=tempfile.mkstemp(prefix=".phase-b-input-",dir=target.parent)
   try:
    with os.fdopen(fd,"wb") as stream:stream.write(canonical(value));stream.flush();os.fsync(stream.fileno())

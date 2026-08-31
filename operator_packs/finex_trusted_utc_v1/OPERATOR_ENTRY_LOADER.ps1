@@ -5,7 +5,7 @@ param(
  [Parameter(Mandatory=$true)][string]$PowerShellSha256,
  [Parameter(Mandatory=$true)][string]$TargetPath,
  [Parameter(Mandatory=$true)][string]$TargetSha256,
- [Parameter(Mandatory=$true)][ValidateSet('publish','install','activate')][string]$Role,
+ [Parameter(Mandatory=$true)][ValidateSet('publish','install','activate','status')][string]$Role,
  [Parameter(Mandatory=$true)][string]$ArgumentsJsonBase64,
  [Parameter(Mandatory=$true)][string]$ArgumentsJsonSha256
 )

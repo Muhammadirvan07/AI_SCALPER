@@ -4,6 +4,7 @@ import argparse, hashlib, ipaddress, json, os, re, subprocess, tempfile
 from pathlib import Path
 
 H=re.compile(r"[0-9a-f]{64}")
+SSH_VERIFY_TIMEOUT_SECONDS=3
 def canonical(value): return (json.dumps(value,sort_keys=True,separators=(",",":"),ensure_ascii=True)+"\n").encode()
 def strict(path, fields, schema):
     raw=path.read_bytes()
@@ -27,6 +28,14 @@ def write(path, value):
         except OSError: pass
         raise
 def hash_value(value): return hashlib.sha256(canonical(value)).hexdigest()
+def verify_sshsig(ssh_keygen, allowed_path, signer_identity, namespace, signature, raw):
+    try:
+        result=subprocess.run(
+            [ssh_keygen,"-Y","verify","-f",allowed_path,"-I",signer_identity,"-n",namespace,"-s",signature],
+            input=raw,capture_output=True,timeout=SSH_VERIFY_TIMEOUT_SECONDS,check=False)
+    except subprocess.TimeoutExpired:
+        return False
+    return result.returncode==0
 HOST_FIELDS={"host_role","machine_identity_sha256","release_identity_sha256","schema_version","tailscale_device_id","tailscale_dns_name","tailscale_evidence_sha256","tailscale_ipv4"}
 def validate_host_value(value, role=None):
     if type(value) is not dict or set(value)!={"host_identity_sha256","payload","schema_version"} or value.get("schema_version")!="phase-d-host-identity-evidence-v1": raise ValueError("host")
@@ -69,7 +78,7 @@ def status(args):
                 fingerprint=hashlib.sha256(blob).hexdigest()
                 if fingerprint!=value["signer_fingerprint_sha256"] or fingerprint not in value["fingerprints"].values():return False
                 with tempfile.NamedTemporaryFile("w",delete=False,encoding="ascii") as allowed:allowed.write(args.keys_signer_identity+" "+public+"\n");allowed_path=allowed.name
-                try:return subprocess.run([args.ssh_keygen,"-Y","verify","-f",allowed_path,"-I",args.keys_signer_identity,"-n","ai-scalper-"+args.keys_role+"-phase-d-key-custody-v1","-s",signature],input=raw,capture_output=True).returncode==0
+                try:return verify_sshsig(args.ssh_keygen,allowed_path,args.keys_signer_identity,"ai-scalper-"+args.keys_role+"-phase-d-key-custody-v1",signature,raw)
                 finally:os.unlink(allowed_path)
             raw=target.read_bytes();probe=json.loads(raw)
             if type(probe) is not dict or "schema_version" not in probe:return False
@@ -82,7 +91,7 @@ def status(args):
                 public=Path(args.keys_public_key).read_text("ascii").strip();parts=public.split();fingerprint=hashlib.sha256(__import__('base64').b64decode(parts[1],validate=True)).hexdigest()
                 if fingerprint!=value["signer_fingerprint_sha256"]:return False
                 with tempfile.NamedTemporaryFile("w",delete=False,encoding="ascii") as allowed: allowed.write(args.keys_signer_identity+" "+public+"\n");allowed_path=allowed.name
-                try:return subprocess.run([args.ssh_keygen,"-Y","verify","-f",allowed_path,"-I",args.keys_signer_identity,"-n","ai-scalper-"+role+"-phase-d-key-custody-v1","-s",str(target)+".sig"],input=raw,capture_output=True).returncode==0
+                try:return verify_sshsig(args.ssh_keygen,allowed_path,args.keys_signer_identity,"ai-scalper-"+role+"-phase-d-key-custody-v1",str(target)+".sig",raw)
                 finally:os.unlink(allowed_path)
             if name=="host_identity": validate_host_value(value);return True
             if name=="joint_binding":
@@ -90,18 +99,15 @@ def status(args):
                 required={"acceptance_custody_issuer_id","acceptance_custody_key_id","cas_provider_id","consumer_host_identity_sha256","finex_tailscale_ipv4","port","putra_tailscale_ipv4","release_identity_sha256","roles","schema_version","source_host_identity_sha256"}
                 return set(value)==fields and schema=="phase-d-joint-binding-contract-v1" and type(payload) is dict and set(payload)==required and hash_value(payload)==value.get("binding_sha256") and payload.get("port")==43130 and payload.get("roles")=={"consumer":"finex","source":"putra"}
             if name=="phase_b_plan":
-                if schema in {"finex-phase-d-phase-b-input-v2","putra-phase-d-phase-b-input-v2"}:
+                if schema in {"finex-phase-d-phase-b-input-v3","putra-phase-d-phase-b-input-v3"}:
                     from validate_phase_d_inputs import load
-                    load("finex-phase-b-v2" if schema.startswith("finex") else "putra-phase-b-v2",target);return True
-                if schema=="putra-phase-d-phase-b-input-v1":required={"encoded","encoded_sha256","pointer","pointer_sha256","schema_version"};prefixes=("",)
-                elif schema=="finex-phase-d-phase-b-input-v1":required={"cas_encoded","cas_encoded_sha256","cas_pointer","cas_pointer_sha256","fetcher_encoded","fetcher_encoded_sha256","fetcher_pointer","fetcher_pointer_sha256","schema_version"};prefixes=("cas_","fetcher_")
-                else:return False
-                return set(value)==required and all(hashlib.sha256(value[p+"encoded"].encode()).hexdigest()==value[p+"encoded_sha256"] for p in prefixes)
-            return set(value)=={"fingerprints","phase","private_keys_exported","schema_version"} and schema in {"finex-phase-d-preparation-result-v1","putra-phase-d-preparation-result-v1"} and value.get("private_keys_exported") is False
+                    load("finex-phase-b-v3" if schema.startswith("finex") else "putra-phase-b-v3",target);return True
+                return False
+            return set(value)=={"fingerprints","phase","private_keys_exported","schema_version"} and schema in {"finex-phase-d-preparation-result-v3","putra-phase-d-preparation-result-v3"} and value.get("private_keys_exported") is False
         except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError): return False
     missing=[name for name,path in stages if not valid(name,path)]
-    blockers=[] if "phase_b_plan" not in missing else ["PHASE_B_PRECOMMIT_PUBLISHER_CONTRACT_REQUIRED"]
-    write(args.output,{"blockers":blockers,"missing":missing,"next_step":missing[0] if missing else "preinstall_ready","ready_for_preinstall":not missing and not blockers,"schema_version":"phase-d-operational-sequence-status-v1","sequence":[name for name,_ in stages]})
+    blockers=[] if "phase_b_plan" not in missing else ["PHASE_B_V3_PRECOMMIT_REQUIRED"]
+    write(args.output,{"blockers":blockers,"missing":missing,"next_step":missing[0] if missing else "preinstall_ready","ready_for_preinstall":not missing and not blockers,"schema_version":"phase-d-operational-sequence-status-v3","sequence":[name for name,_ in stages]})
 def parser():
     p=argparse.ArgumentParser();s=p.add_subparsers(dest="cmd",required=True)
     h=s.add_parser("host");h.add_argument("--role",choices=("finex","putra"),required=True);h.add_argument("--machine-identity-sha256",required=True);h.add_argument("--tailscale-evidence",required=True);h.add_argument("--release-identity-sha256",required=True);h.add_argument("--output",required=True)
