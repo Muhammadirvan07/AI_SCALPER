@@ -578,5 +578,22 @@ class PhaseBV3RuntimeStructuralBehaviorTests(unittest.TestCase):
         self.assertNotIn("finex-phase-b-role-readiness-v3", decoded)
 
 
+class UnsignedBuilderCallerBindingTests(unittest.TestCase):
+    def test_publish_and_prepare_bind_canonical_builder_request_and_verifier(self):
+        build=text(PHASE_D/"BUILD_FINEX_PHASE_D.ps1")
+        finex=text(PHASE_D/"PREPARE_FINEX_PHASE_D_LOCAL.ps1")
+        putra=text(PHASE_D/"PREPARE_PUTRA_PHASE_D_REMOTE.ps1")
+        for source in (build,finex,putra):
+            self.assertIn("BuilderRequestJson",source)
+            self.assertIn("VerifyUnsigned",source)
+        self.assertIn("VerifyUnsignedNative",build)
+        self.assertIn("PHASE_D_UNSIGNED_NATIVE_MANIFEST_INVALID",build)
+        self.assertIn("PREPARE_UNSIGNED_NATIVE_VERIFY_FAILED",finex)
+        self.assertIn("PUTRA_PREPARE_UNSIGNED_NATIVE_VERIFY_FAILED",putra)
+        publish_branch=build.split("if($PublishUnsigned){",1)[1].split("if($FinalizePublished){",1)[0]
+        self.assertNotIn("& $python",publish_branch)
+        self.assertNotIn("InvokePinnedPython",build)
+        self.assertNotIn("InvokeBuilderVerifier",finex+putra)
+
 if __name__ == "__main__":
     unittest.main()
