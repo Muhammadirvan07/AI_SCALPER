@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import types
 from contextlib import ExitStack
 from pathlib import Path
 
@@ -31,7 +32,7 @@ REQUEST_FIELDS = {
     "observer_path", "operator_role", "precommit_root", "predecessor_generation_id",
     "private_key_path", "python_path", "readiness_challenge_path",
     "readiness_public_key_path", "readiness_receipt_path", "release_identity_path",
-    "release_root",
+    "release_root", "unsigned_content_manifest_path",
     "runtime_arguments", "runtime_path", "runtime_state_root", "schema_version",
     "sequence", "ssh_keygen_path", "task_user_id", "v3_core_path",
     "putra_authority_public_key_path", "putra_host_identity_path",
@@ -109,8 +110,18 @@ RESERVED_RUNTIME_ARGUMENTS = {
     "ReadinessSignerIdentity", "ReadinessTaskName", "ReadinessPointerSha256",
 }
 RELEASE_FIELDS={"archive_sha256","commit_sha1","repository","schema_version"}
+UNSIGNED_CONTENT_FIELDS={"entries","schema_version"}
+UNSIGNED_ENTRY_FIELDS={"path","sha256"}
 HOST_NAMESPACE="ai-scalper-phase-d-host-identity-v1"
 JOINT_NAMESPACE="ai-scalper-phase-d-joint-binding-v1"
+FIREWALL_FIELDS={"display_name","phase","schema_version"}
+FIREWALL_DISPLAY_NAMES={"finex-cas":"AI_SCALPER_FINEX_TRUSTED_UTC_V1","finex-fetcher":"AI_SCALPER_FINEX_TRUSTED_UTC_V1","putra-producer":"AI_SCALPER FINEX Trusted UTC Producer V1"}
+BINDINGS_FIELDS={"binding_sha256","consumer_host_identity_sha256","local_signing_authority_public_key_file_sha256","local_signing_authority_public_key_sha256","operator_role","readiness_public_key_file_sha256","readiness_public_key_sha256","runtime_pins","schema_version","source_host_identity_sha256"}
+BINDING_RUNTIME_PIN_FIELDS={
+    "finex-cas":{"acceptance_core_sha256","config_sha256","operator_core_sha256","responder_core_sha256"},
+    "finex-fetcher":{"response_authority_public_key_file_sha256","response_authority_public_key_sha256"},
+    "putra-producer":{"acceptance_custody_issuer_id","acceptance_custody_key_id","acceptance_public_key_file_sha256","acceptance_public_key_sha256","acceptance_verifier_sha256","authority_public_key_sha256","cas_provider_id"},
+}
 
 
 def _sha(raw: bytes) -> str:
@@ -217,7 +228,55 @@ def _validate_contracts(finex_raw: bytes, putra_raw: bytes, binding_raw: bytes, 
     return finex,putra,binding
 
 
-def generate(request_path: Path, *, create_precommit=core.create_precommit, derive_public=_derive_public) -> dict:
+def _validate_descriptors(*,role_name:str,firewall_raw:bytes,bindings_raw:bytes,named:dict,binding:dict,local_public_raw:bytes,local_public_blob:bytes,readiness_public_raw:bytes,readiness_public_blob:bytes,putra_public_raw:bytes,putra_public_blob:bytes)->None:
+    firewall=_strict(firewall_raw,FIREWALL_FIELDS,"finex-phase-b-firewall-topology-v3","FIREWALL_DESCRIPTOR_INVALID")
+    if firewall!={"display_name":FIREWALL_DISPLAY_NAMES[role_name],"phase":"absent","schema_version":"finex-phase-b-firewall-topology-v3"}:raise GeneratorError("FIREWALL_DESCRIPTOR_INVALID")
+    descriptor=_strict(bindings_raw,BINDINGS_FIELDS,"finex-phase-b-config-and-key-bindings-v1","CONFIG_AND_KEY_BINDINGS_INVALID")
+    pins=descriptor.get("runtime_pins")
+    if type(pins) is not dict or set(pins)!=BINDING_RUNTIME_PIN_FIELDS[role_name] or any(type(value) is not str or not value for value in pins.values()):raise GeneratorError("CONFIG_AND_KEY_BINDINGS_INVALID")
+    joint=binding["payload"]
+    expected={"binding_sha256":binding["binding_sha256"],"consumer_host_identity_sha256":joint["consumer_host_identity_sha256"],"local_signing_authority_public_key_file_sha256":_sha(local_public_raw),"local_signing_authority_public_key_sha256":_sha(local_public_blob),"operator_role":role_name,"readiness_public_key_file_sha256":_sha(readiness_public_raw),"readiness_public_key_sha256":_sha(readiness_public_blob),"runtime_pins":pins,"schema_version":"finex-phase-b-config-and-key-bindings-v1","source_host_identity_sha256":joint["source_host_identity_sha256"]}
+    if descriptor!=expected:raise GeneratorError("CONFIG_AND_KEY_BINDINGS_INVALID")
+    if role_name=="finex-cas":expected_pins={"acceptance_core_sha256":named["AcceptanceCoreSha256"],"config_sha256":named["ConfigSha256"],"operator_core_sha256":named["OperatorCoreSha256"],"responder_core_sha256":named["ResponderCoreSha256"]}
+    elif role_name=="finex-fetcher":expected_pins={"response_authority_public_key_file_sha256":_sha(putra_public_raw),"response_authority_public_key_sha256":_sha(putra_public_blob)}
+    else:expected_pins={"acceptance_custody_issuer_id":named["AcceptanceCustodyIssuerId"],"acceptance_custody_key_id":named["AcceptanceCustodyKeyId"],"acceptance_public_key_file_sha256":named["AcceptancePublicKeyFileSha256"],"acceptance_public_key_sha256":named["AcceptancePublicKeySha256"],"acceptance_verifier_sha256":named["AcceptanceVerifierSha256"],"authority_public_key_sha256":named["AuthorityPublicKeySha256"],"cas_provider_id":named["CasProviderId"]}
+    if pins!=expected_pins:raise GeneratorError("CONFIG_AND_KEY_BINDINGS_INVALID")
+
+
+def _load_published_core(raw:bytes,path:Path):
+    module=types.ModuleType("_ai_scalper_published_phase_b_asymmetric_v3_"+_sha(raw))
+    module.__file__=str(path)
+    sys.modules[module.__name__]=module
+    try:exec(compile(raw,str(path),"exec"),module.__dict__)
+    except Exception as exc:raise GeneratorError("PUBLISHED_V3_CORE_LOAD_FAILED") from exc
+    required=("HeldFileBytes","ContractError","create_precommit","validate_immutable_config","validate_template","verify_bytes","reject_reparse_chain","lexical_path","HASH","GENERATION")
+    if any(not hasattr(module,name) for name in required):raise GeneratorError("PUBLISHED_V3_CORE_API_INVALID")
+    return module
+
+
+def _validate_unsigned_inventory(raw:bytes,release_root:Path,v3_core_path:Path,v3_core_raw:bytes)->dict[str,str]:
+    manifest=_strict(raw,UNSIGNED_CONTENT_FIELDS,"finex-phase-d-unsigned-content-manifest-v1","UNSIGNED_CONTENT_MANIFEST_INVALID")
+    entries=manifest.get("entries")
+    if type(entries) is not list or not entries:raise GeneratorError("UNSIGNED_CONTENT_MANIFEST_INVALID")
+    expected={};previous=None
+    for entry in entries:
+        if type(entry) is not dict or set(entry)!=UNSIGNED_ENTRY_FIELDS or type(entry.get("path")) is not str or type(entry.get("sha256")) is not str or core.HASH.fullmatch(entry["sha256"]) is None:raise GeneratorError("UNSIGNED_CONTENT_MANIFEST_INVALID")
+        relative=entry["path"]
+        if not relative or "\\" in relative or relative.startswith("/") or any(part in ("",".","..") for part in relative.split("/")):raise GeneratorError("UNSIGNED_CONTENT_MANIFEST_INVALID")
+        if previous is not None and relative<=previous:raise GeneratorError("UNSIGNED_CONTENT_MANIFEST_INVALID")
+        previous=relative;expected[relative]=entry["sha256"]
+    relative=v3_core_path.relative_to(release_root).as_posix()
+    if expected.get(relative)!=_sha(v3_core_raw):raise GeneratorError("PUBLISHED_V3_CORE_INVENTORY_MISMATCH")
+    return expected
+
+
+def _require_inventory_path(path:Path,raw:bytes,release_root:Path,inventory:dict[str,str])->None:
+    _within(path,release_root,"RELEASE_PATH_UNBOUND")
+    relative=path.relative_to(release_root).as_posix()
+    if inventory.get(relative)!=_sha(raw):raise GeneratorError("UNSIGNED_CONTENT_INVENTORY_MISMATCH")
+
+
+def generate(request_path: Path, *, create_precommit=None, derive_public=_derive_public) -> dict:
     request_path = _absolute(str(request_path), "REQUEST_PATH_INVALID")
     with ExitStack() as stack:
         request_hold = _held(stack, request_path, "REQUEST_PATH_INVALID")
@@ -233,14 +292,17 @@ def generate(request_path: Path, *, create_precommit=core.create_precommit, deri
         paths = {name: _absolute(request[name], "PATH_INVALID") for name in REQUEST_FIELDS if name.endswith("_path") or name.endswith("_root")}
         release_root = paths["release_root"]
         state_root = paths["runtime_state_root"]
-        for name in ("runtime_path", "observer_path", "v3_core_path"):
+        for name in ("runtime_path", "observer_path", "v3_core_path", "unsigned_content_manifest_path"):
             _within(paths[name], release_root, "RELEASE_PATH_UNBOUND")
         for name in ("attestation_path", "attestation_signature_path", "future_pointer_path", "precommit_root", "readiness_challenge_path", "readiness_receipt_path"):
             _within(paths[name], state_root, "STATE_PATH_UNBOUND")
         if paths["runtime_path"].name != role["runtime"] or paths["observer_path"].name != "PHASE_B_V3_WINDOWS.ps1" or paths["v3_core_path"].name != "phase_b_asymmetric_v3.py":
             raise GeneratorError("ROLE_RUNTIME_INVALID")
-        if Path(core.__file__).resolve() != paths["v3_core_path"].resolve():
-            raise GeneratorError("V3_CORE_IMPORT_MISMATCH")
+        published_core_hold=_held(stack,paths["v3_core_path"],"PUBLISHED_V3_CORE_INVALID")
+        inventory_hold=_held(stack,paths["unsigned_content_manifest_path"],"UNSIGNED_CONTENT_MANIFEST_INVALID")
+        inventory=_validate_unsigned_inventory(inventory_hold.raw,release_root,paths["v3_core_path"],published_core_hold.raw)
+        published_core=_load_published_core(published_core_hold.raw,paths["v3_core_path"])
+        published_create_precommit=published_core.create_precommit if create_precommit is None else create_precommit
         if paths["action_execute_path"].name.lower() != "powershell.exe":
             raise GeneratorError("TASK_EXECUTE_INVALID")
         if type(request["task_user_id"]) is not str or request["task_user_id"] != request["task_user_id"].strip() or not request["task_user_id"]:
@@ -302,30 +364,35 @@ def generate(request_path: Path, *, create_precommit=core.create_precommit, deri
                 raise GeneratorError("RUNTIME_FILE_HASH_INVALID")
         common={("PowerShellPath","PowerShellSha256"):("action_execute_path",held["action_execute_path"].raw),("PythonPath","PythonSha256"):("python_path",held["python_path"].raw),("SshKeygenPath","SshKeygenSha256"):("ssh_keygen_path",held["ssh_keygen_path"].raw)}
         for (path_key,hash_key),(request_key,raw) in common.items():
-            if core.lexical_path(Path(named[path_key]))!=core.lexical_path(paths[request_key]) or named[hash_key]!=_sha(raw):raise GeneratorError("RUNTIME_BOOTSTRAP_BINDING_INVALID")
+            if published_core.lexical_path(Path(named[path_key]))!=published_core.lexical_path(paths[request_key]) or named[hash_key]!=_sha(raw):raise GeneratorError("RUNTIME_BOOTSTRAP_BINDING_INVALID")
         bootstrap=release_root/"OPERATOR_BOOTSTRAP.ps1"
         bootstrap_hold=_held(stack,bootstrap,"RUNTIME_BOOTSTRAP_BINDING_INVALID")
         if named["BootstrapSha256"]!=_sha(bootstrap_hold.raw):raise GeneratorError("RUNTIME_BOOTSTRAP_BINDING_INVALID")
+        for path,raw in ((paths["runtime_path"],held["runtime_path"].raw),(paths["observer_path"],held["observer_path"].raw),(paths["v3_core_path"],published_core_hold.raw),(bootstrap,bootstrap_hold.raw)):_require_inventory_path(path,raw,release_root,inventory)
+        published_runtime_keys={"finex-cas":{"ConfigPath","EntrypointPath","OperatorCorePath","RuntimeAclPolicyPath"},"finex-fetcher":{"PublicKeyPath"},"putra-producer":{"AcceptancePublicKeyPath","AcceptanceVerifierPath"}}
+        for key in published_runtime_keys[request["operator_role"]]:_require_inventory_path(Path(named[key]),runtime_holds[key].raw,release_root,inventory)
         runner_hash=_sha(held["runtime_path"].raw)
         if named.get("RunnerSha256",named.get("SelfSha256"))!=runner_hash:raise GeneratorError("ROLE_RUNTIME_INVALID")
         joint=binding["payload"]
         for key,expected in (("BindingSha256",binding["binding_sha256"]),("SourceHostIdentitySha256",joint["source_host_identity_sha256"]),("ConsumerHostIdentitySha256",joint["consumer_host_identity_sha256"])):
             if key in named and named[key]!=expected:raise GeneratorError("RUNTIME_TRUST_BINDING_INVALID")
-        if "AuthorityPublicKeySha256" in named and named["AuthorityPublicKeySha256"]!=_sha(signing_blob):raise GeneratorError("RUNTIME_TRUST_BINDING_INVALID")
+        if "AuthorityPublicKeySha256" in named and named["AuthorityPublicKeySha256"]!=_sha(putra_blob):raise GeneratorError("RUNTIME_TRUST_BINDING_INVALID")
         if derive_public(Path(named["ReadinessPrivateKeyPath"]),paths["ssh_keygen_path"])!=readiness_public:raise GeneratorError("READINESS_SIGNER_PUBLIC_MISMATCH")
         runtime_core=paths["runtime_path"].parent/"finex_trusted_utc.py"
         if "CoreSha256" in named:
             runtime_core_hold=_held(stack,runtime_core,"RUNTIME_CORE_INVALID")
             if named["CoreSha256"]!=_sha(runtime_core_hold.raw):raise GeneratorError("RUNTIME_CORE_INVALID")
+            _require_inventory_path(runtime_core,runtime_core_hold.raw,release_root,inventory)
         if request["operator_role"]=="finex-cas":
             entry=Path(named["EntrypointPath"]);live=entry.parent/"live_runtime"
             responder=_held(stack,live/"windows_trusted_utc_continuity_cas_responder.py","RUNTIME_CORE_INVALID")
             acceptance=_held(stack,live/"windows_trusted_utc_continuity_acceptance.py","RUNTIME_CORE_INVALID")
             if named["ResponderCoreSha256"]!=_sha(responder.raw) or named["AcceptanceCoreSha256"]!=_sha(acceptance.raw):raise GeneratorError("RUNTIME_CORE_INVALID")
         if request["operator_role"]=="finex-fetcher" and named["Loop"] is not True:raise GeneratorError("FETCHER_DURABLE_LOOP_REQUIRED")
-        if request["operator_role"]=="putra-producer" and (core.lexical_path(Path(named["PrivateKeyPath"]))!=core.lexical_path(paths["private_key_path"]) or named["Port"]!=43130):raise GeneratorError("PRODUCER_RUNTIME_INVALID")
+        if request["operator_role"]=="putra-producer" and (published_core.lexical_path(Path(named["PrivateKeyPath"]))!=published_core.lexical_path(paths["private_key_path"]) or named["Port"]!=43130):raise GeneratorError("PRODUCER_RUNTIME_INVALID")
+        _validate_descriptors(role_name=request["operator_role"],firewall_raw=held["firewall_path"].raw,bindings_raw=held["config_and_key_bindings_path"].raw,named=named,binding=binding,local_public_raw=signing_public_raw,local_public_blob=signing_blob,readiness_public_raw=held["readiness_public_key_path"].raw,readiness_public_blob=readiness_blob,putra_public_raw=held["putra_authority_public_key_path"].raw,putra_public_blob=putra_blob)
         expected_powershell=Path(os.environ.get("SystemRoot",r"C:\Windows"))/"System32/WindowsPowerShell/v1.0/powershell.exe"
-        if core.lexical_path(paths["action_execute_path"])!=core.lexical_path(expected_powershell):
+        if published_core.lexical_path(paths["action_execute_path"])!=published_core.lexical_path(expected_powershell):
             raise GeneratorError("TASK_EXECUTE_INVALID")
 
         if request["sequence"] == 1 and request["predecessor_generation_id"] != "0" * 32:
@@ -384,6 +451,7 @@ def generate(request_path: Path, *, create_precommit=core.create_precommit, deri
             },
             "release_identity_manifest_sha256":_sha(held["release_identity_path"].raw),
             "release_identity_sha256": release["archive_sha256"],
+            "release_inventory_sha256": _sha(inventory_hold.raw),
             "runtime_invocation": invocation,
             "schema_version": "finex-phase-b-immutable-config-v3",
             "source_host_identity_sha256": joint["source_host_identity_sha256"],
@@ -395,9 +463,9 @@ def generate(request_path: Path, *, create_precommit=core.create_precommit, deri
             "settings": {"execution_time_limit_seconds": 0},
             "task_name": role["task"], "task_path": "\\",
         }
-        core.validate_immutable_config(immutable)
-        core.validate_template(template)
-        return create_precommit(
+        published_core.validate_immutable_config(immutable)
+        published_core.validate_template(template)
+        return published_create_precommit(
             paths["precommit_root"], future_pointer_path=paths["future_pointer_path"],
             generation_id=request["generation_id"], sequence=request["sequence"],
             predecessor_generation_id=request["predecessor_generation_id"],

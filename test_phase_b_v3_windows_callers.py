@@ -88,6 +88,75 @@ def text(path: Path) -> str:
 
 
 class PhaseBV3WindowsCallerStaticTests(unittest.TestCase):
+    def test_phase_d_publication_precommit_finalization_contract_is_explicit(self):
+        build=text(PHASE_D/"BUILD_FINEX_PHASE_D.ps1")
+        finex=text(PHASE_D/"PREPARE_FINEX_PHASE_D_LOCAL.ps1")
+        putra=text(PHASE_D/"PREPARE_PUTRA_PHASE_D_REMOTE.ps1")
+        provision=text(PHASE_D/"PUTRA_PROVISION_PHASE_D.ps1")
+        wrapper=text(PHASE_D/"GENERATE_PHASE_B_V3_PRECOMMIT.ps1")
+        for source in (build,finex,putra,provision):
+            self.assertIn("FinalizePublished",source)
+        for source in (finex,putra):
+            self.assertIn("PublishUnsigned",source)
+            self.assertIn("UnsignedContentManifestPath",source)
+        for token in ("GeneratePublishedPrecommit","PublishedReleaseRoot","UnsignedContentManifestPath","V3CorePath"):
+            self.assertIn(token,wrapper)
+        for token in ("verify-materialized","expected-release-inventory-sha256","FINALIZED_WITHOUT_RELEASE_MUTATION"):
+            self.assertIn(token,build)
+        self.assertIn("AI_SCALPER FINEX Trusted UTC Producer V1",text(PHASE_D/"generate_phase_b_v3_precommit.py"))
+
+    def test_finalize_role_set_rejects_duplicate_omitted_and_extra_arguments(self):
+        powershell=Path(os.environ.get("SystemRoot",r"C:\Windows"))/"System32/WindowsPowerShell/v1.0/powershell.exe"
+        if not powershell.is_file():self.skipTest("Windows PowerShell unavailable")
+        build=PHASE_D/"BUILD_FINEX_PHASE_D.ps1"
+        quoted=lambda value:"'"+str(value).replace("'","''")+"'"
+        prefix="& "+quoted(build)+" -RepoRoot "+quoted(ROOT)+" -OutputRoot "+quoted(ROOT)+" -PublishedReleaseRoot "+quoted(ROOT)+" -FinalizePublished "
+        dummy=str((ROOT/"missing-finalize-argument.json").resolve())
+        cases=(
+            ("-ExpectedFinalizeRoles @('finex-cas','finex-cas') -FinalizeArgumentsJson @("+quoted(dummy)+","+quoted(dummy+'-2')+")","PHASE_D_FINALIZE_EXPECTED_ROLE_PROFILE_INVALID"),
+            ("-ExpectedFinalizeRoles @('finex-cas') -FinalizeArgumentsJson @("+quoted(dummy)+")","PHASE_D_FINALIZE_EXPECTED_ROLE_PROFILE_INVALID"),
+            ("-ExpectedFinalizeRoles @('finex-fetcher') -FinalizeArgumentsJson @("+quoted(dummy)+")","PHASE_D_FINALIZE_EXPECTED_ROLE_PROFILE_INVALID"),
+            ("-ExpectedFinalizeRoles @('finex-cas','putra-producer') -FinalizeArgumentsJson @("+quoted(dummy)+","+quoted(dummy+'-2')+")","PHASE_D_FINALIZE_EXPECTED_ROLE_PROFILE_INVALID"),
+            ("-ExpectedFinalizeRoles @('finex-fetcher','finex-cas') -FinalizeArgumentsJson @("+quoted(dummy)+","+quoted(dummy+'-2')+")","PHASE_D_FINALIZE_EXPECTED_ROLE_PROFILE_INVALID"),
+            ("-ExpectedFinalizeRoles @() -FinalizeArgumentsJson @()","PHASE_D_FINALIZE_EXPECTED_ROLE_PROFILE_INVALID"),
+            ("-ExpectedFinalizeRoles @('finex-cas','finex-fetcher') -FinalizeArgumentsJson @("+quoted(dummy)+")","PHASE_D_FINALIZE_ROLE_ARGUMENT_COUNT_MISMATCH"),
+            ("-ExpectedFinalizeRoles @('putra-producer') -FinalizeArgumentsJson @("+quoted(dummy)+","+quoted(dummy+'-2')+")","PHASE_D_FINALIZE_ROLE_ARGUMENT_COUNT_MISMATCH"),
+            ("-ExpectedFinalizeRoles @('finex-cas','finex-fetcher') -FinalizeArgumentsJson @("+quoted(dummy)+","+quoted(dummy)+")","PHASE_D_FINALIZE_ARGUMENT_DUPLICATE"),
+        )
+        for arguments,reason in cases:
+            result=subprocess.run([str(powershell),"-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-Command",prefix+arguments],capture_output=True,text=True,timeout=20,check=False)
+            self.assertNotEqual(0,result.returncode,result.stdout+result.stderr)
+            self.assertIn(reason,result.stdout+result.stderr)
+
+    def test_finalize_rejects_inventory_pinned_file_mutated_after_binding(self):
+        powershell=Path(os.environ.get("SystemRoot",r"C:\Windows"))/"System32/WindowsPowerShell/v1.0/powershell.exe"
+        if not powershell.is_file():self.skipTest("Windows PowerShell unavailable")
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);published=root/"published";asset=published/"v3"/"phase_b_asymmetric_v3.py";asset.parent.mkdir(parents=True);asset.write_bytes(b"bound")
+            inventory=published/"unsigned_content_manifest.json"
+            inventory.write_bytes(canonical({"entries":[{"path":"v3/phase_b_asymmetric_v3.py","sha256":sha(b"bound")}],"schema_version":"finex-phase-d-unsigned-content-manifest-v1"}))
+            asset.write_bytes(b"mutated")
+            inventory_before=inventory.read_bytes();asset_before=asset.read_bytes();topology_before=sorted(path.relative_to(published).as_posix() for path in published.rglob("*"))
+            dummy=(root/"missing-argument.json").resolve()
+            q=lambda value:"'"+str(value).replace("'","''")+"'"
+            command="& "+q(PHASE_D/"BUILD_FINEX_PHASE_D.ps1")+" -RepoRoot "+q(ROOT)+" -OutputRoot "+q(root)+" -PublishedReleaseRoot "+q(published)+" -FinalizePublished -UnsignedContentManifestPath "+q(inventory)+" -ExpectedFinalizeRoles @('putra-producer') -FinalizeArgumentsJson @("+q(dummy)+")"
+            result=subprocess.run([str(powershell),"-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-Command",command],capture_output=True,text=True,timeout=20,check=False)
+            self.assertNotEqual(0,result.returncode,result.stdout+result.stderr)
+            self.assertIn("PHASE_D_UNSIGNED_CONTENT_HASH_MISMATCH",result.stdout+result.stderr)
+            self.assertEqual(inventory_before,inventory.read_bytes())
+            self.assertEqual(asset_before,asset.read_bytes())
+            self.assertEqual(topology_before,sorted(path.relative_to(published).as_posix() for path in published.rglob("*")))
+
+    def test_preparers_pin_exact_host_role_sets(self):
+        finex=text(PHASE_D/"PREPARE_FINEX_PHASE_D_LOCAL.ps1")
+        putra=text(PHASE_D/"PREPARE_PUTRA_PHASE_D_REMOTE.ps1")
+        provision=text(PHASE_D/"PUTRA_PROVISION_PHASE_D.ps1")
+        self.assertIn("-ExpectedFinalizeRoles @('finex-cas','finex-fetcher')",finex)
+        self.assertIn("-ExpectedFinalizeRoles @('putra-producer')",putra)
+        self.assertIn("[string[]]$ExpectedFinalizeRoles",provision)
+        self.assertIn("PUTRA_FINALIZE_EXPECTED_ROLE_PROFILE_INVALID",provision)
+        self.assertIn("-ExpectedFinalizeRoles $ExpectedFinalizeRoles",provision)
+
     def test_all_production_windows_callers_exist_and_parse_in_windows_powershell(self):
         missing = [str(path) for path in PRODUCTION_WINDOWS_CALLERS if not path.is_file()]
         self.assertEqual([], missing)
@@ -377,6 +446,7 @@ class PhaseBV3RuntimeStructuralBehaviorTests(unittest.TestCase):
             },
             "release_identity_manifest_sha256": "e" * 64,
             "release_identity_sha256": "c" * 64,
+            "release_inventory_sha256": "9" * 64,
             "runtime_invocation": self.structural_binding,
             "schema_version": "finex-phase-b-immutable-config-v3",
             "source_host_identity_sha256": "d" * 64,

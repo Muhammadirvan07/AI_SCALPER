@@ -41,9 +41,13 @@ class WindowsAncestorChain:
         k.CreateFileW.argtypes=(wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE);k.CreateFileW.restype=wintypes.HANDLE
         class Info(ctypes.Structure):_fields_=[("attributes",wintypes.DWORD),("creation_low",wintypes.DWORD),("creation_high",wintypes.DWORD),("access_low",wintypes.DWORD),("access_high",wintypes.DWORD),("write_low",wintypes.DWORD),("write_high",wintypes.DWORD),("volume",wintypes.DWORD),("size_high",wintypes.DWORD),("size_low",wintypes.DWORD),("links",wintypes.DWORD),("index_high",wintypes.DWORD),("index_low",wintypes.DWORD)]
         self.Info=Info
-        root=Path(self.path.anchor);parts=[];current=root
-        for component in self.path.parts[1:]:current=current/component;parts.append(current)
-        targets=[root,*parts]
+        # Holding the target prevents its rename; the direct parent additionally
+        # supplies the stable root handle used for stage adoption. Opening every
+        # profile ancestor fails on hardened Windows profiles even when the path
+        # is traversable and has already passed the full reparse-chain check.
+        targets=[self.path]
+        if leaf_write_exclusive_delete and self.path.parent!=self.path:
+            targets=[self.path.parent,self.path]
         try:
             for index,target in enumerate(targets):
                 leaf=index==len(targets)-1
@@ -555,9 +559,9 @@ def validate_template(template: dict) -> None:
 
 
 def validate_immutable_config(value: dict) -> None:
-    _exact(value,{"config_and_key_bindings_sha256","consumer_host_identity_sha256","expected_host_role","firewall_sha256","host_identity_sha256","joint_binding_sha256","powershell_path","powershell_sha256","readiness_authority","release_identity_manifest_sha256","release_identity_sha256","runtime_invocation","schema_version","source_host_identity_sha256"},"IMMUTABLE_CONFIG_INVALID")
+    _exact(value,{"config_and_key_bindings_sha256","consumer_host_identity_sha256","expected_host_role","firewall_sha256","host_identity_sha256","joint_binding_sha256","powershell_path","powershell_sha256","readiness_authority","release_identity_manifest_sha256","release_identity_sha256","release_inventory_sha256","runtime_invocation","schema_version","source_host_identity_sha256"},"IMMUTABLE_CONFIG_INVALID")
     if value["schema_version"]!="finex-phase-b-immutable-config-v3" or HASH.fullmatch(str(value["config_and_key_bindings_sha256"])) is None or HASH.fullmatch(str(value["firewall_sha256"])) is None:raise ContractError("IMMUTABLE_CONFIG_INVALID")
-    if value["expected_host_role"] not in {"finex","putra"} or any(HASH.fullmatch(str(value[key])) is None for key in ("consumer_host_identity_sha256","host_identity_sha256","joint_binding_sha256","powershell_sha256","release_identity_manifest_sha256","release_identity_sha256","source_host_identity_sha256")) or type(value["powershell_path"]) is not str or not Path(value["powershell_path"]).is_absolute():raise ContractError("IMMUTABLE_TRUST_BINDING_INVALID")
+    if value["expected_host_role"] not in {"finex","putra"} or any(HASH.fullmatch(str(value[key])) is None for key in ("consumer_host_identity_sha256","host_identity_sha256","joint_binding_sha256","powershell_sha256","release_identity_manifest_sha256","release_identity_sha256","release_inventory_sha256","source_host_identity_sha256")) or type(value["powershell_path"]) is not str or not Path(value["powershell_path"]).is_absolute():raise ContractError("IMMUTABLE_TRUST_BINDING_INVALID")
     expected_identity=value["consumer_host_identity_sha256"] if value["expected_host_role"]=="finex" else value["source_host_identity_sha256"]
     if value["host_identity_sha256"]!=expected_identity or value["consumer_host_identity_sha256"]==value["source_host_identity_sha256"]:raise ContractError("IMMUTABLE_PEER_BINDING_INVALID")
     readiness=value["readiness_authority"]
@@ -761,7 +765,7 @@ def resolve_published_chain(base: Path, final_sequence: int, public_key: Path, s
 
 def materialize_loader(generation: dict, generation_raw: bytes, pointer_raw: bytes) -> dict:
     pointer_sha = sha(pointer_raw)
-    trust={key:generation["immutable_config"][key] for key in ("consumer_host_identity_sha256","expected_host_role","host_identity_sha256","joint_binding_sha256","release_identity_sha256","source_host_identity_sha256")}
+    trust={key:generation["immutable_config"][key] for key in ("consumer_host_identity_sha256","expected_host_role","host_identity_sha256","joint_binding_sha256","release_identity_sha256","release_inventory_sha256","source_host_identity_sha256")}
     bindings = {"future_pointer_path": generation["future_pointer_path"], "future_pointer_sha256": pointer_sha,
                 "generation_id": generation["generation_id"], "generation_sha256": sha(generation_raw),
                 "operator_role": generation["operator_role"], "schema_version": "finex-phase-b-loader-bindings-v3",
@@ -788,9 +792,14 @@ $named=@{};foreach($p in $i.runtime_arguments.named.PSObject.Properties){$named[
 
 
 def verify_materialized(root: Path, materialized_raw: bytes, public_key: Path, signer_identity: str,
-                        ssh_keygen: Path, expected_role: str, expected_release_root: Path) -> dict:
+                        ssh_keygen: Path, expected_role: str, expected_release_root: Path,
+                        expected_release_inventory_sha256: str | None = None) -> dict:
     generation,generation_raw,_,pointer_raw,_=load_bundle(root,public_key,signer_identity,ssh_keygen)
     expected=materialize_loader(generation,generation_raw,pointer_raw)
+    if expected_release_inventory_sha256 is not None and (
+        HASH.fullmatch(expected_release_inventory_sha256) is None
+        or generation["immutable_config"]["release_inventory_sha256"] != expected_release_inventory_sha256
+    ):raise ContractError("MATERIALIZED_RELEASE_INVENTORY_MISMATCH")
     supplied=strict_bytes(materialized_raw)
     if supplied!=expected or generation["operator_role"]!=expected_role or Path(generation["future_pointer_path"]).exists():raise ContractError("MATERIALIZED_PREINSTALL_INVALID")
     invocation=expected["decoded_bindings"]["runtime_invocation"]
@@ -1029,7 +1038,7 @@ def main(argv=None) -> int:
     readiness=commands.add_parser("verify-runtime-readiness");common(readiness);readiness.add_argument("--attestation",required=True);readiness.add_argument("--attestation-signature",required=True);readiness.add_argument("--readiness",required=True);readiness.add_argument("--readiness-signature");readiness.add_argument("--readiness-public-key",required=True);readiness.add_argument("--readiness-identity",required=True)
     plan=commands.add_parser("create-precommit");plan.add_argument("--root",required=True);plan.add_argument("--future-pointer",required=True);plan.add_argument("--generation-id",required=True);plan.add_argument("--sequence",required=True,type=int);plan.add_argument("--predecessor-generation-id",required=True);plan.add_argument("--operator-role",required=True,choices=sorted(ROLES));plan.add_argument("--immutable-config",required=True);plan.add_argument("--task-template",required=True);plan.add_argument("--signer-identity",required=True);plan.add_argument("--private-key",required=True);plan.add_argument("--ssh-keygen",required=True)
     materialize=commands.add_parser("materialize-loader");materialize.add_argument("--precommit",required=True);materialize.add_argument("--public-key",required=True);materialize.add_argument("--signer-identity",required=True);materialize.add_argument("--ssh-keygen",required=True);materialize.add_argument("--output",required=True)
-    verify_materialized_command=commands.add_parser("verify-materialized");verify_materialized_command.add_argument("--precommit",required=True);verify_materialized_command.add_argument("--materialized",required=True);verify_materialized_command.add_argument("--public-key",required=True);verify_materialized_command.add_argument("--signer-identity",required=True);verify_materialized_command.add_argument("--ssh-keygen",required=True);verify_materialized_command.add_argument("--expected-role",required=True,choices=sorted(ROLES));verify_materialized_command.add_argument("--expected-release-root",required=True)
+    verify_materialized_command=commands.add_parser("verify-materialized");verify_materialized_command.add_argument("--precommit",required=True);verify_materialized_command.add_argument("--materialized",required=True);verify_materialized_command.add_argument("--public-key",required=True);verify_materialized_command.add_argument("--signer-identity",required=True);verify_materialized_command.add_argument("--ssh-keygen",required=True);verify_materialized_command.add_argument("--expected-role",required=True,choices=sorted(ROLES));verify_materialized_command.add_argument("--expected-release-root",required=True);verify_materialized_command.add_argument("--expected-release-inventory-sha256")
     args=parser.parse_args(argv)
     try:
         if args.command=="create-precommit":
@@ -1037,7 +1046,7 @@ def main(argv=None) -> int:
         if args.command=="materialize-loader":
             root=Path(args.precommit);generation,generation_raw,_,pointer_raw,_=load_bundle(root,Path(args.public_key),args.signer_identity,Path(args.ssh_keygen));Path(args.output).write_bytes(canonical(materialize_loader(generation,generation_raw,pointer_raw)));return 0
         if args.command=="verify-materialized":
-            verify_materialized(Path(args.precommit),_read(args.materialized),Path(args.public_key),args.signer_identity,Path(args.ssh_keygen),args.expected_role,Path(args.expected_release_root));return 0
+            verify_materialized(Path(args.precommit),_read(args.materialized),Path(args.public_key),args.signer_identity,Path(args.ssh_keygen),args.expected_role,Path(args.expected_release_root),args.expected_release_inventory_sha256);return 0
         live=strict_bytes(_read(args.live_topology));root=Path(args.precommit);public=Path(args.public_key);ssh=Path(args.ssh_keygen)
         if args.command=="attest-installed-disabled":
             generation,generation_raw,_,pointer_raw,_=load_bundle(root,public,args.signer_identity,ssh);loader=materialize_loader(generation,generation_raw,pointer_raw);raw,sig=create_attestation(generation,generation_raw,pointer_raw,loader,live,Path(args.private_key),ssh);target=Path(args.output)
