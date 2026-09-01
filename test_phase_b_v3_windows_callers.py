@@ -19,6 +19,7 @@ from operator_packs.finex_trusted_utc_v1.phase_b_asymmetric_v3 import (
     canonical,
     create_attestation,
     create_precommit,
+    unseal_directory_for_cleanup,
     load_bundle,
     materialize_loader,
     sha,
@@ -367,11 +368,14 @@ class PhaseBV3RuntimeStructuralBehaviorTests(unittest.TestCase):
             "firewall_sha256": sha(self.firewall_path.read_bytes()),
             "host_identity_sha256": "a" * 64,
             "joint_binding_sha256": "b" * 64,
+            "powershell_path": self.template["action"]["execute"],
+            "powershell_sha256": sha(Path(self.template["action"]["execute"]).read_bytes()),
             "readiness_authority": {
                 "public_key_file_sha256": sha(self.public_key.read_bytes()),
                 "public_key_fingerprint_sha256": sha((self.public_key.read_text("ascii").split()[0]+" "+self.public_key.read_text("ascii").split()[1]).encode()),
                 "signer_identity": "finex-readiness",
             },
+            "release_identity_manifest_sha256": "e" * 64,
             "release_identity_sha256": "c" * 64,
             "runtime_invocation": self.structural_binding,
             "schema_version": "finex-phase-b-immutable-config-v3",
@@ -426,6 +430,8 @@ class PhaseBV3RuntimeStructuralBehaviorTests(unittest.TestCase):
 
     def tearDown(self):
         if hasattr(self, "temporary"):
+            if self.root.exists():
+                unseal_directory_for_cleanup(self.root)
             self.temporary.cleanup()
 
     def _verify_structural(self, topology: dict) -> subprocess.CompletedProcess[str]:

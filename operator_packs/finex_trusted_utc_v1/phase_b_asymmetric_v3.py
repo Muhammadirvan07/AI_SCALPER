@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import sys
 from pathlib import Path
 
 HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -30,7 +31,8 @@ class ContractError(ValueError):
 
 
 class WindowsAncestorChain:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, leaf_delete: bool = False, leaf_write_exclusive_delete: bool = False):
+        if leaf_delete and leaf_write_exclusive_delete:raise ContractError("PUBLISH_ANCESTOR_MODE_INVALID")
         self.path=Path(os.path.abspath(os.fspath(path)));self.kernel32=None;self.handles=[];self.identities=[]
         if os.name!="nt":return
         import ctypes
@@ -43,14 +45,18 @@ class WindowsAncestorChain:
         for component in self.path.parts[1:]:current=current/component;parts.append(current)
         targets=[root,*parts]
         try:
-            for target in targets:
-                reject_reparse_chain(target);access=0x1|0x00100000;handle=k.CreateFileW(str(target),access,3,None,3,0x02000000,None)
+            for index,target in enumerate(targets):
+                leaf=index==len(targets)-1
+                rename_parent=leaf_write_exclusive_delete and index==len(targets)-2
+                access=((0x00010000|0x2|0x4) if leaf and leaf_write_exclusive_delete else (0x00010000 if leaf and leaf_delete else (0x1|0x4 if rename_parent else 0x1)))|0x00100000
+                share=5 if leaf and leaf_write_exclusive_delete else 3
+                reject_reparse_chain(target);handle=k.CreateFileW(str(target),access,share,None,3,0x02200000,None)
                 if handle==ctypes.c_void_p(-1).value:
-                    if ctypes.get_last_error()==5:access=0;handle=k.CreateFileW(str(target),access,3,None,3,0x02000000,None)
+                    if ctypes.get_last_error()==5 and not (rename_parent or leaf and (leaf_delete or leaf_write_exclusive_delete)):access=0;handle=k.CreateFileW(str(target),access,share,None,3,0x02200000,None)
                 if handle==ctypes.c_void_p(-1).value:
                     raise ContractError("PUBLISH_ANCESTOR_HOLD_FAILED")
                 info=Info()
-                if not k.GetFileInformationByHandle(handle,ctypes.byref(info)):k.CloseHandle(handle);raise ContractError("PUBLISH_ANCESTOR_IDENTITY_FAILED")
+                if not k.GetFileInformationByHandle(handle,ctypes.byref(info)) or info.attributes&0x400:k.CloseHandle(handle);raise ContractError("PUBLISH_ANCESTOR_IDENTITY_FAILED")
                 self.handles.append(handle);self.identities.append((str(target),info.volume,info.index_high,info.index_low,access))
             self.recheck()
         except BaseException:self.close();raise
@@ -59,12 +65,12 @@ class WindowsAncestorChain:
     def recheck(self):
         if os.name!="nt":return
         import ctypes
-        for expected,volume,high,low,access in self.identities:
-            reject_reparse_chain(Path(expected));handle=self.kernel32.CreateFileW(expected,access,3,None,3,0x02000000,None)
+        for expected,volume,high,low,unused_access in self.identities:
+            reject_reparse_chain(Path(expected));handle=self.kernel32.CreateFileW(expected,0,7,None,3,0x02200000,None)
             if handle==ctypes.c_void_p(-1).value:raise ContractError("PUBLISH_ANCESTOR_RECHECK_FAILED")
             try:
                 info=self.Info()
-                if not self.kernel32.GetFileInformationByHandle(handle,ctypes.byref(info)) or (info.volume,info.index_high,info.index_low)!=(volume,high,low):raise ContractError("PUBLISH_ANCESTOR_REPLACED")
+                if not self.kernel32.GetFileInformationByHandle(handle,ctypes.byref(info)) or info.attributes&0x400 or (info.volume,info.index_high,info.index_low)!=(volume,high,low):raise ContractError("PUBLISH_ANCESTOR_REPLACED")
             finally:self.kernel32.CloseHandle(handle)
     def detach(self):handles=self.handles;self.handles=[];self.identities=[];return handles
     def close(self):
@@ -98,9 +104,28 @@ def flush_directory(path: Path) -> None:
     return
 
 
-def durable_replace(source: Path | str, destination: Path, source_handle: int | None = None, destination_parent_handle: int | None = None) -> None:
+def durable_replace(source: Path | str, destination: Path, source_handle: int | None = None, destination_parent_handle: int | None = None, *, replace: bool = True) -> None:
     if os.name != "nt":
-        os.replace(source, destination)
+        if replace:os.replace(source,destination)
+        elif sys.platform.startswith("linux"):
+            import ctypes
+            libc=ctypes.CDLL(None,use_errno=True);renameat2=getattr(libc,"renameat2",None)
+            if renameat2 is None:raise ContractError("PUBLISH_NOREPLACE_UNAVAILABLE")
+            renameat2.argtypes=(ctypes.c_int,ctypes.c_char_p,ctypes.c_int,ctypes.c_char_p,ctypes.c_uint);renameat2.restype=ctypes.c_int
+            if renameat2(-100,os.fsencode(source),-100,os.fsencode(destination),1):
+                error=ctypes.get_errno()
+                if error in (17,39):raise ContractError("PUBLISH_CAS_CONFLICT")
+                raise OSError(error,os.strerror(error),os.fspath(destination))
+        elif sys.platform=="darwin":
+            import ctypes
+            libc=ctypes.CDLL(None,use_errno=True);renamex=getattr(libc,"renamex_np",None)
+            if renamex is None:raise ContractError("PUBLISH_NOREPLACE_UNAVAILABLE")
+            renamex.argtypes=(ctypes.c_char_p,ctypes.c_char_p,ctypes.c_uint);renamex.restype=ctypes.c_int
+            if renamex(os.fsencode(source),os.fsencode(destination),4):
+                error=ctypes.get_errno()
+                if error in (17,39):raise ContractError("PUBLISH_CAS_CONFLICT")
+                raise OSError(error,os.strerror(error),os.fspath(destination))
+        else:raise ContractError("PUBLISH_NOREPLACE_UNAVAILABLE")
         flush_directory(destination.parent)
         return
     import ctypes
@@ -117,12 +142,13 @@ def durable_replace(source: Path | str, destination: Path, source_handle: int | 
     class RenameInfo(ctypes.Structure):
         _fields_=[("ReplaceIfExists",wintypes.BOOLEAN),("RootDirectory",wintypes.HANDLE),("FileNameLength",wintypes.DWORD),("FileName",wintypes.WCHAR*1)]
     class IoStatusBlock(ctypes.Structure):_fields_=[("status",ctypes.c_void_p),("information",ctypes.c_size_t)]
-    name=destination.name;encoded=name.encode("utf-16le");offset=RenameInfo.FileName.offset;buffer=ctypes.create_string_buffer(offset+len(encoded)+2);ctypes.c_ubyte.from_buffer(buffer,0).value=1;ctypes.c_void_p.from_buffer(buffer,RenameInfo.RootDirectory.offset).value=parent_handle;ctypes.c_uint32.from_buffer(buffer,RenameInfo.FileNameLength.offset).value=len(encoded);ctypes.memmove(ctypes.addressof(buffer)+offset,encoded,len(encoded));ntdll=ctypes.WinDLL("ntdll");ntdll.NtSetInformationFile.argtypes=(wintypes.HANDLE,ctypes.POINTER(IoStatusBlock),ctypes.c_void_p,wintypes.ULONG,ctypes.c_int);ntdll.NtSetInformationFile.restype=ctypes.c_long;ios=IoStatusBlock()
+    name=destination.name;encoded=name.encode("utf-16le");offset=RenameInfo.FileName.offset;buffer=ctypes.create_string_buffer(offset+len(encoded)+2);ctypes.c_ubyte.from_buffer(buffer,0).value=1 if replace else 0;ctypes.c_void_p.from_buffer(buffer,RenameInfo.RootDirectory.offset).value=parent_handle;ctypes.c_uint32.from_buffer(buffer,RenameInfo.FileNameLength.offset).value=len(encoded);ctypes.memmove(ctypes.addressof(buffer)+offset,encoded,len(encoded));ntdll=ctypes.WinDLL("ntdll");ntdll.NtSetInformationFile.argtypes=(wintypes.HANDLE,ctypes.POINTER(IoStatusBlock),ctypes.c_void_p,wintypes.ULONG,ctypes.c_int);ntdll.NtSetInformationFile.restype=ctypes.c_long;ios=IoStatusBlock()
     try:status=ntdll.NtSetInformationFile(handle,ctypes.byref(ios),buffer,len(buffer),10);success=status>=0
     finally:
         if owns_source:kernel32.CloseHandle(handle)
         if ancestors is not None:ancestors.recheck();ancestors.close()
     if not success:
+        if not replace and (status&0xffffffff) in (0xC0000035,0xC000003A,0xC0000101):raise ContractError("PUBLISH_CAS_CONFLICT")
         raise ContractError("PUBLISH_DURABLE_REPLACE_FAILED:"+hex(status&0xffffffff))
 
 
@@ -165,8 +191,21 @@ def seal_exact_directory(directory: Path) -> None:
         os.chmod(directory,0o555);return
     icacls=Path(os.environ.get("SystemRoot",r"C:\Windows"))/"System32/icacls.exe"
     if not icacls.is_file():raise ContractError("PUBLISH_DIRECTORY_SEAL_FAILED")
-    result=_run([str(icacls),str(directory),"/inheritance:r","/grant:r","*"+_current_windows_sid()+":(OI)(CI)RX","*S-1-5-18:(OI)(CI)F","/T","/C","/Q"])
+    result=_run([str(icacls),str(directory),"/inheritance:r","/grant:r","*"+_current_windows_sid()+":RX","*S-1-5-18:F","/T","/C","/Q"],timeout_reason="PUBLISH_DIRECTORY_SEAL_TIMEOUT")
     if result.returncode:raise ContractError("PUBLISH_DIRECTORY_SEAL_FAILED")
+
+
+def unseal_directory_for_cleanup(directory: Path) -> None:
+    if os.name!="nt":
+        for item in directory.rglob("*"):
+            try:os.chmod(item,0o700)
+            except OSError:pass
+        try:os.chmod(directory,0o700)
+        except OSError:pass
+        return
+    icacls=Path(os.environ.get("SystemRoot",r"C:\Windows"))/"System32/icacls.exe"
+    try:_run([str(icacls),str(directory),"/grant:r","*"+_current_windows_sid()+":F","*S-1-5-18:F","/T","/C","/Q"],timeout_reason="PUBLISH_DIRECTORY_CLEANUP_TIMEOUT")
+    except (OSError,ContractError):pass
 
 
 def adopt_exact_directory(stage: Path, destination: Path, expected: dict[str, bytes]) -> ExactDirectoryHold:
@@ -434,7 +473,7 @@ def normalized_public_bytes(raw: bytes) -> bytes:
 
 
 class HeldFileBytes:
-    def __init__(self,path: Path):
+    def __init__(self,path: Path, *, hold_ancestors: bool = True, share_delete: bool = False):
         self.path=Path(path);self.raw=b"";self.handle=None;self.descriptor=None;self.kernel32=None;self.ancestor_hold=None;reject_reparse_chain(self.path)
         if os.name!="nt":
             self.descriptor=os.open(self.path,os.O_RDONLY);chunks=[]
@@ -445,10 +484,10 @@ class HeldFileBytes:
             self.raw=b"".join(chunks);return
         import ctypes
         from ctypes import wintypes
-        self.ancestor_hold=WindowsAncestorChain(self.path.parent);self.kernel32=ctypes.WinDLL("kernel32",use_last_error=True);k=self.kernel32
+        self.ancestor_hold=WindowsAncestorChain(self.path.parent) if hold_ancestors else None;self.kernel32=ctypes.WinDLL("kernel32",use_last_error=True);k=self.kernel32
         k.CreateFileW.argtypes=(wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE);k.CreateFileW.restype=wintypes.HANDLE
         k.CloseHandle.argtypes=(wintypes.HANDLE,);k.CloseHandle.restype=wintypes.BOOL
-        self.handle=k.CreateFileW(str(self.path),0x80000000,1,None,3,0x00200000|0x02000000,None)
+        self.handle=k.CreateFileW(str(self.path),0x80000000,5 if share_delete else 1,None,3,0x00200000|0x02000000,None)
         if ctypes.c_void_p(self.handle).value==ctypes.c_void_p(-1).value:self.handle=None;self.close();raise ContractError("HELD_FILE_OPEN_FAILED")
         size=ctypes.c_longlong()
         if not k.GetFileSizeEx(self.handle,ctypes.byref(size)):self.close();raise ContractError("HELD_FILE_READ_FAILED")
@@ -457,7 +496,8 @@ class HeldFileBytes:
             count=min(remaining,1024*1024);buffer=ctypes.create_string_buffer(count);read=wintypes.DWORD()
             if not k.ReadFile(self.handle,buffer,count,ctypes.byref(read),None) or read.value<=0:self.close();raise ContractError("HELD_FILE_READ_FAILED")
             parts.append(buffer.raw[:read.value]);remaining-=read.value
-        self.raw=b"".join(parts);reject_reparse_chain(self.path);self.ancestor_hold.recheck()
+        self.raw=b"".join(parts);reject_reparse_chain(self.path)
+        if self.ancestor_hold is not None:self.ancestor_hold.recheck()
     def close(self):
         if self.descriptor is not None:os.close(self.descriptor);self.descriptor=None
         if self.handle is not None:self.kernel32.CloseHandle(self.handle);self.handle=None
@@ -515,9 +555,9 @@ def validate_template(template: dict) -> None:
 
 
 def validate_immutable_config(value: dict) -> None:
-    _exact(value,{"config_and_key_bindings_sha256","consumer_host_identity_sha256","expected_host_role","firewall_sha256","host_identity_sha256","joint_binding_sha256","readiness_authority","release_identity_sha256","runtime_invocation","schema_version","source_host_identity_sha256"},"IMMUTABLE_CONFIG_INVALID")
+    _exact(value,{"config_and_key_bindings_sha256","consumer_host_identity_sha256","expected_host_role","firewall_sha256","host_identity_sha256","joint_binding_sha256","powershell_path","powershell_sha256","readiness_authority","release_identity_manifest_sha256","release_identity_sha256","runtime_invocation","schema_version","source_host_identity_sha256"},"IMMUTABLE_CONFIG_INVALID")
     if value["schema_version"]!="finex-phase-b-immutable-config-v3" or HASH.fullmatch(str(value["config_and_key_bindings_sha256"])) is None or HASH.fullmatch(str(value["firewall_sha256"])) is None:raise ContractError("IMMUTABLE_CONFIG_INVALID")
-    if value["expected_host_role"] not in {"finex","putra"} or any(HASH.fullmatch(str(value[key])) is None for key in ("consumer_host_identity_sha256","host_identity_sha256","joint_binding_sha256","release_identity_sha256","source_host_identity_sha256")):raise ContractError("IMMUTABLE_TRUST_BINDING_INVALID")
+    if value["expected_host_role"] not in {"finex","putra"} or any(HASH.fullmatch(str(value[key])) is None for key in ("consumer_host_identity_sha256","host_identity_sha256","joint_binding_sha256","powershell_sha256","release_identity_manifest_sha256","release_identity_sha256","source_host_identity_sha256")) or type(value["powershell_path"]) is not str or not Path(value["powershell_path"]).is_absolute():raise ContractError("IMMUTABLE_TRUST_BINDING_INVALID")
     expected_identity=value["consumer_host_identity_sha256"] if value["expected_host_role"]=="finex" else value["source_host_identity_sha256"]
     if value["host_identity_sha256"]!=expected_identity or value["consumer_host_identity_sha256"]==value["source_host_identity_sha256"]:raise ContractError("IMMUTABLE_PEER_BINDING_INVALID")
     readiness=value["readiness_authority"]
@@ -534,11 +574,11 @@ def validate_immutable_config(value: dict) -> None:
     if type(invocation["runtime_arguments"]["named"]) is not dict or type(invocation["runtime_arguments"]["positionals"]) is not list:raise ContractError("RUNTIME_INVOCATION_INVALID")
 
 
-def _run(args: list[str], *, stdin: bytes | None = None) -> subprocess.CompletedProcess:
+def _run(args: list[str], *, stdin: bytes | None = None, timeout_reason: str = "SSHSIG_TIMEOUT") -> subprocess.CompletedProcess:
     try:
         return subprocess.run(args, input=stdin, capture_output=True, timeout=10, check=False)
     except subprocess.TimeoutExpired as exc:
-        raise ContractError("SSHSIG_TIMEOUT") from exc
+        raise ContractError(timeout_reason) from exc
 
 
 def sign_bytes(data: bytes, private_key: Path, namespace: str, ssh_keygen: Path) -> bytes:
@@ -574,6 +614,7 @@ def create_precommit(root: Path, *, future_pointer_path: Path, generation_id: st
     _sequence(generation_id, sequence, predecessor_generation_id)
     validate_template(task_template)
     validate_immutable_config(immutable_config)
+    if lexical_path(Path(task_template["action"]["execute"]))!=lexical_path(Path(immutable_config["powershell_path"])):raise ContractError("POWERSHELL_TEMPLATE_CROSS_LINK_INVALID")
     runtime_role=immutable_config["runtime_invocation"]["runtime_arguments"]["named"].get("ReadinessRole")
     expected_host="putra" if operator_role=="putra-producer" else "finex"
     if operator_role not in ROLES or immutable_config["expected_host_role"]!=expected_host or signer_identity != ROLE_SIGNERS[operator_role] or runtime_role!=READINESS_ROLES[operator_role] or not future_pointer_path.is_absolute() or root.exists():
@@ -627,10 +668,44 @@ def create_precommit(root: Path, *, future_pointer_path: Path, generation_id: st
                     "pointer_sha256": sha(pointer_raw), "predecessor_pointer_sha256": predecessor_pointer_sha256, "schema_version": "finex-phase-b-precommit-plan-v3",
                     "sequence": sequence, "task_template_sha256": pointer_payload["task_template_sha256"]}
         (stage / "precommit.json").write_bytes(canonical(manifest))
-        os.replace(stage, root)
+        expected={
+            "current.json":pointer_raw,
+            "precommit.json":canonical(manifest),
+            "generations/"+generation_id+"/generation.json":generation_raw,
+            "generations/"+generation_id+"/generation.json.sig":generation_sig,
+        }
+        stage_chain=WindowsAncestorChain(stage,leaf_write_exclusive_delete=True);holds=[];adopted=False
+        try:
+            actual={str(item.relative_to(stage)).replace("\\","/") for item in stage.rglob("*") if item.is_file()}
+            directories={str(item.relative_to(stage)).replace("\\","/") for item in stage.rglob("*") if item.is_dir()}
+            expected_directories={"generations","generations/"+generation_id}
+            if actual!=set(expected) or directories!=expected_directories:raise ContractError("PRECOMMIT_STAGE_TOPOLOGY_INVALID")
+            for relative,raw in expected.items():
+                held=HeldFileBytes(stage/relative,hold_ancestors=False,share_delete=True);holds.append(held)
+                if held.raw!=raw:raise ContractError("PRECOMMIT_STAGE_BYTES_INVALID")
+            stage_chain.recheck();seal_exact_directory(stage);stage_chain.recheck()
+            actual={str(item.relative_to(stage)).replace("\\","/") for item in stage.rglob("*") if item.is_file()}
+            directories={str(item.relative_to(stage)).replace("\\","/") for item in stage.rglob("*") if item.is_dir()}
+            if actual!=set(expected) or directories!=expected_directories or any((stage/relative).read_bytes()!=raw for relative,raw in expected.items()):raise ContractError("PRECOMMIT_STAGE_SEAL_DRIFT")
+            for held in holds:held.close()
+            holds=[]
+            source_handle=stage_chain.leaf_handle if os.name=="nt" else None
+            parent_handle=stage_chain.handles[-2] if os.name=="nt" else None
+            durable_replace(stage,root,source_handle,parent_handle,replace=False);adopted=True
+            reject_reparse_chain(root)
+            actual={str(item.relative_to(root)).replace("\\","/") for item in root.rglob("*") if item.is_file()}
+            directories={str(item.relative_to(root)).replace("\\","/") for item in root.rglob("*") if item.is_dir()}
+            if actual!=set(expected) or directories!=expected_directories or any((root/relative).read_bytes()!=raw for relative,raw in expected.items()):raise ContractError("PRECOMMIT_POST_ADOPTION_DRIFT")
+        except BaseException as exc:
+            if adopted:raise ContractError("PRECOMMIT_ADOPTED_INVALID") from exc
+            raise
+        finally:
+            for held in holds:held.close()
+            stage_chain.close()
     except BaseException:
         if stage.exists():
             import shutil
+            unseal_directory_for_cleanup(stage)
             shutil.rmtree(stage)
         raise
     return manifest

@@ -6,7 +6,7 @@ from pathlib import Path
 from operator_packs.finex_trusted_utc_v1.phase_b_asymmetric_v3 import (
     ContractError, NAMESPACE, PublishLock, WindowsAncestorChain, canonical, create_attestation, create_precommit,
     load_bundle, materialize_loader, normalized_public, public_fingerprint, publish_exact, sha, sign_bytes, verify_closure,
-    reject_reparse_chain, verify_activation_precondition, verify_runtime, write_attestation_generation,
+    reject_reparse_chain, unseal_directory_for_cleanup, verify_activation_precondition, verify_runtime, write_attestation_generation,
 )
 from operator_packs.finex_trusted_utc_v1.finex_trusted_utc import emit_role_readiness
 
@@ -22,13 +22,16 @@ class AsymmetricClosureV3Tests(unittest.TestCase):
         self.template={"action":{"arguments":{"encoded_loader":{"future_pointer_sha256":{"name":"future_pointer_sha256","type":"sha256"},"kind":"phase-b-loader-v3"},"prefix":"-NoProfile -NonInteractive -EncodedCommand "},"execute":r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"},"principal":{"logon_type":"Interactive","run_level":"Highest","user_id":"host\\operator"},"schema_version":"finex-task-definition-template-v3","settings":{"execution_time_limit_seconds":0},"task_name":"AI_SCALPER_TEST_V3","task_path":"\\"}
         pub_bytes=self.public.read_bytes();pub_blob=__import__('base64').b64decode(self.public.read_text("ascii").split()[1],validate=True)
         invocation={"attestation_path":str((self.root/"attestation.json").resolve()),"attestation_signature_path":str((self.root/"attestation.json.sig").resolve()),"config_and_key_bindings_path":str((self.root/"bindings.json").resolve()),"firewall_path":str((self.root/"firewall.json").resolve()),"observer_path":str((self.root/"observer.ps1").resolve()),"observer_sha256":"3"*64,"precommit_root":str(self.precommit.resolve()),"public_key_file_sha256":sha(pub_bytes),"public_key_fingerprint_sha256":sha(pub_blob),"public_key_path":str(self.public.resolve()),"python_path":str(Path(os.sys.executable).resolve()),"python_sha256":"4"*64,"runtime_arguments":{"named":{"ReadinessChallengePath":str((self.root/"readiness-challenge.json").resolve()),"ReadinessReceiptPath":str((self.root/"readiness.json").resolve()),"ReadinessRole":"cas_responder"},"positionals":[]},"runtime_path":str((self.root/"runtime.ps1").resolve()),"runtime_sha256":"5"*64,"ssh_keygen_path":str(self.ssh.resolve()),"ssh_keygen_sha256":sha(self.ssh.read_bytes()),"signer_identity":"finex-phase-d-operator","task_name":self.template["task_name"],"task_path":"\\","v3_core_path":str((self.root/"phase_b_asymmetric_v3.py").resolve()),"v3_core_sha256":"6"*64}
-        immutable={"config_and_key_bindings_sha256":sha(canonical({"schema_version":"test-bindings-v1"})),"consumer_host_identity_sha256":"a"*64,"expected_host_role":"finex","firewall_sha256":sha(canonical({"phase":"absent"})),"host_identity_sha256":"a"*64,"joint_binding_sha256":"b"*64,"readiness_authority":{"public_key_file_sha256":sha(pub_bytes),"public_key_fingerprint_sha256":public_fingerprint(self.public),"signer_identity":"finex-readiness"},"release_identity_sha256":"c"*64,"runtime_invocation":invocation,"schema_version":"finex-phase-b-immutable-config-v3","source_host_identity_sha256":"d"*64}
+        powershell=Path(self.template["action"]["execute"])
+        immutable={"config_and_key_bindings_sha256":sha(canonical({"schema_version":"test-bindings-v1"})),"consumer_host_identity_sha256":"a"*64,"expected_host_role":"finex","firewall_sha256":sha(canonical({"phase":"absent"})),"host_identity_sha256":"a"*64,"joint_binding_sha256":"b"*64,"powershell_path":str(powershell),"powershell_sha256":sha(powershell.read_bytes()),"readiness_authority":{"public_key_file_sha256":sha(pub_bytes),"public_key_fingerprint_sha256":public_fingerprint(self.public),"signer_identity":"finex-readiness"},"release_identity_manifest_sha256":"e"*64,"release_identity_sha256":"c"*64,"runtime_invocation":invocation,"schema_version":"finex-phase-b-immutable-config-v3","source_host_identity_sha256":"d"*64}
         create_precommit(self.precommit,future_pointer_path=self.live_pointer,generation_id="a"*32,sequence=1,predecessor_generation_id="0"*32,operator_role="finex-cas",immutable_config=immutable,task_template=self.template,signer_identity="finex-phase-d-operator",private_key=self.key,ssh_keygen=self.ssh)
         self.g,self.graw,self.p,self.praw,self.manifest=load_bundle(self.precommit,self.public,"finex-phase-d-operator",self.ssh)
         self.loader=materialize_loader(self.g,self.graw,self.praw)
         self.live={"action":{"arguments":self.template["action"]["arguments"]["prefix"]+self.loader["encoded_command"],"execute":self.template["action"]["execute"]},"config_and_key_bindings":{"schema_version":"test-bindings-v1"},"definition_xml_sha256":"2"*64,"firewall":{"phase":"absent"},"principal":self.template["principal"],"settings":self.template["settings"],"state":"Disabled","task_name":self.template["task_name"],"task_path":"\\","trigger_count":0}
         self.araw,self.asig=create_attestation(self.g,self.graw,self.praw,self.loader,self.live,self.key,self.ssh)
-    def tearDown(self):self.temp.cleanup()
+    def tearDown(self):
+        if self.root.exists():unseal_directory_for_cleanup(self.root)
+        self.temp.cleanup()
 
     def test_end_to_end_publish_activation_runtime_lifecycle(self):
         self.assertEqual("published",publish_exact(self.precommit,self.araw,self.asig,self.live,self.live_pointer,self.public,"finex-phase-d-operator",self.ssh))
@@ -66,6 +69,40 @@ class AsymmetricClosureV3Tests(unittest.TestCase):
         for thread in threads:thread.start()
         for thread in threads:thread.join()
         self.assertIn("published",results);self.assertTrue(set(results)<= {"published","already-published","PUBLISH_CONCURRENT"})
+
+    def test_precommit_adoption_is_no_replace_under_collision_race(self):
+        destination=self.root/"collision-precommit";original=__import__("operator_packs.finex_trusted_utc_v1.phase_b_asymmetric_v3",fromlist=["durable_replace"]).durable_replace
+        def race(source,target,*args,**kwargs):
+            Path(target).mkdir();(Path(target)/"winner").write_bytes(b"winner")
+            return original(source,target,*args,**kwargs)
+        with mock.patch("operator_packs.finex_trusted_utc_v1.phase_b_asymmetric_v3.durable_replace",side_effect=race):
+            with self.assertRaisesRegex(ContractError,"PUBLISH_CAS_CONFLICT"):
+                create_precommit(destination,future_pointer_path=self.root/"collision-pointer",generation_id="f"*32,sequence=1,predecessor_generation_id="0"*32,operator_role="finex-cas",immutable_config=self.g["immutable_config"],task_template=self.template,signer_identity="finex-phase-d-operator",private_key=self.key,ssh_keygen=self.ssh)
+        self.assertEqual(b"winner",(destination/"winner").read_bytes())
+
+    def test_immutable_config_requires_powershell_and_release_manifest_hash(self):
+        bad=copy.deepcopy(self.g["immutable_config"]);del bad["powershell_sha256"]
+        with self.assertRaisesRegex(ContractError,"IMMUTABLE_CONFIG_INVALID"):
+            create_precommit(self.root/"missing-powershell",future_pointer_path=self.root/"missing-powershell-pointer",generation_id="e"*32,sequence=1,predecessor_generation_id="0"*32,operator_role="finex-cas",immutable_config=bad,task_template=self.template,signer_identity="finex-phase-d-operator",private_key=self.key,ssh_keygen=self.ssh)
+
+    @unittest.skipUnless(os.name=="nt","Windows DELETE leaf self-recheck")
+    def test_delete_held_leaf_can_self_recheck_without_deadlock(self):
+        leaf=self.root/"delete-held";leaf.mkdir();chain=WindowsAncestorChain(leaf,leaf_delete=True)
+        try:chain.recheck()
+        finally:chain.close()
+
+    def test_precommit_rejects_extra_child_inserted_during_stage_seal(self):
+        original=__import__("operator_packs.finex_trusted_utc_v1.phase_b_asymmetric_v3",fromlist=["seal_exact_directory"]).seal_exact_directory
+        def inject(stage):
+            extra=stage/"extra";extra.write_bytes(b"x");original(stage)
+        with mock.patch("operator_packs.finex_trusted_utc_v1.phase_b_asymmetric_v3.seal_exact_directory",side_effect=inject):
+            with self.assertRaisesRegex(ContractError,"PRECOMMIT_STAGE_SEAL_DRIFT"):
+                create_precommit(self.root/"extra-precommit",future_pointer_path=self.root/"extra-pointer",generation_id="9"*32,sequence=1,predecessor_generation_id="0"*32,operator_role="finex-cas",immutable_config=self.g["immutable_config"],task_template=self.template,signer_identity="finex-phase-d-operator",private_key=self.key,ssh_keygen=self.ssh)
+
+    def test_powershell_template_cross_link_is_exact(self):
+        template=copy.deepcopy(self.template);template["action"]["execute"]=str((self.root/"other-powershell.exe").resolve())
+        with self.assertRaisesRegex(ContractError,"POWERSHELL_TEMPLATE_CROSS_LINK_INVALID"):
+            create_precommit(self.root/"cross-link",future_pointer_path=self.root/"cross-link-pointer",generation_id="8"*32,sequence=1,predecessor_generation_id="0"*32,operator_role="finex-cas",immutable_config=self.g["immutable_config"],task_template=template,signer_identity="finex-phase-d-operator",private_key=self.key,ssh_keygen=self.ssh)
 
     def test_reparse_ancestor_is_rejected_before_publication(self):
         with mock.patch("operator_packs.finex_trusted_utc_v1.phase_b_asymmetric_v3.os.path.isjunction", return_value=True):
