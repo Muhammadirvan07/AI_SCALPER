@@ -1,13 +1,13 @@
 """Build and reproducibly verify private-key-free Phase D unsigned inputs."""
 from __future__ import annotations
-import argparse,hashlib,ipaddress,json,os,secrets,shutil,sys
+import argparse,base64,hashlib,ipaddress,json,os,secrets,shutil,struct,sys
 from pathlib import Path
 
 REQUEST_FIELDS={"artifacts","generated","output_root","profile","schema_version"};ARTIFACT_FIELDS={"relative_path","sha256","source_path"};GENERATED_FIELDS={"kind","relative_path","value"}
 MANIFEST_FIELDS={"artifacts","builder_contract","builder_request_sha256","builder_source_sha256","profile","schema_version"};BUILDER_CONTRACT="finex-phase-d-unsigned-input-builder-v3"
 PROFILES={
- "finex":{"generated":{"acl_policy":"policies/runtime_acl_policy.json","cas_config":"configs/cas-responder.json","finex_cas_bindings":"configs/finex-cas-config-and-key-bindings.json","finex_cas_firewall":"configs/finex-cas-firewall.json","finex_fetcher_bindings":"configs/finex-fetcher-config-and-key-bindings.json","finex_fetcher_firewall":"configs/finex-fetcher-firewall.json"},"required":{"v3/OPERATOR_BOOTSTRAP.ps1","v3/PHASE_B_V3_WINDOWS.ps1","v3/RUN_FINEX_TRUSTED_UTC_CAS_RESPONDER.ps1","v3/RUN_FINEX_TRUSTED_UTC_FETCHER.ps1","v3/finex_trusted_utc.py","v3/phase_b_asymmetric_v3.py","dependencies/live_runtime/windows_trusted_utc_continuity_acceptance.py","dependencies/live_runtime/windows_trusted_utc_continuity_cas_responder.py","dependencies/run_windows_trusted_utc_continuity_cas_responder.py"}},
- "putra":{"generated":{"acl_policy":"policies/runtime_acl_policy.json","producer_bindings":"configs/putra-producer-config-and-key-bindings.json","producer_config":"configs/producer.json","producer_firewall":"configs/putra-producer-firewall.json"},"required":{"v3/OPERATOR_BOOTSTRAP.ps1","v3/PHASE_B_V3_WINDOWS.ps1","v3/RUN_PUTRA_TRUSTED_UTC_PRODUCER.ps1","v3/finex_trusted_utc.py","v3/phase_b_asymmetric_v3.py","dependencies/live_runtime/windows_trusted_utc_continuity_acceptance.py"}}}
+ "finex":{"generated":{"acl_policy":"policies/runtime_acl_policy.json","cas_config":"configs/cas-responder.json","finex_cas_bindings":"configs/finex-cas-config-and-key-bindings.json","finex_cas_firewall":"configs/finex-cas-firewall.json","finex_fetcher_bindings":"configs/finex-fetcher-config-and-key-bindings.json","finex_fetcher_firewall":"configs/finex-fetcher-firewall.json"},"required":{"configs/public_keys/putra_authority.pub","v3/OPERATOR_BOOTSTRAP.ps1","v3/PHASE_B_V3_WINDOWS.ps1","v3/RUN_FINEX_TRUSTED_UTC_CAS_RESPONDER.ps1","v3/RUN_FINEX_TRUSTED_UTC_FETCHER.ps1","v3/finex_trusted_utc.py","v3/phase_b_asymmetric_v3.py","dependencies/live_runtime/windows_trusted_utc_continuity_acceptance.py","dependencies/live_runtime/windows_trusted_utc_continuity_cas_responder.py","dependencies/run_windows_trusted_utc_continuity_cas_responder.py"}},
+ "putra":{"generated":{"acl_policy":"policies/runtime_acl_policy.json","producer_bindings":"configs/putra-producer-config-and-key-bindings.json","producer_config":"configs/producer.json","producer_firewall":"configs/putra-producer-firewall.json"},"required":{"configs/public_keys/finex_acceptance.pub","v3/OPERATOR_BOOTSTRAP.ps1","v3/PHASE_B_V3_WINDOWS.ps1","v3/RUN_PUTRA_TRUSTED_UTC_PRODUCER.ps1","v3/finex_trusted_utc.py","v3/phase_b_asymmetric_v3.py","dependencies/live_runtime/windows_trusted_utc_continuity_acceptance.py"}}}
 HASHES={"finex-cas":{"acceptance_core_sha256","config_sha256","operator_core_sha256","responder_core_sha256"},"finex-fetcher":{"response_authority_public_key_file_sha256","response_authority_public_key_sha256"},"putra-producer":{"acceptance_custody_issuer_id","acceptance_custody_key_id","acceptance_public_key_file_sha256","acceptance_public_key_sha256","acceptance_verifier_sha256","authority_public_key_sha256","cas_provider_id"}}
 CAS_FIELDS={"acceptance_custody_issuer_id","acceptance_custody_key_id","acceptance_private_key_path","acceptance_public_key_file_sha256","acceptance_public_key_path","acceptance_public_key_sha256","clock_binding_sha256","consumer_host_identity_sha256","custody_issuer_id","custody_key_fingerprint_sha256","custody_key_id","database_path","hmac_key_path","poll_interval_ms","provider_id","request_directory","response_directory","schema_version","source_host_identity_sha256","ssh_keygen_path","ssh_keygen_sha256"}
 PRODUCER_FIELDS={"acceptance_custody_issuer_id","acceptance_custody_key_id","allowed_remote_ip","bind_ip","binding_sha256","cas_provider_id","consumer_host_identity_sha256","port","readiness_private_key_path","schema_version","source_host_identity_sha256"}
@@ -18,6 +18,12 @@ def sha(raw):return hashlib.sha256(raw).hexdigest()
 def source_sha():return sha(Path(__file__).read_bytes())
 def is_hash(value):return type(value)is str and len(value)==64 and all(c in "0123456789abcdef" for c in value)
 def is_identifier(value):return type(value)is str and 1<=len(value)<=128 and all(c.isalnum()or c in "._:-" for c in value)
+def ssh_fingerprint(raw):
+ try:
+  parts=raw.decode("ascii").strip().split();blob=base64.b64decode(parts[1],validate=True);size=struct.unpack(">I",blob[:4])[0]
+ except(Exception)as exc:raise UnsignedInputError("UNSIGNED_INPUT_PUBLIC_KEY_INVALID")from exc
+ if len(parts)<2 or parts[0]!="ssh-ed25519"or size!=11 or blob[4:15]!=b"ssh-ed25519"or blob[15:19]!=struct.pack(">I",32)or len(blob)!=51:raise UnsignedInputError("UNSIGNED_INPUT_PUBLIC_KEY_INVALID")
+ return sha(blob)
 def require_ascii(value):
  if type(value)is str:
   try:value.encode("ascii")
@@ -116,6 +122,8 @@ def expected(request_path):
   generated_kinds.add(kind);seen.add(rel);artifact_bytes[rel]=canonical(item["value"])
  exact=set(profile["required"])|set(profile["generated"].values())
  if generated_kinds!=set(profile["generated"])or seen!=exact:raise UnsignedInputError("UNSIGNED_INPUT_PROFILE_INCOMPLETE")
+ bindings_kind="finex_fetcher_bindings"if request["profile"]=="finex"else"producer_bindings";key_rel="configs/public_keys/putra_authority.pub"if request["profile"]=="finex"else"configs/public_keys/finex_acceptance.pub";pins=next(item["value"]["runtime_pins"]for item in request["generated"]if item["kind"]==bindings_kind);file_field="response_authority_public_key_file_sha256"if request["profile"]=="finex"else"acceptance_public_key_file_sha256";fingerprint_field="response_authority_public_key_sha256"if request["profile"]=="finex"else"acceptance_public_key_sha256"
+ if pins[file_field]!=sha(artifact_bytes[key_rel])or pins[fingerprint_field]!=ssh_fingerprint(artifact_bytes[key_rel]):raise UnsignedInputError("UNSIGNED_INPUT_PUBLIC_KEY_BINDING_MISMATCH")
  artifacts=[{"relative_path":rel,"sha256":sha(artifact_bytes[rel]),"source_path":str((output/"sources"/Path(rel)).resolve())}for rel in sorted(artifact_bytes)]
  return {"artifacts":artifacts,"builder_contract":BUILDER_CONTRACT,"builder_request_sha256":sha(request_raw),"builder_source_sha256":source_sha(),"profile":request["profile"],"schema_version":"finex-phase-d-unsigned-artifacts-v3"},artifact_bytes
 def build(request_path):

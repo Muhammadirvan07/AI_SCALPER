@@ -365,7 +365,7 @@ def generate(request_path: Path, *, create_precommit=None, derive_public=_derive
         common={("PowerShellPath","PowerShellSha256"):("action_execute_path",held["action_execute_path"].raw),("PythonPath","PythonSha256"):("python_path",held["python_path"].raw),("SshKeygenPath","SshKeygenSha256"):("ssh_keygen_path",held["ssh_keygen_path"].raw)}
         for (path_key,hash_key),(request_key,raw) in common.items():
             if published_core.lexical_path(Path(named[path_key]))!=published_core.lexical_path(paths[request_key]) or named[hash_key]!=_sha(raw):raise GeneratorError("RUNTIME_BOOTSTRAP_BINDING_INVALID")
-        bootstrap=release_root/"OPERATOR_BOOTSTRAP.ps1"
+        bootstrap=paths["runtime_path"].parent/"OPERATOR_BOOTSTRAP.ps1"
         bootstrap_hold=_held(stack,bootstrap,"RUNTIME_BOOTSTRAP_BINDING_INVALID")
         if named["BootstrapSha256"]!=_sha(bootstrap_hold.raw):raise GeneratorError("RUNTIME_BOOTSTRAP_BINDING_INVALID")
         for path,raw in ((paths["runtime_path"],held["runtime_path"].raw),(paths["observer_path"],held["observer_path"].raw),(paths["v3_core_path"],published_core_hold.raw),(bootstrap,bootstrap_hold.raw)):_require_inventory_path(path,raw,release_root,inventory)

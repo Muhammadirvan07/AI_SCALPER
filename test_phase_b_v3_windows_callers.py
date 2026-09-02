@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from operator_packs.finex_trusted_utc_v1 import phase_b_asymmetric_v3 as module
 from pathlib import Path
 
 from operator_packs.finex_trusted_utc_v1.phase_b_asymmetric_v3 import (
@@ -110,7 +111,7 @@ class PhaseBV3WindowsCallerStaticTests(unittest.TestCase):
         if not powershell.is_file():self.skipTest("Windows PowerShell unavailable")
         build=PHASE_D/"BUILD_FINEX_PHASE_D.ps1"
         quoted=lambda value:"'"+str(value).replace("'","''")+"'"
-        prefix="& "+quoted(build)+" -RepoRoot "+quoted(ROOT)+" -OutputRoot "+quoted(ROOT)+" -PublishedReleaseRoot "+quoted(ROOT)+" -FinalizePublished "
+        prefix="& "+quoted(build)+" -RepoRoot "+quoted(ROOT)+" -OutputRoot "+quoted(ROOT)+" -PublishedReleaseRoot "+quoted(ROOT)+" -FinalizePublished -TrustedFinalizePythonPath "+quoted(Path(sys.executable).resolve())+" -TrustedFinalizePythonSha256 "+sha(Path(sys.executable).read_bytes())+" "
         dummy=str((ROOT/"missing-finalize-argument.json").resolve())
         cases=(
             ("-ExpectedFinalizeRoles @('finex-cas','finex-cas') -FinalizeArgumentsJson @("+quoted(dummy)+","+quoted(dummy+'-2')+")","PHASE_D_FINALIZE_EXPECTED_ROLE_PROFILE_INVALID"),
@@ -139,13 +140,22 @@ class PhaseBV3WindowsCallerStaticTests(unittest.TestCase):
             inventory_before=inventory.read_bytes();asset_before=asset.read_bytes();topology_before=sorted(path.relative_to(published).as_posix() for path in published.rglob("*"))
             dummy=(root/"missing-argument.json").resolve()
             q=lambda value:"'"+str(value).replace("'","''")+"'"
-            command="& "+q(PHASE_D/"BUILD_FINEX_PHASE_D.ps1")+" -RepoRoot "+q(ROOT)+" -OutputRoot "+q(root)+" -PublishedReleaseRoot "+q(published)+" -FinalizePublished -UnsignedContentManifestPath "+q(inventory)+" -ExpectedFinalizeRoles @('putra-producer') -FinalizeArgumentsJson @("+q(dummy)+")"
+            command="& "+q(PHASE_D/"BUILD_FINEX_PHASE_D.ps1")+" -RepoRoot "+q(ROOT)+" -OutputRoot "+q(root)+" -PublishedReleaseRoot "+q(published)+" -FinalizePublished -TrustedFinalizePythonPath "+q(Path(sys.executable).resolve())+" -TrustedFinalizePythonSha256 "+sha(Path(sys.executable).read_bytes())+" -UnsignedContentManifestPath "+q(inventory)+" -ExpectedFinalizeRoles @('putra-producer') -FinalizeArgumentsJson @("+q(dummy)+")"
             result=subprocess.run([str(powershell),"-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-Command",command],capture_output=True,text=True,timeout=20,check=False)
             self.assertNotEqual(0,result.returncode,result.stdout+result.stderr)
             self.assertIn("PHASE_D_UNSIGNED_CONTENT_HASH_MISMATCH",result.stdout+result.stderr)
             self.assertEqual(inventory_before,inventory.read_bytes())
             self.assertEqual(asset_before,asset.read_bytes())
             self.assertEqual(topology_before,sorted(path.relative_to(published).as_posix() for path in published.rglob("*")))
+
+    def test_finalize_ignores_fake_environment_policy_and_interpreters(self):
+        powershell=Path(os.environ.get("SystemRoot",r"C:\Windows"))/"System32/WindowsPowerShell/v1.0/powershell.exe"
+        ssh=Path(os.environ.get("SystemRoot",r"C:\Windows"))/"System32/OpenSSH/ssh-keygen.exe"
+        if not powershell.is_file() or not ssh.is_file():self.skipTest("Windows PowerShell/OpenSSH unavailable")
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);fake_program_data=root/"fake-program-data";anchor=fake_program_data/"AI_SCALPER/phase-d";anchor.mkdir(parents=True);marker=root/"fake-executed";fake_python=root/"fake-python.cmd";fake_python.write_text("@echo off\r\necho executed>\""+str(marker)+"\"\r\n",encoding="ascii");fake_windows=root/"fake-windows";fake_ssh=fake_windows/"System32/OpenSSH/ssh-keygen.exe";fake_ssh.parent.mkdir(parents=True);fake_ssh.write_text("@echo off\r\necho executed>\""+str(marker)+"\"\r\n",encoding="ascii")
+            key=root/"fake-policy-key";created=subprocess.run([str(ssh),"-q","-t","ed25519","-N","","-f",str(key)],capture_output=True,text=True,timeout=20,check=False);self.assertEqual(0,created.returncode,created.stdout+created.stderr);policy=anchor/"trusted-finalize-python-v1.json";policy.write_bytes(canonical({"python_path":str(fake_python.resolve()),"python_sha256":sha(fake_python.read_bytes()),"schema_version":"finex-phase-d-trusted-finalize-python-policy-v1"}));(anchor/"trusted-finalize-python-v1.json.sig").write_bytes(module.sign_bytes(policy.read_bytes(),key,"ai-scalper-finex-phase-d-finalize-python-policy-v1",ssh));(anchor/"trusted-finalize-policy-authority.pub").write_bytes(Path(str(key)+".pub").read_bytes())
+            published=root/"published";asset=published/"v3/phase_b_asymmetric_v3.py";asset.parent.mkdir(parents=True);asset.write_bytes(b"bound");inventory=published/"unsigned_content_manifest.json";inventory.write_bytes(canonical({"entries":[{"path":"v3/phase_b_asymmetric_v3.py","sha256":sha(asset.read_bytes())}],"schema_version":"finex-phase-d-unsigned-content-manifest-v1"}));dummy=root/"missing-argument.json";q=lambda value:"'"+str(value).replace("'","''")+"'";command="& "+q(PHASE_D/"BUILD_FINEX_PHASE_D.ps1")+" -RepoRoot "+q(ROOT)+" -OutputRoot "+q(root)+" -PublishedReleaseRoot "+q(published)+" -FinalizePublished -UnsignedContentManifestPath "+q(inventory)+" -ExpectedFinalizeRoles @('putra-producer') -FinalizeArgumentsJson @("+q(dummy)+") -TrustedFinalizePythonPath "+q(fake_python)+" -TrustedFinalizePythonSha256 "+sha(fake_python.read_bytes());environment=os.environ.copy();environment["ProgramData"]=str(fake_program_data);environment["WINDIR"]=str(fake_windows);result=subprocess.run([str(powershell),"-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-Command",command],capture_output=True,text=True,timeout=20,check=False,env=environment);self.assertNotEqual(0,result.returncode);self.assertFalse(marker.exists(),result.stdout+result.stderr)
 
     def test_preparers_pin_exact_host_role_sets(self):
         finex=text(PHASE_D/"PREPARE_FINEX_PHASE_D_LOCAL.ps1")

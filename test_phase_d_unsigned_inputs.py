@@ -1,4 +1,4 @@
-import hashlib,json,os,subprocess,sys,tempfile,unittest
+import base64,hashlib,json,os,struct,subprocess,sys,tempfile,unittest
 from pathlib import Path
 from operator_packs.finex_trusted_utc_phase_d_v1 import build_phase_d_unsigned_inputs as builder
 
@@ -8,6 +8,9 @@ BUILD=PACK/"BUILD_FINEX_PHASE_D.ps1"
 POWER=Path(os.environ.get("SystemRoot",r"C:\Windows"))/"System32/WindowsPowerShell/v1.0/powershell.exe"
 def sha(raw):return hashlib.sha256(raw).hexdigest()
 def canonical(value):return (json.dumps(value,sort_keys=True,separators=(",",":"))+"\n").encode()
+def public_raw(seed=b"K"):
+ blob=struct.pack(">I",11)+b"ssh-ed25519"+struct.pack(">I",32)+seed*32
+ return ("ssh-ed25519 "+base64.b64encode(blob).decode()+" test\n").encode(),hashlib.sha256(blob).hexdigest()
 
 class UnsignedInputIntegrationTests(unittest.TestCase):
  def setUp(self):self.t=tempfile.TemporaryDirectory();self.root=Path(self.t.name)
@@ -23,13 +26,14 @@ class UnsignedInputIntegrationTests(unittest.TestCase):
   if kind.endswith("_firewall"):return {"display_name":"AI_SCALPER FINEX Trusted UTC Producer V1" if kind=="producer_firewall" else "AI_SCALPER_FINEX_TRUSTED_UTC_V1","phase":"absent","schema_version":"finex-phase-b-firewall-topology-v3"}
   return self.bindings({"finex_cas_bindings":"finex-cas","finex_fetcher_bindings":"finex-fetcher","producer_bindings":"putra-producer"}[kind])
  def request(self,profile):
-  required=builder.PROFILES[profile]["required"];artifacts=[]
+  required=builder.PROFILES[profile]["required"];artifacts=[];raw_by_path={}
   for index,relative in enumerate(sorted(required)):
-   source=self.root/"source"/relative;source.parent.mkdir(parents=True,exist_ok=True);raw=("artifact-"+str(index)).encode();source.write_bytes(raw);artifacts.append({"relative_path":relative,"sha256":sha(raw),"source_path":str(source.resolve())})
+   source=self.root/"source"/relative;source.parent.mkdir(parents=True,exist_ok=True);raw=public_raw()[0] if relative.endswith(".pub") else ("artifact-"+str(index)).encode();source.write_bytes(raw);raw_by_path[relative]=raw;artifacts.append({"relative_path":relative,"sha256":sha(raw),"source_path":str(source.resolve())})
   generated=[]
   for kind,relative in builder.PROFILES[profile]["generated"].items():
    value=self.generated_value(profile,kind)
    generated.append({"kind":kind,"relative_path":relative,"value":value})
+  key_rel="configs/public_keys/putra_authority.pub" if profile=="finex" else "configs/public_keys/finex_acceptance.pub";binding_kind="finex_fetcher_bindings" if profile=="finex" else "producer_bindings";pins=next(item["value"]["runtime_pins"] for item in generated if item["kind"]==binding_kind);file_field="response_authority_public_key_file_sha256" if profile=="finex" else "acceptance_public_key_file_sha256";fingerprint_field="response_authority_public_key_sha256" if profile=="finex" else "acceptance_public_key_sha256";pins[file_field]=sha(raw_by_path[key_rel]);pins[fingerprint_field]=public_raw()[1]
   value={"artifacts":artifacts,"generated":generated,"output_root":str((self.root/(profile+"-inputs")).resolve()),"profile":profile,"schema_version":"finex-phase-d-unsigned-input-request-v1"}
   path=self.root/(profile+"-request.json");path.write_bytes(canonical(value));return path,value
  @unittest.skipUnless(POWER.is_file(),"Windows PowerShell unavailable")
@@ -50,6 +54,11 @@ class UnsignedInputIntegrationTests(unittest.TestCase):
   with self.assertRaisesRegex(builder.UnsignedInputError,"UNSIGNED_INPUT_OUTPUT_COLLISION"):builder.build(request)
  def test_builder_rejects_missing_and_extra_profile_members(self):
   request,value=self.request("finex");value["generated"].pop();request.write_bytes(canonical(value))
+  with self.assertRaisesRegex(builder.UnsignedInputError,"UNSIGNED_INPUT_PROFILE_INCOMPLETE"):builder.build(request)
+ def test_builder_rejects_public_key_byte_and_alternate_path_drift(self):
+  request,value=self.request("finex");key=next(item for item in value["artifacts"] if item["relative_path"]=="configs/public_keys/putra_authority.pub");replacement=public_raw(b"Z")[0];Path(key["source_path"]).write_bytes(replacement);key["sha256"]=sha(replacement);request.write_bytes(canonical(value))
+  with self.assertRaisesRegex(builder.UnsignedInputError,"UNSIGNED_INPUT_PUBLIC_KEY_BINDING_MISMATCH"):builder.build(request)
+  request,value=self.request("putra");key=next(item for item in value["artifacts"] if item["relative_path"]=="configs/public_keys/finex_acceptance.pub");key["relative_path"]="configs/public_keys/acceptance.pub";request.write_bytes(canonical(value))
   with self.assertRaisesRegex(builder.UnsignedInputError,"UNSIGNED_INPUT_PROFILE_INCOMPLETE"):builder.build(request)
   request,value=self.request("putra");value["generated"][0]["value"]["records"][0]["owner_sid"]="pemilik-é";request.write_bytes(canonical(value))
   with self.assertRaisesRegex(builder.UnsignedInputError,"UNSIGNED_INPUT_NONASCII_FORBIDDEN"):builder.build(request)
