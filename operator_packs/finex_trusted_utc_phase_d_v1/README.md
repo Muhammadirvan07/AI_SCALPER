@@ -2,6 +2,23 @@
 
 This package builds deployment evidence only. It never activates tasks, creates firewall rules, contacts Putra, or submits broker orders.
 
+## Trusted finalize Python policy
+
+`FinalizePublished` accepts an interpreter only from the signed host policy installed at `%ProgramData%\AI_SCALPER\phase-d`. The implementation resolves CommonApplicationData and System32 through OS APIs, not environment variables. Provision it as a separate administrative ceremony:
+
+```powershell
+& .\TRUSTED_FINALIZE_PYTHON_POLICY.ps1 -SetupKey -AuthorityPrivateKeyPath C:\secure\finex-finalize-policy-ed25519
+& .\TRUSTED_FINALIZE_PYTHON_POLICY.ps1 -Prepare -PythonPath C:\handoff\python-runtime\python.exe -AuthorityPublicKeyPath C:\secure\finex-finalize-policy-ed25519.pub -PolicyPath C:\handoff\trusted-finalize-python-v1.json
+& .\TRUSTED_FINALIZE_PYTHON_POLICY.ps1 -Sign -PythonPath C:\handoff\python-runtime\python.exe -AuthorityPrivateKeyPath C:\secure\finex-finalize-policy-ed25519 -AuthorityPublicKeyPath C:\secure\finex-finalize-policy-ed25519.pub -PolicyPath C:\handoff\trusted-finalize-python-v1.json -SignaturePath C:\handoff\trusted-finalize-python-v1.json.sig
+& .\TRUSTED_FINALIZE_PYTHON_POLICY.ps1 -Verify -AuthorityPublicKeyPath C:\secure\finex-finalize-policy-ed25519.pub -PolicyPath C:\handoff\trusted-finalize-python-v1.json -SignaturePath C:\handoff\trusted-finalize-python-v1.json.sig
+# Run the install command from an elevated PowerShell only:
+& .\TRUSTED_FINALIZE_PYTHON_POLICY.ps1 -Install -AuthorityPublicKeyPath C:\secure\finex-finalize-policy-ed25519.pub -PolicyPath C:\handoff\trusted-finalize-python-v1.json -SignaturePath C:\handoff\trusted-finalize-python-v1.json.sig -RuntimeUserSid S-1-5-21-...
+```
+
+Before policy installation, an administrator must place the complete dedicated Python distribution at `CommonApplicationData\AI_SCALPER\phase-d-python-runtime`, with `python.exe` at its root, owner SYSTEM or Builtin Administrators, a protected DACL on the application root and every runtime directory/file, and read/execute-only access for the runtime user. A workspace virtual environment is not an accepted finalization runtime. The policy binds the source `python.exe` bytes to that fixed installed executable; install and finalization recursively recheck the protected runtime tree.
+
+The private authority key remains outside CommonApplicationData and is never copied or printed. Installation is create-exclusive; rerunning succeeds only when installed bytes and ACLs are already exact. This tool never changes tasks, firewall rules, MT5, or broker order capability.
+
 First local command (read-only):
 
 ```powershell
