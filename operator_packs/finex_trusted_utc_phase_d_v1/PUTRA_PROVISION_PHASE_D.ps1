@@ -17,10 +17,10 @@ $stage=Join-Path $parent ('.putra-phase-d.staging-'+[Guid]::NewGuid().ToString('
 [IO.Directory]::CreateDirectory($stage)|Out-Null
 $PowerShellPath=Safe $PowerShellPath;$PythonPath=Safe $PythonPath;$RuntimeAclPolicyPath=Safe $RuntimeAclPolicyPath
 $policyRuntime=[IO.Path]::GetFullPath($RuntimeAclPolicyPublishedPath)
-$pack=Join-Path $repo 'operator_packs\finex_trusted_utc_v1'
-$core=Safe (Join-Path $pack 'finex_trusted_utc.py');$loader=Safe (Join-Path $pack 'OPERATOR_ENTRY_LOADER.ps1')
-$v3Core=Safe (Join-Path $pack 'phase_b_asymmetric_v3.py');$v3Windows=Safe (Join-Path $pack 'PHASE_B_V3_WINDOWS.ps1');$v3Attester=Safe (Join-Path $pack 'ATTEST_PHASE_B_INSTALLED_DISABLED.ps1');$v3Activation=Safe (Join-Path $pack 'ACTIVATE_PUTRA_TRUSTED_UTC_PRODUCER.ps1');$v3Publisher=Safe (Join-Path $pack 'PUBLISH_FINEX_TRUSTED_UTC_PHASE_C.ps1')
-$targets=[ordered]@{install=Safe (Join-Path $pack 'INSTALL_PUTRA_TRUSTED_UTC_PRODUCER.ps1');attest=$v3Attester;publish=$v3Publisher;activate=$v3Activation}
+$publishedInventory=Safe (Join-Path $publishedFinal 'unsigned_content_manifest.json');$inventoryValue=[IO.File]::ReadAllText($publishedInventory)|ConvertFrom-Json;if($inventoryValue.schema_version-cne'finex-phase-d-unsigned-content-manifest-v1'){throw 'PUTRA_PUBLISHED_INVENTORY_INVALID'};$inventoryMap=@{};foreach($entry in $inventoryValue.entries){if($inventoryMap.ContainsKey([string]$entry.path)-or[string]$entry.sha256-notmatch'^[0-9a-f]{64}$'){throw 'PUTRA_PUBLISHED_INVENTORY_INVALID'};$inventoryMap[[string]$entry.path]=[string]$entry.sha256};function PinPublished([string]$path){$q=Safe $path;$rel=$q.Substring($publishedFinal.Length+1).Replace('\','/');if(-not$inventoryMap.ContainsKey($rel)-or(HF $q)-cne$inventoryMap[$rel]){throw 'PUTRA_PUBLISHED_INVENTORY_DRIFT'};$q};$pack=Join-Path $publishedFinal 'v3'
+$core=PinPublished (Join-Path $pack 'finex_trusted_utc.py');$loader=PinPublished (Join-Path $pack 'OPERATOR_ENTRY_LOADER.ps1')
+$v3Core=PinPublished (Join-Path $pack 'phase_b_asymmetric_v3.py');$v3Windows=PinPublished (Join-Path $pack 'PHASE_B_V3_WINDOWS.ps1');$v3Attester=PinPublished (Join-Path $pack 'ATTEST_PHASE_B_INSTALLED_DISABLED.ps1');$v3Activation=PinPublished (Join-Path $pack 'ACTIVATE_PUTRA_TRUSTED_UTC_PRODUCER.ps1');$v3Publisher=PinPublished (Join-Path $pack 'PUBLISH_FINEX_TRUSTED_UTC_PHASE_C.ps1')
+$targets=[ordered]@{install=PinPublished (Join-Path $pack 'INSTALL_PUTRA_TRUSTED_UTC_PRODUCER.ps1');attest=$v3Attester;publish=$v3Publisher;activate=$v3Activation}
 $arguments=[ordered]@{install=$InstallArgumentsJson;attest=$AttestArgumentsJson;publish=$PublishArgumentsJson;activate=$ActivateArgumentsJson}
 $roles=@{install='install';attest='publish';publish='publish';activate='activate'}
 foreach($optional in @('attest','publish','activate')){if([string]::IsNullOrWhiteSpace([string]$arguments[$optional])){$targets.Remove($optional);$arguments.Remove($optional)}}

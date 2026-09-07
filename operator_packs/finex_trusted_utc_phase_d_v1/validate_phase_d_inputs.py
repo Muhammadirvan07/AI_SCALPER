@@ -35,11 +35,10 @@ def load(kind,path):
  value,_=strict(path);schema,fields=SCHEMAS[kind]
  if set(value)!=fields or value.get("schema_version")!=schema:raise ValueError("schema")
  if kind.endswith("post-install-v3"):
-  roles=("cas","fetcher") if kind.startswith("finex") else ("producer",);required={"attestation_path","attestation_signature_path","config_and_key_bindings_json","firewall_json","installed_receipt_sha256","readiness_identity","readiness_path","readiness_public_key"}
+  roles=("cas","fetcher") if kind.startswith("finex") else ("producer",);required={"attestation_path","attestation_signature_path","config_and_key_bindings_json","firewall_json","installed_receipt_sha256"}
   for role in roles:
    item=value[role]
-   if role=="producer":required=required|{"active_firewall_json"}
-   paths=("attestation_path","attestation_signature_path","config_and_key_bindings_json","firewall_json","readiness_path","readiness_public_key")+(("active_firewall_json",) if role=="producer" else ())
+   paths=("attestation_path","attestation_signature_path","config_and_key_bindings_json","firewall_json")
    attestation=Path(str(item.get("attestation_path","")))
    if type(item) is not dict or set(item)!=required or attestation.name!="attestation.json" or re.fullmatch(r"[0-9a-f]{32}",attestation.parent.name) is None or str(item.get("attestation_signature_path"))!=str(attestation)+".sig" or HASH.fullmatch(str(item["installed_receipt_sha256"])) is None or any(not os.path.isabs(str(item[key])) for key in paths):raise ValueError("post_install")
   return value
